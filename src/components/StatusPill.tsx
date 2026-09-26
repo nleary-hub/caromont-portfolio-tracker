@@ -1,10 +1,11 @@
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
+import { StatusShape } from "@/components/StatusShape";
 
 export function StatusPill({ status }: { status: ProjectStatus }) {
   return (
     <span className={`pill st-${status}`}>
-      <i aria-hidden />
+      <StatusShape status={status} />
       {ProjectStatusInfo.label(status)}
     </span>
   );
