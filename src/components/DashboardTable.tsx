@@ -258,40 +258,47 @@ export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdate
 }
 
 /**
- * Due / Flags with fixed placement: the date alone on line 1 (muted en dash when blank), then the fixed
- * flag slot grid (DueFlags / FlagSlots). Every slot keeps its cell when empty, so a flag is always in the
- * same place; nothing is ever inline with the date. Top-aligned with the row's first line.
+ * Due / Flags with fixed placement (DueFlags.GRID): row 1 the date then Overdue, row 2 Changed then Stale,
+ * in fixed-width columns. Every cell keeps its place when empty, so the date and each flag line up across
+ * rows. With Flags hidden only the date shows. Top-aligned with the row's first line.
  */
 export function DueFlagsCellView({ cell }: { cell: DueFlagsCell }) {
   if (!cell.due && !cell.slots) return null;
+  const date = cell.due && (
+    <span
+      data-part="due"
+      className={`whitespace-nowrap ${cell.due.overdue ? "font-semibold text-danger" : cell.due.muted ? "text-muted" : "text-fg"}`}
+    >
+      {cell.due.text}
+    </span>
+  );
+  if (!cell.slots) {
+    return (
+      <div className="text-[13px] leading-[18px]" data-testid="due-flags">
+        {date}
+      </div>
+    );
+  }
+  const at = (p: { row: number; col: number }) => ({ gridRow: p.row + 1, gridColumn: p.col + 1 });
   return (
-    <div className="flex flex-col items-start text-[13px] leading-[18px]" style={{ rowGap: DueFlags.ROW_GAP_PX }} data-testid="due-flags">
-      {cell.due && (
-        <span
-          data-part="due"
-          className={`whitespace-nowrap ${cell.due.overdue ? "font-semibold text-danger" : cell.due.muted ? "text-muted" : "text-fg"}`}
-        >
-          {cell.due.text}
+    <div
+      data-testid="due-flags"
+      className="grid items-center text-[13px] leading-[18px]"
+      style={{
+        gridTemplateColumns: DueFlags.COLUMN_WIDTHS_PX.map((w) => `${w}px`).join(" "),
+        gridTemplateRows: `repeat(${DueFlags.ROWS}, ${DueFlags.ROW_H_PX}px)`,
+        columnGap: DueFlags.COL_GAP_PX,
+        rowGap: DueFlags.ROW_GAP_PX,
+      }}
+    >
+      <span data-cell="due" className="flex" style={at(DueFlags.position("due"))}>
+        {date}
+      </span>
+      {cell.slots.map((s) => (
+        <span key={s.kind} data-slot={s.slot} data-slot-kind={s.kind} className="flex" style={at(s)}>
+          {s.flag && <DueFlagPill kind={s.flag.kind} label={s.flag.label} />}
         </span>
-      )}
-      {cell.slots && (
-        <div
-          data-part="flag-slots"
-          className="grid"
-          style={{
-            gridTemplateColumns: DueFlags.COLUMN_WIDTHS_PX.map((w) => `${w}px`).join(" "),
-            gridTemplateRows: `repeat(${DueFlags.gridRows()}, ${DueFlags.SLOT_H_PX}px)`,
-            columnGap: DueFlags.COL_GAP_PX,
-            rowGap: DueFlags.ROW_GAP_PX,
-          }}
-        >
-          {cell.slots.map((s) => (
-            <span key={s.kind} data-slot={s.slot} data-slot-kind={s.kind} className="flex" style={{ gridRow: s.row + 1, gridColumn: s.col + 1 }}>
-              {s.flag && <DueFlagPill kind={s.flag.kind} label={s.flag.label} />}
-            </span>
-          ))}
-        </div>
-      )}
+      ))}
     </div>
   );
 }

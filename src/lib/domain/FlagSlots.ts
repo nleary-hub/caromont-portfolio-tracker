@@ -12,7 +12,8 @@ export interface FlagState {
  * The one shared definition of where row flags go. Every flag type owns a fixed slot in the canonical
  * order Changed, Overdue, Stale, and empty slots stay reserved, so a given flag always lands in the same
  * place on every row no matter which other flags apply. The dashboard Due / Flags cell and the PDF Flags
- * column both lay out from slots().
+ * column both lay out from slots(): the PDF puts the slots side by side in this order, and the dashboard
+ * places them in its fixed 2 x 2 grid with the due date (DueFlags.GRID).
  *
  * No two flags share a slot: none are mutually exclusive. Overdue and Stale can both hold on an open
  * project, and Changed and Stale can both hold when the previous report is older than

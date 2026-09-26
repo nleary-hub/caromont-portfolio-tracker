@@ -52,8 +52,12 @@ export interface DueFlagsSource {
 
 export type DueFlagKind = FlagKind;
 
+/** A cell of the dashboard Due / Flags grid: the due date or one flag type. */
+export type DueFlagsCellKey = "due" | DueFlagKind;
+
 /** One flag slot of the Due / Flags cell: its fixed grid position, and the flag when it applies. */
 export interface DueFlagSlot {
+  /** Index in FlagSlots.ORDER (the canonical order the PDF also uses). */
   slot: number;
   kind: DueFlagKind;
   row: number;
@@ -72,54 +76,62 @@ export interface DueFlagsCell {
 }
 
 /**
- * The Due / Flags cell with standardized placement: the due date always alone on line 1
- * (ReportFormat.shortDate, year added when it differs from today's; overdue in weight 600 and the
- * overdue color; a blank date as a muted en dash "\u2013", as the PDF prints it), then a fixed grid of
- * flag slots in FlagSlots order. Every slot keeps its cell even when empty, so a flag sits at the same
- * place on every row and never beside the date.
+ * The dashboard Due / Flags cell with standardized placement: a fixed 2 x 2 grid defined once in GRID.
  *
- * Grid: GRID_COLUMNS columns of fixed widths, filled row by row in canonical order, so Changed is row 1
- * column 1, Overdue row 1 column 2, Stale row 2 column 1. A vertical stack of three reserved slots would
- * make every row about 90px of content instead of 66px, so the compact grid is used.
+ *   row 1: due date | Overdue
+ *   row 2: Changed  | Stale
+ *
+ * Every cell keeps its place when empty, so the date and each flag sit at the same x and y on every row
+ * whichever flags apply. The due date is ReportFormat.shortDate (year added when it differs from today's),
+ * overdue in weight 600 and the overdue color, a blank date a muted en dash ("\u2013", as the PDF prints
+ * it). This arrangement is dashboard only; the PDF Flags column keeps FlagSlots order in one line.
  */
 export class DueFlags {
   static readonly BLANK_DUE = "\u2013";
 
-  /** Gap between the date line and the slot grid, and between grid cells (px). */
+  /** The one definition of the dashboard grid positions (0-based row and column). */
+  static readonly GRID: Readonly<Record<DueFlagsCellKey, { row: number; col: number }>> = {
+    due: { row: 0, col: 0 },
+    overdue: { row: 0, col: 1 },
+    changed: { row: 1, col: 0 },
+    stale: { row: 1, col: 1 },
+  };
+
+  static readonly ROWS = 2;
+  static readonly COLUMNS = 2;
+
+  /** Gaps between grid cells (px). */
   static readonly ROW_GAP_PX = 4;
   static readonly COL_GAP_PX = 4;
 
-  static readonly GRID_COLUMNS = 2;
-
-  /** Pill height (the .flag style) = grid row height. */
-  static readonly SLOT_H_PX = 20;
+  /** Row height = the .flag pill height, so the date line and the flag line are the same height. */
+  static readonly ROW_H_PX = 20;
 
   /**
-   * Fixed column widths (px). Measured pill widths in Inter: Changed 76.1, Overdue 65.8, Stale 54.8;
-   * each column fits the widest pill that can land in it, with a little slack.
+   * Fixed column widths (px), measured in Inter 13px (dates) and the .flag style (pills):
+   * column 1 holds the date (longest "Nov 30, 2027" at weight 600: 84.4; "Sep 30": 44.4) and Changed
+   * (76.1); column 2 holds Overdue (65.8) and Stale (54.8). A little slack on each.
    */
-  static readonly COLUMN_WIDTHS_PX: readonly number[] = [80, 70];
+  static readonly COLUMN_WIDTHS_PX: readonly number[] = [90, 70];
 
   static readonly LABELS: Readonly<Record<DueFlagKind, string>> = FlagSlots.LABELS;
 
-  /** Fixed grid position of a flag (0-based row and column). */
-  static position(kind: DueFlagKind): { row: number; col: number } {
-    const i = FlagSlots.index(kind);
-    return { row: Math.floor(i / DueFlags.GRID_COLUMNS), col: i % DueFlags.GRID_COLUMNS };
+  /** Fixed grid position of the date or a flag. */
+  static position(key: DueFlagsCellKey): { row: number; col: number } {
+    return DueFlags.GRID[key];
   }
 
   static gridRows(): number {
-    return Math.ceil(FlagSlots.COUNT / DueFlags.GRID_COLUMNS);
+    return DueFlags.ROWS;
   }
 
-  /** Width the slot grid needs (the Due / Flags column content width must be at least this). */
+  /** Width the grid needs (the Due / Flags column content width must be at least this). */
   static gridWidthPx(): number {
-    return DueFlags.COLUMN_WIDTHS_PX.reduce((sum, w) => sum + w, 0) + DueFlags.COL_GAP_PX * (DueFlags.GRID_COLUMNS - 1);
+    return DueFlags.COLUMN_WIDTHS_PX.reduce((sum, w) => sum + w, 0) + DueFlags.COL_GAP_PX * (DueFlags.COLUMNS - 1);
   }
 
   static gridHeightPx(): number {
-    const rows = DueFlags.gridRows();
-    return rows * DueFlags.SLOT_H_PX + (rows - 1) * DueFlags.ROW_GAP_PX;
+    return DueFlags.ROWS * DueFlags.ROW_H_PX + (DueFlags.ROWS - 1) * DueFlags.ROW_GAP_PX;
   }
 
   static cell(row: DueFlagsSource, visible: DueFlagsVisibility, today: string): DueFlagsCell {
