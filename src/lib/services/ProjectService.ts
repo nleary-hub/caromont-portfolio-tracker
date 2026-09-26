@@ -222,6 +222,7 @@ export class ProjectService {
 
   private static readonly EDITABLE_FIELDS: readonly (keyof ProjectInput)[] = [
     "name",
+    "description",
     "serviceArea",
     "owner",
     "physicianChampion",

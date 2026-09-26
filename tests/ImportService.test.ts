@@ -12,6 +12,7 @@ class Csv {
   static row(overrides: Partial<Record<string, string>> = {}): string {
     const base: Record<string, string> = {
       name: "Cath lab 3 refresh",
+      description: "",
       service_area: "Cath",
       owner: "Owner A",
       physician_champion: "Dr. A",
@@ -114,6 +115,31 @@ describe("ImportService: new projects", () => {
     );
     expect(preview.rows[0].errors.note).toEqual(["Note must be at most 200 characters"]);
     expect(preview.rows[1].status).toBe("ready");
+  });
+
+  it("description is optional: blank is fine, it is imported when present, and max 200 applies", async () => {
+    const file = Csv.file(
+      Csv.row({ description: "Replace the cath lab 3 imaging system." }),
+      Csv.row({ name: "B", description: "" }),
+      Csv.row({ name: "C", description: "d".repeat(201) }),
+      Csv.row({ name: "D", description: "d".repeat(200) }),
+    );
+    const preview = await ImportService.previewCreate(file, fake.asClient());
+    expect(preview.rows.map((r) => r.status)).toEqual(["ready", "ready", "error", "ready"]);
+    expect(preview.rows[2].errors.description).toEqual(["Description must be at most 200 characters"]);
+
+    const ok = Csv.file(Csv.row({ description: "Replace the cath lab 3 imaging system." }), Csv.row({ name: "B", description: "  " }));
+    await ImportService.commitCreate(ok, ADMIN, fake.asClient());
+    expect(fake.state.projects.map((p) => p.description)).toEqual(["Replace the cath lab 3 imaging system.", null]);
+    expect(JSON.parse(fake.state.history[0].newValue as string).description).toBe("Replace the cath lab 3 imaging system.");
+  });
+
+  it("a file without the description column still imports (description stays empty)", async () => {
+    const cols = ProjectCsv.TEMPLATE_COLUMNS.filter((c) => c !== "description");
+    const file = `${cols.join(",")}\nNo desc project,Cath,Owner A,,,On track,Kickoff,,,,\n`;
+    const r = await ImportService.commitCreate(file, ADMIN, fake.asClient());
+    expect(r.created).toBe(1);
+    expect(fake.state.projects[0].description).toBeNull();
   });
 
   it("next milestone longer than 40 characters is a row error", async () => {

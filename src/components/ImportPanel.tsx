@@ -131,7 +131,7 @@ export function ImportPanel({ adminEmail, templateColumns, limits }: Props) {
             </label>
             <label className="flex items-center gap-2">
               <input type="radio" name="mode" checked={mode === "wording"} onChange={() => onMode("wording")} />
-              Wording update (matched by id; only note and next_milestone may change)
+              Wording update (matched by id; only description, note and next_milestone may change)
             </label>
           </fieldset>
 

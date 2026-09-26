@@ -62,6 +62,7 @@ export class FakeDb {
           const now = new Date();
           const row = {
             id: randomUUID(),
+            description: null,
             physicianChampion: null,
             physicianChampionEmail: null,
             nextMilestone: null,

@@ -8,6 +8,7 @@ export class Factory {
     return {
       id: `p${seq}`,
       name: `Project ${seq}`,
+      description: null,
       serviceArea: "Cath",
       owner: "Owner A",
       physicianChampion: null,

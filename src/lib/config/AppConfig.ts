@@ -6,6 +6,8 @@ export class AppConfig {
   static readonly SHORT_TEXT_MAX_LENGTH = 200;
   /** Max characters in a project's next milestone (template rule; enforced on every save). */
   static readonly MILESTONE_MAX_LENGTH = 40;
+  /** Max characters in a project's description (optional "what the project is" text; enforced on every save). */
+  static readonly DESCRIPTION_MAX_LENGTH = 200;
   /** Max data rows accepted in one CSV import file. */
   static readonly IMPORT_MAX_ROWS = 500;
   /** Calendar used for "today", report dates and overdue checks. */

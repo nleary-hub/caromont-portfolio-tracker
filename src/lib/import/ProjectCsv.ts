@@ -12,6 +12,7 @@ import type { FieldErrors, ProjectInput } from "@/lib/validation/ProjectValidato
 export type CsvColumn =
   | "id"
   | "name"
+  | "description"
   | "service_area"
   | "owner"
   | "physician_champion"
@@ -58,6 +59,7 @@ export class ProjectCsv {
   /** Template/import columns, in template order. */
   static readonly TEMPLATE_COLUMNS: readonly CsvColumn[] = [
     "name",
+    "description",
     "service_area",
     "owner",
     "physician_champion",
@@ -76,12 +78,13 @@ export class ProjectCsv {
   /** Columns a new-project import file must have. */
   static readonly REQUIRED_FOR_CREATE: readonly CsvColumn[] = ["name", "service_area", "owner", "status"];
 
-  /** Columns a wording-update file must have. */
+  /** Columns a wording-update file must have (description is optional; absent means unchanged). */
   static readonly REQUIRED_FOR_WORDING: readonly CsvColumn[] = ["id", "note", "next_milestone"];
 
   /** CSV column to ProjectInput field. */
   static readonly FIELD_BY_COLUMN: Readonly<Record<Exclude<CsvColumn, "id">, TemplateField>> = {
     name: "name",
+    description: "description",
     service_area: "serviceArea",
     owner: "owner",
     physician_champion: "physicianChampion",
@@ -100,6 +103,7 @@ export class ProjectCsv {
   static readonly TEMPLATE_EXAMPLES: readonly Record<Exclude<CsvColumn, "id">, string>[] = [
     {
       name: "Example: Sample cath lab project (delete this row)",
+      description: "Fake example: replace the cath lab 3 imaging system. Optional, up to 200 characters.",
       service_area: "Cath",
       owner: "Example Owner A",
       physician_champion: "Dr. Example A",
@@ -113,6 +117,7 @@ export class ProjectCsv {
     },
     {
       name: "Example: Sample EP pathway (delete this row)",
+      description: "",
       service_area: "EP",
       owner: "Example Owner B",
       physician_champion: "",
@@ -155,6 +160,7 @@ export class ProjectCsv {
     return {
       id: p.id,
       name: p.name,
+      description: p.description ?? "",
       service_area: ServiceAreaInfo.label(p.serviceArea),
       owner: p.owner,
       physician_champion: p.physicianChampion ?? "",

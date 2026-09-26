@@ -31,7 +31,7 @@ export interface CreatePreview {
 }
 
 export interface WordingChange {
-  column: "note" | "next_milestone";
+  column: "description" | "note" | "next_milestone";
   old: string | null;
   new: string | null;
 }
@@ -41,7 +41,7 @@ export interface WordingRowResult {
   id: string;
   /** Project name from the database (or the file when the id is unknown). */
   name: string;
-  /** change = has note/next_milestone edits; unchanged = nothing to write; error = blocks the update. */
+  /** change = has description/note/next_milestone edits; unchanged = nothing to write; error = blocks the update. */
   status: "change" | "unchanged" | "error";
   changes: WordingChange[];
   errors: RowErrors;
@@ -78,7 +78,7 @@ type Reader = Pick<PrismaClient, "project"> | Tx;
  * CSV import of projects. Two modes:
  *  - create: new projects only. Duplicates by (name, service area) against non-archived projects are
  *    skipped with a warning and never overwritten.
- *  - wording: rows matched by id; only note and next_milestone may change. Any other column that differs
+ *  - wording: rows matched by id; only description, note and next_milestone may change. Any other column that differs
  *    from the database rejects the row.
  * preview*() is a dry run (no writes). commit*() re-runs the preview inside one transaction and writes
  * nothing unless every row is clean (all-or-nothing). All writes go through ProjectService, so every
@@ -87,7 +87,14 @@ type Reader = Pick<PrismaClient, "project"> | Tx;
 export class ImportService {
   static readonly SOURCE_CREATE = "csv_import";
   static readonly SOURCE_WORDING = "csv_wording_update";
-  static readonly WORDING_COLUMNS: readonly WordingChange["column"][] = ["note", "next_milestone"];
+  /** The only columns a wording update may change. */
+  static readonly WORDING_COLUMNS: readonly WordingChange["column"][] = ["description", "note", "next_milestone"];
+  private static readonly WORDING_FIELD: Readonly<Record<WordingChange["column"], "description" | "note" | "nextMilestone">> = {
+    description: "description",
+    note: "note",
+    next_milestone: "nextMilestone",
+  };
+  private static readonly LOCKED_MESSAGE = "A wording update may only change description, note and next_milestone.";
 
   private static readonly UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   private static readonly TX_OPTIONS = { isolationLevel: "Serializable", maxWait: 10_000, timeout: 120_000 } as const;
@@ -196,10 +203,7 @@ export class ImportService {
       for (const row of preview.rows) {
         if (row.status !== "change") continue;
         const patch: Partial<ProjectInput> = {};
-        for (const c of row.changes) {
-          if (c.column === "note") patch.note = c.new;
-          else patch.nextMilestone = c.new;
-        }
+        for (const c of row.changes) patch[ImportService.WORDING_FIELD[c.column]] = c.new;
         await ProjectService.updateInTx(tx, row.id, patch, actor);
       }
       return { updated: preview.counts.changed, unchanged: preview.counts.unchanged, preview };
@@ -258,7 +262,7 @@ export class ImportService {
           continue;
         }
 
-        // Every column other than note/next_milestone must match the database exactly (after normalization).
+        // Every column other than description/note/next_milestone must match the database exactly (after normalization).
         const { input: fileInput, errors: conversionErrors } = ProjectCsv.toInput(row);
         const dbInput = ProjectValidator.toInput(existing);
         const dbCells = ProjectCsv.toCells(existing);
@@ -274,21 +278,24 @@ export class ImportService {
           if (fileValue !== dbValue) {
             reject(
               col,
-              `Changed from "${dbCells[col]}" to "${(row.cells[col] ?? "").trim()}". A wording update may only change note and next_milestone.`,
+              `Changed from "${dbCells[col]}" to "${(row.cells[col] ?? "").trim()}". ${ImportService.LOCKED_MESSAGE}`,
             );
           }
         }
 
-        // Diff note / next_milestone (old versus new).
-        const newNote = ImportService.text(row.cells.note);
-        const newMilestone = ImportService.text(row.cells.next_milestone);
-        if (newNote !== existing.note) result.changes.push({ column: "note", old: existing.note, new: newNote });
-        if (newMilestone !== existing.nextMilestone) {
-          result.changes.push({ column: "next_milestone", old: existing.nextMilestone, new: newMilestone });
+        // Diff the wording columns present in the file (old versus new). An absent column is unchanged.
+        const wordingPatch: Partial<ProjectInput> = {};
+        for (const col of ImportService.WORDING_COLUMNS) {
+          if (row.cells[col] === undefined) continue;
+          const field = ImportService.WORDING_FIELD[col];
+          const next = ImportService.text(row.cells[col]);
+          const old = existing[field];
+          wordingPatch[field] = next;
+          if (next !== old) result.changes.push({ column: col, old, new: next });
         }
 
-        // Validate the merged project with the same rules as every save (note max, milestone max 40, ...).
-        const validation = ProjectValidator.validate({ ...dbInput, note: newNote, nextMilestone: newMilestone });
+        // Validate the merged project with the same rules as every save (note, description, milestone max...).
+        const validation = ProjectValidator.validate({ ...dbInput, ...wordingPatch });
         if (!validation.ok) {
           for (const [col, messages] of Object.entries(ProjectCsv.columnErrors(validation.errors))) {
             for (const m of messages ?? []) reject(col as CsvColumn, m);

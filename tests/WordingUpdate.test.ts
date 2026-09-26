@@ -39,6 +39,7 @@ describe("CSV export and wording update", () => {
     const cath = await ProjectService.create(
       {
         name: "Radial lounge expansion",
+        description: "Add recovery bays to the radial lounge.",
         serviceArea: "Cath",
         owner: "Owner B",
         physicianChampion: "Dr. B",
@@ -72,8 +73,11 @@ describe("CSV export and wording update", () => {
     expect(lines[0]).toBe(["id", ...ProjectCsv.TEMPLATE_COLUMNS].join(","));
     const rows = Sheet.rows(csv);
     expect(rows.map((r) => r.id)).toEqual([cathId, epId]);
+    expect(lines[0].split(",").slice(0, 3)).toEqual(["id", "name", "description"]);
+    expect(rows[1].description).toBe("");
     expect(rows[0]).toMatchObject({
       name: "Radial lounge expansion",
+      description: "Add recovery bays to the radial lounge.",
       service_area: "Cath",
       status: "At risk",
       due_date: "2026-10-19",
@@ -123,7 +127,7 @@ describe("CSV export and wording update", () => {
     expect(preview.rows[0].errors.id).toEqual(["This project is archived and cannot be updated"]);
   });
 
-  it("rejects a row when any column other than note / next_milestone differs from the database", async () => {
+  it("rejects a row when any column other than description / note / next_milestone differs from the database", async () => {
     const [cath] = Sheet.rows((await ExportService.exportCsv(db)).csv);
     const variants: [string, string][] = [
       ["name", "Radial lounge expansion phase 2"],
@@ -143,13 +147,13 @@ describe("CSV export and wording update", () => {
       const [col] = variants[i];
       expect(preview.rows[0].status, col).toBe("error");
       expect(preview.rows[0].errors[col as keyof (typeof preview.rows)[0]["errors"]]?.[0], col).toMatch(
-        /A wording update may only change note and next_milestone\.$/,
+        /A wording update may only change description, note and next_milestone\.$/,
       );
       expect(preview.canCommit).toBe(false);
     }
     const status = await ImportService.previewWording(Sheet.write([{ ...cath, status: "On track" }]), db);
     expect(status.rows[0].errors.status).toEqual([
-      'Changed from "At risk" to "On track". A wording update may only change note and next_milestone.',
+      'Changed from "At risk" to "On track". A wording update may only change description, note and next_milestone.',
     ]);
     await expect(ImportService.commitWording(Sheet.write([rows[5]]), ADMIN, db)).rejects.toBeInstanceOf(ImportBlockedError);
     expect(fake.writes).toHaveLength(0);
@@ -249,5 +253,55 @@ describe("CSV export and wording update", () => {
     const slim = Sheet.write([{ id: cathId, note: "Only wording", next_milestone: "Bid award" }], ["id", "note", "next_milestone"]);
     const preview = await ImportService.previewWording(slim, db);
     expect(preview.rows[0]).toMatchObject({ status: "change", changes: [{ column: "note", new: "Only wording" }] });
+  });
+
+  it("export then import round trip keeps description (new projects into an empty database)", async () => {
+    const { csv } = await ExportService.exportCsv(db);
+    const target = new FakeDb();
+    const r = await ImportService.commitCreate(csv, ADMIN, target.asClient());
+    expect(r.created).toBe(2);
+    const byName = new Map(target.state.projects.map((p) => [p.name, p]));
+    expect(byName.get("Radial lounge expansion")!.description).toBe("Add recovery bays to the radial lounge.");
+    expect(byName.get("PFA launch")!.description).toBeNull();
+    // Exporting the copy gives the same CSV apart from the ids.
+    const again = (await ExportService.exportCsv(target.asClient())).csv;
+    const strip = (s: string) => s.split("\n").map((l) => l.replace(/^[^,]*,/, ""));
+    expect(strip(again)).toEqual(strip(csv));
+  });
+
+  it("wording mode can change description, with an old versus new diff and a history row", async () => {
+    const [cath, ep] = Sheet.rows((await ExportService.exportCsv(db)).csv);
+    cath.description = "Expand the radial lounge from 6 to 8 recovery bays.";
+    ep.description = "Launch pulsed field ablation in EP lab 2.";
+    const preview = await ImportService.previewWording(Sheet.write([cath, ep]), db);
+    expect(preview.rows[0].changes).toEqual([
+      {
+        column: "description",
+        old: "Add recovery bays to the radial lounge.",
+        new: "Expand the radial lounge from 6 to 8 recovery bays.",
+      },
+    ]);
+    expect(preview.rows[1].changes).toEqual([
+      { column: "description", old: null, new: "Launch pulsed field ablation in EP lab 2." },
+    ]);
+
+    await ImportService.commitWording(Sheet.write([cath, ep]), ADMIN, db);
+    const history = fake.state.history.filter((h) => h.field === "description");
+    expect(history.map((h) => [h.projectId, h.oldValue, h.newValue, h.comment])).toEqual([
+      [cathId, "Add recovery bays to the radial lounge.", "Expand the radial lounge from 6 to 8 recovery bays.", "csv_wording_update"],
+      [epId, null, "Launch pulsed field ablation in EP lab 2.", "csv_wording_update"],
+    ]);
+    expect(fake.state.projects.find((p) => p.id === epId)!.description).toBe("Launch pulsed field ablation in EP lab 2.");
+  });
+
+  it("wording mode: description max 200, blank clears it, and an absent description column leaves it unchanged", async () => {
+    const [cath] = Sheet.rows((await ExportService.exportCsv(db)).csv);
+    const tooLong = await ImportService.previewWording(Sheet.write([{ ...cath, description: "d".repeat(201) }]), db);
+    expect(tooLong.rows[0].errors.description).toEqual(["Description must be at most 200 characters"]);
+    const blank = await ImportService.previewWording(Sheet.write([{ ...cath, description: "" }]), db);
+    expect(blank.rows[0].changes).toEqual([{ column: "description", old: "Add recovery bays to the radial lounge.", new: null }]);
+    const absent = Sheet.write([{ id: cathId, note: cath.note, next_milestone: cath.next_milestone }], ["id", "note", "next_milestone"]);
+    const p = await ImportService.previewWording(absent, db);
+    expect(p.rows[0].status).toBe("unchanged");
   });
 });

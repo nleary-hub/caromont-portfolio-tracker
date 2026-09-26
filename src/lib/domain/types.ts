@@ -4,6 +4,7 @@ import type { ProjectStatus, RecipientLine, ServiceArea } from "@/generated/pris
 export interface ProjectRecord {
   id: string;
   name: string;
+  description: string | null;
   serviceArea: ServiceArea;
   owner: string;
   physicianChampion: string | null;

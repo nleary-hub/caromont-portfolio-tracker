@@ -35,6 +35,22 @@ describe("ProjectService", () => {
     expect(fake.writes).toHaveLength(0);
   });
 
+  it("description is set at creation, editable later, and every change is a history row", async () => {
+    const p = await ProjectService.create({ ...input, description: "  Replace the radial lounge chairs.  " }, actor, fake.asClient());
+    expect(p.description).toBe("Replace the radial lounge chairs.");
+    expect(JSON.parse(fake.state.history[0].newValue as string).description).toBe("Replace the radial lounge chairs.");
+    await ProjectService.update(p.id, { description: "Expand the radial lounge to 8 bays." }, actor, fake.asClient());
+    await ProjectService.update(p.id, { description: "" }, actor, fake.asClient());
+    const rows = fake.state.history.filter((h) => h.field === "description");
+    expect(rows.map((r) => [r.oldValue, r.newValue])).toEqual([
+      ["Replace the radial lounge chairs.", "Expand the radial lounge to 8 bays."],
+      ["Expand the radial lounge to 8 bays.", null],
+    ]);
+    await expect(
+      ProjectService.update(p.id, { description: "d".repeat(201) }, actor, fake.asClient()),
+    ).rejects.toThrow(ProjectValidationError);
+  });
+
   it("update writes one history row per changed field in the same transaction", async () => {
     const p = await ProjectService.create(input, actor, fake.asClient());
     fake.writes = [];

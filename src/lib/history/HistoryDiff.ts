@@ -11,6 +11,7 @@ export class HistoryDiff {
   /** Fields tracked in history, in a stable order. */
   static readonly TRACKED_FIELDS = [
     "name",
+    "description",
     "serviceArea",
     "owner",
     "physicianChampion",
