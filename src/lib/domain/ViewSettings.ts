@@ -14,6 +14,7 @@ export type ViewColumn =
   | "nextMilestone"
   | "due"
   | "note"
+  | "latestUpdate"
   | "flags";
 
 /** What is stored per context (view_settings row) and frozen into each report snapshot. */
@@ -47,7 +48,10 @@ export class ViewSettings {
   private static readonly DEFAULT_ORDER: Record<ViewContext, readonly ViewColumn[]> = {
     // inforNumber is inline (meta line under Project), so its place in the order does not matter. It is
     // last so saved settings from before it existed (normalize appends missing columns) match the defaults.
-    dashboard: ["project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags", "inforNumber", "contractsLead"],
+    // The dashboard shows the note as "Latest update" (key latestUpdate; saved views that still say
+    // "note" are read as latestUpdate, see LEGACY_COLUMNS). Owner, requester and contracts lead stack in
+    // one People cell placed where the first of them sits in the order (DashboardColumnModel).
+    dashboard: ["project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "latestUpdate", "flags", "inforNumber", "contractsLead"],
     report: ["project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber", "contractsLead"],
   };
 
@@ -58,11 +62,12 @@ export class ViewSettings {
       serviceArea: "Service area",
       owner: "Owner",
       physicianChampion: "Requester",
-      contractsLead: "Contracts lead (under Requester)",
+      contractsLead: "Contracts lead",
       status: "Status",
       nextMilestone: "Next milestone",
       due: "Due date",
       note: "Note",
+      latestUpdate: "Latest update",
       flags: "Flags",
     },
     report: {
@@ -76,8 +81,19 @@ export class ViewSettings {
       nextMilestone: "Next milestone",
       due: "Due",
       note: "Note",
+      latestUpdate: "Latest update",
       flags: "Flags",
     },
+  };
+
+  /**
+   * Keys renamed in a context, read from saved settings as their new key (no migration: stored rows are
+   * rewritten in the new shape the next time they are saved). The dashboard "note" column became
+   * "latestUpdate", so a saved view that hid the note hides Latest update and keeps its position.
+   */
+  private static readonly LEGACY_COLUMNS: Record<ViewContext, Readonly<Record<string, ViewColumn>>> = {
+    dashboard: { note: "latestUpdate" },
+    report: {},
   };
 
   static readonly DEFAULT_HIDDEN_STATUSES: readonly ProjectStatus[] = [ProjectStatus.Complete, ProjectStatus.Cancelled];
@@ -135,12 +151,17 @@ export class ViewSettings {
     const parsed = ViewSettings.RAW_SCHEMA.parse(raw ?? {});
     const offered = ViewSettings.DEFAULT_ORDER[context];
     const isOffered = (c: string): c is ViewColumn => (offered as readonly string[]).includes(c);
+    const legacy = ViewSettings.LEGACY_COLUMNS[context];
+    const current = (c: string): string => legacy[c] ?? c;
 
     const order: ViewColumn[] = [];
-    for (const c of parsed.columnOrder ?? []) if (isOffered(c) && !order.includes(c)) order.push(c);
+    for (const raw of parsed.columnOrder ?? []) {
+      const c = current(raw);
+      if (isOffered(c) && !order.includes(c)) order.push(c);
+    }
     for (const c of offered) if (!order.includes(c)) order.push(c);
 
-    const hiddenSet = new Set((parsed.hiddenColumns ?? []).filter(isOffered).filter((c) => !ViewSettings.isLocked(c)));
+    const hiddenSet = new Set((parsed.hiddenColumns ?? []).map(current).filter(isOffered).filter((c) => !ViewSettings.isLocked(c)));
     const hiddenColumns = order.filter((c) => hiddenSet.has(c));
 
     const statusSet = new Set(

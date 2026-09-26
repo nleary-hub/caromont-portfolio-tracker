@@ -33,6 +33,15 @@
   }
   .vp-list > li:hover { background: var(--dark-row-selected); }
   .vp-list > li.vp-dragging { opacity: 0.5; }
+  /* Dashboard "People" group: a subheading with Owner, Requester and Contracts lead under it; moves as one entry. */
+  .vp-list > li.vp-group { height: auto; align-items: flex-start; padding-top: 6px; padding-bottom: 4px; }
+  .vp-list > li.vp-group > .vp-grip { margin-top: 1px; }
+  .vp-group-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+  .vp-group-body > .vp-check { height: 28px; }
+  .vp-subhead {
+    font: var(--app-label); color: var(--dark-text-secondary); text-transform: uppercase; letter-spacing: 0.06em;
+    line-height: 20px;
+  }
   .vp-list > li.vp-drop-before { box-shadow: inset 0 2px 0 var(--dark-accent); }
   .vp-list > li.vp-drop-after { box-shadow: inset 0 -2px 0 var(--dark-accent); }
   .vp-grip { color: #4A505C; font-size: 10px; letter-spacing: -2px; width: 10px; cursor: grab; }

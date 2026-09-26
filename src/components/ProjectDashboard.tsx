@@ -5,7 +5,7 @@ import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
-import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import { DashboardViewModel, DateFormat, type DashboardCompletedRow, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
 import type { FiscalYearCount } from "@/lib/domain/types";
@@ -20,6 +20,7 @@ import type { AdminMenuItem } from "@/lib/admin/AdminMenu";
 import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
 import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
+import { DashboardTable } from "./DashboardTable";
 import { Flags, StatusPill } from "./StatusPill";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
@@ -58,6 +59,8 @@ export interface AdminDashboardProps {
 interface Props {
   /** Already filtered by VisibilityPolicy on the server. */
   rows: DashboardRow[];
+  /** "Completed this period" rows (block at the end of each department group, as in the PDF). */
+  completed?: DashboardCompletedRow[];
   /** Visible dashboard columns in order. */
   columns: ViewColumn[];
   today: string;
@@ -73,101 +76,6 @@ interface Props {
   signOutAction: () => Promise<void>;
 }
 
-/** Per-render facts some cells need. */
-interface CellContext {
-  /** Which column carries the "Contracts <name>" line (requester, else owner), or null when hidden. */
-  contractsIn: "owner" | "physicianChampion" | null;
-}
-
-interface ColumnSpec {
-  header: string;
-  /** Tailwind width class for the <col>; empty = flexible. */
-  width: string;
-  cell: (r: DashboardRow, td: string, ctx: CellContext) => ReactNode;
-}
-
-/** Columns that take a table column of their own (inline ones such as the Infor number render in the Project cell). */
-type TableColumn = Exclude<ViewColumn, "inforNumber" | "contractsLead">;
-
-/** Dashboard table columns, rendered in the order and visibility from the dashboard view settings. */
-class DashboardColumns {
-  static readonly SPECS: Record<TableColumn, ColumnSpec> = {
-    // The table renders the project cell itself (selection bar); this is the plain fallback.
-    project: { header: "Project", width: "w-[256px]", cell: (r, td) => <td className={td}>{r.name}</td> },
-    serviceArea: {
-      header: "Service area",
-      width: "w-[120px]",
-      cell: (r, td) => (
-        <td className={td}>
-          {r.serviceArea ? (
-            <span className="area-tag">{ServiceAreaInfo.label(r.serviceArea)}</span>
-          ) : (
-            <span className="text-muted">{ServiceAreaInfo.UNASSIGNED}</span>
-          )}
-        </td>
-      ),
-    },
-    owner: {
-      header: "Owner",
-      width: "w-[84px]",
-      cell: (r, td, ctx) => (
-        <td className={td}>
-          <AssigneeText value={r.owner} />
-          {ctx.contractsIn === "owner" && <ContractsLeadLine value={r.contractsLead} />}
-        </td>
-      ),
-    },
-    physicianChampion: {
-      header: Requester.LABEL,
-      width: "w-[164px]",
-      cell: (r, td, ctx) => (
-        <td className={td}>
-          <RequesterText name={r.physicianChampion} notApplicable={r.requesterNotApplicable} />
-          <AssigneeText value={r.physicianChampion} />
-          {ctx.contractsIn === "physicianChampion" && <ContractsLeadLine value={r.contractsLead} />}
-        </td>
-      ),
-    },
-    status: {
-      header: "Status",
-      width: "w-[112px]",
-      cell: (r, td) => (
-        <td className={td}>
-          <StatusPill status={r.status} />
-        </td>
-      ),
-    },
-    nextMilestone: { header: "Next milestone", width: "w-[170px]", cell: (r, td) => <td className={td}>{r.nextMilestone ?? ""}</td> },
-    due: {
-      header: "Due date",
-      width: "w-[84px]",
-      cell: (r, td) => (
-        <td className={`${td} ${r.overdue ? "font-semibold text-danger" : ""}`}>{DateFormat.short(r.dueDate) ?? "–"}</td>
-      ),
-    },
-    note: {
-      header: "Note",
-      width: "",
-      cell: (r, td) => (
-        <td className={`${td} text-muted`} title={r.note ?? undefined}>
-          {r.note ?? ""}
-        </td>
-      ),
-    },
-    flags: {
-      header: "Flags",
-      width: "w-[176px]",
-      cell: (r, td) => (
-        <td className={td}>
-          <div className="flex items-center gap-1">
-            <Flags changed={r.changed} overdue={r.overdue} />
-          </div>
-        </td>
-      ),
-    },
-  };
-}
-
 class Initials {
   static of(name: string | null, email: string): string {
     const source = name?.trim() || email.split("@")[0].replace(/[._-]+/g, " ");
@@ -178,6 +86,7 @@ class Initials {
 
 export function ProjectDashboard({
   rows,
+  completed = [],
   today,
   userEmail,
   userName,
@@ -198,19 +107,11 @@ export function ProjectDashboard({
 
   const summary = useMemo(() => DashboardViewModel.summarize(rows), [rows]);
   const visible = useMemo(() => DashboardViewModel.filter(rows, area, query), [rows, area, query]);
-  const visibleColumns = settings ? ViewSettings.visibleColumns(settings.dashboard) : columnsProp;
-  const columns = visibleColumns.filter((c): c is TableColumn => !ViewSettings.isInline(c));
-  const showInfor = visibleColumns.includes("inforNumber");
-  const cellContext: CellContext = {
-    contractsIn: !visibleColumns.includes("contractsLead")
-      ? null
-      : visibleColumns.includes("physicianChampion")
-        ? "physicianChampion"
-        : visibleColumns.includes("owner")
-          ? "owner"
-          : null,
-  };
-  const selected = rows.find((r) => r.id === selectedId) ?? null;
+  const visibleCompleted = useMemo(() => DashboardViewModel.filter(completed, area, query), [completed, area, query]);
+  // Non-admins get only the visible columns in order; that is the same model with nothing hidden.
+  const dashboardView: ViewSettingsValue = settings?.dashboard ?? { columnOrder: columnsProp, hiddenColumns: [], hiddenStatuses: [] };
+  const showInfor = ViewSettings.visibleColumns(dashboardView).includes("inforNumber");
+  const selected = rows.find((r) => r.id === selectedId) ?? completed.find((r) => r.id === selectedId) ?? null;
 
   /** Optimistic: apply locally, persist, roll back on failure. */
   const saveSettings = async (context: ViewContext, value: ViewSettingsValue): Promise<string | null> => {
@@ -362,60 +263,16 @@ export function ProjectDashboard({
 
         <section className="overflow-hidden rounded-card border border-line bg-card">
           <div className="max-h-[calc(100vh-260px)] overflow-auto">
-            <table className="w-full table-fixed border-separate border-spacing-0 type-table">
-              <colgroup>
-                {columns.map((c) => (
-                  <col key={c} className={DashboardColumns.SPECS[c].width || undefined} />
-                ))}
-              </colgroup>
-              <thead>
-                <tr>
-                  {columns.map((c) => (
-                    <th
-                      key={c}
-                      className="sticky top-0 z-[1] h-9 truncate border-b border-line bg-card px-3 text-left uppercase tracking-[.04em] text-muted type-label"
-                    >
-                      {DashboardColumns.SPECS[c].header}
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                {visible.length === 0 && (
-                  <tr>
-                    <td colSpan={columns.length} className="h-20 text-center text-muted">
-                      {rows.length === 0 ? "No projects yet." : "No projects match the current filter."}
-                    </td>
-                  </tr>
-                )}
-                {visible.map((r) => {
-                  const isSel = r.id === selectedId;
-                  const td = `h-10 truncate border-b border-line px-3 align-middle ${isSel ? "bg-row-selected" : ""}`;
-                  return (
-                    <tr
-                      key={r.id}
-                      onClick={() => setSelectedId(isSel ? null : r.id)}
-                      className="cursor-pointer hover:[&>td]:bg-row-selected/60"
-                      aria-selected={isSel}
-                    >
-                      {columns.map((c) =>
-                        c === "project" ? (
-                          <td
-                            key={c}
-                            className={`${td} type-table-strong ${isSel ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}
-                          >
-                            <div className="truncate">{r.name}</div>
-                            <ProjectMetaLine row={r} showInfor={showInfor} />
-                          </td>
-                        ) : (
-                          <Fragment key={c}>{DashboardColumns.SPECS[c].cell(r, td, cellContext)}</Fragment>
-                        ),
-                      )}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+            <DashboardTable
+              rows={visible}
+              completed={visibleCompleted}
+              settings={dashboardView}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              today={today}
+              emptyText={rows.length === 0 && completed.length === 0 ? "No projects yet." : "No projects match the current filter."}
+              renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
+            />
           </div>
           <div className="flex justify-between border-t border-line px-3 py-2.5 text-muted type-caption">
             <span>

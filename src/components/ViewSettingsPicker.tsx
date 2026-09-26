@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
+import { DashboardColumnModel, type PickerEntry } from "@/lib/dashboard/DashboardColumnModel";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import {
@@ -192,30 +193,33 @@ function ColumnList({
   value: ViewSettingsValue;
   onChange: (next: ViewSettingsValue) => void;
 }) {
-  const [dragging, setDragging] = useState<ViewColumn | null>(null);
+  const [dragging, setDragging] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
+  // One entry per column; on the dashboard, Owner, Requester and Contracts lead are one "People" entry
+  // (they stack in one cell) that moves as a block and shows each field's own checkbox.
+  const entries = DashboardColumnModel.pickerEntries(context, value);
 
-  const move = (column: ViewColumn, toIndex: number) => onChange(ViewSettings.withColumnMoved(context, value, column, toIndex));
+  const move = (from: number, toIndex: number) => onChange(DashboardColumnModel.moveEntry(context, value, from, toIndex));
 
   const onDrop = (e: DragEvent, index: number) => {
     e.preventDefault();
-    if (dragging) {
-      const from = value.columnOrder.indexOf(dragging);
-      move(dragging, from < index ? index - 1 : index);
-    }
+    if (dragging !== null) move(dragging, dragging < index ? index - 1 : index);
     setDragging(null);
     setOverIndex(null);
   };
 
-  const onGripKey = (e: ReactKeyboardEvent, column: ViewColumn, index: number) => {
+  const onGripKey = (e: ReactKeyboardEvent, index: number) => {
     if (e.key === "ArrowUp" && index > 0) {
       e.preventDefault();
-      move(column, index - 1);
-    } else if (e.key === "ArrowDown" && index < value.columnOrder.length - 1) {
+      move(index, index - 1);
+    } else if (e.key === "ArrowDown" && index < entries.length - 1) {
       e.preventDefault();
-      move(column, index + 1);
+      move(index, index + 1);
     }
   };
+
+  const entryKey = (entry: PickerEntry) => (entry.kind === "people" ? "people" : entry.column);
+  const entryLabel = (entry: PickerEntry) => (entry.kind === "people" ? entry.label : ViewSettings.columnLabel(context, entry.column));
 
   return (
     <>
@@ -226,18 +230,18 @@ function ColumnList({
           setDragging(null);
           setOverIndex(null);
         }}>
-        {value.columnOrder.map((c, i) => {
-          const locked = ViewSettings.isLocked(c);
-          const visible = ViewSettings.isColumnVisible(value, c);
-          const label = ViewSettings.columnLabel(context, c);
+        {entries.map((entry, i) => {
+          const label = entryLabel(entry);
+          const locked = entry.kind === "column" && ViewSettings.isLocked(entry.column);
           return (
             <li
-              key={c}
+              key={entryKey(entry)}
               draggable
+              data-entry={entryKey(entry)}
               onDragStart={(e) => {
-                setDragging(c);
+                setDragging(i);
                 e.dataTransfer.effectAllowed = "move";
-                e.dataTransfer.setData("text/plain", c);
+                e.dataTransfer.setData("text/plain", entryKey(entry));
               }}
               onDragOver={(e) => {
                 e.preventDefault();
@@ -247,36 +251,66 @@ function ColumnList({
               onDrop={(e) => onDrop(e, overIndex ?? i)}
               className={[
                 locked ? "vp-locked" : "",
-                dragging === c ? "vp-dragging" : "",
+                entry.kind === "people" ? "vp-group" : "",
+                dragging === i ? "vp-dragging" : "",
                 overIndex === i ? "vp-drop-before" : "",
-                overIndex === i + 1 && i === value.columnOrder.length - 1 ? "vp-drop-after" : "",
+                overIndex === i + 1 && i === entries.length - 1 ? "vp-drop-after" : "",
               ].join(" ")}
             >
               <button
                 type="button"
                 className="vp-grip"
                 aria-label={`Move ${label}. Use arrow up and down.`}
-                onKeyDown={(e) => onGripKey(e, c, i)}
+                onKeyDown={(e) => onGripKey(e, i)}
               >
                 ⋮⋮
               </button>
-              <label className="vp-check">
-                <input
-                  type="checkbox"
-                  className="sr-only"
-                  checked={visible}
-                  disabled={locked}
-                  onChange={(e) => onChange(ViewSettings.withColumnHidden(context, value, c, !e.target.checked))}
-                />
-                <CheckBox on={visible} locked={locked} />
-                <span className="vp-lbl">{label}</span>
-              </label>
-              {locked && <span className="vp-hint">Always shown</span>}
+              {entry.kind === "people" ? (
+                <div className="vp-group-body" role="group" aria-label={label}>
+                  <span className="vp-subhead">{label}</span>
+                  {entry.columns.map((c) => (
+                    <ColumnCheck key={c} context={context} value={value} column={c} onChange={onChange} />
+                  ))}
+                </div>
+              ) : (
+                <>
+                  <ColumnCheck context={context} value={value} column={entry.column} onChange={onChange} />
+                  {locked && <span className="vp-hint">Always shown</span>}
+                </>
+              )}
             </li>
           );
         })}
       </ul>
     </>
+  );
+}
+
+function ColumnCheck({
+  context,
+  value,
+  column,
+  onChange,
+}: {
+  context: ViewContext;
+  value: ViewSettingsValue;
+  column: ViewColumn;
+  onChange: (next: ViewSettingsValue) => void;
+}) {
+  const locked = ViewSettings.isLocked(column);
+  const visible = ViewSettings.isColumnVisible(value, column);
+  return (
+    <label className="vp-check">
+      <input
+        type="checkbox"
+        className="sr-only"
+        checked={visible}
+        disabled={locked}
+        onChange={(e) => onChange(ViewSettings.withColumnHidden(context, value, column, !e.target.checked))}
+      />
+      <CheckBox on={visible} locked={locked} />
+      <span className="vp-lbl">{ViewSettings.columnLabel(context, column)}</span>
+    </label>
   );
 }
 

@@ -5,7 +5,7 @@ import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
-import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import { DashboardViewModel, type DashboardCompletedRow, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Db } from "@/lib/db/Db";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
@@ -19,6 +19,8 @@ import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 interface DashboardLoad {
   rows: DashboardRow[];
+  /** "Completed this period" rows (the block at the end of each department group, as in the PDF). */
+  completed: DashboardCompletedRow[];
   columns: ViewColumn[];
   latestReport: LatestReport | null;
   /** "Completed FY27 to date N" for the summary strip. Null when the data could not be loaded. */
@@ -37,6 +39,7 @@ class DashboardData {
     const settings = DashboardData.defaultSettings();
     return {
       rows: [],
+      completed: [],
       columns: ViewSettings.visibleColumns(settings.dashboard),
       latestReport: null,
       completedFiscalYear: null,
@@ -61,31 +64,40 @@ class DashboardData {
         ViewSettingsService.getAll(db),
       ]);
       const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings.dashboard);
+      // "Completed FY27 to date": same rule as the report (report candidates only, completedOn else the
+      // day the status became Complete). Only Complete projects need their status history. The same
+      // history picks the "Completed this period" rows (CompletedThisPeriod, as the PDF does).
+      const complete = projects.filter((p) => p.status === "Complete");
+      const completionHistory = await db.projectHistory.findMany({
+        where: { projectId: { in: complete.map((p) => p.id) }, field: { in: ["status", "created"] } },
+        select: { projectId: true, changedAt: true, field: true, newValue: true },
+      });
+      const completedThisPeriod = DashboardViewModel.completedThisPeriod({
+        projects,
+        history: completionHistory,
+        reportSettings: settings.report,
+        rowIds: visible.map((p) => p.id),
+        now: new Date(),
+      });
+      const listedIds = [...visible.map((p) => p.id), ...completedThisPeriod.map((c) => c.projectId)];
       const history = await db.projectHistory.findMany({
         where: {
-          projectId: { in: visible.map((p) => p.id) },
+          projectId: { in: listedIds },
           ...(latest ? { changedAt: { gt: latest.generatedAt } } : {}),
           ...VisibilityPolicy.publicHistoryWhere(),
         },
         select: { projectId: true, changedAt: true, field: true },
         distinct: ["projectId"],
       });
-      // "Updated <date>" on the meta line: latest public history entry per visible project (all time).
+      // "Updated <date>" on the meta line: latest public history entry per listed project (all time).
       const lastUpdates = await db.projectHistory.groupBy({
         by: ["projectId"],
-        where: { projectId: { in: visible.map((p) => p.id) }, ...VisibilityPolicy.publicHistoryWhere() },
+        where: { projectId: { in: listedIds }, ...VisibilityPolicy.publicHistoryWhere() },
         _max: { changedAt: true },
       });
       const latestUpdates = lastUpdates.flatMap((g) =>
         g._max.changedAt ? [{ projectId: g.projectId, changedAt: g._max.changedAt, field: "update" }] : [],
       );
-      // "Completed FY27 to date": same rule as the report (report candidates only, completedOn else the
-      // day the status became Complete). Only Complete projects need their status history.
-      const complete = projects.filter((p) => p.status === "Complete");
-      const completionHistory = await db.projectHistory.findMany({
-        where: { projectId: { in: complete.map((p) => p.id) }, field: { in: ["status", "created"] } },
-        select: { projectId: true, changedAt: true, field: true, newValue: true },
-      });
       const completedFiscalYear = CompletedFiscalYear.count({ projects: complete, history: completionHistory, reportDate: today });
       return {
         completedFiscalYear,
@@ -97,6 +109,7 @@ class DashboardData {
           today,
           latestUpdates,
         ),
+        completed: DashboardViewModel.completedRows(projects, completedThisPeriod, history, latest?.generatedAt ?? null, today, latestUpdates),
         columns: ViewSettings.visibleColumns(settings.dashboard),
         latestReport: latest
           ? {
@@ -130,7 +143,7 @@ export default async function DashboardPage() {
   if (!viewer) redirect(SIGN_IN_PATH);
 
   const today = DateOnly.today();
-  const [{ rows, columns, latestReport, completedFiscalYear, admin, error }, serviceLine] = await Promise.all([
+  const [{ rows, completed, columns, latestReport, completedFiscalYear, admin, error }, serviceLine] = await Promise.all([
     DashboardData.load(viewer, today),
     ServiceLineService.getOrDefault(),
   ]);
@@ -138,6 +151,7 @@ export default async function DashboardPage() {
   return (
     <ProjectDashboard
       rows={rows}
+      completed={completed}
       columns={columns}
       today={today}
       userEmail={viewer.email}
