@@ -25,7 +25,7 @@ class Many {
   }
 
   static layout(rows: ReportRow[], overrides = {}): DocumentLayout {
-    return ReportLayout.layout(SampleReportData.docInput({ rows, header: ReportBuilder.header(rows), ...overrides }), m);
+    return ReportLayout.layout(SampleReportData.docInput({ rows, header: ReportBuilder.header(rows), completed: [], ...overrides }), m);
   }
 
   static rowIds(l: DocumentLayout): string[] {
@@ -182,12 +182,15 @@ describe("ReportLayout visibility", () => {
       owner: "Owner A",
       physicianChampion: null,
       physicianChampionEmail: null,
+      requesterNotApplicable: false,
       status: "OnTrack" as const,
       nextMilestone: "M",
       dueDate: null,
       targetCompletion: null,
       percentComplete: null,
       note: null,
+      accomplishment: null,
+      completedOn: null,
       includeInReport: true,
       archivedAt: null,
       deletedBy: null,

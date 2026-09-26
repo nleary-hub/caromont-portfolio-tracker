@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
-import type { MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
+import type { CompletedRow, MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { SnapshotService } from "@/lib/services/SnapshotService";
@@ -41,13 +41,22 @@ describe("SnapshotService.create", () => {
     expect(JSON.stringify(s1)).not.toContain("Hidden:");
     expect((s1.missingChampionsJson as unknown as MissingChampion[]).map((m) => m.name)).toEqual(["Dr. Missing"]);
     expect(fake.state.recipients).toHaveLength(1);
-    expect(JSON.stringify(fake.state.projects)).toBe(projectsBefore);
+    // The Complete project is not a row or a count; it is listed once in "Completed this period", and the
+    // freeze stamps completionReportedAt on it (no history entry). Nothing else about projects changes.
+    expect((s1.completedJson as unknown as CompletedRow[]).map((c) => c.name)).toEqual(["Done"]);
+    const after = fake.state.projects.map((p) => ({ ...p, completionReportedAt: null }));
+    // updatedAt is Prisma's automatic row timestamp (not used by the app); ignore it in the comparison.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    const strip = (list: Record<string, unknown>[]) => JSON.stringify(list.map(({ updatedAt: _u, ...rest }) => rest));
+    expect(strip(after)).toBe(strip(JSON.parse(projectsBefore)));
+    expect(fake.state.projects.find((p) => p.name === "Done")!.completionReportedAt).toBeInstanceOf(Date);
     expect(fake.state.history).toHaveLength(historyBefore);
 
     const s2 = await SnapshotService.create(period2, db);
     const rows2 = s2.rowsJson as unknown as ReportRow[];
     expect(rows2.map((r) => r.name)).toEqual(["Active"]);
     expect(rows2[0].changed).toBe(false);
+    expect(s2.completedJson).toEqual([]); // listed once
     expect(s2.pdfStorageKey).toBeNull(); // rendering happens later, in FreezeService
   });
 
@@ -67,7 +76,7 @@ describe("SnapshotService.create", () => {
     expect(rows.map((r) => r.name).sort()).toEqual(["DashHidden", "Visible"]);
     const header = s.headerJson as unknown as ReportHeader;
     expect(Sum.counts(header)).toBe(2);
-    expect(header.byArea.Cath.OnTrack).toBe(2);
+    expect(header.byArea.Cath!.OnTrack).toBe(2);
     expect((s.missingChampionsJson as unknown as MissingChampion[]).map((m) => m.name)).toEqual(["Dr. Visible"]);
     const json = JSON.stringify({ rows: s.rowsJson, header: s.headerJson, champions: s.missingChampionsJson });
     expect(json).not.toMatch(/Secret|Gone/);

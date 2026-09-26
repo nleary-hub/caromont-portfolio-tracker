@@ -2,7 +2,7 @@ import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord, ReportHeader, ReportRow, StatusCounts } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
@@ -34,7 +34,7 @@ export interface RowFlags {
 
 /** Anything sortable in report order. */
 export interface SortableRow {
-  serviceArea: ServiceArea;
+  serviceArea: ServiceArea | null;
   status: ProjectStatus;
   /** YYYY-MM-DD or null */
   dueDate: string | null;
@@ -54,11 +54,11 @@ export class ReportBuilder {
   static header(rows: readonly ReportRow[]): ReportHeader {
     const totals = ReportBuilder.emptyStatusCounts();
     const byArea = Object.fromEntries(
-      ServiceAreaInfo.all().map((a) => [a, ReportBuilder.emptyStatusCounts()]),
-    ) as ReportHeader["byArea"];
+      ServiceAreaInfo.groups().map((a) => [a, ReportBuilder.emptyStatusCounts()]),
+    ) as Record<AreaGroup, StatusCounts>;
     for (const r of rows) {
       totals[r.status] += 1;
-      byArea[r.serviceArea][r.status] += 1;
+      byArea[ServiceAreaInfo.groupOf(r.serviceArea)][r.status] += 1;
     }
     return {
       totalProjects: rows.length,
@@ -103,6 +103,11 @@ export class ReportBuilder {
     if (ProjectStatusInfo.isClosed(row.status) || !row.updatedOn) return false;
     const days = (DateOnly.toDbDate(reportDate).getTime() - DateOnly.toDbDate(row.updatedOn).getTime()) / 86_400_000;
     return days >= AppConfig.STALE_AFTER_DAYS;
+  }
+
+  /** Counts for one group; zeros when absent (snapshots frozen before Unassigned existed). */
+  static areaCounts(header: ReportHeader, area: AreaGroup): StatusCounts {
+    return header.byArea[area] ?? ReportBuilder.emptyStatusCounts();
   }
 
   /** Service area order → status severity → due date asc (nulls last) → name (stable tiebreak). */
@@ -173,6 +178,7 @@ export class ReportBuilder {
       serviceArea: project.serviceArea,
       owner: project.owner,
       physicianChampion: project.physicianChampion,
+      requesterNotApplicable: project.requesterNotApplicable,
       status: project.status,
       statusLabel: ProjectStatusInfo.label(project.status),
       nextMilestone: project.nextMilestone,

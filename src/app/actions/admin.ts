@@ -6,6 +6,7 @@ import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
+import { ProjectValidationError } from "@/lib/validation/ProjectValidator";
 
 export type AdminActionResult = { ok: true } | { ok: false; error: string };
 
@@ -38,6 +39,21 @@ export async function saveViewSettings(context: string, value: unknown): Promise
 export async function setProjectHidden(projectId: string, context: string, hidden: boolean): Promise<AdminActionResult> {
   if (!ViewSettings.isContext(context)) return { ok: false, error: "Unknown view." };
   return AdminAction.run("setProjectHidden", (admin) => ProjectService.setHidden(projectId, context, Boolean(hidden), admin));
+}
+
+export async function setProjectPeopleField(projectId: string, field: string, value: string): Promise<AdminActionResult> {
+  if (!ProjectService.isPeopleField(field)) return { ok: false, error: "Unknown field." };
+  const viewer = await CurrentViewer.get();
+  if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
+  try {
+    await ProjectService.setPeopleField(projectId, field, String(value ?? ""), viewer);
+  } catch (e) {
+    if (e instanceof ProjectValidationError) return { ok: false, error: Object.values(e.errors).flat()[0] ?? "Invalid value." };
+    console.error("Admin action failed: setProjectPeopleField", e);
+    return { ok: false, error: "Could not save the change." };
+  }
+  revalidatePath("/");
+  return { ok: true };
 }
 
 export async function deleteProject(projectId: string): Promise<AdminActionResult> {

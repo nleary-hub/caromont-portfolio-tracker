@@ -1,3 +1,4 @@
+import { Requester } from "@/lib/domain/Requester";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
@@ -31,7 +32,7 @@ export interface CreatePreview {
 }
 
 export interface WordingChange {
-  column: "description" | "note" | "next_milestone";
+  column: "description" | "note" | "next_milestone" | "accomplishment";
   old: string | null;
   new: string | null;
 }
@@ -41,7 +42,7 @@ export interface WordingRowResult {
   id: string;
   /** Project name from the database (or the file when the id is unknown). */
   name: string;
-  /** change = has description/note/next_milestone edits; unchanged = nothing to write; error = blocks the update. */
+  /** change = has description/note/next_milestone/accomplishment edits; unchanged = nothing to write; error = blocks the update. */
   status: "change" | "unchanged" | "error";
   changes: WordingChange[];
   errors: RowErrors;
@@ -78,7 +79,7 @@ type Reader = Pick<PrismaClient, "project"> | Tx;
  * CSV import of projects. Two modes:
  *  - create: new projects only. Duplicates by (name, service area) against non-archived projects are
  *    skipped with a warning and never overwritten.
- *  - wording: rows matched by id; only description, note and next_milestone may change. Any other column that differs
+ *  - wording: rows matched by id; only description, note, next_milestone and accomplishment may change. Any other column that differs
  *    from the database rejects the row.
  * preview*() is a dry run (no writes). commit*() re-runs the preview inside one transaction and writes
  * nothing unless every row is clean (all-or-nothing). All writes go through ProjectService, so every
@@ -88,13 +89,14 @@ export class ImportService {
   static readonly SOURCE_CREATE = "csv_import";
   static readonly SOURCE_WORDING = "csv_wording_update";
   /** The only columns a wording update may change. */
-  static readonly WORDING_COLUMNS: readonly WordingChange["column"][] = ["description", "note", "next_milestone"];
-  private static readonly WORDING_FIELD: Readonly<Record<WordingChange["column"], "description" | "note" | "nextMilestone">> = {
+  static readonly WORDING_COLUMNS: readonly WordingChange["column"][] = ["description", "note", "next_milestone", "accomplishment"];
+  private static readonly WORDING_FIELD: Readonly<Record<WordingChange["column"], "description" | "note" | "nextMilestone" | "accomplishment">> = {
     description: "description",
+    accomplishment: "accomplishment",
     note: "note",
     next_milestone: "nextMilestone",
   };
-  private static readonly LOCKED_MESSAGE = "A wording update may only change description, note and next_milestone.";
+  private static readonly LOCKED_MESSAGE = "A wording update may only change description, note, next_milestone and accomplishment.";
 
   private static readonly UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   private static readonly TX_OPTIONS = { isolationLevel: "Serializable", maxWait: 10_000, timeout: 120_000 } as const;
@@ -180,7 +182,7 @@ export class ImportService {
   }
 
   /** Case- and whitespace-insensitive (name, service area) key. */
-  static duplicateKey(name: string, serviceArea: string): string {
+  static duplicateKey(name: string, serviceArea: string | null): string {
     return `${name.trim().replace(/\s+/g, " ").toLowerCase()}|${serviceArea}`;
   }
 
@@ -262,7 +264,7 @@ export class ImportService {
           continue;
         }
 
-        // Every column other than description/note/next_milestone must match the database exactly (after normalization).
+        // Every column other than description/note/next_milestone/accomplishment must match the database exactly (after normalization).
         const { input: fileInput, errors: conversionErrors } = ProjectCsv.toInput(row);
         const dbInput = ProjectValidator.toInput(existing);
         const dbCells = ProjectCsv.toCells(existing);
@@ -273,8 +275,13 @@ export class ImportService {
           if (col === "id" || ImportService.WORDING_COLUMNS.includes(col as WordingChange["column"])) continue;
           if (conversionErrors[col]) continue;
           const field = ProjectCsv.FIELD_BY_COLUMN[col];
-          const fileValue = ImportService.comparable(field, fileInput[field]);
-          const dbValue = ImportService.comparable(field, dbInput[field]);
+          // The requester cell carries two fields (name and Not applicable): compare its canonical text.
+          const fileValue =
+            col === "requester"
+              ? Requester.cellText(fileInput.physicianChampion, fileInput.requesterNotApplicable)
+              : ImportService.comparable(field, fileInput[field]);
+          const dbValue =
+            col === "requester" ? Requester.cellText(dbInput.physicianChampion, dbInput.requesterNotApplicable) : ImportService.comparable(field, dbInput[field]);
           if (fileValue !== dbValue) {
             reject(
               col,
@@ -320,7 +327,7 @@ export class ImportService {
 
   /** Convert a row and run ProjectValidator, returning errors keyed by CSV column. */
   private static validateRow(row: CsvRow): { input: Partial<ProjectInput>; errors: RowErrors } {
-    const { input, errors: conversionErrors } = ProjectCsv.toInput(row);
+    const { input, errors: conversionErrors } = ProjectCsv.toInput(row, { blankStatus: "OnTrack" });
     const errors: RowErrors = { ...conversionErrors };
     const validation = ProjectValidator.validate(input);
     if (!validation.ok) {

@@ -1,5 +1,6 @@
+import { FiscalYear } from "@/lib/domain/FiscalYear";
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
-import type { ReportRow } from "@/lib/domain/types";
+import type { CompletedRow, ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import type { ReportDocInput } from "@/lib/report/pdf/ReportLayout";
@@ -14,6 +15,8 @@ export class SampleReportData {
   static readonly REPORT_DATE = "2026-09-29";
   static readonly PERIOD_START = "2026-09-15";
   static readonly PERIOD_END = "2026-09-29";
+  /** Fictional "Completed FY27 to date" count for sample renders. */
+  static readonly FY_COMPLETED = 9;
   static readonly GENERATED_AT = new Date("2026-09-29T21:00:00Z");
 
   static readonly LONG_NOTE =
@@ -23,7 +26,7 @@ export class SampleReportData {
   private static readonly SEEDS: Seed[] = [
     ["Cath", "Sample: Cath lab 3 refresh", "OnTrack", "Equipment install complete", "2026-10-21", "Vendor install scheduled for 10/14; super-user training booked the week prior. No blockers.", false, null, "2026-09-18"],
     ["Cath", "Sample: Radial lounge expansion", "AtRisk", "Construction bid awarded", "2026-09-25", "LONG", true, "OnTrack", "2026-09-24"],
-    ["Cath", "Sample: Same-day discharge PCI pathway", "NotStarted", "Kickoff held", "2026-11-04", "Awaiting physician champion assignment before scheduling kickoff.", false, null, "2026-09-01"],
+    ["Cath", "Sample: Same-day discharge PCI pathway", "NotStarted", "Kickoff held", "2026-11-04", "Awaiting a requester before scheduling kickoff.", false, null, "2026-09-01"],
     ["Cath", "Sample: Hemodynamic system upgrade across all four procedure rooms and the hybrid suite", "OffTrack", "Interface validated", "2026-09-18", "Interface vendor missed two validation windows; new dates promised by 10/2. Need Dr. Sample K to approve the downtime plan drafted with nursing and biomed by 10/6.", true, "AtRisk", "2026-09-26"],
     ["EP", "Sample: EP lab mapping system upgrade", "OffTrack", "IT interface build complete", "2026-09-22", "IT interface build slipped two weeks; go-live moved to 11/3. Vendor contract was signed 9/18. Need Dr. Sample C to approve the revised workflow by 10/10.", true, "AtRisk", "2026-09-22"],
     ["EP", "Sample: Pulsed field ablation launch", "OnTrack", "First cases performed", "2026-10-28", "Credentialing complete for two operators; first cases on the 10/28 schedule.", true, null, "2026-09-23"],
@@ -73,7 +76,9 @@ export class SampleReportData {
         name,
         serviceArea: area,
         owner: `Owner ${letters[i % letters.length]}`,
-        physicianChampion: i % 7 === 2 ? null : `Dr. Sample ${letters[(i * 3) % letters.length]}`,
+        physicianChampion: i % 7 === 2 || i === 11 ? null : `Dr. Sample ${letters[(i * 3) % letters.length]}`,
+        // One sample requester marked Not applicable (its line drops out of the owner stack).
+        requesterNotApplicable: i === 11,
         status,
         statusLabel: status,
         nextMilestone: next,
@@ -92,6 +97,46 @@ export class SampleReportData {
     return ReportBuilder.sort(rows);
   }
 
+  /** Fictional "Completed this period" rows (two in Cath, one in EP; one without a REQ number, owner or requester). */
+  static completed(): CompletedRow[] {
+    return [
+      {
+        projectId: "sample-done-1",
+        name: "Sample: Hemodynamic system replacement",
+        serviceArea: "Cath",
+        owner: "Owner C",
+        accomplishment:
+          "New hemodynamic system live in all four procedure rooms 9/22; 212 cases recorded in the first two weeks with no downtime and every tech validated.",
+        completedOn: "2026-09-22",
+        completedInAppOn: "2026-09-23",
+        inforRequestNumber: 4871,
+        physicianChampion: "Dr. Sample K",
+      },
+      {
+        projectId: "sample-done-2",
+        name: "Sample: Vascular closure device standard",
+        serviceArea: "Cath",
+        owner: null,
+        accomplishment: "Single closure device adopted for all femoral cases 9/17; three vendors reduced to one, with the contract in place before Q2 pricing.",
+        completedOn: "2026-09-17",
+        completedInAppOn: "2026-09-17",
+        inforRequestNumber: null,
+        physicianChampion: null,
+      },
+      {
+        projectId: "sample-done-3",
+        name: "Sample: Loop recorder clinic workflow",
+        serviceArea: "EP",
+        owner: "Owner E",
+        accomplishment: "Remote transmissions now triaged within one business day.",
+        completedOn: "2026-09-24",
+        completedInAppOn: "2026-09-24",
+        inforRequestNumber: 5120,
+        physicianChampion: "Dr. Sample F",
+      },
+    ];
+  }
+
   /**
    * Sample document input with the real default report view settings (Complete and Cancelled
    * hidden). Rows include every sample project; ReportLayout lists and counts only visible statuses,
@@ -102,7 +147,11 @@ export class SampleReportData {
     const viewSettings = overrides.viewSettings ?? ViewSettings.defaults("report");
     return {
       rows,
-      header: ReportBuilder.header(rows.filter((r) => ViewSettings.isStatusVisible(viewSettings, r.status))),
+      header: {
+        ...ReportBuilder.header(rows.filter((r) => ViewSettings.isStatusVisible(viewSettings, r.status))),
+        // Fictional FY-to-date count (the three completed rows plus earlier completions this fiscal year).
+        completedFiscalYear: { label: FiscalYear.of(SampleReportData.REPORT_DATE).label, start: FiscalYear.of(SampleReportData.REPORT_DATE).start, count: SampleReportData.FY_COMPLETED },
+      },
       viewSettings,
       reportDate: SampleReportData.REPORT_DATE,
       periodStart: SampleReportData.PERIOD_START,
@@ -110,6 +159,7 @@ export class SampleReportData {
       generatedAt: SampleReportData.GENERATED_AT,
       exampleData: true,
       showKeyPage: true,
+      completed: SampleReportData.completed(),
       ...overrides,
     };
   }

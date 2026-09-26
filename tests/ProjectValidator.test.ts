@@ -42,13 +42,13 @@ describe("ProjectValidator", () => {
     if (!r.ok) expect(r.errors.note?.[0]).toMatch(/200/);
   });
 
-  it("requires nextMilestone unless Complete or Cancelled", () => {
-    for (const status of ["NotStarted", "OnTrack", "AtRisk", "OffTrack", "OnHold"]) {
+  it("requires nextMilestone unless Not started, On hold, Complete or Cancelled", () => {
+    for (const status of ["OnTrack", "AtRisk", "OffTrack"]) {
       const r = ProjectValidator.validate({ ...base, status, nextMilestone: "   " });
       expect(r.ok, status).toBe(false);
       if (!r.ok) expect(r.errors.nextMilestone).toBeDefined();
     }
-    for (const status of ["Complete", "Cancelled"]) {
+    for (const status of ["NotStarted", "OnHold", "Complete", "Cancelled"]) {
       expect(ProjectValidator.validate({ ...base, status, nextMilestone: null }).ok, status).toBe(true);
     }
   });
@@ -69,13 +69,17 @@ describe("ProjectValidator", () => {
     expect(ProjectValidator.validate({ ...base, serviceArea: "CardioNeuro" }).ok).toBe(true);
   });
 
-  it("requires name and owner and rejects invalid dates/emails", () => {
+  it("requires name, treats a blank owner as unassigned, and rejects invalid dates/emails", () => {
     const r = ProjectValidator.validate({ ...base, name: "", owner: " " });
     expect(r.ok).toBe(false);
     if (!r.ok) {
       expect(r.errors.name).toBeDefined();
-      expect(r.errors.owner).toBeDefined();
+      expect(r.errors.owner).toBeUndefined();
     }
+    const blank = ProjectValidator.validate({ ...base, owner: "  " });
+    expect(blank.ok && blank.data.owner).toBeNull();
+    const missing = ProjectValidator.validate({ ...base, owner: undefined });
+    expect(missing.ok && missing.data.owner).toBeNull();
     expect(ProjectValidator.validate({ ...base, dueDate: "2026-02-30" }).ok).toBe(false);
     expect(ProjectValidator.validate({ ...base, physicianChampionEmail: "not-an-email" }).ok).toBe(false);
   });

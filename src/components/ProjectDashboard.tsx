@@ -3,19 +3,25 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { ServiceArea, ViewContext } from "@/generated/prisma/enums";
+import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import { Assignee } from "@/lib/domain/Assignee";
+import { Requester } from "@/lib/domain/Requester";
+import type { FiscalYearCount } from "@/lib/domain/types";
+import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { Flags, StatusPill } from "./StatusPill";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
+const ProjectPeopleEditor = dynamic(() => import("./ProjectPeopleEditor").then((m) => m.ProjectPeopleEditor));
 
 export interface LatestReport {
   /** YYYY-MM-DD */
@@ -35,6 +41,11 @@ export interface AdminDashboardProps {
   saveViewSettingsAction: (context: ViewContext, value: ViewSettingsValue) => Promise<string | null>;
   setProjectHiddenAction: (projectId: string, context: ViewContext, hidden: boolean) => Promise<string | null>;
   deleteProjectAction: (projectId: string) => Promise<string | null>;
+  /** Owner datalist for the drawer edit panel (department leaders plus existing owners). */
+  ownerSuggestions: string[];
+  /** Existing requester names for the drawer requester picker (admin only). */
+  requesterSuggestions: string[];
+  setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
 }
 
 interface Props {
@@ -46,6 +57,8 @@ interface Props {
   userEmail: string;
   userName: string | null;
   latestReport: LatestReport | null;
+  /** "Completed FY27 to date N" (same rule as report page 1). */
+  completedFiscalYear?: FiscalYearCount | null;
   loadError: string | null;
   admin?: AdminDashboardProps;
   signOutAction: () => Promise<void>;
@@ -71,15 +84,23 @@ class DashboardColumns {
       width: "w-[120px]",
       cell: (r, td) => (
         <td className={td}>
-          <span className="area-tag">{ServiceAreaInfo.label(r.serviceArea)}</span>
+          {r.serviceArea ? (
+            <span className="area-tag">{ServiceAreaInfo.label(r.serviceArea)}</span>
+          ) : (
+            <span className="text-muted">{ServiceAreaInfo.UNASSIGNED}</span>
+          )}
         </td>
       ),
     },
-    owner: { header: "Owner", width: "w-[84px]", cell: (r, td) => <td className={td}>{r.owner}</td> },
+    owner: { header: "Owner", width: "w-[84px]", cell: (r, td) => <td className={td}><AssigneeText value={r.owner} /></td> },
     physicianChampion: {
-      header: "Physician champion",
+      header: Requester.LABEL,
       width: "w-[164px]",
-      cell: (r, td) => <td className={`${td} ${r.physicianChampion ? "" : "text-muted"}`}>{r.physicianChampion ?? "–"}</td>,
+      cell: (r, td) => (
+        <td className={td}>
+          <RequesterText name={r.physicianChampion} notApplicable={r.requesterNotApplicable} />
+        </td>
+      ),
     },
     status: {
       header: "Status",
@@ -90,7 +111,7 @@ class DashboardColumns {
         </td>
       ),
     },
-    nextMilestone: { header: "Next milestone", width: "w-[170px]", cell: (r, td) => <td className={td}>{r.nextMilestone ?? "–"}</td> },
+    nextMilestone: { header: "Next milestone", width: "w-[170px]", cell: (r, td) => <td className={td}>{r.nextMilestone ?? ""}</td> },
     due: {
       header: "Due date",
       width: "w-[84px]",
@@ -135,12 +156,13 @@ export function ProjectDashboard({
   userEmail,
   userName,
   latestReport,
+  completedFiscalYear,
   loadError,
   columns: columnsProp,
   admin,
   signOutAction,
 }: Props) {
-  const [area, setArea] = useState<ServiceArea | "All">("All");
+  const [area, setArea] = useState<AreaGroup | "All">("All");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -265,7 +287,10 @@ export function ProjectDashboard({
           </p>
         )}
 
-        <section className="grid grid-cols-[repeat(7,1fr)_1fr_1.5fr] gap-2" aria-label="Status summary">
+        <section
+          className={`grid ${completedFiscalYear ? "grid-cols-[repeat(7,1fr)_1fr_1.5fr_1.5fr]" : "grid-cols-[repeat(7,1fr)_1fr_1.5fr]"} gap-2`}
+          aria-label="Status summary"
+        >
           {ProjectStatusInfo.all().map((s) => (
             <div key={s} className="flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
               <div className="type-metric">{summary.byStatus[s]}</div>
@@ -280,17 +305,20 @@ export function ProjectDashboard({
             <div className="type-metric">{summary.changed}</div>
             <span className="flag fl-changed">◆ Changed since last report</span>
           </div>
+          {completedFiscalYear && <CompletedFiscalYearCard fy={completedFiscalYear} />}
         </section>
 
         <section className="flex items-center gap-1.5" aria-label="Service area filter">
           <button type="button" className="chip" aria-pressed={area === "All"} onClick={() => setArea("All")}>
             All <b>{summary.total}</b>
           </button>
-          {ServiceAreaInfo.all().map((a) => (
-            <button key={a} type="button" className="chip" aria-pressed={area === a} onClick={() => setArea(a)}>
-              {ServiceAreaInfo.label(a)} <b>{summary.byArea[a]}</b>
-            </button>
-          ))}
+          {ServiceAreaInfo.groups()
+            .filter((a) => a !== ServiceAreaInfo.UNASSIGNED || summary.byArea[a] > 0)
+            .map((a) => (
+              <button key={a} type="button" className="chip" aria-pressed={area === a} onClick={() => setArea(a)}>
+                {ServiceAreaInfo.label(a)} <b>{summary.byArea[a]}</b>
+              </button>
+            ))}
           <div className="flex-1" />
           <span className="type-caption text-muted">Showing {visible.length} projects</span>
         </section>
@@ -366,6 +394,21 @@ export function ProjectDashboard({
           row={selected}
           today={today}
           onClose={() => setSelectedId(null)}
+          peopleEditor={
+            admin ? (
+              <ProjectPeopleEditor
+                key={selected.id}
+                projectId={selected.id}
+                owner={selected.owner}
+                physicianChampion={selected.physicianChampion}
+                requesterNotApplicable={selected.requesterNotApplicable}
+                requesterSuggestions={admin.requesterSuggestions}
+                serviceArea={selected.serviceArea}
+                ownerSuggestions={admin.ownerSuggestions}
+                saveAction={admin.setPeopleFieldAction}
+              />
+            ) : null
+          }
           adminControls={
             admin ? (
               <ProjectAdminControls
@@ -382,6 +425,31 @@ export function ProjectDashboard({
       )}
     </div>
   );
+}
+
+/**
+ * Owner or requester name, or "To assign" when blank: regular weight, same size as a name, in the secondary
+ * text color (--dark-text-secondary). Not a warning, so no amber, icon or chip.
+ */
+/** Summary strip card: teal check and count, "Completed FY27 to date" under it. */
+export function CompletedFiscalYearCard({ fy }: { fy: FiscalYearCount }) {
+  return (
+    <div data-testid="completed-fy" className="flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
+      <div className="type-metric text-(--status-on-track-dark-fg)">{fy.count}</div>
+      <span className="type-caption text-(--status-on-track-dark-fg)">&#10003; {FiscalYear.completedLabel(fy.label)}</span>
+    </div>
+  );
+}
+
+/** Requester cell: the name, muted "To assign" when not yet addressed, nothing when Not applicable. */
+export function RequesterText({ name, notApplicable }: { name: string | null; notApplicable: boolean }) {
+  const d = Requester.display(name, notApplicable);
+  if (!d) return null;
+  return d.muted ? <span className="font-normal text-muted">{d.text}</span> : <>{d.text}</>;
+}
+
+export function AssigneeText({ value }: { value: string | null }) {
+  return Assignee.isAssigned(value) ? <>{value}</> : <span className="font-normal text-muted">{Assignee.TO_ASSIGN}</span>;
 }
 
 /** Dashboard meta line geometry. The designer tunes these two values. */
@@ -424,11 +492,14 @@ function ProjectDrawer({
   row,
   today,
   onClose,
+  peopleEditor,
   adminControls,
 }: {
   row: DashboardRow;
   today: string;
   onClose: () => void;
+  /** Admin-only edit panel (owner, requester, department), shown at the top. Null for non-admins. */
+  peopleEditor: ReactNode;
   /** Rendered only for admins. */
   adminControls: ReactNode;
 }) {
@@ -456,17 +527,27 @@ function ProjectDrawer({
         <StatusPill status={row.status} />
         {(row.changed || row.overdue) && <Flags changed={row.changed} overdue={row.overdue} />}
       </div>
+      {peopleEditor}
       <dl className="grid grid-cols-[130px_1fr] gap-y-2 border-y border-line py-3 type-table">
-        <dt className="text-muted">Service area</dt>
-        <dd>{ServiceAreaInfo.label(row.serviceArea)}</dd>
+        {!peopleEditor && (
+          <>
+            <dt className="text-muted">Department</dt>
+            <dd>{ServiceAreaInfo.label(row.serviceArea)}</dd>
+            <dt className="text-muted">Owner</dt>
+            <dd>
+              <AssigneeText value={row.owner} />
+            </dd>
+            <dt className="text-muted">{Requester.LABEL}</dt>
+            <dd>
+              {/* Detail view: say "Not applicable" (primary text) so it differs from a gray "To assign". */}
+              {row.requesterNotApplicable && !row.physicianChampion ? Requester.NOT_APPLICABLE : <AssigneeText value={row.physicianChampion} />}
+            </dd>
+          </>
+        )}
         <dt className="text-muted">Infor request #</dt>
         <dd className="font-mono">{InforNumber.format(row.inforRequestNumber) ?? "–"}</dd>
-        <dt className="text-muted">Owner</dt>
-        <dd>{row.owner}</dd>
-        <dt className="text-muted">Physician champion</dt>
-        <dd>{row.physicianChampion ?? "–"}</dd>
         <dt className="text-muted">Next milestone</dt>
-        <dd>{row.nextMilestone ?? "–"}</dd>
+        <dd>{row.nextMilestone ?? ""}</dd>
         <dt className="text-muted">Due date</dt>
         <dd className={row.overdue ? "font-semibold text-danger" : ""}>
           {DateFormat.long(row.dueDate) ?? "–"}
@@ -499,16 +580,7 @@ function ProjectDrawer({
         <p className="text-muted type-caption">History timeline coming soon.</p>
       </div>
       {adminControls}
-      <div className="mt-auto flex items-center justify-end border-t border-line pt-3">
-        <button
-          type="button"
-          disabled
-          title="Editing coming soon"
-          className="h-[30px] rounded-control border border-line bg-input px-3 type-table-strong disabled:opacity-60"
-        >
-          Edit project
-        </button>
-      </div>
+
     </aside>
   );
 }

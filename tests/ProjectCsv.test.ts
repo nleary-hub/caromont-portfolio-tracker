@@ -18,13 +18,14 @@ describe("ProjectCsv", () => {
       "infor_request_number",
       "service_area",
       "owner",
-      "physician_champion",
-      "physician_champion_email",
+      "requester",
       "status",
       "next_milestone",
       "due_date",
       "percent_complete",
       "note",
+      "accomplishment",
+      "completed_on",
       "include_in_report",
     ]);
     expect(parsed.rows).toHaveLength(2);

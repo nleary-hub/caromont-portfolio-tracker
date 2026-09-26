@@ -1,8 +1,10 @@
+import { Requester } from "@/lib/domain/Requester";
 import { z } from "zod";
 import { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectRecord } from "@/lib/domain/types";
 
 /** Editable project fields as received from a form/API. Dates are "YYYY-MM-DD". */
@@ -12,16 +14,23 @@ export interface ProjectInput {
   description?: string | null;
   /** Optional Infor request number: whole number 1 to 99999 (a digits-only string is accepted). Blank = null. */
   inforRequestNumber?: number | string | null;
-  serviceArea: ServiceArea | string;
-  owner: string;
+  /** Blank, null or "Unassigned" = no department. */
+  serviceArea?: ServiceArea | string | null;
+  /** Optional; blank = null ("To assign"). */
+  owner?: string | null;
   physicianChampion?: string | null;
   physicianChampionEmail?: string | null;
+  requesterNotApplicable?: boolean;
   status: ProjectStatus | string;
   nextMilestone?: string | null;
   dueDate?: string | null;
   targetCompletion?: string | null;
   percentComplete?: number | null;
   note?: string | null;
+  /** Optional, max AppConfig.ACCOMPLISHMENT_MAX_LENGTH. Blank = null. */
+  accomplishment?: string | null;
+  /** Optional "YYYY-MM-DD". Display only. */
+  completedOn?: string | null;
   includeInReport?: boolean;
 }
 
@@ -30,16 +39,19 @@ export interface ProjectData {
   name: string;
   description: string | null;
   inforRequestNumber: number | null;
-  serviceArea: ServiceArea;
-  owner: string;
+  serviceArea: ServiceArea | null;
+  owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
+  requesterNotApplicable: boolean;
   status: ProjectStatus;
   nextMilestone: string | null;
   dueDate: Date | null;
   targetCompletion: Date | null;
   percentComplete: number | null;
   note: string | null;
+  accomplishment: string | null;
+  completedOn: Date | null;
   includeInReport: boolean;
 }
 
@@ -62,6 +74,9 @@ export class ProjectValidationError extends Error {
 }
 
 export class ProjectValidator {
+  static readonly MILESTONE_REQUIRED_MESSAGE =
+    "Next milestone is required unless the project is Not started, On hold, Complete or Cancelled";
+
   static readonly NOTE_MAX = AppConfig.NOTE_MAX_LENGTH;
   static readonly NAME_MAX = AppConfig.SHORT_TEXT_MAX_LENGTH;
   static readonly MILESTONE_MAX = AppConfig.MILESTONE_MAX_LENGTH;
@@ -115,12 +130,15 @@ export class ProjectValidator {
       owner: project.owner,
       physicianChampion: project.physicianChampion,
       physicianChampionEmail: project.physicianChampionEmail,
+      requesterNotApplicable: project.requesterNotApplicable,
       status: project.status,
       nextMilestone: project.nextMilestone,
       dueDate: DateOnly.fromDbDate(project.dueDate),
       targetCompletion: DateOnly.fromDbDate(project.targetCompletion),
       percentComplete: project.percentComplete,
       note: project.note,
+      accomplishment: project.accomplishment,
+      completedOn: DateOnly.fromDbDate(project.completedOn),
       includeInReport: project.includeInReport,
     };
   }
@@ -178,13 +196,17 @@ export class ProjectValidator {
             .max(ProjectValidator.INFOR_MAX, ProjectValidator.INFOR_MESSAGE)
             .nullable(),
         ),
-        serviceArea: z.enum(ServiceArea, { error: "Service area must be one of the defined areas" }),
-        owner: ProjectValidator.requiredText("Owner", ProjectValidator.NAME_MAX),
+        serviceArea: z.preprocess(
+          (v) => (v === undefined || v === null || (typeof v === "string" && (v.trim() === "" || ServiceAreaInfo.isUnassignedText(v))) ? null : v),
+          z.enum(ServiceArea, { error: "Service area must be one of the defined areas (or Unassigned)" }).nullable(),
+        ),
+        owner: ProjectValidator.optionalText({ label: "Owner", length: ProjectValidator.NAME_MAX }),
         physicianChampion: ProjectValidator.optionalText(),
         physicianChampionEmail: z.preprocess(
           (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim().toLowerCase()) : v ?? null),
-          z.email("Physician champion email is not a valid email").nullable(),
+          z.email("Requester email is not a valid email").nullable(),
         ),
+        requesterNotApplicable: z.boolean().default(false),
         status: z.enum(ProjectStatus, { error: "Status must be one of the defined statuses" }),
         nextMilestone: ProjectValidator.optionalText({
           label: "Next milestone",
@@ -208,16 +230,27 @@ export class ProjectValidator {
             .max(ProjectValidator.NOTE_MAX, `Note must be at most ${ProjectValidator.NOTE_MAX} characters`)
             .nullable(),
         ),
+        accomplishment: ProjectValidator.optionalText({
+          label: "Accomplishment",
+          length: AppConfig.ACCOMPLISHMENT_MAX_LENGTH,
+        }),
+        completedOn: ProjectValidator.optionalDate("Completed on"),
         includeInReport: z.boolean().default(true),
       })
       .superRefine((p, ctx) => {
-        if (!ProjectStatusInfo.isClosed(p.status) && !p.nextMilestone) {
+        if (!ProjectStatusInfo.milestoneOptional(p.status) && !p.nextMilestone) {
           ctx.addIssue({
             code: "custom",
             path: ["nextMilestone"],
-            message: "Next milestone is required unless the project is Complete or Cancelled",
+            message: ProjectValidator.MILESTONE_REQUIRED_MESSAGE,
           });
         }
+      })
+      // Requester: a name and Not applicable never coexist. On the merged record NA wins (update() has
+      // already cleared it when the patch set a name); "Not applicable" text in the name means NA.
+      .transform((p) => {
+        const na = p.requesterNotApplicable || Requester.isNotApplicableText(p.physicianChampion);
+        return { ...p, physicianChampion: na ? null : p.physicianChampion, requesterNotApplicable: na };
       });
   }
 }

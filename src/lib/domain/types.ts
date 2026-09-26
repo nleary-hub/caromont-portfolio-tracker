@@ -1,4 +1,5 @@
 import type { ProjectStatus, RecipientLine, ServiceArea } from "@/generated/prisma/enums";
+import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 
 /** Fields of a Project that the domain logic needs. Structurally compatible with the Prisma model. */
 export interface ProjectRecord {
@@ -7,16 +8,23 @@ export interface ProjectRecord {
   description: string | null;
   /** Optional Infor request number, whole number 1 to 99999 (null = none). Displayed as "REQ-5081". */
   inforRequestNumber: number | null;
-  serviceArea: ServiceArea;
-  owner: string;
+  /** Null = Unassigned (grouped last). */
+  serviceArea: ServiceArea | null;
+  /** Null = not assigned yet (shown as "To assign"). */
+  owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
+  requesterNotApplicable: boolean;
   status: ProjectStatus;
   nextMilestone: string | null;
   dueDate: Date | null;
   targetCompletion: Date | null;
   percentComplete: number | null;
   note: string | null;
+  /** What the finished project accomplished (optional). */
+  accomplishment: string | null;
+  /** Completion date as entered (display only; not the "Completed this period" clock). */
+  completedOn: Date | null;
   includeInReport: boolean;
   archivedAt: Date | null;
   deletedBy: string | null;
@@ -48,9 +56,13 @@ export interface HistoryEntryRecord {
 export interface ReportRow {
   projectId: string;
   name: string;
-  serviceArea: ServiceArea;
-  owner: string;
+  /** Null = Unassigned (grouped last). */
+  serviceArea: ServiceArea | null;
+  /** Null = not assigned yet (shown as "To assign"). */
+  owner: string | null;
   physicianChampion: string | null;
+  /** Requester marked Not applicable (renders blank). Absent in snapshots frozen before it existed. */
+  requesterNotApplicable?: boolean;
   status: ProjectStatus;
   statusLabel: string;
   nextMilestone: string | null;
@@ -72,6 +84,25 @@ export interface ReportRow {
   stale?: boolean;
 }
 
+/** One row of a "Completed this period" block, as stored in ReportSnapshot.completedJson. */
+export interface CompletedRow {
+  projectId: string;
+  name: string;
+  /** Null = Unassigned (grouped last). */
+  serviceArea: ServiceArea | null;
+  /** Null = not assigned yet (shown as "To assign"). */
+  owner: string | null;
+  accomplishment: string | null;
+  /** YYYY-MM-DD shown in the report: completedOn when set, else the in-app completion date. */
+  completedOn: string;
+  /** YYYY-MM-DD (America/New_York) when the status became Complete in the app (the period clock). */
+  completedInAppOn: string;
+  inforRequestNumber: number | null;
+  physicianChampion: string | null;
+  /** Requester marked Not applicable (renders blank). Absent in snapshots frozen before it existed. */
+  requesterNotApplicable?: boolean;
+}
+
 /** Stored in ReportSnapshot.missingChampionsJson. */
 export interface MissingChampion {
   name: string;
@@ -90,9 +121,21 @@ export interface ReportHeader {
   totalProjects: number;
   totals: StatusCounts;
   /** Per service area status counts (repeated in the page header for each area). */
-  byArea: Record<ServiceArea, StatusCounts>;
+  /** Per department, plus "Unassigned" (absent on snapshots frozen before 0012: read with ReportBuilder.areaCounts). */
+  byArea: Partial<Record<AreaGroup, StatusCounts>>;
   overdue: number;
   changed: number;
   /** Absent on snapshots before 0004. */
   stale?: number;
+  /** "Completed FY27 to date N" (page 1). Frozen with the header; absent on older snapshots. */
+  completedFiscalYear?: FiscalYearCount;
+}
+
+/** Fiscal-year-to-date completed count. */
+export interface FiscalYearCount {
+  /** "FY27" */
+  label: string;
+  /** YYYY-MM-DD first day of the fiscal year. */
+  start: string;
+  count: number;
 }
