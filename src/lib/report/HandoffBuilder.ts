@@ -41,6 +41,7 @@ export interface Handoff {
   flags: {
     changed: { count: number; projects: HandoffFlagged[] };
     overdue: { count: number; projects: HandoffFlagged[] };
+    stale: { count: number; projects: HandoffFlagged[] };
   };
   pdf: { fileName: string; sha256: string; byteSize: number };
   archiveUrl: string;
@@ -74,6 +75,7 @@ export class HandoffBuilder {
     const header = input.header ?? ReportBuilder.header(input.rows);
     const changed = input.rows.filter((r) => r.changed);
     const overdue = input.rows.filter((r) => r.overdue);
+    const stale = input.rows.filter((r) => r.stale);
     return {
       schemaVersion: 1,
       title: PdfReportLayout.TITLE,
@@ -96,6 +98,7 @@ export class HandoffBuilder {
       flags: {
         changed: { count: changed.length, projects: HandoffBuilder.flagged(changed) },
         overdue: { count: overdue.length, projects: HandoffBuilder.flagged(overdue) },
+        stale: { count: stale.length, projects: HandoffBuilder.flagged(stale) },
       },
       pdf: input.pdf,
       archiveUrl: HandoffBuilder.archiveUrl(input.baseUrl),

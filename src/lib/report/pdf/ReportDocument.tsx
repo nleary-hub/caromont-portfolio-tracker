@@ -1,5 +1,6 @@
 import { Circle, Document, Page, Path, Rect, Svg, Text, View } from "@react-pdf/renderer";
 import type { ProjectStatus } from "@/generated/prisma/enums";
+import { AppConfig } from "@/lib/config/AppConfig";
 import { StatusShapes, type ShapePart } from "@/lib/domain/StatusShapes";
 import { ReportFonts } from "@/lib/report/pdf/ReportFonts";
 import {
@@ -33,6 +34,8 @@ export class ReportColors {
   };
   static readonly CHANGED = { bg: "#FFFFFF", fg: "#4B2FA8" };
   static readonly OVERDUE = { bg: "#A0181E", fg: "#FFFFFF" };
+  /** Stale chip and amber "Updated" date (row-details.html, report rows: dashed #855500). */
+  static readonly STALE = { bg: "#FFFFFF", fg: "#855500" };
   static readonly WORSE = "#A0181E";
   static readonly BETTER = "#136A33";
 }
@@ -146,9 +149,19 @@ function Pill({ pill, x, y }: { pill: PillBox; x: number; y: number }) {
   );
 }
 
+function ClockIcon({ color }: { color: string }) {
+  return (
+    <Svg width={G.DIAMOND} height={G.DIAMOND} viewBox="0 0 10 10" style={{ marginRight: 2.5 }}>
+      <Circle cx={5} cy={5} r={4} fill="none" stroke={color} strokeWidth={1.3} />
+      <Path d="M5 2.6V5l1.7 1.2" fill="none" stroke={color} strokeWidth={1.3} />
+    </Svg>
+  );
+}
+
 function Flag({ flag, x, y }: { flag: FlagBox; x: number; y: number }) {
+  const dashed = flag.kind === "changed" || flag.kind === "stale";
   const changed = flag.kind === "changed";
-  const c = changed ? C.CHANGED : C.OVERDUE;
+  const c = flag.kind === "changed" ? C.CHANGED : flag.kind === "stale" ? C.STALE : C.OVERDUE;
   return (
     <View
       style={{
@@ -161,10 +174,11 @@ function Flag({ flag, x, y }: { flag: FlagBox; x: number; y: number }) {
         backgroundColor: c.bg,
         flexDirection: "row",
         alignItems: "center",
-        paddingLeft: G.FLAG_PAD - (changed ? 0.75 : 0),
-        ...(changed ? { borderWidth: 0.75, borderStyle: "dashed" as const, borderColor: c.fg } : {}),
+        paddingLeft: G.FLAG_PAD - (dashed ? 0.75 : 0),
+        ...(dashed ? { borderWidth: 0.75, borderStyle: "dashed" as const, borderColor: c.fg } : {}),
       }}
     >
+      {flag.kind === "stale" && <ClockIcon color={c.fg} />}
       {changed && (
         <Svg width={G.DIAMOND} height={G.DIAMOND} viewBox="0 0 10 10" style={{ marginRight: 2.5 }}>
           <ShapeParts parts={StatusShapes.DIAMOND} color={c.fg} />
@@ -229,6 +243,7 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
   const ly = top + 4 * G.META_ROW_H + 3 * G.META_GAP + 6;
   const changed: FlagBox = h.grid.columns.find((c) => c.key === "changed")!.flag!;
   const overdue: FlagBox = h.grid.columns.find((c) => c.key === "overdue")!.flag!;
+  const stale: FlagBox = h.grid.columns.find((c) => c.key === "stale")!.flag!;
   els.push(<Line key="lg1" x={0} y={ly + 1} w={30} text="Flags:" size={S.small} weight={600} color={C.MUTED} lh={G.SMALL_LH} />);
   els.push(<Flag key="lgc" flag={changed} x={24} y={ly} />);
   els.push(
@@ -242,6 +257,20 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
       y={ly + G.LEGEND_LINE_H + 1}
       w={h.metaWidth}
       text="due date has passed"
+      size={S.small}
+      color={C.MUTED}
+      lh={G.SMALL_LH}
+    />,
+  );
+
+  els.push(<Flag key="lgs" flag={stale} x={24} y={ly + 2 * G.LEGEND_LINE_H} />);
+  els.push(
+    <Line
+      key="lg4"
+      x={24 + stale.width + 4}
+      y={ly + 2 * G.LEGEND_LINE_H + 1}
+      w={h.metaWidth}
+      text={`no update in ${AppConfig.STALE_AFTER_DAYS}+ days`}
       size={S.small}
       color={C.MUTED}
       lh={G.SMALL_LH}
@@ -364,7 +393,16 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
             <Line key={i} x={cell.x} y={i * G.TABLE_LH} w={cell.w} text={l} size={S.table} weight={600} lh={G.TABLE_LH} />
           ))}
           {cell.updated && (
-            <Line x={cell.x} y={cell.lines.length * G.TABLE_LH} w={cell.w} text={cell.updated} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />
+            <Line
+              x={cell.x}
+              y={cell.lines.length * G.TABLE_LH}
+              w={cell.w}
+              text={cell.updated}
+              size={S.small}
+              weight={cell.stale ? 500 : 400}
+              color={cell.stale ? C.STALE.fg : C.MUTED}
+              lh={G.SMALL_LH}
+            />
           )}
         </>
       );
@@ -379,17 +417,18 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
       return (
         <>
           <Pill pill={cell.pill} x={cell.x} y={-0.25} />
-          {cell.change && (
+          {cell.change?.lines.map((text, i) => (
             <Line
+              key={i}
               x={cell.x + 1}
-              y={two}
+              y={two + i * G.SMALL_LH}
               w={cell.w + G.CELL_PAD_R}
-              text={cell.change.text}
+              text={text}
               size={S.small}
-              color={cell.change.arrow === "down" ? C.WORSE : cell.change.arrow === "up" ? C.BETTER : C.MUTED}
+              color={cell.change!.arrow === "down" ? C.WORSE : cell.change!.arrow === "up" ? C.BETTER : C.MUTED}
               lh={G.SMALL_LH}
             />
-          )}
+          ))}
         </>
       );
     case "nextMilestone":
@@ -499,7 +538,13 @@ function KeyPage({ k, top }: { k: KeyModel; top: number }) {
   y += 8;
   section("ROW DETAILS");
   for (const d of k.details) {
-    const color = d.sample.startsWith("\u2193") ? C.WORSE : d.sample === "Due in red" ? C.OVERDUE.bg : C.MUTED;
+    const color = d.sample.startsWith("\u2193")
+      ? C.WORSE
+      : d.sample === "Due in red"
+        ? C.OVERDUE.bg
+        : d.sample === "Updated Sep 1"
+          ? C.STALE.fg
+          : C.MUTED;
     els.push(<Line key={`d${d.sample}`} x={0} y={y} w={88} text={d.sample} size={S.small} weight={d.sample === "Due in red" ? 600 : 400} color={color} lh={G.TABLE_LH} />);
     els.push(<Line key={`dm${d.sample}`} x={90} y={y} w={330} text={d.meaning} size={S.table} lh={G.TABLE_LH} />);
     y += 15;

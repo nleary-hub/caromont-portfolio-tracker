@@ -1,4 +1,5 @@
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
@@ -65,6 +66,7 @@ export class ReportBuilder {
       byArea,
       overdue: rows.filter((r) => r.overdue).length,
       changed: rows.filter((r) => r.changed).length,
+      stale: rows.filter((r) => r.stale).length,
     };
   }
 
@@ -90,6 +92,17 @@ export class ReportBuilder {
     if (ProjectStatusInfo.isClosed(project.status)) return false;
     const due = DateOnly.fromDbDate(project.dueDate);
     return due !== null && DateOnly.compare(due, reportDate) < 0;
+  }
+
+  /**
+   * "Stale": the latest public update (the "Updated <date>" shown on the row) is
+   * AppConfig.STALE_AFTER_DAYS or more calendar days before the report date. Never for Complete or
+   * Cancelled, and never without a known update date.
+   */
+  static isStale(row: { status: ProjectStatus; updatedOn?: string | null }, reportDate: string): boolean {
+    if (ProjectStatusInfo.isClosed(row.status) || !row.updatedOn) return false;
+    const days = (DateOnly.toDbDate(reportDate).getTime() - DateOnly.toDbDate(row.updatedOn).getTime()) / 86_400_000;
+    return days >= AppConfig.STALE_AFTER_DAYS;
   }
 
   /** Service area order → status severity → due date asc (nulls last) → name (stable tiebreak). */
@@ -153,7 +166,7 @@ export class ReportBuilder {
     return from;
   }
 
-  static toRow(project: ProjectRecord, flags: RowFlags, details: Pick<ReportRow, "updatedOn" | "statusFrom"> = {}): ReportRow {
+  static toRow(project: ProjectRecord, flags: RowFlags, details: Pick<ReportRow, "updatedOn" | "statusFrom" | "stale"> = {}): ReportRow {
     return {
       projectId: project.id,
       name: project.name,
@@ -171,6 +184,21 @@ export class ReportBuilder {
       overdue: flags.overdue,
       updatedOn: details.updatedOn ?? null,
       statusFrom: details.statusFrom ?? null,
+      stale: details.stale ?? false,
+    };
+  }
+
+  static details(
+    project: ProjectRecord,
+    history: readonly HistoryEntryRecord[],
+    previousSnapshotGeneratedAt: Date | null,
+    reportDate: string,
+  ): Pick<ReportRow, "updatedOn" | "statusFrom" | "stale"> {
+    const updatedOn = ReportBuilder.updatedOn(project.id, history);
+    return {
+      updatedOn,
+      statusFrom: ReportBuilder.statusFrom(project, history, previousSnapshotGeneratedAt),
+      stale: ReportBuilder.isStale({ status: project.status, updatedOn }, reportDate),
     };
   }
 
@@ -183,10 +211,7 @@ export class ReportBuilder {
         ReportBuilder.toRow(p, {
           changed: ReportBuilder.isChanged(p.id, history, input.previousSnapshotGeneratedAt),
           overdue: ReportBuilder.isOverdue(p, input.reportDate),
-        }, {
-          updatedOn: ReportBuilder.updatedOn(p.id, history),
-          statusFrom: ReportBuilder.statusFrom(p, history, input.previousSnapshotGeneratedAt),
-        }),
+        }, ReportBuilder.details(p, history, input.previousSnapshotGeneratedAt, input.reportDate)),
       ),
     );
     return { rows, header: ReportBuilder.header(rows) };

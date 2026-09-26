@@ -63,6 +63,8 @@ export interface ReportRow {
   updatedOn?: string | null;
   /** Status at the previous report when it differs from the current one ("from At risk"). */
   statusFrom?: ProjectStatus | null;
+  /** Latest update (updatedOn) is AppConfig.STALE_AFTER_DAYS or more before the report date. Absent before 0004. */
+  stale?: boolean;
 }
 
 /** Stored in ReportSnapshot.missingChampionsJson. */
@@ -86,4 +88,6 @@ export interface ReportHeader {
   byArea: Record<ServiceArea, StatusCounts>;
   overdue: number;
   changed: number;
+  /** Absent on snapshots before 0004. */
+  stale?: number;
 }

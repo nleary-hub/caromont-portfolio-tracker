@@ -1,4 +1,5 @@
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import { AppConfig } from "@/lib/config/AppConfig";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ReportHeader, ReportRow } from "@/lib/domain/types";
@@ -78,12 +79,14 @@ export class ReportGeometry {
   static readonly SIZE = { title: 15, body: 9, section: 9, table: 8, small: 7, pill: 7 } as const;
 }
 
-export type FlagKind = "changed" | "overdue";
+export type FlagKind = "changed" | "overdue" | "stale";
 
 export interface StatusChange {
   arrow: "up" | "down" | null;
-  /** Full display text including the arrow, fitted to the status column. */
+  /** Full display text including the arrow ("\u2193 from Not started"). */
   text: string;
+  /** text word-wrapped to the status column (up to 2 lines under the pill; never truncated in practice). */
+  lines: string[];
 }
 
 export interface PillBox {
@@ -106,7 +109,7 @@ export interface TextLine {
 
 /** One laid-out cell. Positions are relative to the row's top-left (inside the row padding). */
 export type RowCell =
-  | { kind: "project"; x: number; w: number; lines: string[]; updated: string | null }
+  | { kind: "project"; x: number; w: number; lines: string[]; updated: string | null; stale: boolean }
   | { kind: "owner"; x: number; w: number; owner: string; champion: string | null }
   | { kind: "status"; x: number; w: number; pill: PillBox; change: StatusChange | null }
   | { kind: "nextMilestone"; x: number; w: number; lines: string[]; muted: boolean }
@@ -129,7 +132,7 @@ export type BodyBlock =
   | { kind: "empty"; y: number; height: number; text: string };
 
 export interface GridColumn {
-  key: ProjectStatus | "overdue" | "changed" | "total";
+  key: ProjectStatus | FlagKind | "total";
   width: number;
   pill?: PillBox;
   flag?: FlagBox;
@@ -237,9 +240,11 @@ export class ReportLayout {
       flags: [
         { flag: ReportLayout.flag(m, "changed"), meaning: "Something about the project changed since the last report." },
         { flag: ReportLayout.flag(m, "overdue"), meaning: "The due date has passed and the project is not complete." },
+        { flag: ReportLayout.flag(m, "stale"), meaning: `No update in ${AppConfig.STALE_AFTER_DAYS} or more days before the report date.` },
       ],
       details: [
         { sample: "Updated Sep 22", meaning: "Date of the latest update to the project." },
+        { sample: "Updated Sep 1", meaning: `In amber when the project is stale (${AppConfig.STALE_AFTER_DAYS}+ days without an update).` },
         { sample: "\u2193 from On track", meaning: "Status moved since the last report (\u2193 worse, \u2191 better)." },
         { sample: "No change.", meaning: "Nothing changed since the last report; the note is repeated in gray." },
         { sample: "Due in red", meaning: "Overdue due date." },
@@ -256,8 +261,8 @@ export class ReportLayout {
 
   static flag(m: Measurer, kind: FlagKind): FlagBox {
     const g = ReportGeometry;
-    const label = kind === "changed" ? "Changed" : "! Overdue";
-    const icon = kind === "changed" ? g.DIAMOND + 2.5 : 0;
+    const label = kind === "changed" ? "Changed" : kind === "stale" ? "Stale" : "! Overdue";
+    const icon = kind === "overdue" ? 0 : g.DIAMOND + 2.5;
     return { kind, label, width: g.FLAG_PAD * 2 + icon + m.width(label, g.SIZE.pill, 700) };
   }
 
@@ -294,11 +299,12 @@ export class ReportLayout {
     const from = row.statusFrom;
     if (!from || from === row.status) return null;
     const text = `from ${ProjectStatusInfo.label(from)}`;
-    if (row.status === "Cancelled" || from === "Cancelled") return { arrow: null, text };
+    if (row.status === "Cancelled" || from === "Cancelled") return { arrow: null, text, lines: [text] };
     // Complete counts as the best outcome; otherwise severity order (Off track worst).
     const score = (s: ProjectStatus) => (s === "Complete" ? 100 : ProjectStatusInfo.severityRank(s));
     const arrow = score(row.status) < score(from) ? "down" : "up";
-    return { arrow, text: `${arrow === "down" ? "\u2193" : "\u2191"} ${text}` };
+    const full = `${arrow === "down" ? "\u2193" : "\u2191"} ${text}`;
+    return { arrow, text: full, lines: [full] };
   }
 
   static rowLayout(m: Measurer, row: ReportRow, settings: ViewSettingsValue, reportDate: string): RowLayout {
@@ -317,7 +323,7 @@ export class ReportLayout {
           const lines = TextMeasure.wrap(m, row.name, inner, S.table, 600, 4);
           const updated = row.updatedOn ? `Updated ${ReportFormat.shortDate(row.updatedOn, reportDate)}` : null;
           projectH = lines.length * g.TABLE_LH + (updated ? g.SMALL_LH : 0);
-          cells.push({ kind: "project", x: col.x, w: inner, lines, updated });
+          cells.push({ kind: "project", x: col.x, w: inner, lines, updated, stale: Boolean(row.stale) });
           break;
         }
         case "owner": {
@@ -329,8 +335,9 @@ export class ReportLayout {
         }
         case "status": {
           const raw = ReportLayout.statusChange(row);
-          const change = raw ? { ...raw, text: TextMeasure.fitLine(m, raw.text, col.w - 2, S.small, 400) } : null;
-          if (change) lineTwoH = Math.max(lineTwoH, g.SMALL_LH);
+          // Wraps under the pill ("\u2193 from" / "Not started") instead of truncating; the row grows to fit.
+          const change = raw ? { ...raw, lines: TextMeasure.wrap(m, raw.text, col.w - 2, S.small, 400, 2) } : null;
+          if (change) lineTwoH = Math.max(lineTwoH, change.lines.length * g.SMALL_LH);
           lineOneH = Math.max(lineOneH, g.PILL_H);
           cells.push({ kind: "status", x: col.x, w: inner, pill: ReportLayout.statusPill(m, row.status), change });
           break;
@@ -351,6 +358,7 @@ export class ReportLayout {
           const flags: FlagBox[] = [];
           if (row.changed) flags.push(ReportLayout.flag(m, "changed"));
           if (row.overdue) flags.push(ReportLayout.flag(m, "overdue"));
+          if (row.stale) flags.push(ReportLayout.flag(m, "stale"));
           if (flags.length) lineOneH = Math.max(lineOneH, g.PILL_H);
           cells.push({ kind: "flags", x: col.x, w: inner, flags });
           break;
@@ -397,7 +405,7 @@ export class ReportLayout {
         const pill = ReportLayout.statusPill(m, s);
         return { key: s, width: Math.max(g.GRID_MIN_COL_W, pill.width + 2), pill };
       }),
-      ...(["overdue", "changed"] as const).map((k) => {
+      ...(["overdue", "changed", "stale"] as const).map((k) => {
         const flag = ReportLayout.flag(m, k);
         return { key: k, width: Math.max(g.GRID_MIN_COL_W, flag.width + 2), flag };
       }),
@@ -413,6 +421,7 @@ export class ReportLayout {
           ...statuses.map((s) => counts[s]),
           areaRows.filter((r) => r.overdue).length,
           areaRows.filter((r) => r.changed).length,
+          areaRows.filter((r) => r.stale).length,
           total,
         ],
         total: false,
@@ -420,7 +429,7 @@ export class ReportLayout {
     });
     const totalRow: GridRow = {
       label: "All areas",
-      cells: [...statuses.map((s) => header.totals[s]), header.overdue, header.changed, header.totalProjects],
+      cells: [...statuses.map((s) => header.totals[s]), header.overdue, header.changed, header.stale ?? 0, header.totalProjects],
       total: true,
     };
     const gridWidth = g.GRID_AREA_W + columns.reduce((s, c) => s + c.width, 0);
@@ -515,7 +524,7 @@ export class ReportLayout {
 
   static firstHeaderHeight(input: ReportDocInput): number {
     const g = ReportGeometry;
-    const meta = 4 * g.META_ROW_H + 3 * g.META_GAP + 6 + 2 * g.LEGEND_LINE_H;
+    const meta = 4 * g.META_ROW_H + 3 * g.META_GAP + 6 + 3 * g.LEGEND_LINE_H;
     const grid = g.GRID_HEAD_H + (ServiceAreaInfo.all().length + 1) * g.GRID_ROW_H + 1;
     return g.TITLE_BAR_H + (input.draft ? g.DRAFT_LINE_H : 0) + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
   }
@@ -533,7 +542,12 @@ export class ReportLayout {
 
   static layout(input: ReportDocInput, m: Measurer = new TextMeasure()): DocumentLayout {
     const g = ReportGeometry;
-    const header = input.header ?? ReportBuilder.header(input.rows);
+    // Only statuses visible in the report view settings are listed or counted anywhere. Rows from
+    // ReportBuilder already satisfy this; the header is always recomputed from the listed rows so
+    // every count (grid, strip, projects line, flags) matches what is on the page.
+    const rows = input.rows.filter((r) => ViewSettings.isStatusVisible(input.viewSettings, r.status));
+    input = { ...input, rows };
+    const header = ReportBuilder.header(rows);
     const model = ReportLayout.header(m, input, header);
     const firstH = ReportLayout.firstHeaderHeight(input);
     const contH = ReportLayout.continuationHeaderHeight(input, model);

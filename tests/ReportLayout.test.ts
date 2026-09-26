@@ -8,10 +8,13 @@ import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 
 const m = new TextMeasure();
 
+const ALL = ViewSettings.normalize("report", { hiddenStatuses: [] });
+const DEFAULTS = ViewSettings.defaults("report");
+
 class Many {
-  /** n sample rows (cycled, unique ids and names) with long notes on every third row. */
+  /** n sample rows visible under the default report settings (cycled, unique ids and names), long notes on every third row. */
   static rows(n: number): ReportRow[] {
-    const base = SampleReportData.rows();
+    const base = SampleReportData.rows().filter((r) => ViewSettings.isStatusVisible(DEFAULTS, r.status));
     return ReportBuilder.sort(
       Array.from({ length: n }, (_, i) => {
         const r = base[i % base.length];
@@ -147,9 +150,11 @@ describe("ReportLayout pagination", () => {
     const withKey = Many.layout(rows.slice(0, 5));
     expect(withKey.pages.at(-1)!.kind).toBe("key");
     expect(withKey.pages.at(-1)!.number).toBe(withKey.pages.length);
-    expect(withKey.key!.statuses).toHaveLength(7);
-    const hiddenClosed = Many.layout(rows.slice(0, 5), { viewSettings: ViewSettings.defaults("report") });
-    expect(hiddenClosed.key!.statuses.map((s) => s.pill.status)).not.toContain("Complete");
+    expect(withKey.key!.statuses.map((s) => s.pill.status)).not.toContain("Complete");
+    expect(withKey.key!.statuses).toHaveLength(5);
+    expect(Many.layout(rows.slice(0, 5), { viewSettings: ALL }).key!.statuses).toHaveLength(7);
+    expect(withKey.key!.flags.map((f) => f.flag.kind)).toEqual(["changed", "overdue", "stale"]);
+    expect(withKey.key!.flags[2].meaning).toContain("14 or more days");
     const without = Many.layout(rows.slice(0, 5), { showKeyPage: false });
     expect(without.key).toBeNull();
     expect(without.pages.every((p) => p.kind === "report")).toBe(true);
@@ -210,5 +215,114 @@ describe("ReportLayout visibility", () => {
     // Hidden statuses get no grid column at all.
     expect(l.header.grid.columns.map((c) => c.key)).not.toContain("Complete");
     expect(l.header.grid.columns.map((c) => c.key)).not.toContain("Cancelled");
+  });
+});
+
+describe("ReportLayout status visibility in counts", () => {
+  const sample = SampleReportData.rows();
+  const closed = sample.filter((r) => r.status === "Complete" || r.status === "Cancelled");
+  const open = sample.filter((r) => r.status !== "Complete" && r.status !== "Cancelled");
+  const gridKeys = (l: DocumentLayout) => l.header.grid.columns.map((c) => c.key);
+  const allAreasRow = (l: DocumentLayout) => l.header.grid.rows.at(-1)!;
+  const stripStatuses = (l: DocumentLayout) => new Set(l.header.strip.flat().flatMap((it) => it.counts.map((c) => c.status)));
+  const stripTotal = (l: DocumentLayout) => l.header.strip.flat().reduce((s, it) => s + it.counts.reduce((a, c) => a + c.count, 0), 0);
+
+  it("default report settings: no Complete or Cancelled columns and their projects are not counted anywhere", () => {
+    expect(closed.length).toBeGreaterThan(0);
+    // Pass all rows and a header built from all rows: the layout still lists and counts visible statuses only.
+    const l = ReportLayout.layout(SampleReportData.docInput({ header: ReportBuilder.header(sample) }), m);
+    expect(gridKeys(l)).not.toContain("Complete");
+    expect(gridKeys(l)).not.toContain("Cancelled");
+    expect(stripStatuses(l).has("Complete")).toBe(false);
+    expect(stripStatuses(l).has("Cancelled")).toBe(false);
+    expect(stripTotal(l)).toBe(open.length);
+    const areas = new Set(open.map((r) => r.serviceArea)).size;
+    expect(l.header.projectsLine).toBe(`${open.length} across ${areas} service areas`);
+    const total = allAreasRow(l);
+    expect(total.cells.at(-1)).toBe(open.length);
+    const col = (k: string) => gridKeys(l).indexOf(k as never);
+    expect(total.cells[col("changed")]).toBe(open.filter((r) => r.changed).length);
+    expect(total.cells[col("overdue")]).toBe(open.filter((r) => r.overdue).length);
+    expect(open.filter((r) => r.changed).length).toBeLessThan(sample.filter((r) => r.changed).length);
+    expect(Many.rowIds(l)).not.toEqual(expect.arrayContaining(closed.map((r) => r.projectId).slice(0, 1)));
+  });
+
+  it("turning a status on adds its column, rows and counts", () => {
+    const withComplete = ViewSettings.normalize("report", { hiddenStatuses: ["Cancelled"] });
+    const l = ReportLayout.layout(SampleReportData.docInput({ viewSettings: withComplete }), m);
+    const complete = sample.filter((r) => r.status === "Complete");
+    const visible = sample.filter((r) => r.status !== "Cancelled");
+    expect(gridKeys(l)).toContain("Complete");
+    expect(gridKeys(l)).not.toContain("Cancelled");
+    expect(stripStatuses(l).has("Complete")).toBe(true);
+    expect(stripTotal(l)).toBe(visible.length);
+    const total = allAreasRow(l);
+    expect(total.cells[gridKeys(l).indexOf("Complete")]).toBe(complete.length);
+    expect(total.cells.at(-1)).toBe(visible.length);
+    expect(total.cells[gridKeys(l).indexOf("changed")]).toBe(visible.filter((r) => r.changed).length);
+    expect(Many.rowIds(l)).toEqual(expect.arrayContaining(complete.map((r) => r.projectId)));
+  });
+});
+
+describe("ReportLayout stale flag", () => {
+  const row = (updatedOn: string | null, extra: Partial<ReportRow> = {}): ReportRow => {
+    const r = { ...SampleReportData.rows().find((x) => x.status === "OnTrack")!, updatedOn, ...extra };
+    return { ...r, stale: ReportBuilder.isStale(r, SampleReportData.REPORT_DATE) };
+  };
+
+  it("is stale at 14 or more days since the last update, not at 13; never without a date or when closed", () => {
+    expect(ReportBuilder.isStale({ status: "OnTrack", updatedOn: "2026-09-16" }, "2026-09-29")).toBe(false); // 13 days
+    expect(ReportBuilder.isStale({ status: "OnTrack", updatedOn: "2026-09-15" }, "2026-09-29")).toBe(true); // 14 days
+    expect(ReportBuilder.isStale({ status: "OnHold", updatedOn: "2026-08-01" }, "2026-09-29")).toBe(true);
+    expect(ReportBuilder.isStale({ status: "OnTrack", updatedOn: null }, "2026-09-29")).toBe(false);
+    expect(ReportBuilder.isStale({ status: "Complete", updatedOn: "2026-08-01" }, "2026-09-29")).toBe(false);
+  });
+
+  it("adds a Stale chip after Changed and Overdue, turns 'Updated' amber, and counts stale rows in the grid", () => {
+    const stale = row("2026-09-01", { projectId: "s1", changed: true, overdue: true });
+    const fresh = row("2026-09-20", { projectId: "f1" });
+    const l = ReportLayout.layout(SampleReportData.docInput({ rows: [stale, fresh], showKeyPage: false }), m);
+    const cells = (id: string) => l.pages[0].blocks.find((b) => b.kind === "row" && b.row.projectId === id)!;
+    const get = (id: string) => {
+      const b = cells(id);
+      return b.kind === "row" ? b.row.cells : [];
+    };
+    const flags = get("s1").find((c) => c.kind === "flags");
+    expect(flags && flags.kind === "flags" && flags.flags.map((f) => f.kind)).toEqual(["changed", "overdue", "stale"]);
+    expect(flags && flags.kind === "flags" && flags.flags[2].label).toBe("Stale");
+    const project = get("s1").find((c) => c.kind === "project");
+    expect(project && project.kind === "project" && project.stale).toBe(true);
+    const freshFlags = get("f1").find((c) => c.kind === "flags");
+    expect(freshFlags && freshFlags.kind === "flags" && freshFlags.flags.map((f) => f.kind)).not.toContain("stale");
+    const keys = l.header.grid.columns.map((c) => c.key);
+    expect(keys.slice(-4)).toEqual(["overdue", "changed", "stale", "total"]);
+    expect(l.header.grid.rows.at(-1)!.cells[keys.indexOf("stale")]).toBe(1);
+  });
+
+  it("counts stale only on visible rows", () => {
+    const hiddenStale = row("2026-08-01", { projectId: "h1", status: "Cancelled" });
+    const forced = { ...hiddenStale, stale: true }; // even if flagged, a hidden status is not listed or counted
+    const l = ReportLayout.layout(SampleReportData.docInput({ rows: [forced, row("2026-09-20")], showKeyPage: false }), m);
+    const keys = l.header.grid.columns.map((c) => c.key);
+    expect(l.header.grid.rows.at(-1)!.cells[keys.indexOf("stale")]).toBe(0);
+    expect(ReportBuilder.header([row("2026-09-01"), row("2026-09-02"), row("2026-09-28")]).stale).toBe(2);
+  });
+
+  it("wraps the 'from <status>' line under the pill instead of truncating, and the row grows to fit", () => {
+    const moved = row("2026-09-20", { projectId: "w1", status: "OffTrack", statusFrom: "NotStarted" });
+    const same = row("2026-09-20", { projectId: "w2", status: "OffTrack", statusFrom: "AtRisk" }); // "\u2193 from At risk" fits one line
+    const a = ReportLayout.rowLayout(m, { ...moved, note: null }, DEFAULTS, SampleReportData.REPORT_DATE);
+    const b = ReportLayout.rowLayout(m, { ...same, note: null }, DEFAULTS, SampleReportData.REPORT_DATE);
+    const st = a.cells.find((c) => c.kind === "status");
+    const lines = st && st.kind === "status" ? st.change!.lines : [];
+    expect(lines.join(" ")).toBe("\u2193 from Not started");
+    expect(lines.join("")).not.toContain("\u2026");
+    expect(lines).toHaveLength(2); // the status column is too narrow for the longest case on one line
+    const bst = b.cells.find((c) => c.kind === "status");
+    expect(bst && bst.kind === "status" && bst.change!.lines).toHaveLength(1);
+    // The row is tall enough for both wrapped lines under the pill (rows never split, so this is the whole row).
+    const g = ReportGeometry;
+    expect(a.height).toBeGreaterThanOrEqual(g.ROW_PAD * 2 + a.lineTwoY + 2 * g.SMALL_LH);
+    expect(a.height).toBeGreaterThanOrEqual(b.height);
   });
 });

@@ -138,11 +138,31 @@ describe("handoff.json", () => {
     expect(h.flags.overdue.count).toBe(1);
     expect(h.flags.overdue.projects.map((p) => p.name)).toEqual(["Visible late"]);
     expect(h.flags.changed.count).toBe(2);
+    expect(h.flags.stale).toEqual({ count: 0, projects: [] });
     expect(h.pdf.fileName).toBe("cardiac-portfolio-report-2026-09-29.pdf");
     const text = JSON.stringify(h);
     expect(text).not.toMatch(/Secret/);
     expect(text).not.toMatch(/"to"|"cc"|missingChampion|Dr\. Sample/i);
     expect(text).not.toContain("\u2014");
+  });
+
+  it("counts Stale (14+ days since the last update) on visible rows only", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const { fake, db } = await Setup.db();
+    const quiet = await ProjectService.create({ ...base, name: "Visible quiet", serviceArea: "EP" }, actor, db);
+    const edge = await ProjectService.create({ ...base, name: "Visible 13 days", serviceArea: "EP" }, actor, db);
+    const age = (id: string, iso: string) => {
+      for (const h of fake.state.history) if (h.projectId === id) h.changedAt = new Date(iso);
+    };
+    age(quiet.id, "2026-09-10T16:00:00Z"); // 19 days before Sep 29
+    age(edge.id, "2026-09-16T16:00:00Z"); // 13 days
+    // Hidden and Complete projects are old too, but never counted.
+    for (const p of fake.state.projects) if (String(p.name).startsWith("Secret")) age(String(p.id), "2026-08-01T16:00:00Z");
+    await FreezeService.run(Setup.opts(), db);
+    const h = Setup.handoff(fake);
+    expect(h.flags.stale.count).toBe(1);
+    expect(h.flags.stale.projects.map((p) => p.name)).toEqual(["Visible quiet"]);
   });
 
   it("omits reportRecipient and logs a warning when REPORT_RECIPIENT_EMAIL is unset or invalid", async () => {

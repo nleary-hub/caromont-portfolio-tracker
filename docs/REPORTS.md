@@ -73,8 +73,16 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
   "(continued)", header on every page, "Page X of Y".
 - Respects the frozen report view settings: column order, hidden columns (widths rescale to fill),
   hidden statuses (no grid column, no rows), per-project hide and soft delete (via `VisibilityPolicy`).
+  Complete and Cancelled are hidden by default, so by default they get no column in the page 1 grid
+  or the page 2+ count strip and are not counted anywhere (area totals, All areas, "Projects: N across
+  M", Overdue, Changed, Stale). Turning a status on in the report view settings adds its column and
+  counts. `ReportLayout` recomputes every count from the listed rows, so counts always match the page.
 - Row details that exist in data today: "Updated <date>" (latest public change), "from <status>" with an
-  arrow when the status moved since the last report, "No change." for unchanged rows.
+  arrow when the status moved since the last report (wraps under the pill, never truncated), "No
+  change." for unchanged rows.
+- Flags: Changed, Overdue, Stale. Stale means the "Updated <date>" is `AppConfig.STALE_AFTER_DAYS`
+  (14) or more days before the report date; the date turns amber. Never on Complete or Cancelled, and
+  only on listed rows. Stale has its own grid column, legend line and key entry.
 - Optional last page: status and flag key (admin toggle on `/reports`, default on, audited in
   `report_options_history`, frozen per snapshot).
 - Sample: `npx vite-node --config vitest.config.ts scripts/render-sample-report.mts out.pdf [--draft]`
@@ -91,7 +99,7 @@ no Drive call, no handoff.json, no archive entry, no audit row.
 
 `HandoffBuilder`: schemaVersion, title, snapshotId, reportDate, period (start, end, label), frozenAt
 (UTC) and frozenAtEt, `reportRecipient` (from `REPORT_RECIPIENT_EMAIL`; omitted with a logged warning
-when unset or not a single valid address), totals and per-area counts, flags (Changed, Overdue: counts
+when unset or not a single valid address), totals and per-area counts, flags (Changed, Overdue, Stale: counts
 and the flagged projects), pdf (file name, sha256, size), `archiveUrl` (`<APP_BASE_URL>/reports`).
 Visible rows only. No To/Cc and no missing-champion list.
 
