@@ -285,9 +285,7 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
   });
   // Legend
   const ly = top + meta.length * G.META_ROW_H + (meta.length - 1) * G.META_GAP + 6;
-  const changed: FlagBox = h.grid.columns.find((c) => c.key === "changed")!.flag!;
-  const overdue: FlagBox = h.grid.columns.find((c) => c.key === "overdue")!.flag!;
-  const stale: FlagBox = h.grid.columns.find((c) => c.key === "stale")!.flag!;
+  const { changed, overdue, stale } = h.legend;
   els.push(<Line key="lg1" x={0} y={ly + 1} w={30} text="Flags:" size={S.small} weight={600} color={C.MUTED} lh={G.SMALL_LH} />);
   els.push(<Flag key="lgc" flag={changed} x={24} y={ly} />);
   els.push(
@@ -329,7 +327,6 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
   for (const col of h.grid.columns) {
     colX.push(cx);
     if (col.pill) els.push(<Pill key={`gp${col.key}`} pill={col.pill} x={cx + (col.width - col.pill.width) / 2} y={top} />);
-    else if (col.flag) els.push(<Flag key={`gf${col.key}`} flag={col.flag} x={cx + (col.width - col.flag.width) / 2} y={top} />);
     else els.push(<Line key={`gl${col.key}`} x={cx} y={top + 2} w={col.width} text={col.label ?? ""} size={S.small} weight={500} lh={G.SMALL_LH} align="center" />);
     cx += col.width;
   }

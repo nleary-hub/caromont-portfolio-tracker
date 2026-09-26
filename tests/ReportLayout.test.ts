@@ -308,10 +308,9 @@ describe("ReportLayout status visibility in counts", () => {
     expect(l.header.projectsLine).toBe(`${open.length} across ${areas} service areas`);
     const total = allAreasRow(l);
     expect(total.cells.at(-1)).toBe(open.length);
-    const col = (k: string) => gridKeys(l).indexOf(k as never);
-    expect(total.cells[col("changed")]).toBe(open.filter((r) => r.changed).length);
-    expect(total.cells[col("overdue")]).toBe(open.filter((r) => r.overdue).length);
-    expect(open.filter((r) => r.changed).length).toBeLessThan(sample.filter((r) => r.changed).length);
+    // Flags are per row, not grid totals: every cell adds into Total.
+    expect(gridKeys(l)).toEqual(["NotStarted", "OnTrack", "AtRisk", "OffTrack", "OnHold", "total"]);
+    for (const r of l.header.grid.rows) expect(r.cells.slice(0, -1).reduce((a, b) => a + b, 0)).toBe(r.cells.at(-1));
     expect(Many.rowIds(l)).not.toEqual(expect.arrayContaining(closed.map((r) => r.projectId).slice(0, 1)));
   });
 
@@ -327,8 +326,29 @@ describe("ReportLayout status visibility in counts", () => {
     const total = allAreasRow(l);
     expect(total.cells[gridKeys(l).indexOf("Complete")]).toBe(complete.length);
     expect(total.cells.at(-1)).toBe(visible.length);
-    expect(total.cells[gridKeys(l).indexOf("changed")]).toBe(visible.filter((r) => r.changed).length);
+    expect(gridKeys(l)).not.toContain("changed" as never);
+    for (const r of l.header.grid.rows) expect(r.cells.slice(0, -1).reduce((a, b) => a + b, 0)).toBe(r.cells.at(-1));
     expect(Many.rowIds(l)).toEqual(expect.arrayContaining(complete.map((r) => r.projectId)));
+  });
+});
+
+describe("ReportLayout page 1 summary grid", () => {
+  it("has one equal-width column per visible status plus Total, filling the grid width", () => {
+    const l = ReportLayout.layout(SampleReportData.docInput(), m);
+    const widths = l.header.grid.columns.map((c) => c.width);
+    expect(new Set(widths).size).toBe(1);
+    expect(l.header.grid.width).toBeCloseTo(ReportGeometry.GRID_W, 5);
+    for (const c of l.header.grid.columns) if (c.pill) expect(c.width).toBeGreaterThanOrEqual(c.pill.width);
+    expect(l.header.grid.columns.at(-1)).toMatchObject({ key: "total", label: "Total" });
+  });
+
+  it("grows evenly when every status is shown, so no pill is squeezed", () => {
+    const all = ViewSettings.normalize("report", { hiddenStatuses: [] });
+    const l = ReportLayout.layout(SampleReportData.docInput({ viewSettings: all }), m);
+    expect(l.header.grid.columns).toHaveLength(8);
+    expect(new Set(l.header.grid.columns.map((c) => c.width)).size).toBe(1);
+    for (const c of l.header.grid.columns) if (c.pill) expect(c.width).toBeGreaterThanOrEqual(c.pill.width);
+    expect(l.header.metaWidth).toBeGreaterThan(0);
   });
 });
 
@@ -365,7 +385,7 @@ describe("ReportLayout stale flag", () => {
     expect(ReportLayout.legendText("stale")).toBe(`no update in ${original}+ days`);
   });
 
-  it("adds a Stale chip after Changed and Overdue, turns 'Updated' amber, and counts stale rows in the grid", () => {
+  it("adds a Stale chip after Changed and Overdue and turns 'Updated' amber; the summary grid has no flag columns", () => {
     const stale = row("2026-09-01", { projectId: "s1", changed: true, overdue: true });
     const fresh = row("2026-09-20", { projectId: "f1" });
     const l = ReportLayout.layout(SampleReportData.docInput({ rows: [stale, fresh], showKeyPage: false }), m);
@@ -381,17 +401,21 @@ describe("ReportLayout stale flag", () => {
     expect(project && project.kind === "project" && project.stale).toBe(true);
     const freshFlags = get("f1").find((c) => c.kind === "flags");
     expect(freshFlags && freshFlags.kind === "flags" && freshFlags.flags.map((f) => f.kind)).not.toContain("stale");
-    const keys = l.header.grid.columns.map((c) => c.key);
-    expect(keys.slice(-4)).toEqual(["overdue", "changed", "stale", "total"]);
-    expect(l.header.grid.rows.at(-1)!.cells[keys.indexOf("stale")]).toBe(1);
+    const keys: string[] = l.header.grid.columns.map((c) => c.key);
+    for (const k of ["overdue", "changed", "stale"]) expect(keys).not.toContain(k);
+    expect(keys.at(-1)).toBe("total");
+    // The page 1 legend still explains the row flags.
+    expect(Object.keys(l.header.legend)).toEqual(["changed", "overdue", "stale"]);
+    expect(l.header.legend.stale.label).toBe("Stale");
   });
 
   it("counts stale only on visible rows", () => {
     const hiddenStale = row("2026-08-01", { projectId: "h1", status: "Cancelled" });
     const forced = { ...hiddenStale, stale: true }; // even if flagged, a hidden status is not listed or counted
     const l = ReportLayout.layout(SampleReportData.docInput({ rows: [forced, row("2026-09-20")], showKeyPage: false }), m);
-    const keys = l.header.grid.columns.map((c) => c.key);
-    expect(l.header.grid.rows.at(-1)!.cells[keys.indexOf("stale")]).toBe(0);
+    expect(Many.rowIds(l)).not.toContain("h1");
+    expect(l.header.grid.rows.at(-1)!.cells.at(-1)).toBe(1);
+    // The header's stale count (frozen with snapshots) is still computed.
     expect(ReportBuilder.header([row("2026-09-01"), row("2026-09-02"), row("2026-09-28")]).stale).toBe(2);
   });
 
