@@ -31,6 +31,12 @@ enum ProjectStatus {
   Cancelled
 }
 
+/// Where a set of view settings applies.
+enum ViewContext {
+  dashboard
+  report
+}
+
 enum RecipientLine {
   To
   Cc
@@ -58,7 +64,8 @@ model Project {
   updatedBy              String
   /// Soft delete only; projects are never hard deleted.
   archivedAt             DateTime?
-  /// Set when a Complete/Cancelled project first appears in a snapshot.
+  /// DEPRECATED (unused since view settings replaced the "closed projects drop off after one report"
+  /// rule). Kept so existing data is not destroyed; nothing reads or writes it.
   closedReportedAt       DateTime?
 
   history ProjectHistory[]
@@ -99,6 +106,11 @@ model ReportSnapshot {
   sentToJson           Json?
   /// MissingChampion[] computed at generation time.
   missingChampionsJson Json
+  /// ReportHeader: per-area status counts (hidden statuses included) and the "Hidden: ..." line.
+  /// Null only for snapshots created before migration 0002.
+  headerJson           Json?
+  /// ViewSettingsValue (report context) in effect at freeze. Null only for snapshots created before migration 0002.
+  viewSettingsJson     Json?
 
   @@index([generatedAt])
 }
@@ -113,4 +125,33 @@ model Recipient {
   line        RecipientLine
   /// Deactivate, never delete.
   active      Boolean       @default(true)
+}
+
+/// Global (not per-user) show/hide settings, one row per context. Only written by ViewSettingsService.
+model ViewSettings {
+  context        ViewContext     @id
+  /// Full column order for the context (ViewColumn keys, see ViewSettings). Validated in the app.
+  columnOrder    String[]
+  /// Hidden ViewColumn keys. Locked columns (project, status) are never stored here.
+  hiddenColumns  String[]
+  hiddenStatuses ProjectStatus[]
+  updatedAt      DateTime        @updatedAt
+  updatedBy      String
+
+  @@map("view_settings")
+}
+
+/// Append-only audit trail of view settings changes. DB trigger blocks UPDATE/DELETE.
+model ViewSettingsHistory {
+  id        String      @id @default(uuid()) @db.Uuid
+  context   ViewContext
+  /// ViewSettingsValue before the change.
+  oldValue  Json
+  /// ViewSettingsValue after the change.
+  newValue  Json
+  changedAt DateTime    @default(now())
+  changedBy String
+
+  @@index([context, changedAt])
+  @@map("view_settings_history")
 }

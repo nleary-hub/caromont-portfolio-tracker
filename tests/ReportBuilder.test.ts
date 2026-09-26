@@ -1,21 +1,19 @@
 import { describe, expect, it } from "vitest";
+import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { Factory } from "./helpers/factories";
 
 const d = Factory.date;
 
-describe("ReportBuilder.selectRows", () => {
-  it("includes only includeInReport, non-archived, and not-yet-reported closed projects", () => {
+describe("ReportBuilder.selectEligible", () => {
+  it("includes only includeInReport and non-archived projects; closed projects no longer drop off", () => {
     const keep = Factory.project({ id: "keep" });
     const excluded = Factory.project({ id: "excluded", includeInReport: false });
     const archived = Factory.project({ id: "archived", archivedAt: new Date() });
-    const closedNew = Factory.project({ id: "closedNew", status: "Complete", nextMilestone: null });
-    const closedOld = Factory.project({ id: "closedOld", status: "Cancelled", closedReportedAt: new Date() });
-    const activeWithStaleClosedAt = Factory.project({ id: "reopened", status: "OnTrack", closedReportedAt: new Date() });
-    const ids = ReportBuilder.selectRows([keep, excluded, archived, closedNew, closedOld, activeWithStaleClosedAt]).map(
-      (p) => p.id,
-    );
-    expect(ids).toEqual(["keep", "closedNew", "reopened"]);
+    const complete = Factory.project({ id: "complete", status: "Complete", nextMilestone: null });
+    const cancelled = Factory.project({ id: "cancelled", status: "Cancelled", nextMilestone: null });
+    const ids = ReportBuilder.selectEligible([keep, excluded, archived, complete, cancelled]).map((p) => p.id);
+    expect(ids).toEqual(["keep", "complete", "cancelled"]);
   });
 });
 
@@ -88,29 +86,70 @@ describe("ReportBuilder.sort", () => {
 });
 
 describe("ReportBuilder.build", () => {
-  it("builds sorted, flagged rows and lists newly closed projects", () => {
-    const prev = new Date("2026-09-23T10:00:00Z");
-    const a = Factory.project({ id: "a", serviceArea: "EP", dueDate: d("2026-10-01") });
-    const b = Factory.project({ id: "b", serviceArea: "Cath", status: "AtRisk", dueDate: d("2026-10-20") });
-    const c = Factory.project({ id: "c", serviceArea: "Cath", status: "Complete", nextMilestone: null });
-    const gone = Factory.project({ id: "gone", status: "Complete", closedReportedAt: prev });
-    const result = ReportBuilder.build({
-      projects: [a, b, c, gone],
-      history: [{ projectId: "b", changedAt: new Date("2026-10-01T12:00:00Z") }],
-      previousSnapshotGeneratedAt: prev,
-      reportDate: "2026-10-07",
-    });
-    expect(result.rows.map((r) => r.projectId)).toEqual(["b", "c", "a"]);
+  const prev = new Date("2026-09-23T10:00:00Z");
+  const a = Factory.project({ id: "a", serviceArea: "EP", dueDate: d("2026-10-01") });
+  const b = Factory.project({ id: "b", serviceArea: "Cath", status: "AtRisk", dueDate: d("2026-10-20") });
+  const c = Factory.project({ id: "c", serviceArea: "Cath", status: "Complete", nextMilestone: null });
+  const c2 = Factory.project({ id: "c2", serviceArea: "EP", status: "Complete", nextMilestone: null });
+  const x = Factory.project({ id: "x", serviceArea: "IR", status: "Cancelled", nextMilestone: null });
+  const out = Factory.project({ id: "out", status: "Complete", includeInReport: false });
+  const input = {
+    projects: [a, b, c, c2, x, out],
+    history: [{ projectId: "b", changedAt: new Date("2026-10-01T12:00:00Z") }],
+    previousSnapshotGeneratedAt: prev,
+    reportDate: "2026-10-07",
+  };
+
+  it("builds sorted, flagged rows with nothing hidden", () => {
+    const result = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings([]) });
+    expect(result.rows.map((r) => r.projectId)).toEqual(["b", "c", "a", "c2", "x"]);
     const byId = Object.fromEntries(result.rows.map((r) => [r.projectId, r]));
     expect(byId.b).toMatchObject({ changed: true, overdue: false, statusLabel: "At risk", dueDate: "2026-10-20" });
     expect(byId.a).toMatchObject({ changed: false, overdue: true });
     expect(byId.c).toMatchObject({ statusLabel: "Complete", overdue: false });
-    expect(result.newlyClosedProjectIds).toEqual(["c"]);
+    expect(result.header.hiddenLine).toBeNull();
+    expect(result.header.hiddenStatuses).toEqual([]);
+  });
+
+  it("default settings hide Complete and Cancelled rows but still count them", () => {
+    const result = ReportBuilder.build({ ...input, viewSettings: ViewSettings.defaults("report") });
+    expect(result.rows.map((r) => r.projectId)).toEqual(["b", "a"]);
+    expect(result.header.totalProjects).toBe(5);
+    expect(result.header.totals).toMatchObject({ OnTrack: 1, AtRisk: 1, Complete: 2, Cancelled: 1 });
+    expect(result.header.byArea.Cath).toMatchObject({ AtRisk: 1, Complete: 1, OnTrack: 0 });
+    expect(result.header.byArea.EP).toMatchObject({ OnTrack: 1, Complete: 1 });
+    expect(result.header.byArea.IR).toMatchObject({ Cancelled: 1 });
+    expect(result.header.byArea.Echo.OnTrack).toBe(0);
+  });
+
+  it("hiding an open status removes its rows but not its counts", () => {
+    const result = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings(["AtRisk"]) });
+    expect(result.rows.map((r) => r.projectId)).not.toContain("b");
+    expect(result.header.totals.AtRisk).toBe(1);
+    expect(result.header.byArea.Cath.AtRisk).toBe(1);
+  });
+
+  it("header lists hidden statuses with counts", () => {
+    const result = ReportBuilder.build({ ...input, viewSettings: ViewSettings.defaults("report") });
+    expect(result.header.hiddenLine).toBe("Hidden: Complete (2), Cancelled (1)");
+    expect(result.header.hiddenStatuses).toEqual([
+      { status: "Complete", label: "Complete", count: 2 },
+      { status: "Cancelled", label: "Cancelled", count: 1 },
+    ]);
+    const onHold = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings(["OnHold"]) });
+    expect(onHold.header.hiddenLine).toBe("Hidden: On hold (0)");
+    expect(onHold.header.hiddenLine).not.toContain("\u2014");
   });
 
   it("rejects an invalid report date", () => {
     expect(() =>
-      ReportBuilder.build({ projects: [], history: [], previousSnapshotGeneratedAt: null, reportDate: "10/7/2026" }),
+      ReportBuilder.build({
+        projects: [],
+        history: [],
+        previousSnapshotGeneratedAt: null,
+        reportDate: "10/7/2026",
+        viewSettings: ViewSettings.defaults("report"),
+      }),
     ).toThrow();
   });
 });

@@ -2,7 +2,8 @@ import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
-import type { HistoryEntryRecord, ProjectRecord } from "@/lib/domain/types";
+import type { HistoryEntryRecord, ProjectRecord, StatusCounts } from "@/lib/domain/types";
+import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 
 /** Serializable row passed from the server page to the client dashboard. */
@@ -72,6 +73,31 @@ export class DashboardViewModel {
       if (r.changed) changed += 1;
     }
     return { total: rows.length, byStatus, byArea, overdue, changed };
+  }
+
+  /**
+   * Rows listed on the dashboard: status not hidden, then area filter + search.
+   * Tiles and chip counts must come from summarize() on the unfiltered rows.
+   */
+  static listed(
+    rows: readonly DashboardRow[],
+    settings: ViewSettingsValue,
+    area: ServiceArea | "All",
+    query: string,
+  ): DashboardRow[] {
+    return DashboardViewModel.filter(ViewSettings.listedRows(settings, rows), area, query);
+  }
+
+  /** "Hidden: Complete (3), Cancelled (1)" for the tiles row, or null. */
+  static hiddenLine(summary: DashboardSummary, settings: ViewSettingsValue): string | null {
+    return ViewSettings.hiddenStatusLine(settings, summary.byStatus);
+  }
+
+  /** Status counts of projects that would be counted in the next report (included in report). */
+  static reportStatusCounts(rows: readonly DashboardRow[]): StatusCounts {
+    const counts = Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as StatusCounts;
+    for (const r of rows) if (r.includeInReport) counts[r.status] += 1;
+    return counts;
   }
 
   /** Area filter + free-text search over name, owner, champion, milestone, note. */

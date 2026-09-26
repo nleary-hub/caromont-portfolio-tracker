@@ -1,4 +1,5 @@
 import type { ProjectStatus, RecipientLine, ServiceArea } from "@/generated/prisma/enums";
+import type { HiddenStatusCount } from "@/lib/domain/ViewSettings";
 
 /** Fields of a Project that the domain logic needs. Structurally compatible with the Prisma model. */
 export interface ProjectRecord {
@@ -16,7 +17,6 @@ export interface ProjectRecord {
   note: string | null;
   includeInReport: boolean;
   archivedAt: Date | null;
-  closedReportedAt: Date | null;
 }
 
 export interface RecipientRecord {
@@ -60,4 +60,18 @@ export interface MissingChampion {
   email: string | null;
   projectIds: string[];
   projectNames: string[];
+}
+
+export type StatusCounts = Record<ProjectStatus, number>;
+
+/** Report header data, stored in ReportSnapshot.headerJson. Counts include hidden statuses. */
+export interface ReportHeader {
+  totalProjects: number;
+  totals: StatusCounts;
+  /** Per service area status counts (repeated in the page header for each area). */
+  byArea: Record<ServiceArea, StatusCounts>;
+  /** Hidden statuses with counts, canonical order. Empty when nothing is hidden. */
+  hiddenStatuses: HiddenStatusCount[];
+  /** "Hidden: Complete (3), Cancelled (1)", or null when no status is hidden. */
+  hiddenLine: string | null;
 }

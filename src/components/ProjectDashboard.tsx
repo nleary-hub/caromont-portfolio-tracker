@@ -1,12 +1,14 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ServiceArea } from "@/generated/prisma/enums";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { ServiceArea, ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { Flags, StatusPill } from "./StatusPill";
+import { ViewSettingsPicker } from "./ViewSettingsPicker";
 
 export interface LatestReport {
   /** YYYY-MM-DD */
@@ -22,7 +24,77 @@ interface Props {
   userName: string | null;
   latestReport: LatestReport | null;
   loadError: string | null;
+  viewSettings: ViewSettingsByContext;
+  /** Persists one context; resolves to an error message or null. */
+  saveViewSettingsAction: (context: ViewContext, value: ViewSettingsValue) => Promise<string | null>;
   signOutAction: () => Promise<void>;
+}
+
+interface ColumnSpec {
+  header: string;
+  /** Tailwind width class for the <col>; empty = flexible. */
+  width: string;
+  cell: (r: DashboardRow, td: string) => ReactNode;
+}
+
+/** Dashboard table columns, rendered in the order and visibility from the dashboard view settings. */
+class DashboardColumns {
+  static readonly SPECS: Record<ViewColumn, ColumnSpec> = {
+    // The table renders the project cell itself (selection bar); this is the plain fallback.
+    project: { header: "Project", width: "w-[256px]", cell: (r, td) => <td className={td}>{r.name}</td> },
+    serviceArea: {
+      header: "Service area",
+      width: "w-[120px]",
+      cell: (r, td) => (
+        <td className={td}>
+          <span className="area-tag">{ServiceAreaInfo.label(r.serviceArea)}</span>
+        </td>
+      ),
+    },
+    owner: { header: "Owner", width: "w-[84px]", cell: (r, td) => <td className={td}>{r.owner}</td> },
+    physicianChampion: {
+      header: "Physician champion",
+      width: "w-[164px]",
+      cell: (r, td) => <td className={`${td} ${r.physicianChampion ? "" : "text-muted"}`}>{r.physicianChampion ?? "–"}</td>,
+    },
+    status: {
+      header: "Status",
+      width: "w-[112px]",
+      cell: (r, td) => (
+        <td className={td}>
+          <StatusPill status={r.status} />
+        </td>
+      ),
+    },
+    nextMilestone: { header: "Next milestone", width: "w-[170px]", cell: (r, td) => <td className={td}>{r.nextMilestone ?? "–"}</td> },
+    due: {
+      header: "Due date",
+      width: "w-[84px]",
+      cell: (r, td) => (
+        <td className={`${td} ${r.overdue ? "font-semibold text-danger" : ""}`}>{DateFormat.short(r.dueDate) ?? "–"}</td>
+      ),
+    },
+    note: {
+      header: "Note",
+      width: "",
+      cell: (r, td) => (
+        <td className={`${td} text-muted`} title={r.note ?? undefined}>
+          {r.note ?? ""}
+        </td>
+      ),
+    },
+    flags: {
+      header: "Flags",
+      width: "w-[176px]",
+      cell: (r, td) => (
+        <td className={td}>
+          <div className="flex items-center gap-1">
+            <Flags changed={r.changed} overdue={r.overdue} />
+          </div>
+        </td>
+      ),
+    },
+  };
 }
 
 class Initials {
@@ -33,15 +105,44 @@ class Initials {
   }
 }
 
-export function ProjectDashboard({ rows, today, userEmail, userName, latestReport, loadError, signOutAction }: Props) {
+export function ProjectDashboard({
+  rows,
+  today,
+  userEmail,
+  userName,
+  latestReport,
+  loadError,
+  viewSettings,
+  saveViewSettingsAction,
+  signOutAction,
+}: Props) {
   const [area, setArea] = useState<ServiceArea | "All">("All");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  const [settings, setSettings] = useState<ViewSettingsByContext>(viewSettings);
 
   const summary = useMemo(() => DashboardViewModel.summarize(rows), [rows]);
-  const visible = useMemo(() => DashboardViewModel.filter(rows, area, query), [rows, area, query]);
+  const reportCounts = useMemo(() => DashboardViewModel.reportStatusCounts(rows), [rows]);
+  const dash = settings.dashboard;
+  const visible = useMemo(() => DashboardViewModel.listed(rows, dash, area, query), [rows, dash, area, query]);
+  const hiddenLine = DashboardViewModel.hiddenLine(summary, dash);
+  const columns = ViewSettings.visibleColumns(dash);
   const selected = rows.find((r) => r.id === selectedId) ?? null;
+
+  /** Optimistic: apply locally, persist, roll back on failure. */
+  const saveSettings = async (context: ViewContext, value: ViewSettingsValue): Promise<string | null> => {
+    const previous = settings[context];
+    setSettings((s) => ({ ...s, [context]: value }));
+    try {
+      const err = await saveViewSettingsAction(context, value);
+      if (err) setSettings((s) => ({ ...s, [context]: previous }));
+      return err;
+    } catch {
+      setSettings((s) => ({ ...s, [context]: previous }));
+      return "Could not save view settings.";
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -98,6 +199,11 @@ export function ProjectDashboard({ rows, today, userEmail, userName, latestRepor
           />
           <kbd className="rounded border border-line px-1 type-caption">/</kbd>
         </label>
+        <ViewSettingsPicker
+          settings={settings}
+          counts={{ dashboard: summary.byStatus, report: reportCounts }}
+          onSave={saveSettings}
+        />
         <button
           type="button"
           disabled
@@ -143,6 +249,12 @@ export function ProjectDashboard({ rows, today, userEmail, userName, latestRepor
           </div>
         </section>
 
+        {hiddenLine && (
+          <p className="-mt-2 text-muted type-caption" aria-live="polite">
+            {hiddenLine}. Hidden statuses still count in the totals above.
+          </p>
+        )}
+
         <section className="flex items-center gap-1.5" aria-label="Service area filter">
           <button type="button" className="chip" aria-pressed={area === "All"} onClick={() => setArea("All")}>
             All <b>{summary.total}</b>
@@ -160,35 +272,31 @@ export function ProjectDashboard({ rows, today, userEmail, userName, latestRepor
           <div className="max-h-[calc(100vh-260px)] overflow-auto">
             <table className="w-full table-fixed border-separate border-spacing-0 type-table">
               <colgroup>
-                <col className="w-[256px]" />
-                <col className="w-[120px]" />
-                <col className="w-[84px]" />
-                <col className="w-[164px]" />
-                <col className="w-[112px]" />
-                <col className="w-[170px]" />
-                <col className="w-[84px]" />
-                <col />
-                <col className="w-[176px]" />
+                {columns.map((c) => (
+                  <col key={c} className={DashboardColumns.SPECS[c].width || undefined} />
+                ))}
               </colgroup>
               <thead>
                 <tr>
-                  {["Project", "Service area", "Owner", "Physician champion", "Status", "Next milestone", "Due date", "Note", "Flags"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className="sticky top-0 z-[1] h-9 truncate border-b border-line bg-card px-3 text-left uppercase tracking-[.04em] text-muted type-label"
-                      >
-                        {h}
-                      </th>
-                    ),
-                  )}
+                  {columns.map((c) => (
+                    <th
+                      key={c}
+                      className="sticky top-0 z-[1] h-9 truncate border-b border-line bg-card px-3 text-left uppercase tracking-[.04em] text-muted type-label"
+                    >
+                      {DashboardColumns.SPECS[c].header}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {visible.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="h-20 text-center text-muted">
-                      {rows.length === 0 ? "No projects yet." : "No projects match the current filter."}
+                    <td colSpan={columns.length} className="h-20 text-center text-muted">
+                      {rows.length === 0
+                        ? "No projects yet."
+                        : hiddenLine && ViewSettings.listedRows(dash, rows).length === 0
+                          ? "All projects have hidden statuses. Use View to show them."
+                          : "No projects match the current filter."}
                     </td>
                   </tr>
                 )}
@@ -202,29 +310,18 @@ export function ProjectDashboard({ rows, today, userEmail, userName, latestRepor
                       className="cursor-pointer hover:[&>td]:bg-row-selected/60"
                       aria-selected={isSel}
                     >
-                      <td className={`${td} type-table-strong ${isSel ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}>
-                        {r.name}
-                      </td>
-                      <td className={td}>
-                        <span className="area-tag">{ServiceAreaInfo.label(r.serviceArea)}</span>
-                      </td>
-                      <td className={td}>{r.owner}</td>
-                      <td className={`${td} ${r.physicianChampion ? "" : "text-muted"}`}>{r.physicianChampion ?? "–"}</td>
-                      <td className={td}>
-                        <StatusPill status={r.status} />
-                      </td>
-                      <td className={td}>{r.nextMilestone ?? "–"}</td>
-                      <td className={`${td} ${r.overdue ? "font-semibold text-danger" : ""}`}>
-                        {DateFormat.short(r.dueDate) ?? "–"}
-                      </td>
-                      <td className={`${td} text-muted`} title={r.note ?? undefined}>
-                        {r.note ?? ""}
-                      </td>
-                      <td className={td}>
-                        <div className="flex items-center gap-1">
-                          <Flags changed={r.changed} overdue={r.overdue} />
-                        </div>
-                      </td>
+                      {columns.map((c) =>
+                        c === "project" ? (
+                          <td
+                            key={c}
+                            className={`${td} type-table-strong ${isSel ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}
+                          >
+                            {r.name}
+                          </td>
+                        ) : (
+                          <Fragment key={c}>{DashboardColumns.SPECS[c].cell(r, td)}</Fragment>
+                        ),
+                      )}
                     </tr>
                   );
                 })}
@@ -234,6 +331,8 @@ export function ProjectDashboard({ rows, today, userEmail, userName, latestRepor
           <div className="flex justify-between border-t border-line px-3 py-2.5 text-muted type-caption">
             <span>
               {visible.length} of {rows.length} projects
+              {rows.length - ViewSettings.listedRows(dash, rows).length > 0 &&
+                ` · ${rows.length - ViewSettings.listedRows(dash, rows).length} hidden by status`}
             </span>
             <span>Changed = any edit since the last report</span>
           </div>

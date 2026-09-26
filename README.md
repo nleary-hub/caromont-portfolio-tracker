@@ -75,12 +75,16 @@ OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 - `ServiceArea`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR (this is the report order).
 - `ProjectStatus`: NotStarted, OnTrack, AtRisk, OffTrack, OnHold, Complete, Cancelled
   (labels in `ProjectStatusInfo`).
-- `Project`: soft delete only (`archivedAt`); `closedReportedAt` is set when a Complete/Cancelled
-  project first appears in a snapshot, after which it drops off later reports.
+- `Project`: soft delete only (`archivedAt`). `closedReportedAt` is deprecated and unused (kept so no
+  data is dropped): closed projects no longer drop off after one report; view settings decide what is listed.
 - `ProjectHistory`: append-only audit trail.
-- `ReportSnapshot`: immutable; frozen `rowsJson`, `missingChampionsJson`; write-once
+- `ReportSnapshot`: immutable; frozen `rowsJson`, `missingChampionsJson`, `headerJson` (status counts incl.
+  hidden statuses, "Hidden: ..." line), `viewSettingsJson` (report view settings at freeze); write-once
   `pdfStorageKey`, `sentAt`, `sentToJson`.
 - `Recipient`: unique email; `serviceArea` null = all areas; `line` To/Cc; deactivate, never delete.
+- `view_settings` (`ViewSettings`): one global row per context (`dashboard`, `report`) with `columnOrder`,
+  `hiddenColumns`, `hiddenStatuses`. Seeded by migration 0002 (Complete and Cancelled hidden). Never deleted.
+- `view_settings_history` (`ViewSettingsHistory`): append-only audit of every change (who, when, old, new).
 
 ### Guarantees and where they are enforced
 
@@ -93,6 +97,7 @@ OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 | History append-only | no update/delete code paths | trigger blocks UPDATE/DELETE |
 | No hard delete of projects/recipients | no delete code paths | trigger blocks DELETE |
 | Snapshot immutable | no edit code paths | trigger blocks edits; delivery fields write-once |
+| View settings history append-only | `ViewSettingsService` only creates | trigger blocks UPDATE/DELETE (migration 0002) |
 
 The CHECK constraints and triggers are hand-written SQL appended to the generated
 `prisma/migrations/0001_init/migration.sql` (generated with
@@ -102,15 +107,17 @@ to a PGlite Postgres instance and exercising the services and guards.
 ## Domain logic (src/lib, classes with static methods)
 
 - `ProjectValidator`: validation/normalization (zod). Enums only, note limit, milestone rule, 0 to 100.
-- `ProjectService`: `create`, `update`, `archive`, `completeMilestone`, `markClosedReported`. Every
+- `ProjectService`: `create`, `update`, `archive`, `completeMilestone`. Every
   mutation writes `ProjectHistory` rows in the same transaction. No-op updates write nothing.
-  Reopening a reported closed project clears `closedReportedAt` (so its later closure is reported).
   - `completeMilestone(id, { nextMilestone, dueDate, note?, markComplete? }, actor)`: "Milestone met".
     Writes a `milestone_completed` history row (oldValue = `"<previous milestone> (due YYYY-MM-DD)"`),
     then sets the new milestone and due date (both required unless `markComplete`, which sets status
     Complete), plus normal field-level history rows, all in one transaction.
 - `ReportBuilder`: row selection, Changed/Overdue flags, sort order, `build()`.
-  - Selection: `includeInReport`, not archived, and not (Complete/Cancelled with `closedReportedAt` set).
+  - Eligible (counted in the header): `includeInReport` and not archived.
+  - Listed as rows: eligible and status not hidden by the report view settings.
+  - Header: status counts overall and per area (hidden statuses included) plus
+    `hiddenLine`, e.g. "Hidden: Complete (3), Cancelled (1)" (null when no status is hidden).
   - Changed: any history row after the previous snapshot's `generatedAt` (first report: any history).
   - Overdue: due date before the report date (America/New_York calendar date) and not Complete/Cancelled.
   - Sort: service area order, then severity (Off track, At risk, On hold, On track, Not started,
@@ -118,8 +125,10 @@ to a PGlite Postgres instance and exercising the services and guards.
 - `ChampionCheck`: champions on active projects (not archived, not Complete/Cancelled) with no active
   Recipient, matched by email when the champion has one, otherwise case-insensitive name. Stored on
   the snapshot. Never adds recipients.
-- `SnapshotService.create`: serializable transaction that builds rows, stores the snapshot and marks
-  newly reported closed projects.
+- `SnapshotService.create`: serializable transaction that reads the report view settings, builds rows
+  and header, and stores all of it (settings included) in the immutable snapshot.
+- `ViewSettings` (pure): defaults, normalization, locked columns (Project, Status), toggles, reorder,
+  hidden-status line. `ViewSettingsService`: `get`, `getAll`, `update`, `reset`; writes history per change.
 - `DashboardViewModel`: dashboard rows, tile counts, filters.
 - `AppConfig`: single constants (note limit 200, time zone).
 
@@ -134,6 +143,10 @@ utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes a
 - `/signin`: provider buttons, access-denied message.
 - `/`: status and flag tiles, service-area filter chips, search (`/` shortcut), one row per project,
   detail drawer. Copy avoids em dashes.
+- View picker (`ViewSettingsPicker`, styles in `src/styles/view-picker.css`, design `picker.html`): Dashboard
+  tab applies immediately; Report tab is a draft saved with "Save report view". Columns can be toggled and
+  dragged (or moved with arrow keys on the grip). Saved through the `saveViewSettings` Server Action,
+  which re-checks the session and allowlist.
 
 ## Stubbed / not built yet
 

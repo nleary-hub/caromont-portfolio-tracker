@@ -5,18 +5,33 @@ import { EmailAllowlist } from "@/lib/auth/EmailAllowlist";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
+import { ViewSettings, type ViewSettingsByContext } from "@/lib/domain/ViewSettings";
+import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
+import { saveViewSettings } from "@/app/actions/viewSettings";
 
 class DashboardData {
-  static async load(today: string): Promise<{ rows: DashboardRow[]; latestReport: LatestReport | null; error: string | null }> {
-    if (!Db.isConfigured()) return { rows: [], latestReport: null, error: "DATABASE_URL is not configured." };
+  static defaultSettings(): ViewSettingsByContext {
+    return { dashboard: ViewSettings.defaults("dashboard"), report: ViewSettings.defaults("report") };
+  }
+
+  static async load(today: string): Promise<{
+    rows: DashboardRow[];
+    latestReport: LatestReport | null;
+    viewSettings: ViewSettingsByContext;
+    error: string | null;
+  }> {
+    if (!Db.isConfigured()) {
+      return { rows: [], latestReport: null, viewSettings: DashboardData.defaultSettings(), error: "DATABASE_URL is not configured." };
+    }
     try {
       const db = Db.client;
-      const [projects, latest] = await Promise.all([
+      const [projects, latest, viewSettings] = await Promise.all([
         db.project.findMany({ where: { archivedAt: null } }),
         db.reportSnapshot.findFirst({
           orderBy: { generatedAt: "desc" },
           select: { generatedAt: true, periodStart: true, periodEnd: true },
         }),
+        ViewSettingsService.getAll(db),
       ]);
       const history = await db.projectHistory.findMany({
         where: {
@@ -35,11 +50,17 @@ class DashboardData {
               periodEnd: DateOnly.fromDbDate(latest.periodEnd)!,
             }
           : null,
+        viewSettings,
         error: null,
       };
     } catch (e) {
       console.error("Failed to load projects", e);
-      return { rows: [], latestReport: null, error: "Could not load projects from the database." };
+      return {
+        rows: [],
+        latestReport: null,
+        viewSettings: DashboardData.defaultSettings(),
+        error: "Could not load projects from the database.",
+      };
     }
   }
 }
@@ -51,7 +72,7 @@ export default async function DashboardPage() {
   if (!email || !EmailAllowlist.isAllowed(email)) redirect(SIGN_IN_PATH);
 
   const today = DateOnly.today();
-  const { rows, latestReport, error } = await DashboardData.load(today);
+  const { rows, latestReport, viewSettings, error } = await DashboardData.load(today);
 
   return (
     <ProjectDashboard
@@ -61,6 +82,12 @@ export default async function DashboardPage() {
       userName={session?.user?.name ?? null}
       latestReport={latestReport}
       loadError={error}
+      viewSettings={viewSettings}
+      saveViewSettingsAction={async (context, value) => {
+        "use server";
+        const result = await saveViewSettings(context, value);
+        return result.ok ? null : result.error;
+      }}
       signOutAction={async () => {
         "use server";
         await signOut({ redirectTo: SIGN_IN_PATH });

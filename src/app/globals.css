@@ -1,5 +1,6 @@
 @import "tailwindcss";
 @import "../styles/tokens.css";
+@import "../styles/view-picker.css";
 
 /* Dark theme is the default; the `dark` class on <html> drives dark: variants. */
 @custom-variant dark (&:where(.dark, .dark *));

@@ -77,12 +77,11 @@ describe("ProjectService", () => {
     expect(fake.state.projects[0].archivedAt).toBeNull();
   });
 
-  it("reopening a reported closed project clears closedReportedAt (with history)", async () => {
+  it("reopening a closed project only records the status change (closedReportedAt is no longer used)", async () => {
     const p = await ProjectService.create({ ...input, status: "Complete" }, actor, fake.asClient());
-    fake.state.projects[0].closedReportedAt = new Date("2026-10-07T10:00:00Z");
-    const u = await ProjectService.update(p.id, { status: "OnTrack" }, actor, fake.asClient());
-    expect(u.closedReportedAt).toBeNull();
-    expect(fake.state.history.map((h) => h.field)).toContain("closedReportedAt");
+    fake.state.history = [];
+    await ProjectService.update(p.id, { status: "OnTrack" }, actor, fake.asClient());
+    expect(fake.state.history.map((h) => h.field)).toEqual(["status"]);
   });
 
   it("archive soft-deletes with history and blocks further edits", async () => {

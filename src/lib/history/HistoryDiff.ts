@@ -23,7 +23,6 @@ export class HistoryDiff {
     "note",
     "includeInReport",
     "archivedAt",
-    "closedReportedAt",
   ] as const;
 
   /** Fields stored as DATE (serialize as YYYY-MM-DD) vs timestamps (full ISO). */

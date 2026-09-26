@@ -2,10 +2,11 @@ import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
-import type { HistoryEntryRecord, ProjectRecord, ReportRow } from "@/lib/domain/types";
+import type { HistoryEntryRecord, ProjectRecord, ReportHeader, ReportRow, StatusCounts } from "@/lib/domain/types";
+import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 
 export interface ReportBuildInput {
-  /** Candidate projects. Ineligible ones (archived, excluded, already-reported closed) are filtered out. */
+  /** Candidate projects. Ineligible ones (archived, excluded from report) are filtered out. */
   projects: ProjectRecord[];
   /** History entries for the candidate projects (only entries after the previous snapshot matter). */
   history: HistoryEntryRecord[];
@@ -13,12 +14,15 @@ export interface ReportBuildInput {
   previousSnapshotGeneratedAt: Date | null;
   /** Report date, "YYYY-MM-DD" (America/New_York calendar date of generation). */
   reportDate: string;
+  /** Report-context view settings in effect (frozen into the snapshot alongside the result). */
+  viewSettings: ViewSettingsValue;
 }
 
 export interface ReportBuildResult {
+  /** Listed rows: eligible projects whose status is not hidden, in report order. */
   rows: ReportRow[];
-  /** Complete/Cancelled projects appearing for the first time; set closedReportedAt on these. */
-  newlyClosedProjectIds: string[];
+  /** Header data. Counts include hidden statuses so totals stay honest. */
+  header: ReportHeader;
 }
 
 export interface RowFlags {
@@ -37,21 +41,39 @@ export interface SortableRow {
 
 /** Pure report-row selection, flagging and ordering. No I/O. */
 export class ReportBuilder {
-  /** Row-selection rule for a snapshot. */
+  /**
+   * Eligibility for a report (counted in the header): included in report and not archived.
+   * Whether an eligible project is also listed as a row depends on the status view settings.
+   */
   static isEligible(project: ProjectRecord): boolean {
-    if (!project.includeInReport) return false;
-    if (project.archivedAt) return false;
-    if (ProjectStatusInfo.isClosed(project.status) && project.closedReportedAt) return false;
-    return true;
+    return project.includeInReport && !project.archivedAt;
   }
 
-  static selectRows(projects: ProjectRecord[]): ProjectRecord[] {
+  static selectEligible(projects: readonly ProjectRecord[]): ProjectRecord[] {
     return projects.filter((p) => ReportBuilder.isEligible(p));
   }
 
-  /** Closed projects in the selection that have never been reported. */
-  static newlyClosed(selected: ProjectRecord[]): ProjectRecord[] {
-    return selected.filter((p) => ProjectStatusInfo.isClosed(p.status) && !p.closedReportedAt);
+  static emptyStatusCounts(): StatusCounts {
+    return Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as StatusCounts;
+  }
+
+  /** Status counts overall and per service area (every area present, zeros included). */
+  static header(eligible: readonly ProjectRecord[], viewSettings: ViewSettingsValue): ReportHeader {
+    const totals = ReportBuilder.emptyStatusCounts();
+    const byArea = Object.fromEntries(
+      ServiceAreaInfo.all().map((a) => [a, ReportBuilder.emptyStatusCounts()]),
+    ) as ReportHeader["byArea"];
+    for (const p of eligible) {
+      totals[p.status] += 1;
+      byArea[p.serviceArea][p.status] += 1;
+    }
+    return {
+      totalProjects: eligible.length,
+      totals,
+      byArea,
+      hiddenStatuses: ViewSettings.hiddenStatusCounts(viewSettings, totals),
+      hiddenLine: ViewSettings.hiddenStatusLine(viewSettings, totals),
+    };
   }
 
   /** "Changed": any history row since the previous snapshot (any history at all if there is none). */
@@ -123,8 +145,9 @@ export class ReportBuilder {
 
   static build(input: ReportBuildInput): ReportBuildResult {
     if (!DateOnly.isIso(input.reportDate)) throw new Error(`Invalid reportDate: ${input.reportDate}`);
-    const selected = ReportBuilder.selectRows(input.projects);
-    const rows = selected.map((p) =>
+    const eligible = ReportBuilder.selectEligible(input.projects);
+    const listed = ViewSettings.listedRows(input.viewSettings, eligible);
+    const rows = listed.map((p) =>
       ReportBuilder.toRow(p, {
         changed: ReportBuilder.isChanged(p.id, input.history, input.previousSnapshotGeneratedAt),
         overdue: ReportBuilder.isOverdue(p, input.reportDate),
@@ -132,7 +155,7 @@ export class ReportBuilder {
     );
     return {
       rows: ReportBuilder.sort(rows),
-      newlyClosedProjectIds: ReportBuilder.newlyClosed(selected).map((p) => p.id),
+      header: ReportBuilder.header(eligible, input.viewSettings),
     };
   }
 }

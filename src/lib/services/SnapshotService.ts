@@ -4,7 +4,7 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import { ChampionCheck } from "@/lib/report/ChampionCheck";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
-import { ProjectService } from "@/lib/services/ProjectService";
+import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 
 export interface CreateSnapshotInput {
   /** YYYY-MM-DD */
@@ -16,7 +16,12 @@ export interface CreateSnapshotInput {
   now?: Date;
 }
 
-/** Creates immutable report snapshots. */
+/**
+ * Creates immutable report snapshots. The report-context view settings in effect are frozen
+ * into the snapshot (viewSettingsJson) together with the header counts, so an old report can
+ * always be rebuilt exactly. Closed projects no longer "drop off" after one report; the status
+ * view settings decide what is listed.
+ */
 export class SnapshotService {
   static async create(input: CreateSnapshotInput, db: PrismaClient = Db.client): Promise<ReportSnapshot> {
     const periodStart = DateOnly.toDbDate(input.periodStart);
@@ -41,12 +46,15 @@ export class SnapshotService {
           distinct: ["projectId"],
         });
         const recipients = await tx.recipient.findMany({ where: { active: true } });
+        // Read inside the transaction so the frozen settings are exactly the ones used to build the rows.
+        const viewSettings = await ViewSettingsService.get("report", tx);
 
-        const { rows, newlyClosedProjectIds } = ReportBuilder.build({
+        const { rows, header } = ReportBuilder.build({
           projects,
           history,
           previousSnapshotGeneratedAt: previous?.generatedAt ?? null,
           reportDate,
+          viewSettings,
         });
         const missingChampions = ChampionCheck.findMissing(projects, recipients);
 
@@ -58,25 +66,17 @@ export class SnapshotService {
             generatedBy: input.generatedBy,
             rowsJson: rows as unknown as Prisma.InputJsonValue,
             missingChampionsJson: missingChampions as unknown as Prisma.InputJsonValue,
+            headerJson: header as unknown as Prisma.InputJsonValue,
+            viewSettingsJson: viewSettings as unknown as Prisma.InputJsonValue,
           },
         });
-
-        for (const id of newlyClosedProjectIds) {
-          await ProjectService.markClosedReported(tx, id, generatedAt, {
-            changedBy: input.generatedBy,
-            comment: `Reported as closed in snapshot ${created.id}`,
-          });
-        }
         return created;
       },
       { isolationLevel: "Serializable" },
     );
 
     // PDF rendering is outside the transaction (slow I/O). pdfStorageKey is write-once.
-    const rendered = await PdfReportRenderer.render(
-      snapshot.id,
-      snapshot.rowsJson as unknown as Parameters<typeof PdfReportRenderer.render>[1],
-    );
+    const rendered = await PdfReportRenderer.render(PdfReportRenderer.inputFromSnapshot(snapshot));
     if (rendered.storageKey) {
       return db.reportSnapshot.update({
         where: { id: snapshot.id },

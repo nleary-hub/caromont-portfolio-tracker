@@ -1,4 +1,5 @@
 import type { ProjectRecord, RecipientRecord } from "@/lib/domain/types";
+import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 
 let seq = 0;
 
@@ -20,7 +21,6 @@ export class Factory {
       note: null,
       includeInReport: true,
       archivedAt: null,
-      closedReportedAt: null,
       ...overrides,
     };
   }
@@ -37,6 +37,11 @@ export class Factory {
       active: true,
       ...overrides,
     };
+  }
+
+  /** Report settings with only the given statuses hidden. */
+  static reportSettings(hiddenStatuses: ViewSettingsValue["hiddenStatuses"] = []): ViewSettingsValue {
+    return ViewSettings.normalize("report", { hiddenStatuses });
   }
 
   static date(iso: string): Date {

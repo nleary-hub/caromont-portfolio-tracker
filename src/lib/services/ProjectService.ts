@@ -89,15 +89,6 @@ export class ProjectService {
       const merged: ProjectInput = { ...ProjectValidator.toInput(existing), ...ProjectService.pickEditable(patch) };
       const data: Record<string, unknown> = { ...ProjectValidator.parse(merged) };
 
-      // Reopening a closed project clears closedReportedAt so its eventual closure is reported again.
-      if (
-        ProjectStatusInfo.isClosed(existing.status) &&
-        !ProjectStatusInfo.isClosed(data.status as Project["status"]) &&
-        existing.closedReportedAt
-      ) {
-        data.closedReportedAt = null;
-      }
-
       const changes = HistoryDiff.diff(existing, data);
       if (changes.length === 0) return existing;
 
@@ -189,18 +180,6 @@ export class ProjectService {
       await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, { archivedAt: now }), actor, now);
       return updated;
     });
-  }
-
-  /**
-   * Mark a Complete/Cancelled project as reported. Called by SnapshotService inside its
-   * transaction; writes history like every other project mutation.
-   */
-  static async markClosedReported(tx: Tx, id: string, at: Date, actor: Actor): Promise<void> {
-    const existing = await tx.project.findUnique({ where: { id } });
-    if (!existing) throw new ProjectNotFoundError(id);
-    if (existing.closedReportedAt) return;
-    await tx.project.update({ where: { id }, data: { closedReportedAt: at, updatedBy: actor.changedBy } });
-    await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, { closedReportedAt: at }), actor, at);
   }
 
   private static async loadMutable(tx: Tx, id: string): Promise<Project> {
