@@ -1,16 +1,22 @@
 "use client";
 
 import type { CSSProperties, ReactNode } from "react";
-import { DashboardColumnModel, type DashboardColumn, type PeopleVisibility } from "@/lib/dashboard/DashboardColumnModel";
+import {
+  DashboardColumnModel,
+  type DashboardColumn,
+  type DueFlagsVisibility,
+  type MilestoneUpdateVisibility,
+  type PeopleVisibility,
+} from "@/lib/dashboard/DashboardColumnModel";
 import { CompletedBlockCopy, DashboardGroups, type DashboardGroup } from "@/lib/dashboard/DashboardGroups";
-import { DateFormat, type DashboardCompletedRow, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
-import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
+import type { DashboardCompletedRow, DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { PeopleStack, type PeopleLine } from "@/lib/dashboard/PeopleStack";
+import { DueFlags, MilestoneUpdateStack, type DueFlagKind, type DueFlagsCell, type MilestoneUpdateLine } from "@/lib/dashboard/StackedCells";
 import { InforNumber } from "@/lib/domain/InforNumber";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
-import { Flags, StatusPill } from "./StatusPill";
+import { StatusPill } from "./StatusPill";
+import { StatusShape } from "./StatusShape";
 
 export interface DashboardTableProps {
   /** Filtered regular rows, in report order. */
@@ -50,6 +56,8 @@ class GroupedTableStyle {
 export function DashboardTable({ rows, completed, settings, selectedId, onSelect, today, emptyText, renderMeta }: DashboardTableProps) {
   const columns = DashboardColumnModel.columns(settings);
   const people = DashboardColumnModel.peopleVisibility(settings);
+  const stack = DashboardColumnModel.milestoneUpdateVisibility(settings);
+  const dueFlags = DashboardColumnModel.dueFlagsVisibility(settings);
   const showInfor = settings.columnOrder.includes("inforNumber") && !settings.hiddenColumns.includes("inforNumber");
   const groups = DashboardGroups.group(rows, completed);
   const span = columns.length;
@@ -105,6 +113,9 @@ export function DashboardTable({ rows, completed, settings, selectedId, onSelect
               row={r}
               columns={columns}
               people={people}
+              stack={stack}
+              dueFlags={dueFlags}
+              today={today}
               selected={r.id === selectedId}
               onSelect={onSelect}
               renderMeta={renderMeta}
@@ -138,6 +149,9 @@ function ProjectRow({
   row,
   columns,
   people,
+  stack,
+  dueFlags,
+  today,
   selected,
   onSelect,
   renderMeta,
@@ -145,6 +159,9 @@ function ProjectRow({
   row: DashboardRow;
   columns: readonly DashboardColumn[];
   people: PeopleVisibility;
+  stack: MilestoneUpdateVisibility;
+  dueFlags: DueFlagsVisibility;
+  today: string;
   selected: boolean;
   onSelect: (id: string | null) => void;
   renderMeta: (row: DashboardRow) => ReactNode;
@@ -170,12 +187,6 @@ function ProjectRow({
                 {renderMeta(row)}
               </td>
             );
-          case "serviceArea":
-            return (
-              <td key={c.key} className={td}>
-                {row.serviceArea ? <span className="area-tag">{ServiceAreaInfo.label(row.serviceArea)}</span> : <span className="text-muted">{ServiceAreaInfo.UNASSIGNED}</span>}
-              </td>
-            );
           case "people":
             return (
               <td key={c.key} className={td}>
@@ -188,30 +199,16 @@ function ProjectRow({
                 <StatusPill status={row.status} />
               </td>
             );
-          case "nextMilestone":
+          case "milestoneUpdate":
             return (
               <td key={c.key} className={td}>
-                {row.nextMilestone ?? ""}
+                <MilestoneUpdateCell lines={MilestoneUpdateStack.lines(row, stack)} />
               </td>
             );
-          case "due":
-            return (
-              <td key={c.key} className={`${td} ${row.overdue ? "font-semibold text-danger" : ""}`}>
-                {DateFormat.short(row.dueDate) ?? "\u2013"}
-              </td>
-            );
-          case "latestUpdate":
+          case "dueFlags":
             return (
               <td key={c.key} className={td}>
-                <LatestUpdateCell note={row.note} />
-              </td>
-            );
-          case "flags":
-            return (
-              <td key={c.key} className={td}>
-                <div className="flex flex-wrap items-center gap-1">
-                  <Flags changed={row.changed} overdue={row.overdue} />
-                </div>
+                <DueFlagsCellView cell={DueFlags.cell(row, dueFlags, today)} />
               </td>
             );
         }
@@ -234,24 +231,85 @@ export function PeopleCell({ lines }: { lines: readonly PeopleLine[] }) {
   );
 }
 
-/** Latest update: clamped to LatestUpdate.CLAMP_LINES; hover shows the tooltip, focus expands it in place. */
-export function LatestUpdateCell({ note }: { note: string | null }) {
-  const text = LatestUpdate.text({ note });
-  if (!text) return <span className="text-[13px] leading-[18px] text-muted">{LatestUpdate.EMPTY_NOTE_GLYPH}</span>;
+/**
+ * Next milestone / Latest update, stacked like the PDF row: the milestone (13/18 primary, regular weight,
+ * at most two lines, full text as a tooltip), then after a 2px gap the latest update (13/18, not clamped;
+ * unchanged rows read "No change." and the whole line is secondary). Blank lines render nothing.
+ */
+export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdateLine[] }) {
+  if (lines.length === 0) return null;
   return (
-    <div
-      tabIndex={0}
-      title={text}
-      data-testid="latest-update"
-      className="line-clamp-3 rounded-[2px] text-[13px] leading-[18px] text-fg focus:line-clamp-none focus:outline focus:outline-1 focus:outline-accent"
-    >
-      {text}
+    <div className="flex flex-col text-[13px] leading-[18px]" style={{ gap: MilestoneUpdateStack.LINE_GAP_PX }} data-testid="milestone-update">
+      {lines.map((l) =>
+        l.kind === "milestone" ? (
+          <div key="milestone" data-line="milestone" title={l.text} className="line-clamp-2 break-words font-normal text-fg">
+            {l.text}
+          </div>
+        ) : (
+          <div key="update" data-line="update" data-muted={l.muted || undefined} className={`break-words font-normal ${l.muted ? "text-muted" : "text-fg"}`}>
+            {l.prefix && <span data-part="no-change">{l.prefix}</span>}
+            {l.prefix && l.text ? " " : null}
+            {l.text}
+          </div>
+        ),
+      )}
     </div>
   );
 }
 
+/**
+ * Due / Flags: the date, 6px, then the flag pills 4px apart. Pills never shrink or clip; when they do not fit they wrap to a line
+ * under the date. Top-aligned with the row's first line.
+ */
+export function DueFlagsCellView({ cell }: { cell: DueFlagsCell }) {
+  if (!cell.due && cell.flags.length === 0) return null;
+  return (
+    <div
+      className="flex flex-wrap items-start text-[13px] leading-[18px]"
+      style={{ columnGap: DueFlags.DUE_GAP_PX, rowGap: DueFlags.FLAG_GAP_PX }}
+      data-testid="due-flags"
+    >
+      {cell.due && (
+        <span
+          data-part="due"
+          className={`whitespace-nowrap ${cell.due.overdue ? "font-semibold text-danger" : cell.due.muted ? "text-muted" : "text-fg"}`}
+        >
+          {cell.due.text}
+        </span>
+      )}
+      {cell.flags.length > 0 && (
+        <span data-part="flags" className="flex flex-wrap" style={{ gap: DueFlags.FLAG_GAP_PX }}>
+          {cell.flags.map((f) => (
+            <DueFlagPill key={f.kind} kind={f.kind} label={f.label} />
+          ))}
+        </span>
+      )}
+    </div>
+  );
+}
+
+/** One PDF flag pill in dark tokens: Changed and Stale dashed, Overdue filled. */
+function DueFlagPill({ kind, label }: { kind: DueFlagKind; label: string }) {
+  return (
+    <span className={`flag fl-${kind} flex-none`} data-flag={kind}>
+      {kind === "changed" && <StatusShape status="OffTrack" />}
+      {kind === "stale" && <ClockIcon />}
+      {label}
+    </span>
+  );
+}
+
+function ClockIcon() {
+  return (
+    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
+      <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1.3" />
+      <path d="M5 2.6V5l1.7 1.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  );
+}
+
 /** Columns that keep their own cell in a completed row; the first other column starts the accomplishment span. */
-const COMPLETED_OWN_CELLS = new Set(["gutter", "project", "serviceArea", "people", "status"]);
+const COMPLETED_OWN_CELLS = new Set(["gutter", "project", "people", "status"]);
 
 function CompletedBlock({
   rows,

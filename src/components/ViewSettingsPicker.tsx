@@ -195,8 +195,8 @@ function ColumnList({
 }) {
   const [dragging, setDragging] = useState<number | null>(null);
   const [overIndex, setOverIndex] = useState<number | null>(null);
-  // One entry per column; on the dashboard, Owner, Requester and Contracts lead are one "People" entry
-  // (they stack in one cell) that moves as a block and shows each field's own checkbox.
+  // One entry per column; on the dashboard, keys that stack in one cell (People; Next milestone / Latest
+  // update; Due / Flags) are one group entry that moves as a block and shows each field's own checkbox.
   const entries = DashboardColumnModel.pickerEntries(context, value);
 
   const move = (from: number, toIndex: number) => onChange(DashboardColumnModel.moveEntry(context, value, from, toIndex));
@@ -218,8 +218,8 @@ function ColumnList({
     }
   };
 
-  const entryKey = (entry: PickerEntry) => (entry.kind === "people" ? "people" : entry.column);
-  const entryLabel = (entry: PickerEntry) => (entry.kind === "people" ? entry.label : ViewSettings.columnLabel(context, entry.column));
+  const entryKey = (entry: PickerEntry) => (entry.kind === "group" ? entry.stack : entry.column);
+  const entryLabel = (entry: PickerEntry) => (entry.kind === "group" ? entry.label : ViewSettings.columnLabel(context, entry.column));
 
   return (
     <>
@@ -251,7 +251,7 @@ function ColumnList({
               onDrop={(e) => onDrop(e, overIndex ?? i)}
               className={[
                 locked ? "vp-locked" : "",
-                entry.kind === "people" ? "vp-group" : "",
+                entry.kind === "group" ? "vp-group" : "",
                 dragging === i ? "vp-dragging" : "",
                 overIndex === i ? "vp-drop-before" : "",
                 overIndex === i + 1 && i === entries.length - 1 ? "vp-drop-after" : "",
@@ -265,7 +265,7 @@ function ColumnList({
               >
                 ⋮⋮
               </button>
-              {entry.kind === "people" ? (
+              {entry.kind === "group" ? (
                 <div className="vp-group-body" role="group" aria-label={label}>
                   <span className="vp-subhead">{label}</span>
                   {entry.columns.map((c) => (

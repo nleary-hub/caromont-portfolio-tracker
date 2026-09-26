@@ -49,9 +49,11 @@ export class ViewSettings {
     // inforNumber is inline (meta line under Project), so its place in the order does not matter. It is
     // last so saved settings from before it existed (normalize appends missing columns) match the defaults.
     // The dashboard shows the note as "Latest update" (key latestUpdate; saved views that still say
-    // "note" are read as latestUpdate, see LEGACY_COLUMNS). Owner, requester and contracts lead stack in
-    // one People cell placed where the first of them sits in the order (DashboardColumnModel).
-    dashboard: ["project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "latestUpdate", "flags", "inforNumber", "contractsLead"],
+    // "note" are read as latestUpdate, see LEGACY_COLUMNS). Like the PDF it stacks fields into shared
+    // cells placed where the first of their keys sits in the order (DashboardColumnModel): People (owner,
+    // requester, contracts lead), Next milestone / Latest update, and Due / Flags. It has no department
+    // column (the group header names the department), so a saved "serviceArea" is dropped on read.
+    dashboard: ["project", "owner", "physicianChampion", "status", "nextMilestone", "due", "latestUpdate", "flags", "inforNumber", "contractsLead"],
     report: ["project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber", "contractsLead"],
   };
 
@@ -90,6 +92,7 @@ export class ViewSettings {
    * Keys renamed in a context, read from saved settings as their new key (no migration: stored rows are
    * rewritten in the new shape the next time they are saved). The dashboard "note" column became
    * "latestUpdate", so a saved view that hid the note hides Latest update and keeps its position.
+   * Keys a context no longer offers (the dashboard "serviceArea") are simply dropped by normalize.
    */
   private static readonly LEGACY_COLUMNS: Record<ViewContext, Readonly<Record<string, ViewColumn>>> = {
     dashboard: { note: "latestUpdate" },

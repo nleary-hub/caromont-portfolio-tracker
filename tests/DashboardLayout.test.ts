@@ -1,12 +1,13 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { DashboardTable, LatestUpdateCell, PeopleCell } from "@/components/DashboardTable";
+import { DashboardTable, DueFlagsCellView, MilestoneUpdateCell, PeopleCell } from "@/components/DashboardTable";
 import { DashboardColumnModel } from "@/lib/dashboard/DashboardColumnModel";
 import { CompletedBlockCopy, DashboardGroups } from "@/lib/dashboard/DashboardGroups";
 import { DashboardViewModel, type DashboardCompletedRow, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
 import { PeopleStack } from "@/lib/dashboard/PeopleStack";
+import { DueFlags, MilestoneUpdateStack } from "@/lib/dashboard/StackedCells";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
@@ -162,68 +163,279 @@ describe("People cell display rules", () => {
   });
 });
 
-describe("Latest update", () => {
-  it("is the current note, whitespace collapsed, null when blank", () => {
+describe("Next milestone / Latest update cell", () => {
+  const BOTH = { milestone: true, update: true };
+  const lines = (row: { nextMilestone?: string | null; note?: string | null; changed?: boolean }, show = BOTH) =>
+    MilestoneUpdateStack.lines({ nextMilestone: row.nextMilestone ?? null, note: row.note ?? null, changed: row.changed ?? true }, show);
+
+  it("the latest update is the current note, whitespace collapsed, null when blank", () => {
     expect(LatestUpdate.text({ note: "  Vendor  install\n booked. " })).toBe("Vendor install booked.");
     expect(LatestUpdate.text({ note: "   " })).toBeNull();
     expect(LatestUpdate.text({ note: null })).toBeNull();
+    expect(LatestUpdate.EMPTY_NOTE_GLYPH).toBe("\u2014");
   });
 
-  it("clamps to 3 lines with the full text as a tooltip and on focus; blank shows the empty glyph", () => {
-    expect(LatestUpdate.EMPTY_NOTE_GLYPH).toBe("\u2014");
-    expect(LatestUpdate.CLAMP_LINES).toBe(3);
-    const html = renderToStaticMarkup(createElement(LatestUpdateCell, { note: SampleReportData.LONG_NOTE }));
-    expect(html).toContain("line-clamp-3");
-    expect(html).toContain("focus:line-clamp-none");
-    expect(html).toContain('tabindex="0"');
-    expect(html).toContain(`title="${SampleReportData.LONG_NOTE.replace(/\s+/g, " ").trim()}"`);
-    expect(renderToStaticMarkup(createElement(LatestUpdateCell, { note: null }))).toContain(">\u2014<");
+  it("milestone first, then the update; unchanged rows read No change. in secondary (PDF)", () => {
+    expect(lines({ nextMilestone: " Go  live ", note: "Booked.", changed: true })).toEqual([
+      { kind: "milestone", text: "Go live" },
+      { kind: "update", prefix: null, text: "Booked.", full: "Booked.", muted: false },
+    ]);
+    expect(lines({ nextMilestone: "M", note: "Same.", changed: false })[1]).toEqual({ kind: "update", prefix: "No change.", text: "Same.", full: "No change. Same.", muted: true });
+    // Unchanged with no note still prints No change.; changed with no note prints nothing (PDF).
+    expect(lines({ nextMilestone: "M", note: null, changed: false }).map((l) => l.kind)).toEqual(["milestone", "update"]);
+    expect(lines({ nextMilestone: "M", note: " ", changed: true }).map((l) => l.kind)).toEqual(["milestone"]);
+  });
+
+  it("a blank milestone renders nothing (PDF), not a dash; an empty cell renders nothing", () => {
+    expect(lines({ nextMilestone: "  ", note: "N", changed: true }).map((l) => l.kind)).toEqual(["update"]);
+    expect(lines({ nextMilestone: null, note: null, changed: true })).toEqual([]);
+    expect(renderToStaticMarkup(createElement(MilestoneUpdateCell, { lines: [] }))).toBe("");
+  });
+
+  it("hiding one part drops its line and the gap; hiding both leaves nothing", () => {
+    const row = { nextMilestone: "M", note: "N", changed: true };
+    expect(lines(row, { milestone: false, update: true }).map((l) => l.kind)).toEqual(["update"]);
+    expect(lines(row, { milestone: true, update: false }).map((l) => l.kind)).toEqual(["milestone"]);
+    expect(lines(row, { milestone: false, update: false })).toEqual([]);
+    const one = renderToStaticMarkup(createElement(MilestoneUpdateCell, { lines: lines(row, { milestone: true, update: false }) }));
+    expect(one).not.toContain('data-line="update"');
+  });
+
+  it("renders 13/18, milestone regular weight primary 2-line clamp with a tooltip, update unclamped with a 2px gap", () => {
+    const html = renderToStaticMarkup(createElement(MilestoneUpdateCell, { lines: lines({ nextMilestone: "Go live", note: SampleReportData.LONG_NOTE, changed: false }) }));
+    expect(html).toContain("text-[13px] leading-[18px]");
+    expect(html).toContain("gap:2px");
+    expect(html).toContain('data-line="milestone" title="Go live" class="line-clamp-2 break-words font-normal text-fg"');
+    expect(html).toContain('data-line="update" data-muted="true"');
+    expect(html).toContain('<span data-part="no-change">No change.</span>');
+    expect(html).not.toMatch(/data-line="update"[^>]*line-clamp/);
+  });
+});
+
+describe("Due / Flags cell", () => {
+  const BOTH = { due: true, flags: true };
+  const row = (over: Partial<{ dueDate: string | null; changed: boolean; overdue: boolean; stale: boolean }> = {}) => ({ dueDate: "2026-10-02", changed: false, overdue: false, stale: false, ...over });
+
+  it("PDF date format (year when it differs), overdue flagged, blank date is a muted en dash", () => {
+    expect(DueFlags.cell(row(), BOTH, TODAY).due).toEqual({ text: "Oct 2", overdue: false, muted: false });
+    expect(DueFlags.cell(row({ dueDate: "2027-01-15" }), BOTH, TODAY).due?.text).toBe("Jan 15, 2027");
+    expect(DueFlags.cell(row({ dueDate: "2026-09-01", overdue: true }), BOTH, TODAY).due).toEqual({ text: "Sep 1", overdue: true, muted: false });
+    expect(DueFlags.cell(row({ dueDate: null }), BOTH, TODAY).due).toEqual({ text: "\u2013", overdue: false, muted: true });
+  });
+
+  it("flags in PDF order Changed, Overdue, Stale with PDF labels", () => {
+    const c = DueFlags.cell(row({ changed: true, overdue: true, stale: true }), BOTH, TODAY);
+    expect(c.flags).toEqual([
+      { kind: "changed", label: "Changed" },
+      { kind: "overdue", label: "! Overdue" },
+      { kind: "stale", label: "Stale" },
+    ]);
+    expect(c.flags.map((f) => f.label)).toEqual((["changed", "overdue", "stale"] as const).map((k) => ReportLayout.flag(new TextMeasure(), k).label));
+  });
+
+  it("each part hides on its own", () => {
+    const r = row({ changed: true });
+    expect(DueFlags.cell(r, { due: false, flags: true }, TODAY)).toEqual({ due: null, flags: [{ kind: "changed", label: "Changed" }] });
+    expect(DueFlags.cell(r, { due: true, flags: false }, TODAY).flags).toEqual([]);
+    expect(DueFlags.cell(row(), { due: false, flags: true }, TODAY)).toEqual({ due: null, flags: [] });
+    expect(renderToStaticMarkup(createElement(DueFlagsCellView, { cell: { due: null, flags: [] } }))).toBe("");
+  });
+
+  it("renders the date, 6px then 4px gaps, wrapping pills that never shrink, overdue weight 600", () => {
+    const html = renderToStaticMarkup(createElement(DueFlagsCellView, { cell: DueFlags.cell(row({ overdue: true, changed: true, stale: true }), BOTH, TODAY) }));
+    expect(html).toContain("flex flex-wrap items-start");
+    expect(html).toContain("column-gap:6px;row-gap:4px");
+    expect(html).toContain('<span data-part="due" class="whitespace-nowrap font-semibold text-danger">Oct 2<');
+    expect(html).toContain('data-part="flags" class="flex flex-wrap" style="gap:4px"');
+    expect(html).toContain('class="flag fl-changed flex-none" data-flag="changed"');
+    expect(html).toContain('class="flag fl-overdue flex-none" data-flag="overdue"');
+    expect(html).toContain('class="flag fl-stale flex-none" data-flag="stale"');
+    expect(html).not.toContain("truncate");
+    const blank = renderToStaticMarkup(createElement(DueFlagsCellView, { cell: DueFlags.cell(row({ dueDate: null }), BOTH, TODAY) }));
+    expect(blank).toContain('class="whitespace-nowrap text-muted">\u2013<');
+    expect(blank).not.toContain("data-flag");
+  });
+});
+
+describe("Stacked cells match the PDF row", () => {
+  it("milestone, update, due and flags equal ReportLayout.rowLayout on the sample report rows", () => {
+    const input = SampleReportData.docInput();
+    const settings = ViewSettings.defaults("report");
+    const m = new TextMeasure();
+    const date = input.reportDate;
+    const squash = (t: string) => t.replace(/\s+/g, "");
+    let checked = 0;
+    for (const r of input.rows) {
+      const pdf = ReportLayout.rowLayout(m, r, settings, date);
+      const src = { nextMilestone: r.nextMilestone, note: r.note, changed: r.changed, dueDate: r.dueDate, overdue: r.overdue, stale: Boolean(r.stale) };
+      const lines = MilestoneUpdateStack.lines(src, { milestone: true, update: true });
+      const update = lines.find((l) => l.kind === "update");
+      const milestone = lines.find((l) => l.kind === "milestone");
+      if (pdf.note) {
+        expect(update && update.kind === "update" ? squash(update.full) : null).toBe(squash(pdf.note.lines.map((l) => l.text).join("")));
+        expect(update?.kind === "update" && update.muted).toBe(pdf.note.muted);
+      } else {
+        expect(update).toBeUndefined();
+      }
+      const ms = pdf.cells.find((c) => c.kind === "nextMilestone");
+      if (ms?.kind === "nextMilestone") {
+        if (ms.lines.length) {
+          // The PDF may end its second line with an ellipsis; the dashboard clamps with CSS and keeps the full text.
+          expect(milestone?.kind === "milestone" && squash(milestone.text).startsWith(squash(ms.lines.join("")).replace(/\u2026$/, ""))).toBe(true);
+        } else expect(milestone).toBeUndefined();
+      }
+      const cell = DueFlags.cell(src, { due: true, flags: true }, date);
+      const due = pdf.cells.find((c) => c.kind === "due");
+      if (due?.kind === "due") {
+        expect(cell.due?.text).toBe(due.text);
+        expect(cell.due?.muted).toBe(due.muted);
+        if (!due.muted) expect(cell.due?.overdue).toBe(due.overdue);
+      }
+      const flags = pdf.cells.find((c) => c.kind === "flags");
+      if (flags?.kind === "flags") expect(cell.flags.map((f) => [f.kind, f.label])).toEqual(flags.flags.map((f) => [f.kind, f.label]));
+      checked += 1;
+    }
+    expect(checked).toBeGreaterThan(5);
   });
 });
 
 describe("Column model and show/hide", () => {
-  it("default: gutter, Project, then the saved order with People and Latest update (the one flex column)", () => {
-    expect(keys(dash())).toEqual(["gutter", "project", "serviceArea", "people", "status", "nextMilestone", "due", "latestUpdate", "flags"]);
+  const hide = (...h: string[]) => dash({ hiddenColumns: h });
+  const flexKey = (v: ViewSettingsValue) => DashboardColumnModel.columns(v).filter((c) => c.flex).map((c) => c.key);
+
+  it("default: gutter, Project, People, Status, Next milestone / Latest update (flex), Due / Flags; no department column", () => {
+    expect(keys(dash())).toEqual(["gutter", "project", "people", "status", "milestoneUpdate", "dueFlags"]);
     const cols = DashboardColumnModel.columns(dash());
-    expect(cols.filter((c) => c.flex).map((c) => c.key)).toEqual(["latestUpdate"]);
+    expect(flexKey(dash())).toEqual(["milestoneUpdate"]);
+    expect(DashboardColumnModel.spec("milestoneUpdate")).toMatchObject({ header: "Next milestone / Latest update", width: 280, minWidth: 280, flex: true });
+    expect(DashboardColumnModel.spec("dueFlags")).toMatchObject({ header: "Due / Flags", width: 150, minWidth: 120, flex: false });
     expect(DashboardColumnModel.spec("people")).toMatchObject({ header: "People", width: 200, minWidth: 160 });
-    expect(DashboardColumnModel.spec("latestUpdate")).toMatchObject({ header: "Latest update", minWidth: 240, flex: true });
     expect(DashboardColumnModel.spec("gutter")).toMatchObject({ width: 24, structural: true });
-    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 120 + 200 + 112 + 170 + 84 + 240 + 176);
+    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 200 + 112 + 280 + 150);
+    expect(ViewSettings.defaults("dashboard").columnOrder).not.toContain("serviceArea");
+  });
+
+  it("the department column is gone from the table and from show/hide", () => {
+    expect(keys(dash()) as string[]).not.toContain("serviceArea");
+    const entries = DashboardColumnModel.pickerEntries("dashboard", dash());
+    expect(entries.some((e) => e.kind === "column" && e.column === "serviceArea")).toBe(false);
+    expect(entries.some((e) => e.kind === "group" && e.columns.includes("serviceArea"))).toBe(false);
   });
 
   it("each people field hides on its own; People goes away only when all three are hidden", () => {
-    const hide = (...h: string[]) => dash({ hiddenColumns: h });
     expect(DashboardColumnModel.peopleVisibility(hide("owner"))).toEqual({ owner: false, requester: true, contracts: true });
     expect(keys(hide("owner", "physicianChampion"))).toContain("people");
     expect(DashboardColumnModel.peopleVisibility(hide("owner", "physicianChampion"))).toEqual({ owner: false, requester: false, contracts: true });
     expect(keys(hide("owner", "physicianChampion", "contractsLead"))).not.toContain("people");
-    expect(keys(hide("latestUpdate"))).not.toContain("latestUpdate");
-    expect(keys(hide("latestUpdate", "owner"))).toEqual(["gutter", "project", "serviceArea", "people", "status", "nextMilestone", "due", "flags"]);
     // Only the contracts lead left (it sits last in the order): People stays where Owner was.
-    expect(keys(hide("owner", "physicianChampion")).indexOf("people")).toBe(3);
+    expect(keys(hide("owner", "physicianChampion")).indexOf("people")).toBe(2);
   });
 
-  it("People follows the first people key in the saved order; Project stays first", () => {
-    const moved = dash({ columnOrder: ["status", "owner", "project", "physicianChampion"] });
-    expect(keys(moved).slice(0, 4)).toEqual(["gutter", "project", "status", "people"]);
+  it("Next milestone and Latest update hide separately; the column goes only when both are hidden", () => {
+    expect(DashboardColumnModel.milestoneUpdateVisibility(hide("latestUpdate"))).toEqual({ milestone: true, update: false });
+    expect(keys(hide("latestUpdate"))).toContain("milestoneUpdate");
+    expect(keys(hide("nextMilestone"))).toContain("milestoneUpdate");
+    expect(keys(hide("nextMilestone", "latestUpdate"))).toEqual(["gutter", "project", "people", "status", "dueFlags"]);
   });
 
-  it("the picker groups the dashboard people keys under People and keeps the report list flat", () => {
+  it("Due date and Flags hide separately; the column goes only when both are hidden", () => {
+    expect(DashboardColumnModel.dueFlagsVisibility(hide("flags"))).toEqual({ due: true, flags: false });
+    expect(keys(hide("due"))).toContain("dueFlags");
+    expect(keys(hide("flags"))).toContain("dueFlags");
+    expect(keys(hide("due", "flags"))).toEqual(["gutter", "project", "people", "status", "milestoneUpdate"]);
+  });
+
+  it("stacked columns follow the first of their keys in the saved order; Project stays first", () => {
+    const moved = dash({ columnOrder: ["status", "latestUpdate", "owner", "project", "due", "physicianChampion", "nextMilestone"] });
+    expect(keys(moved).slice(0, 6)).toEqual(["gutter", "project", "status", "milestoneUpdate", "people", "dueFlags"]);
+  });
+});
+
+describe("Flexible column fallback", () => {
+  const hide = (...h: string[]) => dash({ hiddenColumns: h });
+  const flexKey = (v: ViewSettingsValue) => DashboardColumnModel.columns(v).filter((c) => c.flex).map((c) => c.key);
+  const BOTH_MU = ["nextMilestone", "latestUpdate"];
+  const ALL_PEOPLE = ["owner", "physicianChampion", "contractsLead"];
+
+  it("Next milestone / Latest update is flexible while either of its lines is shown", () => {
+    expect(flexKey(dash())).toEqual(["milestoneUpdate"]);
+    expect(flexKey(hide("nextMilestone"))).toEqual(["milestoneUpdate"]);
+    expect(flexKey(hide("latestUpdate"))).toEqual(["milestoneUpdate"]);
+  });
+
+  it("hiding both moves the flexible role to People", () => {
+    const cols = DashboardColumnModel.columns(hide(...BOTH_MU));
+    expect(flexKey(hide(...BOTH_MU))).toEqual(["people"]);
+    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 160 + 112 + 150);
+  });
+
+  it("People keeps the role with any one person line shown", () => {
+    expect(flexKey(hide(...BOTH_MU, "owner", "physicianChampion"))).toEqual(["people"]);
+  });
+
+  it("with People hidden too, Project becomes flexible", () => {
+    const v = hide(...BOTH_MU, ...ALL_PEOPLE);
+    expect(flexKey(v)).toEqual(["project"]);
+    expect(keys(v)).toEqual(["gutter", "project", "status", "dueFlags"]);
+    expect(DashboardColumnModel.minTableWidth(DashboardColumnModel.columns(v))).toBe(24 + 200 + 112 + 150);
+  });
+
+  it("with only Project left, Project is flexible; exactly one flex column in every combination", () => {
+    expect(flexKey(hide(...BOTH_MU, ...ALL_PEOPLE, "status", "due", "flags"))).toEqual(["project"]);
+    const hideable = ["owner", "physicianChampion", "contractsLead", "status", "nextMilestone", "latestUpdate", "due", "flags"];
+    for (let mask = 0; mask < 1 << hideable.length; mask++) {
+      const v = hide(...hideable.filter((_, i) => mask & (1 << i)));
+      const flex = flexKey(v);
+      expect(flex).toHaveLength(1);
+      const expected = DashboardColumnModel.FLEX_PREFERENCE.find((k) => keys(v).includes(k));
+      expect(flex[0]).toBe(expected);
+    }
+  });
+
+  it("the table renders the fallback: the flex col has only a min-width, the others a width", () => {
+    const html = renderToStaticMarkup(
+      createElement(DashboardTable, {
+        rows: [],
+        completed: [],
+        settings: hide(...BOTH_MU),
+        selectedId: null,
+        onSelect: () => {},
+        today: TODAY,
+        emptyText: "No projects yet.",
+        renderMeta: () => null,
+      }),
+    );
+    expect(html).toContain('data-col="people" style="min-width:160px"');
+    expect(html).toContain('data-col="project" style="width:256px"');
+    expect(html).not.toContain('data-col="milestoneUpdate"');
+  });
+});
+
+describe("Show/hide groups", () => {
+  it("the picker groups People, Next milestone / Latest update and Due / Flags, and keeps the report list flat", () => {
     const entries = DashboardColumnModel.pickerEntries("dashboard", dash());
-    const people = entries.filter((e) => e.kind === "people");
-    expect(people).toEqual([{ kind: "people", label: "People", columns: ["owner", "physicianChampion", "contractsLead"] }]);
-    expect(entries.some((e) => e.kind === "column" && e.column === "latestUpdate")).toBe(true);
+    expect(entries.filter((e) => e.kind === "group")).toEqual([
+      { kind: "group", stack: "people", label: "People", columns: ["owner", "physicianChampion", "contractsLead"] },
+      { kind: "group", stack: "milestoneUpdate", label: "Next milestone / Latest update", columns: ["nextMilestone", "latestUpdate"] },
+      { kind: "group", stack: "dueFlags", label: "Due / Flags", columns: ["due", "flags"] },
+    ]);
+    expect(ViewSettings.columnLabel("dashboard", "nextMilestone")).toBe("Next milestone");
+    expect(ViewSettings.columnLabel("dashboard", "latestUpdate")).toBe("Latest update");
+    expect(ViewSettings.columnLabel("dashboard", "due")).toBe("Due date");
+    expect(ViewSettings.columnLabel("dashboard", "flags")).toBe("Flags");
     expect(DashboardColumnModel.pickerEntries("report", ViewSettings.defaults("report")).every((e) => e.kind === "column")).toBe(true);
   });
 
-  it("moving the People entry moves all three keys; report moves match withColumnMoved", () => {
+  it("moving a group moves all of its keys; report moves match withColumnMoved", () => {
     const d = dash();
     const entries = DashboardColumnModel.pickerEntries("dashboard", d);
-    const from = entries.findIndex((e) => e.kind === "people");
+    const from = entries.findIndex((e) => e.kind === "group" && e.stack === "people");
     const next = DashboardColumnModel.moveEntry("dashboard", d, from, entries.length - 1);
     expect(next.columnOrder.slice(-3)).toEqual(["owner", "physicianChampion", "contractsLead"]);
     expect(keys(next).at(-1)).toBe("people");
+    const fromDue = entries.findIndex((e) => e.kind === "group" && e.stack === "dueFlags");
+    const dueFirst = DashboardColumnModel.moveEntry("dashboard", d, fromDue, 1);
+    expect(keys(dueFirst).slice(0, 3)).toEqual(["gutter", "project", "dueFlags"]);
     const r = ViewSettings.defaults("report");
     expect(DashboardColumnModel.moveEntry("report", r, 1, 4)).toEqual(ViewSettings.withColumnMoved("report", r, r.columnOrder[1], 4));
   });
@@ -240,15 +452,44 @@ describe("Old saved views still load", () => {
     expect(v.columnOrder[1]).toBe("latestUpdate");
     expect(v.columnOrder).not.toContain("note");
     expect(v.hiddenColumns).toEqual(["latestUpdate", "physicianChampion"]);
-    expect(keys(v)).not.toContain("latestUpdate");
+    expect(DashboardColumnModel.milestoneUpdateVisibility(v)).toEqual({ milestone: true, update: false });
     expect(DashboardColumnModel.peopleVisibility(v)).toEqual({ owner: true, requester: false, contracts: true });
   });
 
   it("a saved view from before the note column existed gets Latest update visible by default", () => {
     const v = ViewSettings.normalize("dashboard", { columnOrder: ["project", "owner", "status"], hiddenColumns: [] });
     expect(v.columnOrder).toContain("latestUpdate");
-    expect(keys(v)).toContain("latestUpdate");
+    expect(DashboardColumnModel.milestoneUpdateVisibility(v).update).toBe(true);
     expect(ViewSettings.normalize("dashboard", {})).toEqual(ViewSettings.defaults("dashboard"));
+  });
+
+  it("a saved view that still lists or hides the department column loads quietly without it", () => {
+    const saved = {
+      columnOrder: ["project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags", "inforNumber", "contractsLead"],
+      hiddenColumns: ["serviceArea", "flags"],
+      hiddenStatuses: ["Complete", "Cancelled"],
+    };
+    const v = ViewSettings.normalize("dashboard", saved);
+    expect(v.columnOrder).not.toContain("serviceArea");
+    expect(v.hiddenColumns).toEqual(["flags"]);
+    expect(keys(v)).toEqual(["gutter", "project", "people", "status", "milestoneUpdate", "dueFlags"]);
+    expect(DashboardColumnModel.dueFlagsVisibility(v)).toEqual({ due: true, flags: false });
+    expect(() => DashboardColumnModel.pickerEntries("dashboard", v)).not.toThrow();
+    // The group header row still names the department and its count.
+    const html = renderToStaticMarkup(
+      createElement(DashboardTable, {
+        rows: DashboardViewModel.rows([Factory.project({ name: "EP one", serviceArea: "EP" })], v, [], null, TODAY),
+        completed: [],
+        settings: v,
+        selectedId: null,
+        onSelect: () => {},
+        today: TODAY,
+        emptyText: "",
+        renderMeta: () => null,
+      }),
+    );
+    expect(html).toMatch(/data-testid="group-header".*>EP<\/span><span[^>]*>1 project<\/span>/);
+    expect(html).not.toContain("area-tag");
   });
 
   it("the report context is unchanged: it keeps note and never offers latestUpdate", () => {
@@ -288,7 +529,14 @@ describe("Grouped table markup", () => {
     expect([...html.matchAll(/data-row-key="([^"]+)"/g)].map((m) => m[1])).toEqual([projects[1].id, projects[0].id, projects[2].id]);
     expect(html).toContain('data-col="gutter" style="width:24px"');
     expect(html).toContain(">People</th>");
-    expect(html).toContain(">Latest update</th>");
+    expect(html).toContain(">Next milestone / Latest update</th>");
+    expect(html).toContain(">Due / Flags</th>");
+    expect(html).not.toContain(">Service area</th>");
+    expect(html).toContain('data-col="milestoneUpdate" style="min-width:280px"');
+    expect(html).toContain('data-col="dueFlags" style="width:150px"');
+    expect(html).toContain('data-testid="milestone-update"');
+    expect(html).toContain('data-testid="due-flags"');
+    expect(html).toContain("py-[10px] align-top");
     expect(html.match(/data-testid="group-header"/g)).toHaveLength(3);
     expect(html).toContain(">1 project</span>");
   });
