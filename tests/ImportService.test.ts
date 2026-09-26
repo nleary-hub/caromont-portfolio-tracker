@@ -4,6 +4,7 @@ import { ImportBlockedError, ImportService } from "@/lib/import/ImportService";
 import { ProjectCsv } from "@/lib/import/ProjectCsv";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { FakeDb } from "./helpers/FakeDb";
+import { Factory } from "./helpers/factories";
 
 const ADMIN = "nick.leary@example.org";
 const HEADER = ProjectCsv.TEMPLATE_COLUMNS.join(",");
@@ -179,7 +180,7 @@ describe("ImportService: new projects", () => {
       { changedBy: "someone@example.org" },
       db,
     );
-    await ProjectService.softDelete(archived.id, { email: "someone@example.org", isAdmin: true }, db);
+    await ProjectService.softDelete(archived.id, Factory.ADMIN, db);
     const historyBefore = fake.state.history.length;
 
     const file = Csv.file(

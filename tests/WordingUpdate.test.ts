@@ -5,6 +5,7 @@ import { ImportBlockedError, ImportService } from "@/lib/import/ImportService";
 import { ProjectCsv } from "@/lib/import/ProjectCsv";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { FakeDb } from "./helpers/FakeDb";
+import { Factory } from "./helpers/factories";
 
 const ADMIN = "nick.leary@example.org";
 const seedActor = { changedBy: "owner@example.org" };
@@ -58,7 +59,7 @@ describe("CSV export and wording update", () => {
       seedActor,
       db,
     );
-    await ProjectService.softDelete(archived.id, { email: seedActor.changedBy, isAdmin: true }, db);
+    await ProjectService.softDelete(archived.id, Factory.ADMIN, db);
     cathId = cath.id;
     epId = ep.id;
     fake.writes = [];
@@ -236,6 +237,7 @@ describe("CSV export and wording update", () => {
     const [cath, ep] = Sheet.rows((await ExportService.exportCsv(db)).csv);
     cath.note = "Changed A";
     ep.note = "Changed B";
+    const historyBefore = fake.state.history.length;
     const real = ProjectService.updateInTx.bind(ProjectService);
     let calls = 0;
     vi.spyOn(ProjectService, "updateInTx").mockImplementation(async (tx, id, patch, actor) => {
@@ -245,7 +247,7 @@ describe("CSV export and wording update", () => {
     });
     await expect(ImportService.commitWording(Sheet.write([cath, ep]), ADMIN, db)).rejects.toThrow("deadlock detected");
     expect(fake.state.projects.find((p) => p.id === cathId)!.note).toBe("Bids 18% over budget, rebid due 10/12.");
-    expect(fake.state.history.filter((h) => h.field !== "created" && h.field !== "archivedAt" && h.field !== "deletedBy")).toHaveLength(0);
+    expect(fake.state.history).toHaveLength(historyBefore);
   });
 
   it("requires id, note and next_milestone columns; other columns are compared only when present", async () => {
