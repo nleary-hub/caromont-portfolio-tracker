@@ -1,0 +1,116 @@
+// Service Line Portfolio Tracker: Prisma schema
+// Connection string is supplied via DATABASE_URL (see prisma.config.ts).
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+/// Report order is the declaration order below.
+enum ServiceArea {
+  Cath
+  EP
+  Echo
+  CVSS
+  INU
+  CardioNeuro
+  IR
+}
+
+enum ProjectStatus {
+  NotStarted
+  OnTrack
+  AtRisk
+  OffTrack
+  OnHold
+  Complete
+  Cancelled
+}
+
+enum RecipientLine {
+  To
+  Cc
+}
+
+model Project {
+  id                     String        @id @default(uuid()) @db.Uuid
+  name                   String
+  serviceArea            ServiceArea
+  owner                  String
+  physicianChampion      String?
+  physicianChampionEmail String?
+  status                 ProjectStatus
+  /// Required unless status is Complete/Cancelled (enforced in app validation).
+  nextMilestone          String?
+  dueDate                DateTime?     @db.Date
+  targetCompletion       DateTime?     @db.Date
+  /// 0 to 100 (enforced in app validation; DB check constraint as backstop).
+  percentComplete        Int?
+  /// Length limit is AppConfig.NOTE_MAX_LENGTH (200), enforced on save in app validation.
+  note                   String?
+  includeInReport        Boolean       @default(true)
+  createdAt              DateTime      @default(now())
+  updatedAt              DateTime      @updatedAt
+  updatedBy              String
+  /// Soft delete only; projects are never hard deleted.
+  archivedAt             DateTime?
+  /// Set when a Complete/Cancelled project first appears in a snapshot.
+  closedReportedAt       DateTime?
+
+  history ProjectHistory[]
+
+  @@index([serviceArea, status])
+  @@index([archivedAt])
+}
+
+/// Append-only audit trail. No update/delete paths exist in the app; DB triggers block them too.
+model ProjectHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  projectId String   @db.Uuid
+  field     String
+  oldValue  String?
+  newValue  String?
+  changedAt DateTime @default(now())
+  changedBy String
+  comment   String?
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@index([projectId, changedAt])
+  @@index([changedAt])
+}
+
+/// Immutable report snapshot. Only delivery fields (pdfStorageKey, sentAt, sentToJson) may be filled in later.
+model ReportSnapshot {
+  id                   String    @id @default(uuid()) @db.Uuid
+  periodStart          DateTime  @db.Date
+  periodEnd            DateTime  @db.Date
+  generatedAt          DateTime  @default(now())
+  generatedBy          String
+  /// Frozen copy of the included report rows (ReportRow[]).
+  rowsJson             Json
+  /// Storage reference (URL or blob key) for the rendered PDF. Null until rendered.
+  pdfStorageKey        String?
+  sentAt               DateTime?
+  sentToJson           Json?
+  /// MissingChampion[] computed at generation time.
+  missingChampionsJson Json
+
+  @@index([generatedAt])
+}
+
+model Recipient {
+  id          String        @id @default(uuid()) @db.Uuid
+  name        String
+  email       String        @unique
+  role        String?
+  /// Null = all service areas.
+  serviceArea ServiceArea?
+  line        RecipientLine
+  /// Deactivate, never delete.
+  active      Boolean       @default(true)
+}

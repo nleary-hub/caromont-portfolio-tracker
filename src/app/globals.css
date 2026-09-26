@@ -1,0 +1,84 @@
+@import "tailwindcss";
+@import "../styles/tokens.css";
+
+/* Dark theme is the default; the `dark` class on <html> drives dark: variants. */
+@custom-variant dark (&:where(.dark, .dark *));
+
+:root {
+  color-scheme: dark;
+}
+
+/* Design tokens (src/styles/tokens.css, from the Figma "Tracker" collection) exposed as Tailwind theme values. */
+@theme inline {
+  --color-bg: var(--dark-bg);
+  --color-card: var(--dark-card);
+  --color-line: var(--dark-border);
+  --color-fg: var(--dark-text-primary);
+  --color-muted: var(--dark-text-secondary);
+  --color-accent: var(--dark-accent);
+  --color-row-selected: var(--dark-row-selected);
+  --color-input: var(--dark-input);
+  --color-topbar: var(--dark-topbar-glass);
+  --color-danger: var(--status-off-track-dark-fg);
+  --radius-card: var(--radius-card);
+  --radius-control: var(--radius-control);
+  --font-sans: var(--font-family);
+}
+
+/* Type scale utilities (font shorthand tokens). */
+@utility type-title { font: var(--app-title); }
+@utility type-heading { font: var(--app-heading); }
+@utility type-metric { font: var(--app-metric); }
+@utility type-body { font: var(--app-body); }
+@utility type-table { font: var(--app-table); }
+@utility type-table-strong { font: var(--app-table-strong); }
+@utility type-label { font: var(--app-label); }
+@utility type-caption { font: var(--app-caption); }
+
+/* Keep the root font-size at the browser default (16px) so Tailwind rem spacing is unaffected. */
+html {
+  background: var(--dark-bg);
+}
+body {
+  background: var(--dark-bg);
+  color: var(--dark-text-primary);
+  font: var(--app-body);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Small shared components ported from the dashboard mockup (portfolio-tracker-mockups/dashboard.css). */
+@layer components {
+  .pill {
+    display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px;
+    border-radius: var(--radius-pill); font: var(--app-label); white-space: nowrap;
+  }
+  .pill > i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .st-NotStarted { background: var(--status-not-started-dark-bg); color: var(--status-not-started-dark-fg); }
+  .st-OnTrack { background: var(--status-on-track-dark-bg); color: var(--status-on-track-dark-fg); }
+  .st-AtRisk { background: var(--status-at-risk-dark-bg); color: var(--status-at-risk-dark-fg); }
+  .st-OffTrack { background: var(--status-off-track-dark-bg); color: var(--status-off-track-dark-fg); }
+  .st-OnHold { background: var(--status-on-hold-dark-bg); color: var(--status-on-hold-dark-fg); }
+  .st-Complete { background: var(--status-complete-dark-bg); color: var(--status-complete-dark-fg); }
+  .st-Cancelled { background: var(--status-cancelled-dark-bg); color: var(--status-cancelled-dark-fg); text-decoration: line-through; }
+
+  .flag {
+    display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px;
+    font: var(--app-label); font-weight: 600; white-space: nowrap;
+  }
+  .fl-changed { background: var(--flag-changed-dark-bg); color: var(--flag-changed-dark-fg); border: 1px dashed var(--flag-changed-dark-fg); }
+  .fl-overdue { background: var(--flag-overdue-dark-bg); color: var(--flag-overdue-dark-fg); }
+
+  .chip {
+    height: 28px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--dark-border);
+    background: var(--dark-card); font: var(--app-label); color: var(--dark-text-primary);
+    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  }
+  .chip > b { font-weight: 500; color: var(--dark-text-secondary); background: var(--dark-input); border-radius: 999px; padding: 0 6px; }
+  .chip[aria-pressed="true"] { background: var(--dark-accent); border-color: var(--dark-accent); color: #fff; }
+  .chip[aria-pressed="true"] > b { background: rgba(255, 255, 255, 0.2); color: #fff; }
+
+  .area-tag {
+    font: var(--app-label); color: var(--dark-text-secondary); border: 1px solid var(--dark-border);
+    border-radius: 4px; padding: 1px 6px;
+  }
+}
