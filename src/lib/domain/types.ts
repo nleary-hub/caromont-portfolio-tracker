@@ -16,7 +16,9 @@ export interface ProjectRecord {
   note: string | null;
   includeInReport: boolean;
   archivedAt: Date | null;
-  closedReportedAt: Date | null;
+  deletedBy: string | null;
+  hiddenFromDashboard: boolean;
+  hiddenFromReport: boolean;
 }
 
 export interface RecipientRecord {
@@ -32,6 +34,8 @@ export interface RecipientRecord {
 export interface HistoryEntryRecord {
   projectId: string;
   changedAt: Date;
+  /** Needed so admin-only events (hide/delete) never set the Changed flag. */
+  field: string;
 }
 
 /** A frozen report row, as stored in ReportSnapshot.rowsJson. */
@@ -60,4 +64,19 @@ export interface MissingChampion {
   email: string | null;
   projectIds: string[];
   projectNames: string[];
+}
+
+export type StatusCounts = Record<ProjectStatus, number>;
+
+/**
+ * Report header data, stored in ReportSnapshot.headerJson. Computed from the visible (listed)
+ * rows only, so totalProjects always equals rows.length. Nothing about hidden items appears here.
+ */
+export interface ReportHeader {
+  totalProjects: number;
+  totals: StatusCounts;
+  /** Per service area status counts (repeated in the page header for each area). */
+  byArea: Record<ServiceArea, StatusCounts>;
+  overdue: number;
+  changed: number;
 }

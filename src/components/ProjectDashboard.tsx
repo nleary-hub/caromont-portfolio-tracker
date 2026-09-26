@@ -1,12 +1,20 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
-import type { ServiceArea } from "@/generated/prisma/enums";
+import dynamic from "next/dynamic";
+import Link from "next/link";
+import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import type { ServiceArea, ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import type { StatusCounts } from "@/lib/domain/types";
+import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { Flags, StatusPill } from "./StatusPill";
+
+// Admin-only UI is code-split: the chunks load only when an admin renders them.
+const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
+const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
 
 export interface LatestReport {
   /** YYYY-MM-DD */
@@ -15,14 +23,98 @@ export interface LatestReport {
   periodEnd: string;
 }
 
+/** Only passed for admins. Non-admins receive none of this (no settings, counts or actions). */
+export interface AdminDashboardProps {
+  viewSettings: ViewSettingsByContext;
+  /** Per-status counts for the picker (before status settings apply). */
+  pickerCounts: Record<ViewContext, StatusCounts>;
+  /** Visible dashboard rows that are hidden from the report. */
+  hiddenFromReportIds: string[];
+  /** Each action resolves to an error message, or null on success. */
+  saveViewSettingsAction: (context: ViewContext, value: ViewSettingsValue) => Promise<string | null>;
+  setProjectHiddenAction: (projectId: string, context: ViewContext, hidden: boolean) => Promise<string | null>;
+  deleteProjectAction: (projectId: string) => Promise<string | null>;
+}
+
 interface Props {
+  /** Already filtered by VisibilityPolicy on the server. */
   rows: DashboardRow[];
+  /** Visible dashboard columns in order. */
+  columns: ViewColumn[];
   today: string;
   userEmail: string;
   userName: string | null;
   latestReport: LatestReport | null;
   loadError: string | null;
+  admin?: AdminDashboardProps;
   signOutAction: () => Promise<void>;
+}
+
+interface ColumnSpec {
+  header: string;
+  /** Tailwind width class for the <col>; empty = flexible. */
+  width: string;
+  cell: (r: DashboardRow, td: string) => ReactNode;
+}
+
+/** Dashboard table columns, rendered in the order and visibility from the dashboard view settings. */
+class DashboardColumns {
+  static readonly SPECS: Record<ViewColumn, ColumnSpec> = {
+    // The table renders the project cell itself (selection bar); this is the plain fallback.
+    project: { header: "Project", width: "w-[256px]", cell: (r, td) => <td className={td}>{r.name}</td> },
+    serviceArea: {
+      header: "Service area",
+      width: "w-[120px]",
+      cell: (r, td) => (
+        <td className={td}>
+          <span className="area-tag">{ServiceAreaInfo.label(r.serviceArea)}</span>
+        </td>
+      ),
+    },
+    owner: { header: "Owner", width: "w-[84px]", cell: (r, td) => <td className={td}>{r.owner}</td> },
+    physicianChampion: {
+      header: "Physician champion",
+      width: "w-[164px]",
+      cell: (r, td) => <td className={`${td} ${r.physicianChampion ? "" : "text-muted"}`}>{r.physicianChampion ?? "–"}</td>,
+    },
+    status: {
+      header: "Status",
+      width: "w-[112px]",
+      cell: (r, td) => (
+        <td className={td}>
+          <StatusPill status={r.status} />
+        </td>
+      ),
+    },
+    nextMilestone: { header: "Next milestone", width: "w-[170px]", cell: (r, td) => <td className={td}>{r.nextMilestone ?? "–"}</td> },
+    due: {
+      header: "Due date",
+      width: "w-[84px]",
+      cell: (r, td) => (
+        <td className={`${td} ${r.overdue ? "font-semibold text-danger" : ""}`}>{DateFormat.short(r.dueDate) ?? "–"}</td>
+      ),
+    },
+    note: {
+      header: "Note",
+      width: "",
+      cell: (r, td) => (
+        <td className={`${td} text-muted`} title={r.note ?? undefined}>
+          {r.note ?? ""}
+        </td>
+      ),
+    },
+    flags: {
+      header: "Flags",
+      width: "w-[176px]",
+      cell: (r, td) => (
+        <td className={td}>
+          <div className="flex items-center gap-1">
+            <Flags changed={r.changed} overdue={r.overdue} />
+          </div>
+        </td>
+      ),
+    },
+  };
 }
 
 class Initials {
@@ -33,15 +125,43 @@ class Initials {
   }
 }
 
-export function ProjectDashboard({ rows, today, userEmail, userName, latestReport, loadError, signOutAction }: Props) {
+export function ProjectDashboard({
+  rows,
+  today,
+  userEmail,
+  userName,
+  latestReport,
+  loadError,
+  columns: columnsProp,
+  admin,
+  signOutAction,
+}: Props) {
   const [area, setArea] = useState<ServiceArea | "All">("All");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  // Admin only: optimistic copy of the settings (rows refresh from the server after each save).
+  const [settings, setSettings] = useState<ViewSettingsByContext | null>(admin?.viewSettings ?? null);
 
   const summary = useMemo(() => DashboardViewModel.summarize(rows), [rows]);
   const visible = useMemo(() => DashboardViewModel.filter(rows, area, query), [rows, area, query]);
+  const columns = settings ? ViewSettings.visibleColumns(settings.dashboard) : columnsProp;
   const selected = rows.find((r) => r.id === selectedId) ?? null;
+
+  /** Optimistic: apply locally, persist, roll back on failure. */
+  const saveSettings = async (context: ViewContext, value: ViewSettingsValue): Promise<string | null> => {
+    if (!admin || !settings) return "Not authorized.";
+    const previous = settings[context];
+    setSettings((s) => (s ? { ...s, [context]: value } : s));
+    try {
+      const err = await admin.saveViewSettingsAction(context, value);
+      if (err) setSettings((s) => (s ? { ...s, [context]: previous } : s));
+      return err;
+    } catch {
+      setSettings((s) => (s ? { ...s, [context]: previous } : s));
+      return "Could not save view settings.";
+    }
+  };
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -98,6 +218,14 @@ export function ProjectDashboard({ rows, today, userEmail, userName, latestRepor
           />
           <kbd className="rounded border border-line px-1 type-caption">/</kbd>
         </label>
+        {admin && settings && (
+          <>
+            <Link href="/admin/audit" className="type-table-strong text-muted hover:text-fg">
+              Audit
+            </Link>
+            <ViewSettingsPicker settings={settings} counts={admin.pickerCounts} onSave={saveSettings} />
+          </>
+        )}
         <button
           type="button"
           disabled
@@ -160,34 +288,26 @@ export function ProjectDashboard({ rows, today, userEmail, userName, latestRepor
           <div className="max-h-[calc(100vh-260px)] overflow-auto">
             <table className="w-full table-fixed border-separate border-spacing-0 type-table">
               <colgroup>
-                <col className="w-[256px]" />
-                <col className="w-[120px]" />
-                <col className="w-[84px]" />
-                <col className="w-[164px]" />
-                <col className="w-[112px]" />
-                <col className="w-[170px]" />
-                <col className="w-[84px]" />
-                <col />
-                <col className="w-[176px]" />
+                {columns.map((c) => (
+                  <col key={c} className={DashboardColumns.SPECS[c].width || undefined} />
+                ))}
               </colgroup>
               <thead>
                 <tr>
-                  {["Project", "Service area", "Owner", "Physician champion", "Status", "Next milestone", "Due date", "Note", "Flags"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className="sticky top-0 z-[1] h-9 truncate border-b border-line bg-card px-3 text-left uppercase tracking-[.04em] text-muted type-label"
-                      >
-                        {h}
-                      </th>
-                    ),
-                  )}
+                  {columns.map((c) => (
+                    <th
+                      key={c}
+                      className="sticky top-0 z-[1] h-9 truncate border-b border-line bg-card px-3 text-left uppercase tracking-[.04em] text-muted type-label"
+                    >
+                      {DashboardColumns.SPECS[c].header}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
                 {visible.length === 0 && (
                   <tr>
-                    <td colSpan={9} className="h-20 text-center text-muted">
+                    <td colSpan={columns.length} className="h-20 text-center text-muted">
                       {rows.length === 0 ? "No projects yet." : "No projects match the current filter."}
                     </td>
                   </tr>
@@ -202,29 +322,18 @@ export function ProjectDashboard({ rows, today, userEmail, userName, latestRepor
                       className="cursor-pointer hover:[&>td]:bg-row-selected/60"
                       aria-selected={isSel}
                     >
-                      <td className={`${td} type-table-strong ${isSel ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}>
-                        {r.name}
-                      </td>
-                      <td className={td}>
-                        <span className="area-tag">{ServiceAreaInfo.label(r.serviceArea)}</span>
-                      </td>
-                      <td className={td}>{r.owner}</td>
-                      <td className={`${td} ${r.physicianChampion ? "" : "text-muted"}`}>{r.physicianChampion ?? "–"}</td>
-                      <td className={td}>
-                        <StatusPill status={r.status} />
-                      </td>
-                      <td className={td}>{r.nextMilestone ?? "–"}</td>
-                      <td className={`${td} ${r.overdue ? "font-semibold text-danger" : ""}`}>
-                        {DateFormat.short(r.dueDate) ?? "–"}
-                      </td>
-                      <td className={`${td} text-muted`} title={r.note ?? undefined}>
-                        {r.note ?? ""}
-                      </td>
-                      <td className={td}>
-                        <div className="flex items-center gap-1">
-                          <Flags changed={r.changed} overdue={r.overdue} />
-                        </div>
-                      </td>
+                      {columns.map((c) =>
+                        c === "project" ? (
+                          <td
+                            key={c}
+                            className={`${td} type-table-strong ${isSel ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}
+                          >
+                            {r.name}
+                          </td>
+                        ) : (
+                          <Fragment key={c}>{DashboardColumns.SPECS[c].cell(r, td)}</Fragment>
+                        ),
+                      )}
                     </tr>
                   );
                 })}
@@ -240,12 +349,41 @@ export function ProjectDashboard({ rows, today, userEmail, userName, latestRepor
         </section>
       </main>
 
-      {selected && <ProjectDrawer row={selected} today={today} onClose={() => setSelectedId(null)} />}
+      {selected && (
+        <ProjectDrawer
+          row={selected}
+          today={today}
+          onClose={() => setSelectedId(null)}
+          adminControls={
+            admin ? (
+              <ProjectAdminControls
+                projectId={selected.id}
+                projectName={selected.name}
+                hiddenFromReport={admin.hiddenFromReportIds.includes(selected.id)}
+                setHiddenAction={admin.setProjectHiddenAction}
+                deleteAction={admin.deleteProjectAction}
+                onGone={() => setSelectedId(null)}
+              />
+            ) : null
+          }
+        />
+      )}
     </div>
   );
 }
 
-function ProjectDrawer({ row, today, onClose }: { row: DashboardRow; today: string; onClose: () => void }) {
+function ProjectDrawer({
+  row,
+  today,
+  onClose,
+  adminControls,
+}: {
+  row: DashboardRow;
+  today: string;
+  onClose: () => void;
+  /** Rendered only for admins. */
+  adminControls: ReactNode;
+}) {
   const daysOverdue = row.overdue && row.dueDate ? DateFormat.daysBetween(row.dueDate, today) : 0;
   return (
     <aside
@@ -310,6 +448,7 @@ function ProjectDrawer({ row, today, onClose }: { row: DashboardRow; today: stri
         {/* STUB: history timeline (ProjectHistory rows) not wired up yet. */}
         <p className="text-muted type-caption">History timeline coming soon.</p>
       </div>
+      {adminControls}
       <div className="mt-auto flex items-center justify-end border-t border-line pt-3">
         <button
           type="button"

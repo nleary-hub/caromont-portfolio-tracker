@@ -1,4 +1,6 @@
 import type { Prisma, PrismaClient, Project } from "@/generated/prisma/client";
+import type { ViewContext } from "@/generated/prisma/enums";
+import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { HistoryDiff, type FieldChange } from "@/lib/history/HistoryDiff";
@@ -89,15 +91,6 @@ export class ProjectService {
       const merged: ProjectInput = { ...ProjectValidator.toInput(existing), ...ProjectService.pickEditable(patch) };
       const data: Record<string, unknown> = { ...ProjectValidator.parse(merged) };
 
-      // Reopening a closed project clears closedReportedAt so its eventual closure is reported again.
-      if (
-        ProjectStatusInfo.isClosed(existing.status) &&
-        !ProjectStatusInfo.isClosed(data.status as Project["status"]) &&
-        existing.closedReportedAt
-      ) {
-        data.closedReportedAt = null;
-      }
-
       const changes = HistoryDiff.diff(existing, data);
       if (changes.length === 0) return existing;
 
@@ -177,30 +170,59 @@ export class ProjectService {
     return due ? `${milestone} (due ${due})` : milestone;
   }
 
-  /** Soft delete. Idempotent guard: archiving an archived project throws. */
-  static async archive(id: string, actor: Actor, db: PrismaClient = Db.client): Promise<Project> {
+  /**
+   * Admin "Delete": soft delete (archivedAt + deletedBy). The record and its history are kept;
+   * the DB still blocks hard deletes. Audited like every other change. Archived projects throw.
+   */
+  static async softDelete(id: string, admin: Viewer, db: PrismaClient = Db.client, comment?: string): Promise<Project> {
+    AdminPolicy.assertAdmin(admin);
     return db.$transaction(async (tx) => {
       const existing = await ProjectService.loadMutable(tx, id);
       const now = new Date();
-      const updated = await tx.project.update({
-        where: { id },
-        data: { archivedAt: now, updatedBy: actor.changedBy },
-      });
-      await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, { archivedAt: now }), actor, now);
+      const data = { archivedAt: now, deletedBy: admin.email };
+      const updated = await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } });
+      await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin, comment), now);
       return updated;
     });
   }
 
-  /**
-   * Mark a Complete/Cancelled project as reported. Called by SnapshotService inside its
-   * transaction; writes history like every other project mutation.
-   */
-  static async markClosedReported(tx: Tx, id: string, at: Date, actor: Actor): Promise<void> {
-    const existing = await tx.project.findUnique({ where: { id } });
-    if (!existing) throw new ProjectNotFoundError(id);
-    if (existing.closedReportedAt) return;
-    await tx.project.update({ where: { id }, data: { closedReportedAt: at, updatedBy: actor.changedBy } });
-    await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, { closedReportedAt: at }), actor, at);
+  /** Admin restore of a soft-deleted project. Writes audit rows. */
+  static async restore(id: string, admin: Viewer, db: PrismaClient = Db.client, comment?: string): Promise<Project> {
+    AdminPolicy.assertAdmin(admin);
+    return db.$transaction(async (tx) => {
+      const existing = await tx.project.findUnique({ where: { id } });
+      if (!existing) throw new ProjectNotFoundError(id);
+      if (!existing.archivedAt) return existing;
+      const now = new Date();
+      const data = { archivedAt: null, deletedBy: null };
+      const updated = await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } });
+      await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin, comment), now);
+      return updated;
+    });
+  }
+
+  /** Admin per-project hide/unhide for one context. No-op when unchanged; otherwise audited. */
+  static async setHidden(
+    id: string,
+    context: ViewContext,
+    hidden: boolean,
+    admin: Viewer,
+    db: PrismaClient = Db.client,
+  ): Promise<Project> {
+    AdminPolicy.assertAdmin(admin);
+    const field = context === "dashboard" ? "hiddenFromDashboard" : "hiddenFromReport";
+    return db.$transaction(async (tx) => {
+      const existing = await ProjectService.loadMutable(tx, id);
+      if (existing[field] === hidden) return existing;
+      const data = { [field]: hidden };
+      const updated = await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } });
+      await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin), new Date());
+      return updated;
+    });
+  }
+
+  private static actorOf(admin: Viewer, comment?: string): Actor {
+    return { changedBy: admin.email, comment: comment ?? null };
   }
 
   private static async loadMutable(tx: Tx, id: string): Promise<Project> {
@@ -225,7 +247,7 @@ export class ProjectService {
     "includeInReport",
   ];
 
-  /** Drop anything that is not a user-editable field (ids, audit fields, archivedAt, ...). */
+  /** Drop anything that is not a user-editable field (ids, audit fields, archivedAt, hide flags, ...). */
   private static pickEditable(patch: Partial<ProjectInput>): Partial<ProjectInput> {
     const out: Record<string, unknown> = {};
     for (const key of ProjectService.EDITABLE_FIELDS) {

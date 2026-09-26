@@ -1,4 +1,5 @@
 import type { ProjectRecord, RecipientRecord } from "@/lib/domain/types";
+import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 
 let seq = 0;
 
@@ -20,7 +21,9 @@ export class Factory {
       note: null,
       includeInReport: true,
       archivedAt: null,
-      closedReportedAt: null,
+      deletedBy: null,
+      hiddenFromDashboard: false,
+      hiddenFromReport: false,
       ...overrides,
     };
   }
@@ -38,6 +41,14 @@ export class Factory {
       ...overrides,
     };
   }
+
+  /** Report settings with only the given statuses hidden. */
+  static reportSettings(hiddenStatuses: ViewSettingsValue["hiddenStatuses"] = []): ViewSettingsValue {
+    return ViewSettings.normalize("report", { hiddenStatuses });
+  }
+
+  static readonly ADMIN = { email: "admin@example.org", isAdmin: true } as const;
+  static readonly MEMBER = { email: "member@example.org", isAdmin: false } as const;
 
   static date(iso: string): Date {
     return new Date(`${iso}T00:00:00Z`);

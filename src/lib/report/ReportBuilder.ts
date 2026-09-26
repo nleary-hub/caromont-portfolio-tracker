@@ -2,10 +2,12 @@ import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
-import type { HistoryEntryRecord, ProjectRecord, ReportRow } from "@/lib/domain/types";
+import type { HistoryEntryRecord, ProjectRecord, ReportHeader, ReportRow, StatusCounts } from "@/lib/domain/types";
+import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 export interface ReportBuildInput {
-  /** Candidate projects. Ineligible ones (archived, excluded, already-reported closed) are filtered out. */
+  /** Candidate projects. VisibilityPolicy (report context) decides which are listed; the rest leave no trace. */
   projects: ProjectRecord[];
   /** History entries for the candidate projects (only entries after the previous snapshot matter). */
   history: HistoryEntryRecord[];
@@ -13,12 +15,15 @@ export interface ReportBuildInput {
   previousSnapshotGeneratedAt: Date | null;
   /** Report date, "YYYY-MM-DD" (America/New_York calendar date of generation). */
   reportDate: string;
+  /** Report-context view settings in effect (frozen into the snapshot alongside the result). */
+  viewSettings: ViewSettingsValue;
 }
 
 export interface ReportBuildResult {
+  /** Rows visible in the report view, in report order. */
   rows: ReportRow[];
-  /** Complete/Cancelled projects appearing for the first time; set closedReportedAt on these. */
-  newlyClosedProjectIds: string[];
+  /** Header data computed from `rows` only. */
+  header: ReportHeader;
 }
 
 export interface RowFlags {
@@ -37,32 +42,45 @@ export interface SortableRow {
 
 /** Pure report-row selection, flagging and ordering. No I/O. */
 export class ReportBuilder {
-  /** Row-selection rule for a snapshot. */
-  static isEligible(project: ProjectRecord): boolean {
-    if (!project.includeInReport) return false;
-    if (project.archivedAt) return false;
-    if (ProjectStatusInfo.isClosed(project.status) && project.closedReportedAt) return false;
-    return true;
+  static emptyStatusCounts(): StatusCounts {
+    return Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as StatusCounts;
   }
 
-  static selectRows(projects: ProjectRecord[]): ProjectRecord[] {
-    return projects.filter((p) => ReportBuilder.isEligible(p));
+  /**
+   * Header computed from the listed rows only (every area present, zeros included), so the
+   * counts always add up to the rows in the report. Hidden items leave no trace here.
+   */
+  static header(rows: readonly ReportRow[]): ReportHeader {
+    const totals = ReportBuilder.emptyStatusCounts();
+    const byArea = Object.fromEntries(
+      ServiceAreaInfo.all().map((a) => [a, ReportBuilder.emptyStatusCounts()]),
+    ) as ReportHeader["byArea"];
+    for (const r of rows) {
+      totals[r.status] += 1;
+      byArea[r.serviceArea][r.status] += 1;
+    }
+    return {
+      totalProjects: rows.length,
+      totals,
+      byArea,
+      overdue: rows.filter((r) => r.overdue).length,
+      changed: rows.filter((r) => r.changed).length,
+    };
   }
 
-  /** Closed projects in the selection that have never been reported. */
-  static newlyClosed(selected: ProjectRecord[]): ProjectRecord[] {
-    return selected.filter((p) => ProjectStatusInfo.isClosed(p.status) && !p.closedReportedAt);
-  }
-
-  /** "Changed": any history row since the previous snapshot (any history at all if there is none). */
+  /**
+   * "Changed": any history row since the previous snapshot (any history at all if there is none).
+   * Admin-only events (hide/unhide/delete/restore) never count.
+   */
   static isChanged(
     projectId: string,
-    history: HistoryEntryRecord[],
+    history: readonly HistoryEntryRecord[],
     previousSnapshotGeneratedAt: Date | null,
   ): boolean {
     return history.some(
       (h) =>
         h.projectId === projectId &&
+        !VisibilityPolicy.isAdminOnlyHistoryField(h.field) &&
         (previousSnapshotGeneratedAt === null || h.changedAt.getTime() > previousSnapshotGeneratedAt.getTime()),
     );
   }
@@ -123,16 +141,16 @@ export class ReportBuilder {
 
   static build(input: ReportBuildInput): ReportBuildResult {
     if (!DateOnly.isIso(input.reportDate)) throw new Error(`Invalid reportDate: ${input.reportDate}`);
-    const selected = ReportBuilder.selectRows(input.projects);
-    const rows = selected.map((p) =>
-      ReportBuilder.toRow(p, {
-        changed: ReportBuilder.isChanged(p.id, input.history, input.previousSnapshotGeneratedAt),
-        overdue: ReportBuilder.isOverdue(p, input.reportDate),
-      }),
+    const visible = VisibilityPolicy.visibleProjects(input.projects, "report", input.viewSettings);
+    const history = VisibilityPolicy.publicHistory(input.history, visible.map((p) => p.id));
+    const rows = ReportBuilder.sort(
+      visible.map((p) =>
+        ReportBuilder.toRow(p, {
+          changed: ReportBuilder.isChanged(p.id, history, input.previousSnapshotGeneratedAt),
+          overdue: ReportBuilder.isOverdue(p, input.reportDate),
+        }),
+      ),
     );
-    return {
-      rows: ReportBuilder.sort(rows),
-      newlyClosedProjectIds: ReportBuilder.newlyClosed(selected).map((p) => p.id),
-    };
+    return { rows, header: ReportBuilder.header(rows) };
   }
 }
