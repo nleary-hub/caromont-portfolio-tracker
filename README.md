@@ -4,7 +4,7 @@ Internal app for Cardiac Procedure Services (CaroMont Health). Tracks every proj
 cardiac service line and produces a biweekly PDF status report (one project per row, not SBAR).
 Sign-in is required for every page.
 
-**Status:** local scaffold. Not yet pushed to GitHub or deployed to Vercel.
+**Status:** scaffold on GitHub; hosted on Vercel (project `caromont-portfolio-tracker`). See "Deploying on Vercel".
 
 ## Stack
 
@@ -36,10 +36,11 @@ or Docker `postgres:16`.
 | --- | --- |
 | `npm run dev` | Next dev server |
 | `npm run build` | `prisma generate && next build` |
+| `npm run build:vercel` | Vercel build (`scripts/vercel-build.sh`): generate, `migrate deploy` when safe, build |
 | `npm run lint` | ESLint (next/core-web-vitals + TypeScript) |
 | `npm run typecheck` | `prisma generate && tsc --noEmit` |
 | `npm test` | Vitest unit tests |
-| `npm run db:migrate` | `prisma migrate deploy` (use in CI / Vercel build) |
+| `npm run db:migrate` | `prisma migrate deploy` (run automatically by the Vercel build; see below) |
 | `npm run db:migrate:dev` | `prisma migrate dev` (create new migrations locally) |
 | `npm run db:seed` | Sample data (refuses in production or if projects exist) |
 
@@ -59,6 +60,16 @@ See `.env.example` for the full annotated list.
 
 OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 `https://<domain>/api/auth/callback/google`.
+
+## Deploying on Vercel
+
+- `main` deploys to Production; every PR gets a Preview deployment (Git integration).
+- `vercel.json` sets the build command to `sh scripts/vercel-build.sh`, which runs
+  `prisma generate`, then `prisma migrate deploy`, then `next build`.
+- Migrations run only when `DATABASE_URL` is set and the deployment is Production, or when
+  `PRISMA_MIGRATE_ON_PREVIEW=true` is set for Preview. Only set that when Preview has its own
+  database (for example a Neon branch per preview); otherwise PR migrations would hit the production DB.
+- All secrets live in Vercel Project Settings > Environment Variables, never in the repo.
 
 ## Auth model
 
