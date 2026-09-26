@@ -83,4 +83,15 @@ describe("ProjectValidator", () => {
   it("parse() throws ProjectValidationError", () => {
     expect(() => ProjectValidator.parse({ ...base, note: "x".repeat(201) })).toThrow(ProjectValidationError);
   });
+
+  it("limits next milestone to AppConfig.MILESTONE_MAX_LENGTH (40) characters on every save", () => {
+    expect(AppConfig.MILESTONE_MAX_LENGTH).toBe(40);
+    expect(ProjectValidator.validate({ ...base, nextMilestone: "m".repeat(40) }).ok).toBe(true);
+    // Surrounding whitespace is trimmed before the length check.
+    expect(ProjectValidator.validate({ ...base, nextMilestone: `  ${"m".repeat(40)}  ` }).ok).toBe(true);
+    const r = ProjectValidator.validate({ ...base, nextMilestone: "m".repeat(41) });
+    expect(r.ok).toBe(false);
+    if (r.ok) return;
+    expect(r.errors.nextMilestone).toEqual(["Next milestone must be at most 40 characters"]);
+  });
 });

@@ -58,6 +58,7 @@ export class ProjectValidationError extends Error {
 export class ProjectValidator {
   static readonly NOTE_MAX = AppConfig.NOTE_MAX_LENGTH;
   static readonly NAME_MAX = AppConfig.SHORT_TEXT_MAX_LENGTH;
+  static readonly MILESTONE_MAX = AppConfig.MILESTONE_MAX_LENGTH;
 
   private static readonly schema = ProjectValidator.buildSchema();
 
@@ -98,10 +99,11 @@ export class ProjectValidator {
     };
   }
 
-  private static optionalText() {
+  private static optionalText(max?: { label: string; length: number }) {
+    const base = max ? z.string().max(max.length, `${max.label} must be at most ${max.length} characters`) : z.string();
     return z.preprocess(
       (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim()) : v ?? null),
-      z.string().nullable(),
+      base.nullable(),
     );
   }
 
@@ -142,7 +144,10 @@ export class ProjectValidator {
           z.email("Physician champion email is not a valid email").nullable(),
         ),
         status: z.enum(ProjectStatus, { error: "Status must be one of the defined statuses" }),
-        nextMilestone: ProjectValidator.optionalText(),
+        nextMilestone: ProjectValidator.optionalText({
+          label: "Next milestone",
+          length: ProjectValidator.MILESTONE_MAX,
+        }),
         dueDate: ProjectValidator.optionalDate("Due date"),
         targetCompletion: ProjectValidator.optionalDate("Target completion"),
         percentComplete: z.preprocess(

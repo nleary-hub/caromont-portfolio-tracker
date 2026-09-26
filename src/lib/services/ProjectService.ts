@@ -42,7 +42,7 @@ export class ProjectArchivedError extends Error {
   }
 }
 
-type Tx = Prisma.TransactionClient;
+export type Tx = Prisma.TransactionClient;
 
 /**
  * The only write path for projects. Every mutation writes ProjectHistory rows in the
@@ -50,27 +50,34 @@ type Tx = Prisma.TransactionClient;
  */
 export class ProjectService {
   static async create(input: ProjectInput, actor: Actor, db: PrismaClient = Db.client): Promise<Project> {
+    ProjectValidator.parse(input); // fail fast, before opening a transaction
+    return db.$transaction((tx) => ProjectService.createInTx(tx, input, actor));
+  }
+
+  /**
+   * Create inside a caller-owned transaction (e.g. an all-or-nothing CSV import).
+   * Validates, inserts, and writes the "created" history row on the same transaction.
+   */
+  static async createInTx(tx: Tx, input: ProjectInput, actor: Actor): Promise<Project> {
     const data = ProjectValidator.parse(input);
     const now = new Date();
-    return db.$transaction(async (tx) => {
-      const project = await tx.project.create({ data: { ...data, updatedBy: actor.changedBy } });
-      const snapshot: Record<string, string | null> = {};
-      for (const field of HistoryDiff.TRACKED_FIELDS) {
-        if (field in data) snapshot[field] = HistoryDiff.serialize(field, data[field as keyof typeof data]);
-      }
-      await tx.projectHistory.create({
-        data: {
-          projectId: project.id,
-          field: "created",
-          oldValue: null,
-          newValue: JSON.stringify(snapshot),
-          changedAt: now,
-          changedBy: actor.changedBy,
-          comment: actor.comment ?? null,
-        },
-      });
-      return project;
+    const project = await tx.project.create({ data: { ...data, updatedBy: actor.changedBy } });
+    const snapshot: Record<string, string | null> = {};
+    for (const field of HistoryDiff.TRACKED_FIELDS) {
+      if (field in data) snapshot[field] = HistoryDiff.serialize(field, data[field as keyof typeof data]);
+    }
+    await tx.projectHistory.create({
+      data: {
+        projectId: project.id,
+        field: "created",
+        oldValue: null,
+        newValue: JSON.stringify(snapshot),
+        changedAt: now,
+        changedBy: actor.changedBy,
+        comment: actor.comment ?? null,
+      },
     });
+    return project;
   }
 
   /**
@@ -84,30 +91,33 @@ export class ProjectService {
     actor: Actor,
     db: PrismaClient = Db.client,
   ): Promise<Project> {
-    return db.$transaction(async (tx) => {
-      const existing = await ProjectService.loadMutable(tx, id);
-      const merged: ProjectInput = { ...ProjectValidator.toInput(existing), ...ProjectService.pickEditable(patch) };
-      const data: Record<string, unknown> = { ...ProjectValidator.parse(merged) };
+    return db.$transaction((tx) => ProjectService.updateInTx(tx, id, patch, actor));
+  }
 
-      // Reopening a closed project clears closedReportedAt so its eventual closure is reported again.
-      if (
-        ProjectStatusInfo.isClosed(existing.status) &&
-        !ProjectStatusInfo.isClosed(data.status as Project["status"]) &&
-        existing.closedReportedAt
-      ) {
-        data.closedReportedAt = null;
-      }
+  /** update() inside a caller-owned transaction (e.g. an all-or-nothing CSV wording update). */
+  static async updateInTx(tx: Tx, id: string, patch: Partial<ProjectInput>, actor: Actor): Promise<Project> {
+    const existing = await ProjectService.loadMutable(tx, id);
+    const merged: ProjectInput = { ...ProjectValidator.toInput(existing), ...ProjectService.pickEditable(patch) };
+    const data: Record<string, unknown> = { ...ProjectValidator.parse(merged) };
 
-      const changes = HistoryDiff.diff(existing, data);
-      if (changes.length === 0) return existing;
+    // Reopening a closed project clears closedReportedAt so its eventual closure is reported again.
+    if (
+      ProjectStatusInfo.isClosed(existing.status) &&
+      !ProjectStatusInfo.isClosed(data.status as Project["status"]) &&
+      existing.closedReportedAt
+    ) {
+      data.closedReportedAt = null;
+    }
 
-      const updated = await tx.project.update({
-        where: { id },
-        data: { ...(data as Prisma.ProjectUpdateInput), updatedBy: actor.changedBy },
-      });
-      await ProjectService.writeHistory(tx, id, changes, actor, new Date());
-      return updated;
+    const changes = HistoryDiff.diff(existing, data);
+    if (changes.length === 0) return existing;
+
+    const updated = await tx.project.update({
+      where: { id },
+      data: { ...(data as Prisma.ProjectUpdateInput), updatedBy: actor.changedBy },
     });
+    await ProjectService.writeHistory(tx, id, changes, actor, new Date());
+    return updated;
   }
 
   /**
