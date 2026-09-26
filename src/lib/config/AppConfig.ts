@@ -17,7 +17,7 @@ export class AppConfig {
    * Contracts lead pick-list (exact spelling; stored canonical). The only accepted values for
    * Project.contractsLead in the drawer and CSV import. Edit here to change the list.
    */
-  static readonly CONTRACTS_LEADS: readonly string[] = ["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady"];
+  static readonly CONTRACTS_LEADS: readonly string[] = ["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"];
   /** Max data rows accepted in one CSV import file. */
   static readonly IMPORT_MAX_ROWS = 500;
   /** Calendar used for "today", report dates and overdue checks. */

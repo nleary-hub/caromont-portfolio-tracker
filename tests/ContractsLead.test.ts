@@ -23,14 +23,14 @@ type OwnerCell = Extract<RowCell, { kind: "owner" }>;
 
 describe("ContractsLead", () => {
   it("fixed pick-list; resolve is case and space tolerant and returns the canonical name", () => {
-    expect(ContractsLead.options()).toEqual(["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady"]);
+    expect(ContractsLead.options()).toEqual(["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"]);
     expect(ContractsLead.options()).toBe(AppConfig.CONTRACTS_LEADS);
     expect(ContractsLead.resolve("  shea   WALDRON ")).toBe("Shea Waldron");
     expect(ContractsLead.resolve("")).toBeNull();
     expect(ContractsLead.resolve(null)).toBeNull();
     expect(ContractsLead.resolve("Melissa Gonzales")).toBeUndefined();
     expect(ContractsLead.invalidMessage(" Bob ")).toBe(
-      '"Bob" is not a contracts lead. Use one of: Shea Waldron, Jeff Krause, Mellisa Gonzales, Dave Dermady (or leave blank)',
+      '"Bob" is not a contracts lead. Use one of: Shea Waldron, Jeff Krause, Mellisa Gonzales, Dave Dermady, Amber Hatley (or leave blank)',
     );
   });
 
