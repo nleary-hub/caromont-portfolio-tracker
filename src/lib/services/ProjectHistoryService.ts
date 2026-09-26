@@ -1,6 +1,7 @@
 import type { PrismaClient, ProjectHistory } from "@/generated/prisma/client";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
+import { HistoryEntries, type HistoryEntry } from "@/lib/history/HistoryEntries";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
@@ -20,6 +21,11 @@ export class ProjectHistoryService {
     if (!VisibilityPolicy.isVisible(project, "dashboard", settings)) return [];
     const rows = await db.projectHistory.findMany({ where: { projectId, ...VisibilityPolicy.publicHistoryWhere() } });
     return ProjectHistoryService.newestFirst(VisibilityPolicy.publicHistory(rows, [projectId]));
+  }
+
+  /** forProject() grouped into one entry per save (see HistoryEntries). */
+  static async entriesForProject(projectId: string, viewer: Viewer, db: PrismaClient = Db.client): Promise<HistoryEntry<ProjectHistory>[]> {
+    return HistoryEntries.group(await ProjectHistoryService.forProject(projectId, viewer, db));
   }
 
   private static newestFirst<T extends { changedAt: Date }>(rows: readonly T[]): T[] {

@@ -26,6 +26,8 @@ export interface ProjectPeopleEditorProps {
   requesterSuggestions: readonly string[];
   /** Resolves to an error message, or null on success. */
   saveAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
+  /** Edit form: Department is edited in the Project section, so the panel omits it and its outer rule. */
+  inForm?: boolean;
 }
 
 type FieldState = { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { kind: "error"; message: string };
@@ -41,11 +43,11 @@ const SAVED_MS = 1800;
  */
 export function ProjectPeopleEditor(props: ProjectPeopleEditorProps) {
   return (
-    <section aria-label="Edit project" className="flex flex-col gap-2 border-b border-line pb-3">
+    <section aria-label="Edit project" className={props.inForm ? "flex flex-col gap-2" : "flex flex-col gap-2 border-b border-line pb-3"}>
       <OwnerPicker {...props} />
       <RequesterPicker {...props} />
       <ContractsLeadSelect {...props} />
-      <DepartmentSelect {...props} />
+      {!props.inForm && <DepartmentSelect {...props} />}
     </section>
   );
 }

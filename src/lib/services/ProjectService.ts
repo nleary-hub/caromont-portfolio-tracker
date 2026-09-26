@@ -6,7 +6,7 @@ import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { HistoryDiff, type FieldChange } from "@/lib/history/HistoryDiff";
 import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
-import { ProjectValidationError, ProjectValidator, type ProjectInput } from "@/lib/validation/ProjectValidator";
+import { ProjectValidationError, ProjectValidator, type ProjectData, type ProjectInput } from "@/lib/validation/ProjectValidator";
 
 export interface Actor {
   /** Email (or name) of the signed-in user making the change. */
@@ -64,8 +64,8 @@ export class ProjectService {
    * Create inside a caller-owned transaction (e.g. an all-or-nothing CSV import).
    * Validates, inserts, and writes the "created" history row on the same transaction.
    */
-  static async createInTx(tx: Tx, input: ProjectInput, actor: Actor): Promise<Project> {
-    const data = ProjectValidator.parse(input);
+  static async createInTx(tx: Tx, input: ProjectInput, actor: Actor, parsed?: ProjectData): Promise<Project> {
+    const data = parsed ?? ProjectValidator.parse(input);
     const now = new Date();
     const project = await tx.project.create({ data: { ...data, updatedBy: actor.changedBy } });
     const snapshot: Record<string, string | null> = {};
@@ -100,12 +100,21 @@ export class ProjectService {
     return db.$transaction((tx) => ProjectService.updateInTx(tx, id, patch, actor));
   }
 
-  /** update() inside a caller-owned transaction (e.g. an all-or-nothing CSV wording update). */
-  static async updateInTx(tx: Tx, id: string, patch: Partial<ProjectInput>, actor: Actor): Promise<Project> {
+  /**
+   * update() inside a caller-owned transaction (e.g. an all-or-nothing CSV wording update).
+   * `mode: "form"` validates with the drawer form rules (ProjectValidator.validateForm): soft milestone
+   * limit, and stored over-cap values accepted unless that field changes. Every other caller, including
+   * the People autosave, uses the default rules through ProjectValidator.parseUpdate, so an unchanged stored
+   * over-cap value never blocks them either.
+   */
+  static async updateInTx(tx: Tx, id: string, patch: Partial<ProjectInput>, actor: Actor, mode: "default" | "form" = "default"): Promise<Project> {
     const existing = await ProjectService.loadMutable(tx, id);
     // Requester: a new name clears Not applicable and Not applicable clears the name.
-    const merged: ProjectInput = { ...ProjectValidator.toInput(existing), ...Requester.normalizePatch(ProjectService.pickEditable(patch)) };
-    const data: Record<string, unknown> = { ...ProjectValidator.parse(merged) };
+    const stored = ProjectValidator.toInput(existing);
+    const merged: ProjectInput = { ...stored, ...Requester.normalizePatch(ProjectService.pickEditable(patch)) };
+    const data: Record<string, unknown> = {
+      ...(mode === "form" ? ProjectValidator.parseForm(merged, { existing: stored }) : ProjectValidator.parseUpdate(merged, stored)),
+    };
 
     // Reopening (status leaves Complete) clears completionReportedAt, so a later completion is listed
     // in "Completed this period" again. Bookkeeping only: not a tracked history field.
@@ -151,14 +160,15 @@ export class ProjectService {
         if (Object.keys(missing).length) throw new ProjectValidationError(missing);
       }
 
+      const stored = ProjectValidator.toInput(existing);
       const merged: ProjectInput = {
-        ...ProjectValidator.toInput(existing),
+        ...stored,
         nextMilestone,
         dueDate,
         ...(completion.note !== undefined ? { note: completion.note } : {}),
         ...(completion.markComplete ? { status: "Complete" } : {}),
       };
-      const data = ProjectValidator.parse(merged);
+      const data = ProjectValidator.parseUpdate(merged, stored);
       const now = new Date();
 
       await tx.projectHistory.create({
@@ -184,6 +194,48 @@ export class ProjectService {
   }
 
   static readonly MILESTONE_COMPLETED_FIELD = "milestone_completed";
+
+  /** The fields the drawer edit form saves together (People save on pick through setPeopleField). */
+  static readonly FORM_FIELDS = [
+    "name",
+    "serviceArea",
+    "status",
+    "inforRequestNumber",
+    "nextMilestone",
+    "dueDate",
+    "percentComplete",
+    "note",
+    "accomplishment",
+    "description",
+    "completedOn",
+  ] as const satisfies readonly (keyof ProjectInput)[];
+
+  /**
+   * Admin drawer form save: every changed form field in one transaction, so the save is one history
+   * entry (one timestamp, one author; HistoryEntries groups its field rows). No-op when nothing changed.
+   */
+  static async saveForm(id: string, values: Partial<ProjectInput>, admin: Viewer, db: PrismaClient = Db.client): Promise<Project> {
+    AdminPolicy.assertAdmin(admin);
+    const patch = ProjectService.pickFormFields(values);
+    return db.$transaction((tx) => ProjectService.updateInTx(tx, id, patch, ProjectService.actorOf(admin), "form"));
+  }
+
+  /**
+   * Admin "New project" from the drawer: form rules (name and department required, status defaults to
+   * Not started), then the usual create with its "created" history row. People are set afterwards.
+   */
+  static async createFromForm(values: Partial<ProjectInput>, admin: Viewer, db: PrismaClient = Db.client): Promise<Project> {
+    AdminPolicy.assertAdmin(admin);
+    const input: ProjectInput = { name: "", ...ProjectService.pickFormFields(values), status: values.status || "NotStarted" };
+    const data = ProjectValidator.parseForm(input, { existing: null });
+    return db.$transaction((tx) => ProjectService.createInTx(tx, input, ProjectService.actorOf(admin), data));
+  }
+
+  private static pickFormFields(values: Partial<ProjectInput>): Partial<ProjectInput> {
+    const out: Record<string, unknown> = {};
+    for (const key of ProjectService.FORM_FIELDS) if (key in values) out[key] = values[key];
+    return out as Partial<ProjectInput>;
+  }
 
   /** "Kickoff meeting (due 2026-10-03)" or just the milestone when there is no due date. */
   static describeMilestone(milestone: string, dueDate: Date | null): string {

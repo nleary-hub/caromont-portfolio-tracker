@@ -26,6 +26,8 @@ export interface DashboardTableProps {
   /** Dashboard view settings (drives the one column model shared by every group). */
   settings: ViewSettingsValue;
   selectedId: string | null;
+  /** A just-created project's row, highlighted like the selected row for a moment (NewRowFlash). */
+  flashId?: string | null;
   onSelect: (id: string | null) => void;
   today: string;
   /** Shown when there is nothing to list. */
@@ -53,7 +55,7 @@ class GroupedTableStyle {
  * header, the rows (keyed by project id) and the department's "Completed this period" block at the end.
  * The first column is the reserved 24px gutter for the later row drag grip.
  */
-export function DashboardTable({ rows, completed, settings, selectedId, onSelect, today, emptyText, renderMeta }: DashboardTableProps) {
+export function DashboardTable({ rows, completed, settings, selectedId, flashId = null, onSelect, today, emptyText, renderMeta }: DashboardTableProps) {
   const columns = DashboardColumnModel.columns(settings);
   const people = DashboardColumnModel.peopleVisibility(settings);
   const stack = DashboardColumnModel.milestoneUpdateVisibility(settings);
@@ -116,7 +118,7 @@ export function DashboardTable({ rows, completed, settings, selectedId, onSelect
               stack={stack}
               dueFlags={dueFlags}
               today={today}
-              selected={r.id === selectedId}
+              selected={r.id === selectedId || r.id === flashId}
               onSelect={onSelect}
               renderMeta={renderMeta}
             />

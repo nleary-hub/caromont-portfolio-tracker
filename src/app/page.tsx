@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
-import { deleteProject, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
+import { createProjectFromForm, deleteProject, saveProjectForm, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
@@ -9,6 +9,7 @@ import { DashboardViewModel, type DashboardCompletedRow, type DashboardRow } fro
 import { Db } from "@/lib/db/Db";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
+import { ProjectFormModel, type ProjectFormSource, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { DateOnly } from "@/lib/domain/DateOnly";
@@ -26,7 +27,10 @@ interface DashboardLoad {
   /** "Completed FY27 to date N" for the summary strip. Null when the data could not be loaded. */
   completedFiscalYear: FiscalYearCount | null;
   /** Present only for admins. */
-  admin: Omit<AdminDashboardProps, "saveViewSettingsAction" | "setProjectHiddenAction" | "deleteProjectAction" | "setPeopleFieldAction"> | null;
+  admin: Omit<
+    AdminDashboardProps,
+    "saveViewSettingsAction" | "setProjectHiddenAction" | "deleteProjectAction" | "setPeopleFieldAction" | "saveProjectFormAction" | "createProjectAction"
+  > | null;
   error: string | null;
 }
 
@@ -44,10 +48,20 @@ class DashboardData {
       latestReport: null,
       completedFiscalYear: null,
       admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [] }
+        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {} }
         : null,
       error,
     };
+  }
+
+  /** Admin only: the drawer edit form's stored values for every listed project. */
+  static formValues(projects: readonly (ProjectFormSource & { id: string })[], ids: readonly string[]): Record<string, ProjectFormValues> {
+    const wanted = new Set(ids);
+    const out: Record<string, ProjectFormValues> = {};
+    for (const p of projects) {
+      if (wanted.has(p.id)) out[p.id] = ProjectFormModel.fromSource(p);
+    }
+    return out;
   }
 
   /** Everything is filtered through VisibilityPolicy on the server; non-admins never receive hidden data. */
@@ -126,6 +140,7 @@ class DashboardData {
               ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner)),
               requesterSuggestions: Requester.suggestions(projects.map((p) => p.physicianChampion)),
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
+              formValues: DashboardData.formValues(projects, listedIds),
             }
           : null,
         error: null,
@@ -179,6 +194,14 @@ export default async function DashboardPage() {
                 "use server";
                 const r = await setProjectPeopleField(projectId, field, value);
                 return r.ok ? null : r.error;
+              },
+              saveProjectFormAction: async (projectId, changes) => {
+                "use server";
+                return saveProjectForm(projectId, changes);
+              },
+              createProjectAction: async (values) => {
+                "use server";
+                return createProjectFromForm(values);
               },
               deleteProjectAction: async (projectId) => {
                 "use server";
