@@ -120,7 +120,40 @@ export class ReportBuilder {
     );
   }
 
-  static toRow(project: ProjectRecord, flags: RowFlags): ReportRow {
+  /** Calendar date (ET) of the latest public history entry for the project, or null. */
+  static updatedOn(projectId: string, history: readonly HistoryEntryRecord[]): string | null {
+    let latest: Date | null = null;
+    for (const h of history) {
+      if (h.projectId !== projectId || VisibilityPolicy.isAdminOnlyHistoryField(h.field)) continue;
+      if (!latest || h.changedAt.getTime() > latest.getTime()) latest = h.changedAt;
+    }
+    return latest ? DateOnly.inZone(latest) : null;
+  }
+
+  /**
+   * Status at the previous report, when the status changed since then and ended somewhere else
+   * (null otherwise, and always null for the first report).
+   */
+  static statusFrom(
+    project: Pick<ProjectRecord, "id" | "status">,
+    history: readonly HistoryEntryRecord[],
+    previousSnapshotGeneratedAt: Date | null,
+  ): ProjectStatus | null {
+    if (previousSnapshotGeneratedAt === null) return null;
+    const first = history
+      .filter(
+        (h) =>
+          h.projectId === project.id &&
+          h.field === "status" &&
+          h.changedAt.getTime() > previousSnapshotGeneratedAt.getTime(),
+      )
+      .sort((a, b) => a.changedAt.getTime() - b.changedAt.getTime())[0];
+    const from = first?.oldValue;
+    if (!from || !ProjectStatusInfo.isValid(from) || from === project.status) return null;
+    return from;
+  }
+
+  static toRow(project: ProjectRecord, flags: RowFlags, details: Pick<ReportRow, "updatedOn" | "statusFrom"> = {}): ReportRow {
     return {
       projectId: project.id,
       name: project.name,
@@ -136,6 +169,8 @@ export class ReportBuilder {
       note: project.note,
       changed: flags.changed,
       overdue: flags.overdue,
+      updatedOn: details.updatedOn ?? null,
+      statusFrom: details.statusFrom ?? null,
     };
   }
 
@@ -148,6 +183,9 @@ export class ReportBuilder {
         ReportBuilder.toRow(p, {
           changed: ReportBuilder.isChanged(p.id, history, input.previousSnapshotGeneratedAt),
           overdue: ReportBuilder.isOverdue(p, input.reportDate),
+        }, {
+          updatedOn: ReportBuilder.updatedOn(p.id, history),
+          statusFrom: ReportBuilder.statusFrom(p, history, input.previousSnapshotGeneratedAt),
         }),
       ),
     );

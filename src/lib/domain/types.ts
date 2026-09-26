@@ -36,6 +36,9 @@ export interface HistoryEntryRecord {
   changedAt: Date;
   /** Needed so admin-only events (hide/delete) never set the Changed flag. */
   field: string;
+  /** Serialized old/new values (used for the "from <status>" detail). Optional for callers that only flag. */
+  oldValue?: string | null;
+  newValue?: string | null;
 }
 
 /** A frozen report row, as stored in ReportSnapshot.rowsJson. */
@@ -56,6 +59,10 @@ export interface ReportRow {
   note: string | null;
   changed: boolean;
   overdue: boolean;
+  /** YYYY-MM-DD (America/New_York) of the latest public change. Absent on snapshots before 0004. */
+  updatedOn?: string | null;
+  /** Status at the previous report when it differs from the current one ("from At risk"). */
+  statusFrom?: ProjectStatus | null;
 }
 
 /** Stored in ReportSnapshot.missingChampionsJson. */

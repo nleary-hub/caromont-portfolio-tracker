@@ -7,7 +7,7 @@ export interface LayoutColumn {
 
 /**
  * Layout spec for the biweekly PDF (design: portfolio-tracker-mockups/report.*).
- * Not rendered yet; PdfReportRenderer is a stub. Kept as code so the renderer uses one source.
+ * ReportLayout (src/lib/report/pdf) renders from these constants, so the spec lives in one place.
  */
 export class PdfReportLayout {
   static readonly TITLE = "Cardiac Service Line: Project Status Report";

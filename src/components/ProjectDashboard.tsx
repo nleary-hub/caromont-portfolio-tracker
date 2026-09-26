@@ -226,14 +226,19 @@ export function ProjectDashboard({
             <ViewSettingsPicker settings={settings} counts={admin.pickerCounts} onSave={saveSettings} />
           </>
         )}
-        <button
-          type="button"
-          disabled
-          title="PDF generation is not implemented yet"
-          className="h-8 rounded-control bg-accent px-3.5 text-white type-table-strong disabled:opacity-60"
-        >
-          Generate report
-        </button>
+        <Link href="/reports" className="type-table-strong text-muted hover:text-fg">
+          Reports
+        </Link>
+        {admin && (
+          <a
+            href="/api/reports/preview"
+            download
+            title="Download a draft PDF from live data. Not an official snapshot; nothing is saved or sent."
+            className="flex h-8 items-center rounded-control bg-accent px-3.5 text-white type-table-strong"
+          >
+            Generate PDF now
+          </a>
+        )}
         <form action={signOutAction} className="flex items-center gap-2 text-muted">
           <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">
             {Initials.of(userName, userEmail)}

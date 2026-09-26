@@ -10,6 +10,10 @@ interface State {
   recipients: Row[];
   viewSettings: Row[];
   viewSettingsHistory: Row[];
+  artifacts: Row[];
+  deliveries: Row[];
+  reportOptions: Row[];
+  reportOptionsHistory: Row[];
 }
 
 /**
@@ -18,10 +22,22 @@ interface State {
  * happened inside a transaction so tests can assert atomicity.
  */
 export class FakeDb {
-  state: State = { projects: [], history: [], snapshots: [], recipients: [], viewSettings: [], viewSettingsHistory: [] };
+  state: State = {
+    projects: [],
+    history: [],
+    snapshots: [],
+    recipients: [],
+    viewSettings: [],
+    viewSettingsHistory: [],
+    artifacts: [],
+    deliveries: [],
+    reportOptions: [],
+    reportOptionsHistory: [],
+  };
   writes: { model: string; op: string; inTx: boolean; txId: number | null }[] = [];
   transactions = 0;
   private txCounter = 0;
+  private txQueue: Promise<unknown> = Promise.resolve();
 
   static clone(state: State): State {
     const c = (rows: Row[]) => rows.map((r) => ({ ...r }));
@@ -32,6 +48,10 @@ export class FakeDb {
       recipients: c(state.recipients),
       viewSettings: c(state.viewSettings),
       viewSettingsHistory: c(state.viewSettingsHistory),
+      artifacts: c(state.artifacts),
+      deliveries: c(state.deliveries),
+      reportOptions: c(state.reportOptions),
+      reportOptionsHistory: c(state.reportOptionsHistory),
     };
   }
 
@@ -49,22 +69,40 @@ export class FakeDb {
           if (cond.notIn) return !cond.notIn.includes(row[k]);
           if (cond.gt) return (row[k] as Date).getTime() > cond.gt.getTime();
         }
+        if (v instanceof Date) return row[k] instanceof Date && (row[k] as Date).getTime() === v.getTime();
         return row[k] === v;
       });
+    const uniqueViolation = () => Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+    const sortBy = (rows: Row[], orderBy?: Record<string, "asc" | "desc">) => {
+      if (!orderBy) return rows;
+      const [[key, dir]] = Object.entries(orderBy);
+      return [...rows].sort((a, b) => {
+        const x = a[key] instanceof Date ? (a[key] as Date).getTime() : (a[key] as number);
+        const y = b[key] instanceof Date ? (b[key] as Date).getTime() : (b[key] as number);
+        return dir === "desc" ? y - x : x - y;
+      });
+    };
     const pick = (row: Row, select?: Record<string, boolean>) =>
       select ? Object.fromEntries(Object.keys(select).map((k) => [k, row[k]])) : { ...row };
 
     return {
+      // Transactions run one at a time (like SERIALIZABLE without retries), so a rollback never
+      // discards another transaction's committed writes.
       $transaction: async <T>(fn: (tx: unknown) => Promise<T>): Promise<T> => {
-        this.transactions += 1;
-        const id = ++this.txCounter;
-        const backup = FakeDb.clone(this.state);
-        try {
-          return await fn(this.api(id));
-        } catch (e) {
-          this.state = backup;
-          throw e;
-        }
+        const run = async () => {
+          this.transactions += 1;
+          const id = ++this.txCounter;
+          const backup = FakeDb.clone(this.state);
+          try {
+            return await fn(this.api(id));
+          } catch (e) {
+            this.state = backup;
+            throw e;
+          }
+        };
+        const result = this.txQueue.then(run, run);
+        this.txQueue = result.catch(() => undefined);
+        return result;
       },
       project: {
         create: async ({ data }: { data: Row }) => {
@@ -132,24 +170,84 @@ export class FakeDb {
         },
       },
       reportSnapshot: {
-        findFirst: async ({ select }: { select?: Record<string, boolean> } = {}) => {
-          const sorted = [...this.state.snapshots].sort(
-            (a, b) => (b.generatedAt as Date).getTime() - (a.generatedAt as Date).getTime(),
+        findFirst: async ({ where, select, orderBy }: { where?: Row; select?: Record<string, boolean>; orderBy?: Record<string, "asc" | "desc"> } = {}) => {
+          const rows = sortBy(
+            this.state.snapshots.filter((s) => matches(s, where)),
+            orderBy ?? { generatedAt: "desc" },
           );
-          return sorted[0] ? pick(sorted[0], select) : null;
+          return rows[0] ? pick(rows[0], select) : null;
         },
+        findMany: async ({ where, select, orderBy }: { where?: Row; select?: Record<string, boolean>; orderBy?: Record<string, "asc" | "desc"> } = {}) =>
+          sortBy(this.state.snapshots.filter((s) => matches(s, where)), orderBy).map((s) => pick(s, select)),
         create: async ({ data }: { data: Row }) => {
           rec("reportSnapshot", "create");
-          const row = { id: randomUUID(), pdfStorageKey: null, sentAt: null, sentToJson: null, ...data };
+          const clash = this.state.snapshots.some(
+            (s) =>
+              (s.periodStart as Date).getTime() === (data.periodStart as Date).getTime() &&
+              (s.periodEnd as Date).getTime() === (data.periodEnd as Date).getTime(),
+          );
+          if (clash) throw uniqueViolation();
+          const row = { id: randomUUID(), pdfStorageKey: null, sentAt: null, sentToJson: null, deliveryJson: null, ...data };
           this.state.snapshots.push(row);
           return { ...row };
         },
         update: async ({ where, data }: { where: { id: string }; data: Row }) => {
           rec("reportSnapshot", "update");
           const r = this.state.snapshots.find((s) => s.id === where.id)!;
+          if (r.pdfStorageKey && "pdfStorageKey" in data && data.pdfStorageKey !== r.pdfStorageKey) {
+            throw new Error("ReportSnapshot delivery fields are write-once");
+          }
           Object.assign(r, data);
           return { ...r };
         },
+      },
+      reportArtifact: {
+        findFirst: async ({ where }: { where?: Row } = {}) => {
+          const r = this.state.artifacts.find((a) => matches(a, where));
+          return r ? { ...r } : null;
+        },
+        create: async ({ data }: { data: Row }) => {
+          rec("reportArtifact", "create");
+          if (this.state.artifacts.some((a) => a.snapshotId === data.snapshotId && a.kind === data.kind)) throw uniqueViolation();
+          const row = { id: randomUUID(), createdAt: new Date(), ...data };
+          this.state.artifacts.push(row);
+          return { ...row };
+        },
+      },
+      reportOptions: {
+        findUnique: async ({ where }: { where: { id: string } }) => {
+          const r = this.state.reportOptions.find((o) => o.id === where.id);
+          return r ? { ...r } : null;
+        },
+        upsert: async ({ where, create, update }: { where: { id: string }; create: Row; update: Row }) => {
+          rec("reportOptions", "upsert");
+          const r = this.state.reportOptions.find((o) => o.id === where.id);
+          if (r) {
+            Object.assign(r, update, { updatedAt: new Date() });
+            return { ...r };
+          }
+          const row = { ...create, updatedAt: new Date() };
+          this.state.reportOptions.push(row);
+          return { ...row };
+        },
+      },
+      reportOptionsHistory: {
+        create: async ({ data }: { data: Row }) => {
+          rec("reportOptionsHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), ...data };
+          this.state.reportOptionsHistory.push(row);
+          return { ...row };
+        },
+      },
+      reportDelivery: {
+        create: async ({ data }: { data: Row }) => {
+          rec("reportDelivery", "create");
+          const row = { id: randomUUID(), attemptedAt: new Date(), ...data };
+          this.state.deliveries.push(row);
+          return { ...row };
+        },
+        findMany: async ({ where }: { where?: Row } = {}) =>
+          this.state.deliveries.filter((d) => matches(d, where)).map((d) => ({ ...d })),
       },
       viewSettings: {
         findUnique: async ({ where }: { where: { context: string } }) => {

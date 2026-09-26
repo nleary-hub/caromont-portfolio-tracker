@@ -48,7 +48,7 @@ describe("SnapshotService.create", () => {
     const rows2 = s2.rowsJson as unknown as ReportRow[];
     expect(rows2.map((r) => r.name)).toEqual(["Active"]);
     expect(rows2[0].changed).toBe(false);
-    expect(s2.pdfStorageKey).toBeNull(); // PDF renderer is a stub
+    expect(s2.pdfStorageKey).toBeNull(); // rendering happens later, in FreezeService
   });
 
   it("excludes projects hidden from the report and deleted projects from rows, counts and champions", async () => {
