@@ -7,6 +7,7 @@ import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { ProjectArchivedError, ProjectNotFoundError, ProjectService, type MilestoneEdit } from "@/lib/services/ProjectService";
+import { MilestoneService, type MilestoneStepDto } from "@/lib/services/MilestoneService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { ProjectValidationError, type FieldErrors } from "@/lib/validation/ProjectValidator";
 
@@ -97,6 +98,27 @@ export async function saveProjectForm(projectId: string, changes: Partial<Projec
     ),
   );
 }
+
+/** Drawer Milestones autosave: one checklist change, saved immediately. Returns the stored steps. */
+export async function saveProjectMilestones(projectId: string, milestones: unknown): Promise<MilestoneSaveActionResult> {
+  const viewer = await CurrentViewer.get();
+  if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
+  const edit = ProjectFormAction.milestones(milestones);
+  if (!edit) return { ok: false, error: "Nothing to save." };
+  try {
+    const steps = await ProjectService.saveMilestones(String(projectId), edit, viewer);
+    revalidatePath("/");
+    revalidatePath("/admin/audit");
+    return { ok: true, steps: steps.map((s) => MilestoneService.toDto(s)) };
+  } catch (e) {
+    if (e instanceof ProjectValidationError) return { ok: false, error: Object.values(e.errors).flat()[0] ?? "Invalid milestone." };
+    if (e instanceof ProjectNotFoundError || e instanceof ProjectArchivedError) return { ok: false, error: "This project was deleted or no longer exists." };
+    console.error("Admin action failed: saveProjectMilestones", e);
+    return { ok: false, error: "Could not save the change." };
+  }
+}
+
+export type MilestoneSaveActionResult = { ok: true; steps: MilestoneStepDto[] } | { ok: false; error: string };
 
 /** Create a project from the New project drawer (name and department required), with its checklist. */
 export async function createProjectFromForm(values: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {

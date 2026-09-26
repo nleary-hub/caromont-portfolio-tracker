@@ -1,5 +1,5 @@
 import { Requester } from "@/lib/domain/Requester";
-import type { Prisma, PrismaClient, Project } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient, Project, ProjectMilestone } from "@/generated/prisma/client";
 import type { ViewContext } from "@/generated/prisma/enums";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
@@ -276,6 +276,35 @@ export class ProjectService {
       return ProjectService.updateInTx(tx, id, patch, actor, "form", { mirror, at });
     });
   }
+
+  /**
+   * Drawer Milestones autosave ("Saves as you go"): one checklist change (check, rename, reorder, due date,
+   * add, delete, apply template) in its own transaction, with one history row per action and the derived
+   * next milestone mirrored to the legacy columns. Returns the stored steps. Admin only.
+   */
+  static async saveMilestones(id: string, milestones: MilestoneEdit, admin: Viewer, db: PrismaClient = Db.client): Promise<ProjectMilestone[]> {
+    AdminPolicy.assertAdmin(admin);
+    const actor = ProjectService.actorOf(admin);
+    return db.$transaction(async (tx) => {
+      const at = new Date();
+      await ProjectService.loadMutable(tx, id);
+      const saved = await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null));
+      if (saved.changed) {
+        try {
+          await ProjectService.updateInTx(tx, id, {}, actor, "form", { mirror: saved.mirror, at });
+        } catch (e) {
+          // The status needs a next milestone (e.g. deleting the last step of an On track project).
+          if (e instanceof ProjectValidationError && e.errors.nextMilestone) {
+            throw new ProjectValidationError({ milestones: [ProjectService.MILESTONE_NEEDED_MESSAGE] });
+          }
+          throw e;
+        }
+      }
+      return MilestoneService.stepsFor(tx, id);
+    });
+  }
+
+  static readonly MILESTONE_NEEDED_MESSAGE = "This status needs at least one open milestone. Change the status first, or keep a milestone.";
 
   /** Checklist validation errors come back to the form under "milestones". */
   private static async withMilestoneErrors<T>(fn: () => Promise<T>): Promise<T> {

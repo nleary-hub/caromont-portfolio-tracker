@@ -205,13 +205,17 @@ to a PGlite Postgres instance and exercising the services and guards.
     Complete), plus normal field-level history rows, all in one transaction.
 - `MilestoneProgress` (pure): THE derivation of the next milestone from the checklist. Next = the first
   step not done, by position; its due date drives Due and Overdue. No steps: the legacy fields. All steps
-  done: the last step with no due date (Overdue never fires). "X of Y" shows in the milestone cell only with
-  2 or more steps. The dashboard, report loader (PDF, handoff.json, Changed, Completed this period) and the
+  done: the last step's name as the data value (CSV, legacy mirror) with no due date (Overdue never fires);
+  the dashboard and PDF display "All milestones done" in teal. "· X of Y" sits at the end of the milestone
+  line (12px secondary on the dashboard, 7pt in the PDF, never wrapped onto its own line) only with 2 or
+  more steps; no steps shows nothing extra. The dashboard, report loader (PDF, handoff.json, Changed, Completed this period) and the
   CSV export all call `applyAll` before building anything.
 - `MilestoneRules` (pure) and `MilestoneService`: checklist validation and the plan of writes, one history
   row per action (`milestone_added`, `_renamed`, `_due`, `_done`, `_reopened`, `_deleted`,
-  `milestones_reordered`, `milestone_template_applied`). The drawer saves the checklist with the form Save,
-  in the same transaction and history group. `MilestoneTemplateService`: admin-only template edits, audited.
+  `milestones_reordered`, `milestone_template_applied`). In the edit drawer the checklist autosaves
+  ("Saves as you go"): each action calls `ProjectService.saveMilestones` (admin only, one transaction,
+  one history row per action, next milestone mirrored) and is not part of the form Save. A new project
+  picks "Start from" (Blank first, then templates) and its steps save with Create. `MilestoneTemplateService`: admin-only template edits, audited.
 - `ReportBuilder`: row selection, Changed/Overdue flags, sort order, `build()`.
   - Rows: `VisibilityPolicy.visibleProjects(projects, "report", settings)`.
   - Header: status counts overall and per area, overdue and changed, all computed from the rows, so they

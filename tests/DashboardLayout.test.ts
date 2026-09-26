@@ -178,7 +178,7 @@ describe("Next milestone / Latest update cell", () => {
 
   it("milestone first, then the update; unchanged rows read No change. in secondary (PDF)", () => {
     expect(lines({ nextMilestone: " Go  live ", note: "Booked.", changed: true })).toEqual([
-      { kind: "milestone", text: "Go live", progress: null },
+      { kind: "milestone", text: "Go live", progress: null, done: false },
       { kind: "update", prefix: null, text: "Booked.", full: "Booked.", muted: false },
     ]);
     expect(lines({ nextMilestone: "M", note: "Same.", changed: false })[1]).toEqual({ kind: "update", prefix: "No change.", text: "Same.", full: "No change. Same.", muted: true });

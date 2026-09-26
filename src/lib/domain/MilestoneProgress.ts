@@ -41,12 +41,21 @@ export interface LegacyMilestone {
  * Rules:
  * - Next milestone = the first step that is not done, by position. Its due date drives Due and Overdue.
  * - No steps: the legacy fields, exactly as before the checklist existed.
- * - All steps done: the last step (by position) with no due date, so Overdue never fires on a finished
- *   checklist; the progress label reads "Y of Y".
+ * - All steps done: no due date, so Overdue never fires on a finished checklist. The dashboard and PDF
+ *   line reads "All milestones done" (teal) followed by "· Y of Y" (2+ steps). The data value (CSV
+ *   export, legacy mirror) stays the last step's name.
  * - Progress "X of Y" shows only with 2 or more steps, so a migrated single-step project looks exactly
  *   as it did.
  */
 export class MilestoneProgress {
+  /** Shown on the dashboard and PDF milestone line once every step is done. */
+  static readonly ALL_DONE_TEXT = "All milestones done";
+
+  /** Every step done (a checklist with at least one step). */
+  static allDone(count: MilestoneCount | null | undefined): boolean {
+    return !!count && count.total > 0 && count.done === count.total;
+  }
+
   static ordered<T extends MilestoneStepLike>(steps: readonly T[]): T[] {
     return steps.map((s, i) => ({ s, i })).sort((a, b) => a.s.position - b.s.position || a.i - b.i).map((x) => x.s);
   }

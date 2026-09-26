@@ -63,10 +63,6 @@ export default async function AdminTemplatesPage() {
           </Link>
         </div>
       </div>
-      <p className="text-muted type-caption">
-        Only admins can see this page. Apply a template from a project&rsquo;s Milestones section; its steps are copied, so editing a template never changes
-        projects that already used it. Every change is recorded below.
-      </p>
       {!configured && <p className="text-danger type-caption">DATABASE_URL is not configured.</p>}
 
       <TemplatesEditor initial={templates} />

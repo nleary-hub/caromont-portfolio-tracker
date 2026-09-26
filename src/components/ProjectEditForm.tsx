@@ -6,6 +6,7 @@ import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
 import { MilestoneEditorModel } from "@/lib/projects/MilestoneEditorModel";
+import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { ProjectFormModel, type FormField, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
@@ -35,8 +36,10 @@ export interface ProjectEditFormProps {
   people: ReactNode;
   /** Delete project with its confirmation. Null for a new project. */
   adminDelete: ReactNode;
-  /** Edit: the changed fields. New: every field. */
+  /** Edit: the changed fields. New: every field (and the checklist). */
   onSubmit: ProjectFormSubmit;
+  /** Edit mode: Milestones autosave ("Saves as you go"), outside the Save footer. */
+  saveMilestones?: (edit: MilestoneEdit) => Promise<MilestoneSaveActionResult>;
   onSaved: (id: string) => void;
   /** Cancel pressed; the drawer asks "Discard changes?" when dirty. */
   onCancel: () => void;
@@ -64,6 +67,7 @@ export function ProjectEditForm({
   people,
   adminDelete,
   onSubmit,
+  saveMilestones,
   onSaved,
   onCancel,
   onDirtyChange,
@@ -82,11 +86,14 @@ export function ProjectEditForm({
   const [saving, setSaving] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  // Checklist: local until Save, like the other fields (one history group per save).
+  // Checklist. Edit mode: every change autosaves (one history row per action), so it is not part of Save or
+  // the unsaved-changes prompt. New project: kept locally and created with the project.
   const [msOriginal] = useState(() => MilestoneEditorModel.initial(milestones, { nextMilestone: originalProp.nextMilestone, dueDate: originalProp.dueDate }));
   const [ms, setMs] = useState(msOriginal);
-  const msDirty = MilestoneEditorModel.isDirty(ms, msOriginal);
-  const msStepErrors = MilestoneEditorModel.errors(ms, msOriginal);
+  // New project: "Start from" Blank (first) or a template; switching restarts the checklist.
+  const [startFrom, setStartFrom] = useState<string>(MilestoneEditorModel.BLANK_START);
+  const msDirty = isNew && MilestoneEditorModel.isDirty(ms, msOriginal);
+  const msStepErrors = useMemo(() => (isNew ? MilestoneEditorModel.errors(ms, msOriginal) : {}), [isNew, ms, msOriginal]);
 
   const dirty = ProjectFormModel.isDirty(values, original) || msDirty;
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
@@ -144,7 +151,7 @@ export function ProjectEditForm({
     setSaving(true);
     setFormError(null);
     try {
-      const result = await onSubmit(isNew ? values : ProjectFormModel.changes(values, original), MilestoneEditorModel.edit(ms, msOriginal));
+      const result = await onSubmit(isNew ? values : ProjectFormModel.changes(values, original), isNew ? MilestoneEditorModel.edit(ms, msOriginal) : null);
       if (result.ok) return onSaved(result.id);
       setFormError(result.error);
       if (result.fieldErrors) {
@@ -230,12 +237,23 @@ export function ProjectEditForm({
         </Section>
 
         <Section title="Progress">
+          {isNew && templates.length > 0 && (
+            <NewProjectStart
+              templates={templates}
+              value={startFrom}
+              onChange={(id) => {
+                setStartFrom(id);
+                setMs(MilestoneEditorModel.startFrom(id, templates));
+              }}
+            />
+          )}
           <MilestonesEditor
-            state={ms}
-            original={msOriginal}
+            key={isNew ? startFrom : "edit"}
+            initial={isNew ? MilestoneEditorModel.startFrom(startFrom, templates) : msOriginal}
             templates={templates}
             today={today}
-            onChange={(next) => {
+            autosave={isNew ? undefined : saveMilestones}
+            onStateChange={(next) => {
               setMs(next);
               setServerErrors((prev) => (prev.milestones || prev.nextMilestone || prev.dueDate ? { ...prev, milestones: undefined, nextMilestone: undefined, dueDate: undefined } : prev));
               setFormError(null);
@@ -410,5 +428,36 @@ function Field({
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * New project: "Start from" cards, Blank first, then each template with its milestone count (the picker
+ * order is the Templates page order). Choosing one fills the checklist below, which stays editable.
+ */
+function NewProjectStart({ templates, value, onChange }: { templates: readonly TemplateDto[]; value: string; onChange: (id: string) => void }) {
+  const options = [{ id: MilestoneEditorModel.BLANK_START, name: "Blank", caption: "Add milestones by hand." }, ...templates.map((t) => ({ id: t.id, name: t.name, caption: `${t.items.length} ${t.items.length === 1 ? "milestone" : "milestones"}` }))];
+  return (
+    <fieldset className="flex flex-col gap-1.5" data-testid="new-project-start">
+      <legend className="mb-1.5 text-muted type-caption">Start from</legend>
+      <div className="grid grid-cols-2 gap-1.5">
+        {options.map((o) => {
+          const on = o.id === value;
+          return (
+            <label
+              key={o.id}
+              className="flex cursor-pointer items-start gap-2.5 rounded-control border px-3 py-2"
+              style={on ? { borderColor: "var(--dark-accent)", background: "#1A2233" } : { borderColor: "var(--dark-border)", background: "var(--dark-input)" }}
+            >
+              <input type="radio" name="new-project-start" checked={on} onChange={() => onChange(o.id)} className="mt-0.5 accent-(--dark-accent)" />
+              <span className="min-w-0">
+                <span className="block truncate text-fg type-table-strong">{o.name}</span>
+                <span className="block text-muted type-caption">{o.caption}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+    </fieldset>
   );
 }

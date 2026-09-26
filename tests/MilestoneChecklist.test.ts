@@ -163,11 +163,11 @@ describe("migrated data looks identical (report rows, PDF, dashboard, handoff.js
     );
     const r = build(multi);
     expect(r.rows[0]).toMatchObject({ nextMilestone: "Trial", dueDate: "2026-10-10", overdue: false, milestoneProgress: { done: 1, total: 3 } });
-    expect(MilestoneUpdateStack.lines(r.rows[0], { milestone: true, update: false })).toEqual([{ kind: "milestone", text: "Trial", progress: "1 of 3" }]);
+    expect(MilestoneUpdateStack.lines(r.rows[0], { milestone: true, update: false })).toEqual([{ kind: "milestone", text: "Trial", progress: "1 of 3", done: false }]);
     const m = new TextMeasure();
     const l = ReportLayout.layout(SampleReportData.docInput({ rows: r.rows, header: r.header, completed: [], exampleData: false }), m);
     const cell = JSON.stringify(l).match(/"kind":"nextMilestone"[^}]*"progress":\{[^}]*\}/)?.[0] ?? "";
-    expect(cell).toContain('"text":"1 of 3"');
+    expect(cell).toContain('"text":"· 1 of 3"');
     expect(JSON.stringify(layout(before).pages[0]).match(/"kind":"/g)?.length).toBeGreaterThan(0);
     function layout(x: ReturnType<typeof build>) {
       return ReportLayout.layout(SampleReportData.docInput({ rows: x.rows, header: x.header, completed: [], exampleData: false }), m);
@@ -507,5 +507,102 @@ describe("MilestoneTemplateService (admin Templates page)", () => {
       ["Two", 1],
       ["Three", 2],
     ]);
+  });
+});
+
+describe("Figma Bro layout rules", () => {
+  const tpl: TemplateDto = { id: "t1", name: "Service agreement", position: 1, items: [{ id: "i1", name: "Scope agreed", position: 1 }, { id: "i2", name: "Contract signed", position: 2 }] };
+
+  it("the Apply template confirm pluralizes: 1 milestone vs 3 milestones", () => {
+    const one = MilestoneEditorModel.setDone(MilestoneEditorModel.initial([], { nextMilestone: "Kickoff", dueDate: "" }), "legacy", true, "2026-09-26");
+    expect(MilestoneEditorModel.applyPrompt(one)).toBe("This project has 1 milestone (1 done).");
+    let three = MilestoneEditorModel.add(MilestoneEditorModel.applyTemplate({ steps: [], applied: null }, tpl, "replace"), "Go live");
+    three = MilestoneEditorModel.setDone(three, three.steps[0].key, true, "2026-09-26");
+    expect(MilestoneEditorModel.applyPrompt(three)).toBe("This project has 3 milestones (1 done).");
+    expect(MilestoneEditorModel.applyPrompt(MilestoneEditorModel.applyTemplate({ steps: [], applied: null }, tpl, "replace"))).toBe("This project has 2 milestones (0 done).");
+  });
+
+  it("done steps show 'Done Sep 26' where the due date goes; a past due date on an open step is overdue", () => {
+    const base = { key: "k", id: "k", name: "Step", sourceTemplateId: null };
+    expect(MilestoneEditorModel.dateLabel({ ...base, done: true, doneAt: "2026-09-26", dueDate: "2026-09-01" }, "2026-09-26")).toEqual({ text: "Done Sep 26", tone: "done" });
+    expect(MilestoneEditorModel.dateLabel({ ...base, done: false, doneAt: null, dueDate: "2026-09-25" }, "2026-09-26")).toEqual({ text: "Sep 25", tone: "overdue" });
+    expect(MilestoneEditorModel.dateLabel({ ...base, done: false, doneAt: null, dueDate: "2026-09-26" }, "2026-09-26")).toEqual({ text: "Sep 26", tone: "due" });
+    expect(MilestoneEditorModel.dateLabel({ ...base, done: false, doneAt: null, dueDate: "" }, "2026-09-26").tone).toBe("empty");
+    expect(MilestoneEditorModel.nameCounter("x".repeat(23))).toBe("23/40");
+  });
+
+  it("new project 'Start from': Blank is empty; a template fills editable steps", () => {
+    expect(MilestoneEditorModel.startFrom(MilestoneEditorModel.BLANK_START, [tpl]).steps).toEqual([]);
+    const s = MilestoneEditorModel.startFrom("t1", [tpl]);
+    expect(s.steps.map((x) => x.name)).toEqual(["Scope agreed", "Contract signed"]);
+    expect(s.applied).toMatchObject({ templateId: "t1", mode: "replace" });
+  });
+
+  it("all steps done: the milestone line reads 'All milestones done' with '10 of 10'; a single done step shows no count", () => {
+    const vis = { milestone: true, update: false };
+    const row = { nextMilestone: "Product on shelf", note: null, changed: false };
+    expect(MilestoneUpdateStack.lines({ ...row, milestoneProgress: { done: 10, total: 10 } }, vis)).toEqual([{ kind: "milestone", text: "All milestones done", progress: "10 of 10", done: true }]);
+    expect(MilestoneUpdateStack.lines({ ...row, milestoneProgress: { done: 1, total: 1 } }, vis)).toEqual([{ kind: "milestone", text: "All milestones done", progress: null, done: true }]);
+    expect(MilestoneUpdateStack.lines({ ...row, milestoneProgress: null }, vis)).toEqual([{ kind: "milestone", text: "Product on shelf", progress: null, done: false }]);
+  });
+
+  it("PDF: '· X of Y' sits at the end of the last milestone line and never wraps onto its own line", () => {
+    const m = new TextMeasure();
+    const inner = 150;
+    for (const text of ["Short", "Contract complete in Infor and signed by all parties", "Wwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwwww"]) {
+      const { lines, progress } = ReportLayout.milestoneLines(m, text, "4 of 10", inner);
+      expect(progress).not.toBeNull();
+      expect(progress!.line).toBe(lines.length - 1);
+      expect(progress!.text).toBe("· 4 of 10");
+      expect(progress!.x + m.width(progress!.text, 7, 400)).toBeLessThanOrEqual(inner + 0.01);
+    }
+    // No label: the wrap is exactly what it was.
+    expect(ReportLayout.milestoneLines(m, "Contract complete in Infor", null, inner).progress).toBeNull();
+    const rows = SampleReportData.rows().slice(0, 1).map((r) => ({ ...r, milestoneProgress: { done: 10, total: 10 } }));
+    const l = ReportLayout.layout(SampleReportData.docInput({ rows, header: ReportBuilder.header(rows), completed: [], exampleData: false }), m);
+    const cell = JSON.stringify(l).match(/"kind":"nextMilestone"[^]*?"done":(true|false)/)?.[0] ?? "";
+    expect(cell).toContain('"lines":["All milestones done"]');
+    expect(cell).toContain('"done":true');
+  });
+});
+
+describe("Milestones autosave (Saves as you go)", () => {
+  let fake: FakeDb;
+  let db: PrismaClient;
+  const base = { name: "Closure device", serviceArea: "Cath" as const, status: "OnTrack" as const, nextMilestone: "Vendor quote", dueDate: "2026-10-03" };
+  beforeEach(() => {
+    fake = new FakeDb();
+    db = fake.asClient();
+  });
+
+  it("each change saves on its own with one history row per action, and mirrors the next milestone", async () => {
+    const p = await ProjectService.create(base, { changedBy: "owner@example.org" }, db);
+    let steps = await ProjectService.saveMilestones(
+      p.id,
+      { drafts: [{ id: MilestoneService.LEGACY_STEP_ID, name: "Vendor quote", dueDate: "2026-10-03", done: false, sourceTemplateId: null }, { id: null, name: "Trial", dueDate: "", done: false, sourceTemplateId: null }] },
+      Factory.ADMIN,
+      db,
+    );
+    expect(steps.map((s) => s.name)).toEqual(["Vendor quote", "Trial"]);
+    const before = fake.state.history.length;
+    steps = await ProjectService.saveMilestones(
+      p.id,
+      { drafts: steps.map((s, i) => ({ id: s.id, name: s.name, dueDate: DateOnly.fromDbDate(s.dueDate) ?? "", done: i === 0, sourceTemplateId: null })) },
+      Factory.ADMIN,
+      db,
+    );
+    expect(fake.state.history.slice(before).map((h) => h.field)).toEqual(["milestone_done"]);
+    expect(fake.state.projects.find((r) => r.id === p.id)).toMatchObject({ nextMilestone: "Trial", dueDate: null });
+  });
+
+  it("is admin only, and refuses to empty the checklist of a status that needs a milestone (nothing written)", async () => {
+    const p = await ProjectService.create(base, { changedBy: "owner@example.org" }, db);
+    await expect(ProjectService.saveMilestones(p.id, { drafts: [] }, Factory.MEMBER, db)).rejects.toThrow(AdminRequiredError);
+    await ProjectService.saveMilestones(p.id, { drafts: [{ id: MilestoneService.LEGACY_STEP_ID, name: "Vendor quote", dueDate: "2026-10-03", done: false, sourceTemplateId: null }] }, Factory.ADMIN, db);
+    const history = fake.state.history.length;
+    const steps = fake.state.milestones.length;
+    await expect(ProjectService.saveMilestones(p.id, { drafts: [] }, Factory.ADMIN, db)).rejects.toThrow(ProjectValidationError);
+    expect(fake.state.history).toHaveLength(history);
+    expect(fake.state.milestones).toHaveLength(steps);
   });
 });
