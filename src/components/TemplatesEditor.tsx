@@ -111,7 +111,7 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
                 if (drag?.list === "templates") moveTemplates(drag.from, i);
                 setDrag(null);
               }}
-              className={`flex h-9 items-center gap-2 rounded-control px-1.5 ${t.id === selectedId ? "bg-row-selected" : "hover:bg-input"}`}
+              className={`flex h-12 items-center gap-2 rounded-control px-1.5 ${t.id === selectedId ? "bg-row-selected" : "hover:bg-input"}`}
             >
               {handle(t.id, t.name, (key) => keyMove("templates", i, templates.length, key, t.id), () => setDrag({ list: "templates", from: i }))}
               <button
@@ -123,8 +123,12 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
                 aria-current={t.id === selectedId ? "true" : undefined}
                 className="flex min-w-0 flex-1 items-center justify-between gap-2 text-left"
               >
-                <span className="truncate text-fg type-table-strong">{t.name}</span>
-                <span className="shrink-0 tabular-nums text-muted type-caption">{t.items.length}</span>
+                <span className="flex min-w-0 flex-col">
+                  <span className="truncate text-fg type-table-strong">{t.name}</span>
+                  <span className="tabular-nums text-muted type-caption">
+                    {t.items.length} {t.items.length === 1 ? "milestone" : "milestones"}
+                  </span>
+                </span>
               </button>
             </li>
           ))}
@@ -143,21 +147,49 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
           <p className="text-muted type-table">No templates yet.</p>
         ) : (
           <>
-            <label className="flex flex-col gap-1">
-              <span className="text-muted type-caption">Template name</span>
+            <div className="flex items-center gap-3">
               <input
+                aria-label="Template name"
                 key={`name-${selected.id}-${selected.name}`}
                 defaultValue={selected.name}
                 maxLength={MilestoneRules.TEMPLATE_NAME_MAX}
-                className={INPUT}
+                className={`${INPUT} max-w-[256px] type-table-strong`}
                 onBlur={(e) => e.target.value.trim() !== selected.name && run(renameTemplate(selected.id, e.target.value))}
                 onKeyDown={(e) => e.key === "Enter" && (e.target as HTMLInputElement).blur()}
               />
-            </label>
-            <div className="flex items-baseline justify-between">
-              <span className="text-muted type-caption">Steps</span>
-              <span className="text-muted type-caption">Changes save automatically and never change existing projects.</span>
+              <span className="flex-1 text-muted type-caption">Click the name to rename</span>
+              {!confirmDelete && (
+                <button type="button" onClick={() => setConfirmDelete(true)} className="h-7 shrink-0 rounded-control px-2.5 text-danger type-table-strong hover:bg-input">
+                  Delete template
+                </button>
+              )}
             </div>
+            {confirmDelete && (
+              <div role="alertdialog" aria-label="Delete template" className="flex flex-wrap items-center gap-2 rounded-control border border-line bg-input px-3 py-2">
+                <span className="flex-1 text-fg type-table">
+                  Delete &lsquo;{selected.name}&rsquo; and its {selected.items.length} milestones? Projects that already used it keep their milestones.
+                </span>
+                <button type="button" onClick={() => setConfirmDelete(false)} className="h-7 rounded-control px-2.5 text-muted type-table-strong hover:text-fg">
+                  Cancel
+                </button>
+                <button
+                  type="button"
+                  onClick={() =>
+                    run(deleteTemplate(selected.id), (r) => {
+                      setConfirmDelete(false);
+                      setSelectedId(r.templates[0]?.id ?? null);
+                    })
+                  }
+                  className="h-7 rounded-control bg-(--status-off-track-dark-bg) px-2.5 text-danger type-table-strong"
+                >
+                  Delete template
+                </button>
+              </div>
+            )}
+            <p className="text-muted type-caption">
+              Applying a template copies these milestones into the project. Editing or deleting the template later does not change projects that already use it.
+            </p>
+            <span className="text-muted type-label">Milestones, in order</span>
             <ol className="flex flex-col" aria-label={`${selected.name} steps`}>
               {selected.items.map((it, i) => (
                 <li
@@ -167,7 +199,7 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
                     if (drag?.list === "items") moveItems(drag.from, i);
                     setDrag(null);
                   }}
-                  className="flex h-9 items-center gap-2 px-1.5"
+                  className="flex h-9 items-center gap-2 border-b border-line px-1.5"
                 >
                   {handle(it.id, it.name, (key) => keyMove("items", i, selected.items.length, key, it.id), () => setDrag({ list: "items", from: i }))}
                   <span className="w-5 shrink-0 text-right tabular-nums text-muted type-caption">{i + 1}</span>
@@ -201,7 +233,7 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
                     void run(addTemplateItem(selected.id, newStep), () => setNewStep(""));
                   }
                 }}
-                placeholder="Add a step"
+                placeholder="Add a milestone and press Enter"
                 aria-label="New step name"
                 maxLength={MilestoneRules.NAME_MAX}
                 className={INPUT}
@@ -218,34 +250,7 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
                 Add
               </button>
             </div>
-            <div className="mt-2 flex items-center gap-2 border-t border-line pt-3">
-              {confirmDelete ? (
-                <div role="alertdialog" aria-label="Delete template" className="flex flex-1 flex-wrap items-center gap-2">
-                  <span className="flex-1 text-fg type-table">
-                    Delete &lsquo;{selected.name}&rsquo; and its {selected.items.length} steps? Projects that used it keep their milestones.
-                  </span>
-                  <button type="button" onClick={() => setConfirmDelete(false)} className="h-7 rounded-control px-2.5 text-muted type-table-strong hover:text-fg">
-                    Cancel
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() =>
-                      run(deleteTemplate(selected.id), (r) => {
-                        setConfirmDelete(false);
-                        setSelectedId(r.templates[0]?.id ?? null);
-                      })
-                    }
-                    className="h-7 rounded-control bg-(--status-off-track-dark-bg) px-2.5 text-danger type-table-strong"
-                  >
-                    Delete template
-                  </button>
-                </div>
-              ) : (
-                <button type="button" onClick={() => setConfirmDelete(true)} className="h-7 rounded-control px-2.5 text-danger type-table-strong hover:bg-input">
-                  Delete template
-                </button>
-              )}
-            </div>
+            <p className="text-muted type-caption">Drag the handle (or focus it and use the arrow keys) to reorder. Changes save automatically and are recorded below.</p>
           </>
         )}
         {status && (
