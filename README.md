@@ -259,8 +259,9 @@ See [docs/REPORTS.md](docs/REPORTS.md): renderer (`@react-pdf/renderer`, embedde
 - Two-line rows. Line 1 columns (inches): Project 2.2, Owner 1.35 (requester and "Contracts <name>" in small gray
   under the owner; the requester line is dropped when it is Not applicable), Status 0.85, Next milestone 2.0, Due 0.6,
   Flags 3.0. The owner column is 1.0 plus 0.35 for the contracts line, taken from Flags (`PdfReportLayout`).
-- Line 2: the note, starting under Next milestone and running to the right margin (5.6 in), clipped
-  to two lines. A 200-char note fits in two lines at the report table size (see mockup `measurement.json`).
+- Line 2: the note, starting under Next milestone and running to the right margin (5.6 in),
+  wrapping to as many lines as needed (never cut off; the row grows). A 200-char note fits in two lines; with the
+  "No change." prefix it takes three.
 - Rows never split across pages.
 - Page 1 shows "Completed FY27 to date N" (teal check and number) beside the Projects line; see docs/REPORTS.md.
 - Every page repeats the header: page 1 has the full meta block and per-area status grid; later pages

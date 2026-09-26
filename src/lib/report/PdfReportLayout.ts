@@ -32,11 +32,15 @@ export class PdfReportLayout {
     flags: PdfReportLayout.FLAGS_BASE_IN - PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 3.0
   };
 
-  /** Line 2: note starts under Next milestone and runs to the right margin (2.0 + 0.6 + 3.0 = 5.6 in), max 2 lines, clipped. */
+  /**
+   * Line 2: note starts under Next milestone and runs to the right margin (2.0 + 0.6 + 3.0 = 5.6 in). A note
+   * is never cut off: it wraps to as many lines as it needs and the row grows. Usually one or two lines; a
+   * 200-character note with the "No change." prefix takes three.
+   */
   static readonly NOTE = {
     startColumn: "nextMilestone",
     widthIn: PdfReportLayout.COLUMNS_IN.nextMilestone + PdfReportLayout.COLUMNS_IN.due + PdfReportLayout.COLUMNS_IN.flags,
-    maxLines: 2,
+    maxLines: Number.POSITIVE_INFINITY,
   } as const;
 
   static readonly RULES = {
