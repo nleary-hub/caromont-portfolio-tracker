@@ -3,10 +3,11 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord, ReportHeader, ReportRow, StatusCounts } from "@/lib/domain/types";
-import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 export interface ReportBuildInput {
-  /** Candidate projects. Ineligible ones (archived, excluded from report) are filtered out. */
+  /** Candidate projects. VisibilityPolicy (report context) decides which are listed; the rest leave no trace. */
   projects: ProjectRecord[];
   /** History entries for the candidate projects (only entries after the previous snapshot matter). */
   history: HistoryEntryRecord[];
@@ -19,9 +20,9 @@ export interface ReportBuildInput {
 }
 
 export interface ReportBuildResult {
-  /** Listed rows: eligible projects whose status is not hidden, in report order. */
+  /** Rows visible in the report view, in report order. */
   rows: ReportRow[];
-  /** Header data. Counts include hidden statuses so totals stay honest. */
+  /** Header data computed from `rows` only. */
   header: ReportHeader;
 }
 
@@ -41,50 +42,45 @@ export interface SortableRow {
 
 /** Pure report-row selection, flagging and ordering. No I/O. */
 export class ReportBuilder {
-  /**
-   * Eligibility for a report (counted in the header): included in report and not archived.
-   * Whether an eligible project is also listed as a row depends on the status view settings.
-   */
-  static isEligible(project: ProjectRecord): boolean {
-    return project.includeInReport && !project.archivedAt;
-  }
-
-  static selectEligible(projects: readonly ProjectRecord[]): ProjectRecord[] {
-    return projects.filter((p) => ReportBuilder.isEligible(p));
-  }
-
   static emptyStatusCounts(): StatusCounts {
     return Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as StatusCounts;
   }
 
-  /** Status counts overall and per service area (every area present, zeros included). */
-  static header(eligible: readonly ProjectRecord[], viewSettings: ViewSettingsValue): ReportHeader {
+  /**
+   * Header computed from the listed rows only (every area present, zeros included), so the
+   * counts always add up to the rows in the report. Hidden items leave no trace here.
+   */
+  static header(rows: readonly ReportRow[]): ReportHeader {
     const totals = ReportBuilder.emptyStatusCounts();
     const byArea = Object.fromEntries(
       ServiceAreaInfo.all().map((a) => [a, ReportBuilder.emptyStatusCounts()]),
     ) as ReportHeader["byArea"];
-    for (const p of eligible) {
-      totals[p.status] += 1;
-      byArea[p.serviceArea][p.status] += 1;
+    for (const r of rows) {
+      totals[r.status] += 1;
+      byArea[r.serviceArea][r.status] += 1;
     }
     return {
-      totalProjects: eligible.length,
+      totalProjects: rows.length,
       totals,
       byArea,
-      hiddenStatuses: ViewSettings.hiddenStatusCounts(viewSettings, totals),
-      hiddenLine: ViewSettings.hiddenStatusLine(viewSettings, totals),
+      overdue: rows.filter((r) => r.overdue).length,
+      changed: rows.filter((r) => r.changed).length,
     };
   }
 
-  /** "Changed": any history row since the previous snapshot (any history at all if there is none). */
+  /**
+   * "Changed": any history row since the previous snapshot (any history at all if there is none).
+   * Admin-only events (hide/unhide/delete/restore) never count.
+   */
   static isChanged(
     projectId: string,
-    history: HistoryEntryRecord[],
+    history: readonly HistoryEntryRecord[],
     previousSnapshotGeneratedAt: Date | null,
   ): boolean {
     return history.some(
       (h) =>
         h.projectId === projectId &&
+        !VisibilityPolicy.isAdminOnlyHistoryField(h.field) &&
         (previousSnapshotGeneratedAt === null || h.changedAt.getTime() > previousSnapshotGeneratedAt.getTime()),
     );
   }
@@ -145,17 +141,16 @@ export class ReportBuilder {
 
   static build(input: ReportBuildInput): ReportBuildResult {
     if (!DateOnly.isIso(input.reportDate)) throw new Error(`Invalid reportDate: ${input.reportDate}`);
-    const eligible = ReportBuilder.selectEligible(input.projects);
-    const listed = ViewSettings.listedRows(input.viewSettings, eligible);
-    const rows = listed.map((p) =>
-      ReportBuilder.toRow(p, {
-        changed: ReportBuilder.isChanged(p.id, input.history, input.previousSnapshotGeneratedAt),
-        overdue: ReportBuilder.isOverdue(p, input.reportDate),
-      }),
+    const visible = VisibilityPolicy.visibleProjects(input.projects, "report", input.viewSettings);
+    const history = VisibilityPolicy.publicHistory(input.history, visible.map((p) => p.id));
+    const rows = ReportBuilder.sort(
+      visible.map((p) =>
+        ReportBuilder.toRow(p, {
+          changed: ReportBuilder.isChanged(p.id, history, input.previousSnapshotGeneratedAt),
+          overdue: ReportBuilder.isOverdue(p, input.reportDate),
+        }),
+      ),
     );
-    return {
-      rows: ReportBuilder.sort(rows),
-      header: ReportBuilder.header(eligible, input.viewSettings),
-    };
+    return { rows, header: ReportBuilder.header(rows) };
   }
 }

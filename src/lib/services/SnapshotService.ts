@@ -5,6 +5,7 @@ import { ChampionCheck } from "@/lib/report/ChampionCheck";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
+import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 export interface CreateSnapshotInput {
   /** YYYY-MM-DD */
@@ -17,10 +18,10 @@ export interface CreateSnapshotInput {
 }
 
 /**
- * Creates immutable report snapshots. The report-context view settings in effect are frozen
- * into the snapshot (viewSettingsJson) together with the header counts, so an old report can
- * always be rebuilt exactly. Closed projects no longer "drop off" after one report; the status
- * view settings decide what is listed.
+ * Creates immutable report snapshots. The snapshot stores only what was visible in the report
+ * view at freeze (rows, header counts and missing champions all come from VisibilityPolicy's
+ * visible rows). The report view settings in effect are frozen too (viewSettingsJson, admin-only)
+ * so an old report can always be rebuilt exactly.
  */
 export class SnapshotService {
   static async create(input: CreateSnapshotInput, db: PrismaClient = Db.client): Promise<ReportSnapshot> {
@@ -41,8 +42,9 @@ export class SnapshotService {
           where: {
             projectId: { in: projects.map((p) => p.id) },
             ...(previous ? { changedAt: { gt: previous.generatedAt } } : {}),
+            ...VisibilityPolicy.publicHistoryWhere(),
           },
-          select: { projectId: true, changedAt: true },
+          select: { projectId: true, changedAt: true, field: true },
           distinct: ["projectId"],
         });
         const recipients = await tx.recipient.findMany({ where: { active: true } });
@@ -56,7 +58,11 @@ export class SnapshotService {
           reportDate,
           viewSettings,
         });
-        const missingChampions = ChampionCheck.findMissing(projects, recipients);
+        // Only visible rows: the list names projects, so hidden/deleted ones must not appear in it.
+        const missingChampions = ChampionCheck.findMissing(
+          VisibilityPolicy.visibleProjects(projects, "report", viewSettings),
+          recipients,
+        );
 
         const created = await tx.reportSnapshot.create({
           data: {

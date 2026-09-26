@@ -1,10 +1,11 @@
-import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import type { ProjectStatus, ServiceArea, ViewContext } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord, StatusCounts } from "@/lib/domain/types";
-import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
+import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 /** Serializable row passed from the server page to the client dashboard. */
 export interface DashboardRow {
@@ -34,15 +35,22 @@ export interface DashboardSummary {
   changed: number;
 }
 
-/** Builds dashboard rows/tiles from projects. Same flag rules as the report. */
+/**
+ * Builds dashboard rows/tiles. Same flag rules as the report. Rows go through VisibilityPolicy
+ * (dashboard context), and tiles/chips are summarized from those rows only, so hidden and
+ * deleted projects leave no trace in anything the dashboard shows.
+ */
 export class DashboardViewModel {
   static rows(
     projects: readonly ProjectRecord[],
+    settings: ViewSettingsValue,
     history: readonly HistoryEntryRecord[],
     previousSnapshotGeneratedAt: Date | null,
     today: string,
   ): DashboardRow[] {
-    return ReportBuilder.sortProjects(projects.filter((p) => !p.archivedAt)).map((p) => ({
+    const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings);
+    const publicHistory = VisibilityPolicy.publicHistory(history, visible.map((p) => p.id));
+    return ReportBuilder.sortProjects(visible).map((p) => ({
       id: p.id,
       name: p.name,
       serviceArea: p.serviceArea,
@@ -56,11 +64,12 @@ export class DashboardViewModel {
       percentComplete: p.percentComplete,
       note: p.note,
       includeInReport: p.includeInReport,
-      changed: ReportBuilder.isChanged(p.id, [...history], previousSnapshotGeneratedAt),
+      changed: ReportBuilder.isChanged(p.id, publicHistory, previousSnapshotGeneratedAt),
       overdue: ReportBuilder.isOverdue(p, today),
     }));
   }
 
+  /** Tiles and chip counts. Pass only rows() output (visible rows). */
   static summarize(rows: readonly DashboardRow[]): DashboardSummary {
     const byStatus = Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as Record<ProjectStatus, number>;
     const byArea = Object.fromEntries(ServiceAreaInfo.all().map((a) => [a, 0])) as Record<ServiceArea, number>;
@@ -76,28 +85,17 @@ export class DashboardViewModel {
   }
 
   /**
-   * Rows listed on the dashboard: status not hidden, then area filter + search.
-   * Tiles and chip counts must come from summarize() on the unfiltered rows.
+   * Admin-only picker counts per status: projects that are candidates for each context
+   * (not deleted, not hidden per project, report: included) before status settings apply.
+   * Never pass these to a non-admin.
    */
-  static listed(
-    rows: readonly DashboardRow[],
-    settings: ViewSettingsValue,
-    area: ServiceArea | "All",
-    query: string,
-  ): DashboardRow[] {
-    return DashboardViewModel.filter(ViewSettings.listedRows(settings, rows), area, query);
-  }
-
-  /** "Hidden: Complete (3), Cancelled (1)" for the tiles row, or null. */
-  static hiddenLine(summary: DashboardSummary, settings: ViewSettingsValue): string | null {
-    return ViewSettings.hiddenStatusLine(settings, summary.byStatus);
-  }
-
-  /** Status counts of projects that would be counted in the next report (included in report). */
-  static reportStatusCounts(rows: readonly DashboardRow[]): StatusCounts {
-    const counts = Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as StatusCounts;
-    for (const r of rows) if (r.includeInReport) counts[r.status] += 1;
-    return counts;
+  static adminPickerCounts(projects: readonly ProjectRecord[]): Record<ViewContext, StatusCounts> {
+    const count = (context: ViewContext) => {
+      const counts = Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as StatusCounts;
+      for (const p of VisibilityPolicy.candidates(projects, context)) counts[p.status] += 1;
+      return counts;
+    };
+    return { dashboard: count("dashboard"), report: count("report") };
   }
 
   /** Area filter + free-text search over name, owner, champion, milestone, note. */

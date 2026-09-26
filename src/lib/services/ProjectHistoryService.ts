@@ -1,0 +1,28 @@
+import type { PrismaClient, ProjectHistory } from "@/generated/prisma/client";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { Db } from "@/lib/db/Db";
+import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
+import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
+
+/**
+ * The only read path for a project's history timeline. Non-admins get nothing for projects
+ * that are invisible on the dashboard, and never see hide/unhide/delete/restore events.
+ */
+export class ProjectHistoryService {
+  static async forProject(projectId: string, viewer: Viewer, db: PrismaClient = Db.client): Promise<ProjectHistory[]> {
+    const project = await db.project.findUnique({ where: { id: projectId } });
+    if (!project) return [];
+    if (viewer.isAdmin) {
+      const all = await db.projectHistory.findMany({ where: { projectId } });
+      return ProjectHistoryService.newestFirst(all);
+    }
+    const settings = await ViewSettingsService.get("dashboard", db);
+    if (!VisibilityPolicy.isVisible(project, "dashboard", settings)) return [];
+    const rows = await db.projectHistory.findMany({ where: { projectId, ...VisibilityPolicy.publicHistoryWhere() } });
+    return ProjectHistoryService.newestFirst(VisibilityPolicy.publicHistory(rows, [projectId]));
+  }
+
+  private static newestFirst<T extends { changedAt: Date }>(rows: readonly T[]): T[] {
+    return [...rows].sort((a, b) => b.changedAt.getTime() - a.changedAt.getTime());
+  }
+}

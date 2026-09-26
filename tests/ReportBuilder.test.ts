@@ -5,25 +5,13 @@ import { Factory } from "./helpers/factories";
 
 const d = Factory.date;
 
-describe("ReportBuilder.selectEligible", () => {
-  it("includes only includeInReport and non-archived projects; closed projects no longer drop off", () => {
-    const keep = Factory.project({ id: "keep" });
-    const excluded = Factory.project({ id: "excluded", includeInReport: false });
-    const archived = Factory.project({ id: "archived", archivedAt: new Date() });
-    const complete = Factory.project({ id: "complete", status: "Complete", nextMilestone: null });
-    const cancelled = Factory.project({ id: "cancelled", status: "Cancelled", nextMilestone: null });
-    const ids = ReportBuilder.selectEligible([keep, excluded, archived, complete, cancelled]).map((p) => p.id);
-    expect(ids).toEqual(["keep", "complete", "cancelled"]);
-  });
-});
-
 describe("ReportBuilder flags", () => {
   const prev = new Date("2026-09-23T10:00:00Z");
 
   it("Changed = any history row after the previous snapshot", () => {
     const history = [
-      { projectId: "a", changedAt: new Date("2026-09-23T09:59:59Z") },
-      { projectId: "b", changedAt: new Date("2026-09-23T10:00:01Z") },
+      { projectId: "a", changedAt: new Date("2026-09-23T09:59:59Z"), field: "note" },
+      { projectId: "b", changedAt: new Date("2026-09-23T10:00:01Z"), field: "note" },
     ];
     expect(ReportBuilder.isChanged("a", history, prev)).toBe(false);
     expect(ReportBuilder.isChanged("b", history, prev)).toBe(true);
@@ -31,7 +19,7 @@ describe("ReportBuilder flags", () => {
   });
 
   it("Changed is true for any history when there is no previous snapshot", () => {
-    expect(ReportBuilder.isChanged("a", [{ projectId: "a", changedAt: new Date(0) }], null)).toBe(true);
+    expect(ReportBuilder.isChanged("a", [{ projectId: "a", changedAt: new Date(0), field: "status" }], null)).toBe(true);
     expect(ReportBuilder.isChanged("a", [], null)).toBe(false);
   });
 
@@ -92,64 +80,61 @@ describe("ReportBuilder.build", () => {
   const c = Factory.project({ id: "c", serviceArea: "Cath", status: "Complete", nextMilestone: null });
   const c2 = Factory.project({ id: "c2", serviceArea: "EP", status: "Complete", nextMilestone: null });
   const x = Factory.project({ id: "x", serviceArea: "IR", status: "Cancelled", nextMilestone: null });
-  const out = Factory.project({ id: "out", status: "Complete", includeInReport: false });
+  const out = Factory.project({ id: "out", status: "OnTrack", includeInReport: false });
+  const hiddenRep = Factory.project({ id: "hiddenRep", serviceArea: "Echo", hiddenFromReport: true });
+  const hiddenDash = Factory.project({ id: "hiddenDash", serviceArea: "Echo", hiddenFromDashboard: true });
+  const deleted = Factory.project({ id: "deleted", serviceArea: "Echo", archivedAt: new Date(), deletedBy: "admin@example.org" });
   const input = {
-    projects: [a, b, c, c2, x, out],
-    history: [{ projectId: "b", changedAt: new Date("2026-10-01T12:00:00Z") }],
+    projects: [a, b, c, c2, x, out, hiddenRep, hiddenDash, deleted],
+    history: [
+      { projectId: "b", changedAt: new Date("2026-10-01T12:00:00Z"), field: "note" },
+      // Admin-only event: must not set the Changed flag.
+      { projectId: "a", changedAt: new Date("2026-10-02T12:00:00Z"), field: "hiddenFromDashboard" },
+    ],
     previousSnapshotGeneratedAt: prev,
     reportDate: "2026-10-07",
   };
 
-  it("builds sorted, flagged rows with nothing hidden", () => {
+  it("builds sorted, flagged rows from visible projects only", () => {
     const result = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings([]) });
-    expect(result.rows.map((r) => r.projectId)).toEqual(["b", "c", "a", "c2", "x"]);
+    // hiddenDash is hidden on the dashboard only, so it stays in the report.
+    expect(result.rows.map((r) => r.projectId)).toEqual(["b", "c", "a", "c2", "hiddenDash", "x"]);
     const byId = Object.fromEntries(result.rows.map((r) => [r.projectId, r]));
     expect(byId.b).toMatchObject({ changed: true, overdue: false, statusLabel: "At risk", dueDate: "2026-10-20" });
     expect(byId.a).toMatchObject({ changed: false, overdue: true });
     expect(byId.c).toMatchObject({ statusLabel: "Complete", overdue: false });
-    expect(result.header.hiddenLine).toBeNull();
-    expect(result.header.hiddenStatuses).toEqual([]);
   });
 
-  it("default settings hide Complete and Cancelled rows but still count them", () => {
+  it("hidden statuses, hidden-from-report and deleted projects are excluded from rows AND counts", () => {
     const result = ReportBuilder.build({ ...input, viewSettings: ViewSettings.defaults("report") });
-    expect(result.rows.map((r) => r.projectId)).toEqual(["b", "a"]);
-    expect(result.header.totalProjects).toBe(5);
-    expect(result.header.totals).toMatchObject({ OnTrack: 1, AtRisk: 1, Complete: 2, Cancelled: 1 });
-    expect(result.header.byArea.Cath).toMatchObject({ AtRisk: 1, Complete: 1, OnTrack: 0 });
-    expect(result.header.byArea.EP).toMatchObject({ OnTrack: 1, Complete: 1 });
-    expect(result.header.byArea.IR).toMatchObject({ Cancelled: 1 });
-    expect(result.header.byArea.Echo.OnTrack).toBe(0);
+    expect(result.rows.map((r) => r.projectId)).toEqual(["b", "a", "hiddenDash"]);
+    expect(result.header.totalProjects).toBe(3);
+    expect(result.header.totals).toMatchObject({ OnTrack: 2, AtRisk: 1, Complete: 0, Cancelled: 0 });
+    expect(result.header.byArea.Cath).toMatchObject({ AtRisk: 1, Complete: 0 });
+    expect(result.header.byArea.EP).toMatchObject({ OnTrack: 1, Complete: 0 });
+    expect(result.header.byArea.IR.Cancelled).toBe(0);
+    expect(result.header.byArea.Echo.OnTrack).toBe(1);
+    expect(result.header).toMatchObject({ overdue: 1, changed: 1 });
   });
 
-  it("hiding an open status removes its rows but not its counts", () => {
-    const result = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings(["AtRisk"]) });
-    expect(result.rows.map((r) => r.projectId)).not.toContain("b");
-    expect(result.header.totals.AtRisk).toBe(1);
-    expect(result.header.byArea.Cath.AtRisk).toBe(1);
+  it("header counts always equal the visible rows", () => {
+    for (const hidden of [[], ["AtRisk"], ["OnTrack", "Complete"], ["Complete", "Cancelled"]] as const) {
+      const r = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings([...hidden]) });
+      const sum = Object.values(r.header.totals).reduce((s, n) => s + n, 0);
+      const areaSum = Object.values(r.header.byArea).reduce((s, m) => s + Object.values(m).reduce((t, n) => t + n, 0), 0);
+      expect(sum).toBe(r.rows.length);
+      expect(areaSum).toBe(r.rows.length);
+      expect(r.header.totalProjects).toBe(r.rows.length);
+    }
   });
 
-  it("header lists hidden statuses with counts", () => {
+  it("report output never contains a 'Hidden:' line or hidden project data", () => {
     const result = ReportBuilder.build({ ...input, viewSettings: ViewSettings.defaults("report") });
-    expect(result.header.hiddenLine).toBe("Hidden: Complete (2), Cancelled (1)");
-    expect(result.header.hiddenStatuses).toEqual([
-      { status: "Complete", label: "Complete", count: 2 },
-      { status: "Cancelled", label: "Cancelled", count: 1 },
-    ]);
-    expect(result.header.hiddenLine).not.toContain("\u2014");
-  });
-
-  it("header lists only hidden statuses with at least one project, and omits the line when all are 0", () => {
-    const mixed = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings(["OnHold", "Complete"]) });
-    expect(mixed.header.hiddenLine).toBe("Hidden: Complete (2)");
-    expect(mixed.header.hiddenStatuses.map((h) => h.status)).toEqual(["Complete"]);
-
-    const onlyZero = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings(["OnHold", "NotStarted"]) });
-    expect(onlyZero.header.hiddenLine).toBeNull();
-    expect(onlyZero.header.hiddenStatuses).toEqual([]);
-
-    const onlyOpen = ReportBuilder.build({ ...input, projects: [a, b], viewSettings: ViewSettings.defaults("report") });
-    expect(onlyOpen.header.hiddenLine).toBeNull();
+    const json = JSON.stringify(result);
+    expect(json).not.toContain("Hidden:");
+    expect(json).not.toMatch(/hiddenLine|hiddenStatuses/);
+    for (const id of ["c", "c2", "x", "out", "hiddenRep", "deleted"]) expect(json).not.toContain(`"${id}"`);
+    expect(json).not.toContain("\u2014");
   });
 
   it("rejects an invalid report date", () => {

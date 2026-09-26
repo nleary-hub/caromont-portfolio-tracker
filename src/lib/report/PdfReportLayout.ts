@@ -30,7 +30,7 @@ export class PdfReportLayout {
     groupBy: "serviceArea",
     rowLines: 2,
     rowsSplitAcrossPages: false,
-    repeatHeaderEachPage: true, // report date, period, status counts per area, "Hidden: ..." line
+    repeatHeaderEachPage: true, // report date, period, status counts per area (visible rows only)
     pageNumbers: true, // "Page X of Y"
   } as const;
 

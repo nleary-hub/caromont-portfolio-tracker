@@ -1,14 +1,20 @@
 "use client";
 
+import dynamic from "next/dynamic";
+import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ServiceArea, ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { Flags, StatusPill } from "./StatusPill";
-import { ViewSettingsPicker } from "./ViewSettingsPicker";
+
+// Admin-only UI is code-split: the chunks load only when an admin renders them.
+const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
+const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
 
 export interface LatestReport {
   /** YYYY-MM-DD */
@@ -17,16 +23,30 @@ export interface LatestReport {
   periodEnd: string;
 }
 
+/** Only passed for admins. Non-admins receive none of this (no settings, counts or actions). */
+export interface AdminDashboardProps {
+  viewSettings: ViewSettingsByContext;
+  /** Per-status counts for the picker (before status settings apply). */
+  pickerCounts: Record<ViewContext, StatusCounts>;
+  /** Visible dashboard rows that are hidden from the report. */
+  hiddenFromReportIds: string[];
+  /** Each action resolves to an error message, or null on success. */
+  saveViewSettingsAction: (context: ViewContext, value: ViewSettingsValue) => Promise<string | null>;
+  setProjectHiddenAction: (projectId: string, context: ViewContext, hidden: boolean) => Promise<string | null>;
+  deleteProjectAction: (projectId: string) => Promise<string | null>;
+}
+
 interface Props {
+  /** Already filtered by VisibilityPolicy on the server. */
   rows: DashboardRow[];
+  /** Visible dashboard columns in order. */
+  columns: ViewColumn[];
   today: string;
   userEmail: string;
   userName: string | null;
   latestReport: LatestReport | null;
   loadError: string | null;
-  viewSettings: ViewSettingsByContext;
-  /** Persists one context; resolves to an error message or null. */
-  saveViewSettingsAction: (context: ViewContext, value: ViewSettingsValue) => Promise<string | null>;
+  admin?: AdminDashboardProps;
   signOutAction: () => Promise<void>;
 }
 
@@ -112,34 +132,33 @@ export function ProjectDashboard({
   userName,
   latestReport,
   loadError,
-  viewSettings,
-  saveViewSettingsAction,
+  columns: columnsProp,
+  admin,
   signOutAction,
 }: Props) {
   const [area, setArea] = useState<ServiceArea | "All">("All");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
-  const [settings, setSettings] = useState<ViewSettingsByContext>(viewSettings);
+  // Admin only: optimistic copy of the settings (rows refresh from the server after each save).
+  const [settings, setSettings] = useState<ViewSettingsByContext | null>(admin?.viewSettings ?? null);
 
   const summary = useMemo(() => DashboardViewModel.summarize(rows), [rows]);
-  const reportCounts = useMemo(() => DashboardViewModel.reportStatusCounts(rows), [rows]);
-  const dash = settings.dashboard;
-  const visible = useMemo(() => DashboardViewModel.listed(rows, dash, area, query), [rows, dash, area, query]);
-  const hiddenLine = DashboardViewModel.hiddenLine(summary, dash);
-  const columns = ViewSettings.visibleColumns(dash);
+  const visible = useMemo(() => DashboardViewModel.filter(rows, area, query), [rows, area, query]);
+  const columns = settings ? ViewSettings.visibleColumns(settings.dashboard) : columnsProp;
   const selected = rows.find((r) => r.id === selectedId) ?? null;
 
   /** Optimistic: apply locally, persist, roll back on failure. */
   const saveSettings = async (context: ViewContext, value: ViewSettingsValue): Promise<string | null> => {
+    if (!admin || !settings) return "Not authorized.";
     const previous = settings[context];
-    setSettings((s) => ({ ...s, [context]: value }));
+    setSettings((s) => (s ? { ...s, [context]: value } : s));
     try {
-      const err = await saveViewSettingsAction(context, value);
-      if (err) setSettings((s) => ({ ...s, [context]: previous }));
+      const err = await admin.saveViewSettingsAction(context, value);
+      if (err) setSettings((s) => (s ? { ...s, [context]: previous } : s));
       return err;
     } catch {
-      setSettings((s) => ({ ...s, [context]: previous }));
+      setSettings((s) => (s ? { ...s, [context]: previous } : s));
       return "Could not save view settings.";
     }
   };
@@ -199,11 +218,14 @@ export function ProjectDashboard({
           />
           <kbd className="rounded border border-line px-1 type-caption">/</kbd>
         </label>
-        <ViewSettingsPicker
-          settings={settings}
-          counts={{ dashboard: summary.byStatus, report: reportCounts }}
-          onSave={saveSettings}
-        />
+        {admin && settings && (
+          <>
+            <Link href="/admin/audit" className="type-table-strong text-muted hover:text-fg">
+              Audit
+            </Link>
+            <ViewSettingsPicker settings={settings} counts={admin.pickerCounts} onSave={saveSettings} />
+          </>
+        )}
         <button
           type="button"
           disabled
@@ -249,12 +271,6 @@ export function ProjectDashboard({
           </div>
         </section>
 
-        {hiddenLine && (
-          <p className="-mt-2 text-muted type-caption" aria-live="polite">
-            {hiddenLine}. Hidden statuses still count in the totals above.
-          </p>
-        )}
-
         <section className="flex items-center gap-1.5" aria-label="Service area filter">
           <button type="button" className="chip" aria-pressed={area === "All"} onClick={() => setArea("All")}>
             All <b>{summary.total}</b>
@@ -292,11 +308,7 @@ export function ProjectDashboard({
                 {visible.length === 0 && (
                   <tr>
                     <td colSpan={columns.length} className="h-20 text-center text-muted">
-                      {rows.length === 0
-                        ? "No projects yet."
-                        : hiddenLine && ViewSettings.listedRows(dash, rows).length === 0
-                          ? "All projects have hidden statuses. Use View to show them."
-                          : "No projects match the current filter."}
+                      {rows.length === 0 ? "No projects yet." : "No projects match the current filter."}
                     </td>
                   </tr>
                 )}
@@ -331,20 +343,47 @@ export function ProjectDashboard({
           <div className="flex justify-between border-t border-line px-3 py-2.5 text-muted type-caption">
             <span>
               {visible.length} of {rows.length} projects
-              {rows.length - ViewSettings.listedRows(dash, rows).length > 0 &&
-                ` · ${rows.length - ViewSettings.listedRows(dash, rows).length} hidden by status`}
             </span>
             <span>Changed = any edit since the last report</span>
           </div>
         </section>
       </main>
 
-      {selected && <ProjectDrawer row={selected} today={today} onClose={() => setSelectedId(null)} />}
+      {selected && (
+        <ProjectDrawer
+          row={selected}
+          today={today}
+          onClose={() => setSelectedId(null)}
+          adminControls={
+            admin ? (
+              <ProjectAdminControls
+                projectId={selected.id}
+                projectName={selected.name}
+                hiddenFromReport={admin.hiddenFromReportIds.includes(selected.id)}
+                setHiddenAction={admin.setProjectHiddenAction}
+                deleteAction={admin.deleteProjectAction}
+                onGone={() => setSelectedId(null)}
+              />
+            ) : null
+          }
+        />
+      )}
     </div>
   );
 }
 
-function ProjectDrawer({ row, today, onClose }: { row: DashboardRow; today: string; onClose: () => void }) {
+function ProjectDrawer({
+  row,
+  today,
+  onClose,
+  adminControls,
+}: {
+  row: DashboardRow;
+  today: string;
+  onClose: () => void;
+  /** Rendered only for admins. */
+  adminControls: ReactNode;
+}) {
   const daysOverdue = row.overdue && row.dueDate ? DateFormat.daysBetween(row.dueDate, today) : 0;
   return (
     <aside
@@ -409,6 +448,7 @@ function ProjectDrawer({ row, today, onClose }: { row: DashboardRow; today: stri
         {/* STUB: history timeline (ProjectHistory rows) not wired up yet. */}
         <p className="text-muted type-caption">History timeline coming soon.</p>
       </div>
+      {adminControls}
       <div className="mt-auto flex items-center justify-end border-t border-line pt-3">
         <button
           type="button"

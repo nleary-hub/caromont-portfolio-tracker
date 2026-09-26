@@ -12,6 +12,7 @@ import {
 } from "@/lib/domain/ViewSettings";
 
 /**
+ * ADMIN ONLY. Render only when the viewer is an admin (ProjectDashboard does this).
  * "View" button + 320px panel for column and status show/hide (design: portfolio-tracker-mockups/picker.html).
  * Self-contained: styles live in src/styles/view-picker.css (vp-* classes) so it can be restyled alone.
  * Dashboard changes are applied immediately through onSave; Report changes are a local draft until
@@ -19,7 +20,7 @@ import {
  */
 export interface ViewSettingsPickerProps {
   settings: ViewSettingsByContext;
-  /** Status counts shown next to each status (hidden statuses included). */
+  /** Admin-only per-status counts shown next to each status. */
   counts: Record<ViewContext, StatusCounts>;
   /** Persist a context. Resolves to an error message, or null on success. */
   onSave: (context: ViewContext, value: ViewSettingsValue) => Promise<string | null>;
@@ -30,10 +31,8 @@ class PickerCopy {
     dashboard: "Changes apply to your live dashboard right away.",
     report: "Applies to the next report. Settings are saved with each frozen report, so past reports rebuild exactly.",
   };
-  static readonly NOTE: Record<ViewContext, string> = {
-    dashboard: "Hidden statuses still count in the totals at the top.",
-    report: "Hidden statuses still count in the totals at the top of the report.",
-  };
+  /** Same admin-only footnote on both tabs (picker.html). */
+  static readonly NOTE = "Only you see this menu. Hidden items are left out of every count, flag, and export that others see.";
   static readonly TAB_LABEL: Record<ViewContext, string> = { dashboard: "Dashboard", report: "Report" };
 }
 
@@ -141,7 +140,7 @@ export function ViewSettingsPicker({ settings, counts, onSave }: ViewSettingsPic
               />
             ))}
           </ul>
-          <p className="vp-note">{PickerCopy.NOTE[tab]}</p>
+          <p className="vp-note">{PickerCopy.NOTE}</p>
           {error && (
             <p role="alert" className="vp-error">
               {error}

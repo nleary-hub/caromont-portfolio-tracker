@@ -78,13 +78,6 @@ describe("ViewSettings edits", () => {
     expect(ViewSettings.listedRows(d, rows)).toEqual([{ status: "OnTrack" }]);
   });
 
-  it("formats the hidden status line, or null when nothing is hidden", () => {
-    const counts = { NotStarted: 0, OnTrack: 4, AtRisk: 0, OffTrack: 0, OnHold: 0, Complete: 3, Cancelled: 1 };
-    expect(ViewSettings.hiddenStatusLine(d, counts)).toBe("Hidden: Complete (3), Cancelled (1)");
-    expect(ViewSettings.hiddenStatusLine(ViewSettings.normalize("report", { hiddenStatuses: [] }), counts)).toBeNull();
-    expect(ViewSettings.hiddenStatusLine(d, { ...counts, Cancelled: 0 })).toBe("Hidden: Complete (3)");
-    expect(ViewSettings.hiddenStatusLine(d, { ...counts, Complete: 0, Cancelled: 0 })).toBeNull();
-  });
 });
 
 describe("migration 0002 seed rows", () => {

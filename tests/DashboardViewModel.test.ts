@@ -10,9 +10,11 @@ describe("DashboardViewModel", () => {
     Factory.project({ id: "b", name: "Bravo", serviceArea: "Cath", status: "AtRisk", physicianChampion: "Dr. Sample B" }),
     Factory.project({ id: "c", name: "Charlie", archivedAt: new Date() }),
   ];
+  const dashDefaults = ViewSettings.defaults("dashboard");
   const rows = DashboardViewModel.rows(
     projects,
-    [{ projectId: "b", changedAt: new Date("2026-10-06T20:00:00Z") }],
+    dashDefaults,
+    [{ projectId: "b", changedAt: new Date("2026-10-06T20:00:00Z"), field: "note" }],
     new Date("2026-09-23T10:00:00Z"),
     "2026-10-07",
   );
@@ -39,33 +41,46 @@ describe("DashboardViewModel", () => {
     expect(DashboardViewModel.filter(rows, "Cath", "owner d")).toEqual([]);
   });
 
-  it("hiding a status removes rows from the list but not from the tile counts", () => {
-    const all = DashboardViewModel.rows(
-      [
-        ...projects,
-        Factory.project({ id: "d", name: "Delta", status: "Complete", nextMilestone: null }),
-        Factory.project({ id: "e", name: "Echo", status: "Cancelled", nextMilestone: null, includeInReport: false }),
-      ],
-      [],
-      null,
-      "2026-10-07",
-    );
-    const defaults = ViewSettings.defaults("dashboard");
-    expect(DashboardViewModel.listed(all, defaults, "All", "").map((r) => r.id)).toEqual(["b", "a"]);
-    const summary = DashboardViewModel.summarize(all);
-    expect(summary).toMatchObject({ total: 4 });
-    expect(summary.byStatus).toMatchObject({ Complete: 1, Cancelled: 1, AtRisk: 1, OnTrack: 1 });
-    expect(DashboardViewModel.hiddenLine(summary, defaults)).toBe("Hidden: Complete (1), Cancelled (1)");
+  it("non-admin counts exclude hidden statuses, hidden projects and deleted projects", () => {
+    const all = [
+      ...projects,
+      Factory.project({ id: "d", name: "Delta", status: "Complete", nextMilestone: null }),
+      Factory.project({ id: "e", name: "Echo", serviceArea: "IR", status: "Cancelled", nextMilestone: null }),
+      Factory.project({ id: "h", name: "Hotel", serviceArea: "IR", status: "OffTrack", hiddenFromDashboard: true, dueDate: Factory.date("2026-01-01") }),
+      Factory.project({ id: "r", name: "Romeo", serviceArea: "Echo", hiddenFromReport: true }),
+      Factory.project({ id: "x", name: "Xray", serviceArea: "IR", archivedAt: new Date(), deletedBy: "admin@example.org" }),
+    ];
+    const history = [
+      { projectId: "h", changedAt: new Date("2026-10-06T20:00:00Z"), field: "note" },
+      { projectId: "a", changedAt: new Date("2026-10-06T20:00:00Z"), field: "hiddenFromReport" },
+    ];
+    const visible = DashboardViewModel.rows(all, dashDefaults, history, new Date("2026-09-23T10:00:00Z"), "2026-10-07");
+    // Hidden from the report only: still on the dashboard.
+    expect(visible.map((r) => r.id)).toEqual(["b", "a", "r"]);
+    const s = DashboardViewModel.summarize(visible);
+    expect(s.total).toBe(3);
+    expect(s.byStatus).toMatchObject({ Complete: 0, Cancelled: 0, OffTrack: 0, AtRisk: 1, OnTrack: 2 });
+    expect(s.byArea).toMatchObject({ IR: 0, Echo: 1, Cath: 1, EP: 1 });
+    // Hotel's overdue/changed flags and Alpha's hide event do not leak into the flag tiles.
+    expect(s).toMatchObject({ overdue: 1, changed: 0 });
 
-    const hideAtRisk = ViewSettings.normalize("dashboard", { hiddenStatuses: ["AtRisk"] });
-    expect(DashboardViewModel.listed(all, hideAtRisk, "All", "").map((r) => r.id)).toEqual(["d", "e", "a"]);
-    expect(DashboardViewModel.hiddenLine(summary, hideAtRisk)).toBe("Hidden: At risk (1)");
-    expect(DashboardViewModel.hiddenLine(summary, ViewSettings.normalize("dashboard", { hiddenStatuses: [] }))).toBeNull();
-    // Hidden statuses with no projects: no line at all.
-    expect(DashboardViewModel.hiddenLine(DashboardViewModel.summarize(rows), defaults)).toBeNull();
+    const showClosed = ViewSettings.normalize("dashboard", { hiddenStatuses: ["AtRisk"] });
+    const v2 = DashboardViewModel.rows(all, showClosed, [], null, "2026-10-07");
+    expect(v2.map((r) => r.id)).toEqual(["d", "a", "r", "e"]);
+    expect(DashboardViewModel.summarize(v2).byStatus.AtRisk).toBe(0);
+  });
 
-    // Report counts only include projects that are in the report.
-    expect(DashboardViewModel.reportStatusCounts(all)).toMatchObject({ Complete: 1, Cancelled: 0 });
+  it("admin picker counts cover candidates per context (not deleted, not project-hidden)", () => {
+    const all = [
+      Factory.project({ id: "1", status: "Complete", nextMilestone: null }),
+      Factory.project({ id: "2", status: "Complete", nextMilestone: null, hiddenFromDashboard: true }),
+      Factory.project({ id: "3", status: "OnTrack", hiddenFromReport: true }),
+      Factory.project({ id: "4", status: "OnTrack", includeInReport: false }),
+      Factory.project({ id: "5", status: "OnTrack", archivedAt: new Date() }),
+    ];
+    const counts = DashboardViewModel.adminPickerCounts(all);
+    expect(counts.dashboard).toMatchObject({ Complete: 1, OnTrack: 2 });
+    expect(counts.report).toMatchObject({ Complete: 2, OnTrack: 0 });
   });
 
   it("formats dates", () => {

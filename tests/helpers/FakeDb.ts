@@ -44,8 +44,9 @@ export class FakeDb {
     const matches = (row: Row, where: Row = {}): boolean =>
       Object.entries(where).every(([k, v]) => {
         if (v && typeof v === "object" && !(v instanceof Date)) {
-          const cond = v as { in?: unknown[]; gt?: Date };
+          const cond = v as { in?: unknown[]; notIn?: unknown[]; gt?: Date };
           if (cond.in) return cond.in.includes(row[k]);
+          if (cond.notIn) return !cond.notIn.includes(row[k]);
           if (cond.gt) return (row[k] as Date).getTime() > cond.gt.getTime();
         }
         return row[k] === v;
@@ -80,6 +81,9 @@ export class FakeDb {
             note: null,
             includeInReport: true,
             archivedAt: null,
+            deletedBy: null,
+            hiddenFromDashboard: false,
+            hiddenFromReport: false,
             createdAt: now,
             updatedAt: now,
             ...data,
@@ -171,6 +175,8 @@ export class FakeDb {
           this.state.viewSettingsHistory.push(row);
           return { ...row };
         },
+        findMany: async ({ where }: { where?: Row } = {}) =>
+          this.state.viewSettingsHistory.filter((h) => matches(h, where)).map((h) => ({ ...h })),
       },
       recipient: {
         findMany: async ({ where }: { where?: Row } = {}) =>

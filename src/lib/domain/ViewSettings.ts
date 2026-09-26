@@ -20,18 +20,11 @@ export interface ViewSettingsValue {
   columnOrder: ViewColumn[];
   /** Hidden columns. Never contains a locked column. */
   hiddenColumns: ViewColumn[];
-  /** Hidden statuses, in canonical status order. Rows with these statuses are not listed but still counted. */
+  /** Hidden statuses, in canonical status order. Projects with these statuses are invisible in the context and excluded from all counts (see VisibilityPolicy). */
   hiddenStatuses: ProjectStatus[];
 }
 
 export type ViewSettingsByContext = Record<ViewContext, ViewSettingsValue>;
-
-/** A hidden status and how many projects it hides. */
-export interface HiddenStatusCount {
-  status: ProjectStatus;
-  label: string;
-  count: number;
-}
 
 /** Pure show/hide rules shared by the dashboard, the report builder and the picker. No I/O. */
 export class ViewSettings {
@@ -153,7 +146,7 @@ export class ViewSettings {
     return !value.hiddenStatuses.includes(status);
   }
 
-  /** Rows whose status is visible. Counting must happen on the unfiltered rows. */
+  /** Rows whose status is visible. Prefer VisibilityPolicy.visibleProjects, which applies every rule. */
   static listedRows<T extends { status: ProjectStatus }>(value: ViewSettingsValue, rows: readonly T[]): T[] {
     return rows.filter((r) => ViewSettings.isStatusVisible(value, r.status));
   }
@@ -179,25 +172,5 @@ export class ViewSettings {
     const i = Math.max(0, Math.min(order.length, toIndex));
     order.splice(i, 0, column);
     return ViewSettings.normalize(context, { ...value, columnOrder: order });
-  }
-
-  /**
-   * Hidden statuses that actually hide at least one project, with their counts (from counts
-   * that include hidden rows), in canonical order.
-   */
-  static hiddenStatusCounts(value: ViewSettingsValue, counts: Readonly<Record<ProjectStatus, number>>): HiddenStatusCount[] {
-    return value.hiddenStatuses
-      .map((s) => ({ status: s, label: ProjectStatusInfo.label(s), count: counts[s] ?? 0 }))
-      .filter((h) => h.count > 0);
-  }
-
-  /**
-   * "Hidden: Complete (3), Cancelled (1)". Only hidden statuses with at least one project are
-   * listed; null when nothing is actually hidden (no hidden status, or all hidden counts are 0).
-   */
-  static hiddenStatusLine(value: ViewSettingsValue, counts: Readonly<Record<ProjectStatus, number>>): string | null {
-    const parts = ViewSettings.hiddenStatusCounts(value, counts);
-    if (parts.length === 0) return null;
-    return `Hidden: ${parts.map((p) => `${p.label} (${p.count})`).join(", ")}`;
   }
 }
