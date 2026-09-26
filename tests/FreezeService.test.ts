@@ -124,7 +124,8 @@ describe("handoff.json", () => {
     const h = Setup.handoff(fake);
     expect(h).toMatchObject({
       schemaVersion: 1,
-      title: "Cardiac Service Line: Project Status Report",
+      // New freezes use the service line setting (seed value here: no settings row in the fake DB).
+      title: "Cardiovascular & Pulmonary Service Line: Project Status Report",
       snapshotId: r.snapshotId,
       reportDate: "2026-09-29",
       period: { start: "2026-09-15", end: "2026-09-29", label: "Sep 15 \u2013 Sep 29, 2026" },

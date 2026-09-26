@@ -16,6 +16,9 @@ import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import type { AdminMenuItem } from "@/lib/admin/AdminMenu";
+import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
+import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { Flags, StatusPill } from "./StatusPill";
 
@@ -23,6 +26,7 @@ import { Flags, StatusPill } from "./StatusPill";
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
 const ProjectPeopleEditor = dynamic(() => import("./ProjectPeopleEditor").then((m) => m.ProjectPeopleEditor));
+const AdminMenuButton = dynamic(() => import("./AdminMenuButton").then((m) => m.AdminMenuButton));
 
 export interface LatestReport {
   /** YYYY-MM-DD */
@@ -47,6 +51,8 @@ export interface AdminDashboardProps {
   /** Existing requester names for the drawer requester picker (admin only). */
   requesterSuggestions: string[];
   setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
+  /** Top bar admin menu items (`AdminMenu.itemsFor`, computed on the server). */
+  menuItems: AdminMenuItem[];
 }
 
 interface Props {
@@ -61,6 +67,8 @@ interface Props {
   /** "Completed FY27 to date N" (same rule as report page 1). */
   completedFiscalYear?: FiscalYearCount | null;
   loadError: string | null;
+  /** Service line name setting (top bar lockup). */
+  serviceLine: ServiceLineValue;
   admin?: AdminDashboardProps;
   signOutAction: () => Promise<void>;
 }
@@ -176,6 +184,7 @@ export function ProjectDashboard({
   latestReport,
   completedFiscalYear,
   loadError,
+  serviceLine,
   columns: columnsProp,
   admin,
   signOutAction,
@@ -235,16 +244,16 @@ export function ProjectDashboard({
   return (
     <div className="relative min-h-screen">
       <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-topbar px-6 backdrop-blur-[20px]">
-        <div className="flex items-center gap-2.5">
-          <div className="grid size-[26px] place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
-          <span className="type-title">Service Line Portfolio</span>
+        <div className="flex shrink-0 items-center gap-2.5">
+          <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
+          <ServiceLineLabel value={serviceLine} />
         </div>
         <div className="h-6 w-px bg-line" />
         <button
           type="button"
           disabled
           title="Report history coming soon"
-          className="flex h-8 items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 text-muted"
+          className="flex h-8 shrink-0 items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 whitespace-nowrap text-muted"
         >
           {latestReport ? (
             <>
@@ -258,7 +267,7 @@ export function ProjectDashboard({
           )}
         </button>
         <div className="flex-1" />
-        <label className="flex h-8 w-80 shrink-0 items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 text-muted type-table">
+        <label className="flex h-8 w-80 min-w-40 shrink items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 text-muted type-table">
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
             <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
             <path d="M9.5 9.5L13 13" stroke="currentColor" strokeWidth="1.5" />
@@ -274,14 +283,9 @@ export function ProjectDashboard({
           <kbd className="rounded border border-line px-1 type-caption">/</kbd>
         </label>
         {admin && settings && (
-          <>
-            <Link href="/admin/audit" className="type-table-strong text-muted hover:text-fg">
-              Audit
-            </Link>
-            <ViewSettingsPicker settings={settings} counts={admin.pickerCounts} onSave={saveSettings} />
-          </>
+          <ViewSettingsPicker settings={settings} counts={admin.pickerCounts} onSave={saveSettings} />
         )}
-        <Link href="/reports" className="type-table-strong text-muted hover:text-fg">
+        <Link href="/reports" className="shrink-0 whitespace-nowrap type-table-strong text-muted hover:text-fg">
           Reports
         </Link>
         {admin && (
@@ -289,10 +293,16 @@ export function ProjectDashboard({
             href="/api/reports/preview"
             download
             title="Download a draft PDF from live data. Not an official snapshot; nothing is saved or sent."
-            className="flex h-8 items-center rounded-control bg-accent px-3.5 text-white type-table-strong"
+            className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"
           >
             Generate PDF now
           </a>
+        )}
+        {admin && admin.menuItems.length > 0 && (
+          // 12px left of the user block (header gap is 16px).
+          <div className="-mr-1">
+            <AdminMenuButton items={admin.menuItems} />
+          </div>
         )}
         <form action={signOutAction} className="flex items-center gap-2 text-muted">
           <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">

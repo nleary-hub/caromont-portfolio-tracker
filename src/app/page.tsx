@@ -3,6 +3,7 @@ import { signOut, SIGN_IN_PATH } from "@/auth";
 import { deleteProject, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Db } from "@/lib/db/Db";
@@ -12,6 +13,7 @@ import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext } from "@/lib/domain/ViewSettings";
+import { ServiceLineService } from "@/lib/services/ServiceLineService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
@@ -39,7 +41,7 @@ class DashboardData {
       latestReport: null,
       completedFiscalYear: null,
       admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [] }
+        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [] }
         : null,
       error,
     };
@@ -110,6 +112,7 @@ class DashboardData {
               hiddenFromReportIds: visible.filter((p) => p.hiddenFromReport).map((p) => p.id),
               ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner)),
               requesterSuggestions: Requester.suggestions(projects.map((p) => p.physicianChampion)),
+              menuItems: AdminMenu.itemsFor(viewer) ?? [],
             }
           : null,
         error: null,
@@ -127,7 +130,10 @@ export default async function DashboardPage() {
   if (!viewer) redirect(SIGN_IN_PATH);
 
   const today = DateOnly.today();
-  const { rows, columns, latestReport, completedFiscalYear, admin, error } = await DashboardData.load(viewer, today);
+  const [{ rows, columns, latestReport, completedFiscalYear, admin, error }, serviceLine] = await Promise.all([
+    DashboardData.load(viewer, today),
+    ServiceLineService.getOrDefault(),
+  ]);
 
   return (
     <ProjectDashboard
@@ -139,6 +145,7 @@ export default async function DashboardPage() {
       latestReport={latestReport}
       completedFiscalYear={completedFiscalYear}
       loadError={error}
+      serviceLine={serviceLine}
       // Spread so non-admins' payload does not even carry an "admin" key.
       {...(admin
         ? {

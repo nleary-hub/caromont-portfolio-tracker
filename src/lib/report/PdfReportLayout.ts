@@ -1,3 +1,4 @@
+import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { ViewSettings, type ViewColumn, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 
 export interface LayoutColumn {
@@ -10,7 +11,19 @@ export interface LayoutColumn {
  * ReportLayout (src/lib/report/pdf) renders from these constants, so the spec lives in one place.
  */
 export class PdfReportLayout {
-  static readonly TITLE = "Cardiac Service Line: Project Status Report";
+  /**
+   * Legacy combined title: snapshots frozen before migration 0014 (no serviceLineJson) still draw it as
+   * their one-line page 1 title and running header, so those reports never change.
+   */
+  static readonly TITLE = ServiceLine.reportTitle({ name: ServiceLine.LEGACY_REPORT_NAME });
+
+  /**
+   * Combined one-line "<name>: Project Status Report" (legacy title when absent). Only for the PDF
+   * metadata title and the handoff.json title; the drawn header uses an overline plus title line.
+   */
+  static title(serviceLineName: string | null | undefined): string {
+    return serviceLineName ? ServiceLine.reportTitle({ name: serviceLineName }) : PdfReportLayout.TITLE;
+  }
   static readonly PAGE = { size: "Letter", orientation: "landscape", widthIn: 11, heightIn: 8.5, theme: "light" } as const;
 
   /** Owner column before the Contracts lead line (Figma spec). */

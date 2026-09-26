@@ -59,6 +59,7 @@ export class SnapshotService {
               viewSettingsJson: data.viewSettings as unknown as Prisma.InputJsonValue,
               optionsJson: data.options as unknown as Prisma.InputJsonValue,
               completedJson: data.completed as unknown as Prisma.InputJsonValue,
+              serviceLineJson: data.serviceLine as unknown as Prisma.InputJsonValue,
             },
           });
         },

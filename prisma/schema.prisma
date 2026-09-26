@@ -145,6 +145,9 @@ model ReportSnapshot {
   /// CompletedRow[]: the "Completed this period" blocks at freeze (visible Complete projects not yet reported).
   /// Immutable. Null before migration 0012.
   completedJson        Json?
+  /// ServiceLineValue (service line name and short name) in effect at freeze, used for the report title.
+  /// Immutable. Null before migration 0014 (those reports render with the legacy title).
+  serviceLineJson      Json?
 
   artifacts  ReportArtifact[]
   deliveries ReportDelivery[]
@@ -257,4 +260,32 @@ model ReportOptionsHistory {
 
   @@index([changedAt])
   @@map("report_options_history")
+}
+
+/// Admin service line settings, one row (id "service_line"). Seeded by migration 0014. Only
+/// ServiceLineService writes it; every change is appended to service_line_settings_history in the same
+/// transaction. Length limits: AppConfig-style constants in ServiceLine (DB check constraints as backstop).
+model ServiceLineSettings {
+  id        String   @id @default("service_line")
+  /// Full name, e.g. "Cardiovascular & Pulmonary Service Line" (top bar and report title).
+  name      String   @map("service_line_name")
+  /// Short name for narrow screens, e.g. "CVPSL".
+  shortName String   @map("service_line_short")
+  updatedAt DateTime @updatedAt
+  updatedBy String
+
+  @@map("service_line_settings")
+}
+
+/// Append-only audit trail of service line settings changes (old value, new value, who, when).
+/// DB trigger blocks UPDATE/DELETE.
+model ServiceLineSettingsHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  oldValue  Json
+  newValue  Json
+  changedAt DateTime @default(now())
+  changedBy String
+
+  @@index([changedAt])
+  @@map("service_line_settings_history")
 }

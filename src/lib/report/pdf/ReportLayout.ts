@@ -6,6 +6,7 @@ import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
@@ -37,6 +38,13 @@ export interface ReportDocInput {
    * snapshots frozen before migration 0012: no blocks and no count on page 1.
    */
   completed?: readonly CompletedRow[];
+  /**
+   * Service line for the header: the admin setting for drafts, the frozen value for snapshots. Page 1
+   * draws the name as an uppercase overline above "Project Status Report"; pages 2+ lead the running
+   * header with the short name. Null or absent (snapshots frozen before migration 0014, which have no
+   * short name) keeps the legacy header: one combined title line (PdfReportLayout.TITLE) everywhere.
+   */
+  serviceLine?: ServiceLineValue | null;
 }
 
 /** Geometry in PDF points (1 in = 72 pt). Mirrors portfolio-tracker-mockups/report.css. */
@@ -50,6 +58,14 @@ export class ReportGeometry {
 
   static readonly TITLE_H = 18;
   static readonly TITLE_BAR_H = 25.5; // 18 title + 6 padding + 1.5 rule
+  /**
+   * Page 1 overline (service line name, uppercase) above the title line. 8 pt; if the name does not fit
+   * on one line beside the badge it shrinks to MIN_SIZE, then wraps (at most MAX_LINES, then ellipsis).
+   * The 80-character maximum name fits on one line at 8 pt, so shrink and wrap are safety nets.
+   */
+  static readonly OVERLINE = { size: 8, minSize: 6.5, step: 0.5, lineH: 10, gap: 2, tracking: 0.6, weight: 600, maxLines: 2 } as const;
+  /** Horizontal gap kept between the overline and the badge. */
+  static readonly BADGE_GAP = 12;
   static readonly RUNHEAD_H = 19.5; // 12 line + 6 padding + 1.5 rule
   static readonly DRAFT_LINE_H = 12;
   static readonly HEADER_BODY_PAD = 8;
@@ -269,8 +285,22 @@ export interface StripItem {
   width: number;
 }
 
+export interface OverlineModel {
+  /** Uppercase lines, usually one. */
+  lines: string[];
+  size: number;
+  tracking: number;
+}
+
 export interface HeaderModel {
+  /** Page 1 overline: the service line name. Null for the legacy header (pre-0014 snapshots). */
+  overline: OverlineModel | null;
+  /** Page 1 title line: "Project Status Report", or the legacy combined title. */
   title: string;
+  /** Page 1 title bar height (overline + title + padding + rule). */
+  titleBarHeight: number;
+  /** Running header lead on pages 2+: "CVPSL \u00b7 Project Status Report", or the legacy combined title. */
+  runningTitle: string;
   reportDateLong: string;
   reportDateMedium: string;
   period: string | null;
@@ -776,8 +806,15 @@ export class ReportLayout {
         completedAt = { row: projectsRow + 1, x: 0 };
       }
     }
+    const badge: HeaderModel["badge"] = input.draft ? "DRAFT" : input.exampleData ? "EXAMPLE DATA" : null;
+    const sl = input.serviceLine ?? null;
+    const overline = sl ? ReportLayout.overline(m, sl.name, badge) : null;
+    const runningTitle = sl ? ServiceLine.runningTitle(sl) : PdfReportLayout.TITLE;
     return {
-      title: PdfReportLayout.TITLE,
+      overline,
+      title: sl ? ServiceLine.REPORT_TITLE_SUFFIX : PdfReportLayout.TITLE,
+      titleBarHeight: ReportLayout.titleBarHeight(overline),
+      runningTitle,
       reportDateLong: ReportFormat.longDate(input.reportDate),
       reportDateMedium: ReportFormat.mediumDate(input.reportDate),
       period,
@@ -785,14 +822,14 @@ export class ReportLayout {
       completedFy,
       completedAt,
       preparedBy: ReportLayout.PREPARED_BY,
-      badge: input.draft ? "DRAFT" : input.exampleData ? "EXAMPLE DATA" : null,
+      badge,
       draftLine: input.draft ? `Draft, generated ${generated}. Not an official snapshot.` : null,
       grid: { columns, rows: [...areaRows, totalRow], width: gridWidth },
       metaWidth,
       meta,
       strip,
       columns: cols,
-      footerLeft: `${input.draft ? "Draft" : "Generated"} ${generated} \u00b7 ${PdfReportLayout.TITLE}${
+      footerLeft: `${input.draft ? "Draft" : "Generated"} ${generated} \u00b7 ${runningTitle}${
         input.exampleData ? " \u00b7 Example data (fictional sample projects)" : ""
       }`,
     };
@@ -860,13 +897,48 @@ export class ReportLayout {
     return ServiceAreaInfo.groups().filter((a) => a !== ServiceAreaInfo.UNASSIGNED || unassigned);
   }
 
-  static firstHeaderHeight(input: ReportDocInput): number {
+  /** Width the badge takes at the top right (text at 7 pt semibold with 0.4 pt tracking, padding, border). */
+  static badgeWidth(m: Measurer, text: string): number {
+    return m.width(text, ReportGeometry.SIZE.small, 600) + 0.4 * text.length + 2 * 5 + 2 * 0.75;
+  }
+
+  /** Width of an overline line as drawn (tracking after every glyph but the last). */
+  static overlineWidth(m: Measurer, text: string, size: number): number {
+    const o = ReportGeometry.OVERLINE;
+    return m.width(text, size, o.weight) + o.tracking * Math.max(0, text.length - 1);
+  }
+
+  /** Room for the overline: the content width minus the badge (and its gap) when one is shown. */
+  static overlineMaxWidth(m: Measurer, badge: HeaderModel["badge"]): number {
+    return ReportGeometry.CONTENT_W - (badge ? ReportLayout.badgeWidth(m, badge) + ReportGeometry.BADGE_GAP : 0);
+  }
+
+  /** Uppercase service line overline: 8 pt on one line, else shrink toward minSize, else wrap. */
+  static overline(m: Measurer, name: string, badge: HeaderModel["badge"]): OverlineModel {
+    const o = ReportGeometry.OVERLINE;
+    const text = name.replace(/\s+/g, " ").trim().toUpperCase();
+    const maxW = ReportLayout.overlineMaxWidth(m, badge);
+    for (let size: number = o.size; size >= o.minSize; size -= o.step) {
+      if (ReportLayout.overlineWidth(m, text, size) <= maxW) return { lines: [text], size, tracking: o.tracking };
+    }
+    // Wrap at the minimum size, measuring with tracking so wrapped lines fit as drawn.
+    const tracked: Measurer = { width: (t, size) => ReportLayout.overlineWidth(m, t, size) };
+    const lines = TextMeasure.wrap(tracked, text, maxW, o.minSize, o.weight, o.maxLines);
+    return { lines, size: o.minSize, tracking: o.tracking };
+  }
+
+  static titleBarHeight(overline: OverlineModel | null): number {
+    const g = ReportGeometry;
+    return g.TITLE_BAR_H + (overline ? overline.lines.length * g.OVERLINE.lineH + g.OVERLINE.gap : 0);
+  }
+
+  static firstHeaderHeight(input: ReportDocInput, titleBarHeight: number = ReportGeometry.TITLE_BAR_H): number {
     const g = ReportGeometry;
     // Up to one extra meta row for "Completed FY27 to date N" (still shorter than the grid).
     const rows = input.header?.completedFiscalYear ? 5 : 4;
     const meta = rows * g.META_ROW_H + (rows - 1) * g.META_GAP + 6 + 3 * g.LEGEND_LINE_H;
     const grid = g.GRID_HEAD_H + (ReportLayout.gridAreas(input.rows).length + 1) * g.GRID_ROW_H + 1;
-    return g.TITLE_BAR_H + (input.draft ? g.DRAFT_LINE_H : 0) + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
+    return titleBarHeight + (input.draft ? g.DRAFT_LINE_H : 0) + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
   }
 
   static continuationHeaderHeight(input: ReportDocInput, header: HeaderModel): number {
@@ -890,7 +962,7 @@ export class ReportLayout {
     // The FY-to-date count is not derived from rows: it comes from the (frozen) header as stored.
     const header = { ...ReportBuilder.header(rows), completedFiscalYear: input.header?.completedFiscalYear };
     const model = ReportLayout.header(m, input, header);
-    const firstH = ReportLayout.firstHeaderHeight(input);
+    const firstH = ReportLayout.firstHeaderHeight(input, model.titleBarHeight);
     const contH = ReportLayout.continuationHeaderHeight(input, model);
 
     const pages: PageLayout[] = [];

@@ -63,7 +63,10 @@ describe("ReportLayout pagination", () => {
     // Continuation header carries per-area status counts that add up to the visible rows.
     const stripTotal = layout.header.strip.flat().reduce((s, it) => s + it.counts.reduce((a, c) => a + c.count, 0), 0);
     expect(stripTotal).toBe(rows.length);
-    expect(layout.header.title).toBe("Cardiac Service Line: Project Status Report");
+    // Sample renders use the seeded service line: overline plus title line on page 1, short name on pages 2+.
+    expect(layout.header.overline?.lines).toEqual(["CARDIOVASCULAR & PULMONARY SERVICE LINE"]);
+    expect(layout.header.title).toBe("Project Status Report");
+    expect(layout.header.runningTitle).toBe("CVPSL \u00b7 Project Status Report");
     expect(layout.header.period).toBe("Sep 15 \u2013 Sep 29, 2026");
   });
 

@@ -1,15 +1,21 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition, type ReactNode } from "react";
 import { commitImport, previewImport, type ImportMode } from "@/app/admin/import/actions";
+import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
 import type { CsvColumn } from "@/lib/import/ProjectCsv";
+import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { CreatePreview, ImportPreview, RowErrors, WordingPreview } from "@/lib/import/ImportService";
 
 interface Props {
   adminEmail: string;
   templateColumns: CsvColumn[];
   limits: { rows: number; note: number; milestone: number };
+  /** Server-rendered admin menu (`AdminMenuSlot`). */
+  adminMenu?: ReactNode;
+  /** Service line name setting (top bar lockup). */
+  serviceLine: ServiceLineValue;
 }
 
 class ImportCopy {
@@ -32,7 +38,7 @@ const th = "sticky top-0 z-[1] h-9 border-b border-line bg-card px-2 text-left u
 const td = "border-b border-line px-2 py-1.5 align-top";
 const errCell = "bg-(--status-off-track-dark-bg) text-(--status-off-track-dark-fg)";
 
-export function ImportPanel({ adminEmail, templateColumns, limits }: Props) {
+export function ImportPanel({ adminEmail, templateColumns, limits, adminMenu, serviceLine }: Props) {
   const [mode, setMode] = useState<ImportMode>("create");
   const [csv, setCsv] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -99,13 +105,14 @@ export function ImportPanel({ adminEmail, templateColumns, limits }: Props) {
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-topbar px-6 backdrop-blur-[20px]">
-        <Link href="/" className="flex items-center gap-2.5">
-          <div className="grid size-[26px] place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
-          <span className="type-title">Service Line Portfolio</span>
+        <Link href="/" className="flex shrink-0 items-center gap-2.5">
+          <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
+          <ServiceLineLabel value={serviceLine} />
         </Link>
         <div className="h-6 w-px bg-line" />
         <span className="type-table-strong">Import projects (admin)</span>
         <div className="flex-1" />
+        {adminMenu && <div className="-mr-1">{adminMenu}</div>}
         <span className="type-caption text-muted">Signed in as {adminEmail}</span>
       </header>
 

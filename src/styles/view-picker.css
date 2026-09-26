@@ -4,7 +4,7 @@
   .vp-trigger {
     display: inline-flex; align-items: center; gap: 8px; height: 32px; padding: 0 12px;
     border: 1px solid var(--dark-border); border-radius: var(--radius-control); background: var(--dark-input);
-    font: var(--app-table-strong); color: var(--dark-text-primary); cursor: pointer;
+    font: var(--app-table-strong); color: var(--dark-text-primary); cursor: pointer; white-space: nowrap; flex: none;
   }
   .vp-trigger[aria-expanded="true"] { border-color: var(--dark-accent); }
   .vp-badge {

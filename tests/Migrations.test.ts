@@ -76,8 +76,9 @@ describe("migrations (PGlite)", () => {
     ]);
   });
 
-  it("0013_project_contracts_lead is the latest migration: one nullable text column, additive only", async () => {
-    expect(Migrations.folders().at(-1)).toBe("0013_project_contracts_lead");
+  it("0013_project_contracts_lead: one nullable text column, additive only", async () => {
+    const folders = Migrations.folders();
+    expect(folders.indexOf("0013_project_contracts_lead")).toBeGreaterThan(folders.indexOf("0012_completed_this_period"));
     const statements = Migrations.sql("0013_project_contracts_lead")
       .split("\n")
       .filter((l) => l.trim() && !l.trim().startsWith("--"));
@@ -176,6 +177,50 @@ describe("migrations (PGlite)", () => {
       { name: "Low", infor_request_number: 1 },
       { name: "No number", infor_request_number: null },
     ]);
+    await db.close();
+  }, 30_000);
+
+  it("0014_service_line_settings is the latest migration: seeds the names, audits append-only, freezes the name", async () => {
+    const folders = Migrations.folders();
+    expect(folders.at(-1)).toBe("0014_service_line_settings");
+    expect(folders.indexOf("0014_service_line_settings")).toBeGreaterThan(folders.indexOf("0013_project_contracts_lead"));
+    const code = Migrations.sql("0014_service_line_settings")
+      .split("\n")
+      .filter((l) => !l.trim().startsWith("--"))
+      .join("\n");
+    // Additive only: no drops, no data changes to existing tables.
+    expect(code).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE FROM\b/);
+
+    const db = await Migrations.applyAll();
+    const seeded = await db.query<{ service_line_name: string; service_line_short: string }>(
+      `select service_line_name, service_line_short from service_line_settings where id = 'service_line'`,
+    );
+    expect(seeded.rows).toEqual([{ service_line_name: "Cardiovascular & Pulmonary Service Line", service_line_short: "CVPSL" }]);
+
+    await expect(db.query(`update service_line_settings set service_line_short = '' where id = 'service_line'`)).rejects.toThrow(
+      /service_line_settings_short_length/,
+    );
+    await expect(
+      db.query(`update service_line_settings set service_line_short = 'THIRTEENCHARS' where id = 'service_line'`),
+    ).rejects.toThrow(/service_line_settings_short_length/);
+    await expect(db.query(`update service_line_settings set service_line_name = '   ' where id = 'service_line'`)).rejects.toThrow(
+      /service_line_settings_name_length/,
+    );
+
+    await db.query(
+      `insert into service_line_settings_history (id, "oldValue", "newValue", "changedBy") values (gen_random_uuid(), '{}', '{}', 'a@x.org')`,
+    );
+    await expect(db.query(`update service_line_settings_history set "changedBy" = 'b@x.org'`)).rejects.toThrow();
+    await expect(db.query(`delete from service_line_settings_history`)).rejects.toThrow();
+
+    // The frozen name is part of the immutable snapshot content.
+    await db.query(
+      `insert into "ReportSnapshot" (id, "periodStart", "periodEnd", "generatedBy", "rowsJson", "missingChampionsJson", "serviceLineJson")
+       values ('00000000-0000-0000-0000-000000000001', '2026-09-01', '2026-09-15', 'cron', '[]', '[]', '{"name":"Old name","shortName":"OLD"}')`,
+    );
+    await expect(
+      db.query(`update "ReportSnapshot" set "serviceLineJson" = '{"name":"New name","shortName":"NEW"}'`),
+    ).rejects.toThrow(/immutable/);
     await db.close();
   }, 30_000);
 });

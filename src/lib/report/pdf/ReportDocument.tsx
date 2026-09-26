@@ -255,7 +255,7 @@ function Rule({ y, h, color = C.TEXT, x = 0, w = G.CONTENT_W }: { y: number; h: 
 
 function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
   const S = G.SIZE;
-  let y = G.TITLE_BAR_H;
+  let y = h.titleBarHeight;
   const els: React.ReactNode[] = [];
   if (draft && h.draftLine) {
     els.push(<Line key="draft" x={0} y={y + 2} w={G.CONTENT_W} text={h.draftLine} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />);
@@ -359,11 +359,42 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
 
   return (
     <>
-      <Text style={{ position: "absolute", left: 0, top: 0, fontFamily: F, fontSize: S.title, fontWeight: 700, lineHeight: G.TITLE_H / S.title, color: C.TEXT }}>
+      {h.overline?.lines.map((line, i) => (
+        <Text
+          key={`ol${i}`}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: i * G.OVERLINE.lineH,
+            width: G.CONTENT_W,
+            fontFamily: F,
+            fontSize: h.overline!.size,
+            fontWeight: G.OVERLINE.weight,
+            letterSpacing: h.overline!.tracking,
+            lineHeight: G.OVERLINE.lineH / h.overline!.size,
+            color: C.MUTED,
+            maxLines: 1,
+          }}
+        >
+          {line}
+        </Text>
+      ))}
+      <Text
+        style={{
+          position: "absolute",
+          left: 0,
+          top: h.titleBarHeight - G.TITLE_BAR_H,
+          fontFamily: F,
+          fontSize: S.title,
+          fontWeight: 700,
+          lineHeight: G.TITLE_H / S.title,
+          color: C.TEXT,
+        }}
+      >
         {h.title}
       </Text>
-      {h.badge && <Badge text={h.badge} right={0} top={2} />}
-      <Rule y={G.TITLE_BAR_H - 1.5} h={1.5} />
+      {h.badge && <Badge text={h.badge} right={0} top={h.overline ? 0 : 2} />}
+      <Rule y={h.titleBarHeight - 1.5} h={1.5} />
       {els}
     </>
   );
@@ -400,7 +431,7 @@ function ContinuationHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
   return (
     <>
       <Text style={{ position: "absolute", left: 0, top: 0, fontFamily: F, fontSize: S.body, lineHeight: 12 / S.body, color: C.TEXT }}>
-        <Text style={{ fontWeight: 600 }}>{h.title}</Text>
+        <Text style={{ fontWeight: 600 }}>{h.runningTitle}</Text>
         {` \u00b7 Report of ${h.reportDateMedium}${h.period ? ` \u00b7 Period ${h.period}` : ""} (continued)`}
       </Text>
       {h.badge && <Badge text={h.badge} right={0} top={0} />}
