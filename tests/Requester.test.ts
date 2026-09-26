@@ -167,7 +167,7 @@ describe("Requester: edit panel", () => {
     expect(fake.state.projects[0].note).toBeNull(); // note untouched
   });
 
-  it("closed picker: name, Not applicable in primary text, To assign in gray; no email field", () => {
+  it("closed combobox: name in primary text, Not applicable and To assign in gray; no email field", () => {
     const props = (s: (typeof STATES)[keyof typeof STATES]) => ({
       projectId: "p1",
       owner: null,
@@ -179,9 +179,9 @@ describe("Requester: edit panel", () => {
       ...s,
     });
     const closed = (s: (typeof STATES)[keyof typeof STATES]) => renderToStaticMarkup(createElement(RequesterPicker, props(s)));
-    expect(closed(STATES.named)).toMatch(/text-fg[^>]*>Dr\. Sample A</);
-    expect(closed(STATES.na)).toMatch(/text-fg[^>]*>Not applicable</);
-    expect(closed(STATES.unset)).toMatch(/text-muted[^>]*>To assign</);
+    expect(closed(STATES.named)).toMatch(/role="combobox"[^>]*class="[^"]*text-fg[^"]*"[^>]*value="Dr\. Sample A"/);
+    expect(closed(STATES.na)).toMatch(/placeholder="Not applicable"[^>]*class="[^"]*text-muted[^"]*"[^>]*value=""/);
+    expect(closed(STATES.unset)).toMatch(/placeholder="To assign"[^>]*class="[^"]*text-muted[^"]*"[^>]*value=""/);
     const panel = renderToStaticMarkup(createElement(ProjectPeopleEditor, props(STATES.named)));
     expect(panel).toContain(">Requester<");
     expect(panel).not.toMatch(/email|Physician champion/i);

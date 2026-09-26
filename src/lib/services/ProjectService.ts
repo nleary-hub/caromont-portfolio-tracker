@@ -5,6 +5,7 @@ import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { HistoryDiff, type FieldChange } from "@/lib/history/HistoryDiff";
+import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 import { ProjectValidationError, ProjectValidator, type ProjectInput } from "@/lib/validation/ProjectValidator";
 
 export interface Actor {
@@ -236,6 +237,12 @@ export class ProjectService {
    */
   static async setPeopleField(id: string, field: PeopleField, value: string, admin: Viewer, db: PrismaClient = Db.client): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
+    if (field === "owner" || field === "physicianChampion") {
+      // Combobox names: trimmed, whitespace collapsed, length-checked (PeopleDirectory).
+      const checked = PeopleDirectory.validateName(field === "owner" ? "owner" : "requester", value);
+      if (!checked.ok) throw new ProjectValidationError({ [field]: [checked.error] });
+      value = checked.name;
+    }
     const patch: Partial<ProjectInput> =
       field === "requesterNotApplicable" ? { requesterNotApplicable: value === "true" } : { [field]: value };
     // Clearing Not applicable leaves the requester "not yet addressed" (no name).
