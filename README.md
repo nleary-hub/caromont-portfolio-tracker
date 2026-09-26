@@ -58,9 +58,9 @@ See `.env.example` for the full annotated list.
 | `ALLOWED_EMAILS` | yes | Comma/space separated emails or `@domain` entries. Empty = nobody (fails closed) |
 | `ADMIN_EMAILS` | no | Same format. Admins (must also be allowlisted) change view settings, hide/delete projects, open `/admin/audit`, use `/admin/import`. Empty = no admins (fails closed) |
 | `AUTH_MICROSOFT_ENTRA_ID_ID` / `_SECRET` / `_ISSUER` | optional | Enables Microsoft sign-in. Use the tenant-specific issuer |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | Enables Google sign-in |
+| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | Enables Google sign-in. See "Google OAuth setup" |
 | `AUTH_DEV_LOGIN` | optional | `true` enables the email-only dev form (never in production) |
-| `AUTH_TRUST_HOST` / `AUTH_URL` | optional | Only needed off Vercel |
+| `AUTH_TRUST_HOST` / `AUTH_URL` | optional | Only needed off Vercel. Do not set them on Vercel |
 
 OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 `https://<domain>/api/auth/callback/google`.
@@ -79,12 +79,48 @@ OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
   no `pgbouncer=true` flag is needed with driver adapters.
 - All secrets live in Vercel Project Settings > Environment Variables, never in the repo.
 
+## Google OAuth setup
+
+The Auth.js route is `src/app/api/auth/[...nextauth]/route.ts` with the default base path `/api/auth`,
+so Google's callback path is `/api/auth/callback/google`.
+
+1. In https://console.cloud.google.com/ create (or pick) a project, for example `caromont-portfolio-tracker`.
+2. **OAuth consent screen** (newer consoles: **Google Auth Platform** > **Branding / Audience**): app name
+   `Service Line Portfolio Tracker`, your address as support and developer contact, audience **External**,
+   default scopes only (`openid`, `email`, `profile`). While the app is in **Testing**, add every person who
+   needs to sign in under **Audience** > **Test users**, or click **Publish app** (basic scopes need no
+   verification).
+3. **Credentials** > **Create credentials** > **OAuth client ID**, type **Web application**:
+   - Authorized JavaScript origins: `https://caromont-portfolio-tracker.vercel.app` and (optional, local dev)
+     `http://localhost:3000`.
+   - Authorized redirect URIs:
+     - `https://caromont-portfolio-tracker.vercel.app/api/auth/callback/google`
+     - `http://localhost:3000/api/auth/callback/google`
+4. Put the client ID in `AUTH_GOOGLE_ID` and the secret in `AUTH_GOOGLE_SECRET` (`.env.local` locally;
+   Vercel > Project > Settings > Environment Variables for Production), with `AUTH_SECRET`,
+   `ALLOWED_EMAILS` and `ADMIN_EMAILS`. Redeploy after changing Vercel env vars.
+5. Who can get in: the address must be on `ALLOWED_EMAILS` and Google must report it as verified.
+   Admins must also be on `ALLOWED_EMAILS`; being on `ADMIN_EMAILS` alone does not let anyone sign in.
+
+Notes:
+
+- Preview deployments have their own hostnames, which are not registered with Google, so Google sign-in
+  only works on the production domain and localhost. Test sign-in on Production (or locally).
+- Do not set `AUTH_URL` or `AUTH_TRUST_HOST` on Vercel. Auth.js v5 trusts the request host when the
+  `VERCEL` system env var is present, and `AUTH_URL` would pin every deployment (including previews) to one
+  origin. Off Vercel, set `AUTH_TRUST_HOST=true` (or `AUTH_URL`) for `next start` behind a proxy.
+- `redirect_uri_mismatch` means the registered URI does not exactly match (scheme, host, path, no trailing
+  slash). Google can take a few minutes to apply changes.
+
 ## Auth model
 
 - `src/proxy.ts` (Next 16 renamed `middleware.ts` to `proxy.ts`) runs Auth.js on every route except
   `/signin`, `/api/auth/*` and static assets. The `authorized` callback re-checks the allowlist on each
   request, so removing someone from `ALLOWED_EMAILS` locks them out without waiting for session expiry.
-- `signIn` callback enforces `ALLOWED_EMAILS` for every provider (`EmailAllowlist`).
+- `signIn` callback (`SignInGate.allowSignIn`) enforces `ALLOWED_EMAILS` for every provider (`EmailAllowlist`).
+  For Google it also requires `email_verified === true` from Google. Microsoft Entra ID and the local dev
+  login are unchanged. A denied sign-in only shows "This account is not on the access list."
+  (`SignInMessages`), never which check failed.
 - Admin role: `AdminPolicy` reads `ADMIN_EMAILS` on every request (`CurrentViewer.get()` in pages and
   Server Actions; services assert admin again). Only admins can change view settings, hide projects, or
   delete/restore projects. The View picker, its badge, the Audit link and every hide/delete control are
