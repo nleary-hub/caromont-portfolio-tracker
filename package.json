@@ -21,8 +21,10 @@
   "dependencies": {
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
+    "@react-pdf/renderer": "^4.9.0",
     "csv-parse": "^6.2.1",
     "csv-stringify": "^6.9.0",
+    "fontkit": "^2.0.4",
     "next": "16.3.6",
     "next-auth": "^5.0.0-beta.32",
     "pg": "^8.23.0",
@@ -33,6 +35,7 @@
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.3",
     "@tailwindcss/postcss": "^4",
+    "@types/fontkit": "^2.0.9",
     "@types/node": "^20",
     "@types/pg": "^8.23.1",
     "@types/react": "^19",

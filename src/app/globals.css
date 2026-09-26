@@ -53,14 +53,14 @@ body {
     display: inline-flex; align-items: center; gap: 5px; height: 20px; padding: 0 8px;
     border-radius: var(--radius-pill); font: var(--app-label); white-space: nowrap;
   }
-  .pill > i { width: 6px; height: 6px; border-radius: 50%; background: currentColor; }
+  .pill > .st-shape { flex: none; width: 10px; height: 10px; }
   .st-NotStarted { background: var(--status-not-started-dark-bg); color: var(--status-not-started-dark-fg); }
   .st-OnTrack { background: var(--status-on-track-dark-bg); color: var(--status-on-track-dark-fg); }
   .st-AtRisk { background: var(--status-at-risk-dark-bg); color: var(--status-at-risk-dark-fg); }
   .st-OffTrack { background: var(--status-off-track-dark-bg); color: var(--status-off-track-dark-fg); }
   .st-OnHold { background: var(--status-on-hold-dark-bg); color: var(--status-on-hold-dark-fg); }
   .st-Complete { background: var(--status-complete-dark-bg); color: var(--status-complete-dark-fg); }
-  .st-Cancelled { background: var(--status-cancelled-dark-bg); color: var(--status-cancelled-dark-fg); text-decoration: line-through; }
+  .st-Cancelled { background: var(--status-cancelled-dark-bg); color: var(--status-cancelled-dark-fg); }
 
   .flag {
     display: inline-flex; align-items: center; height: 20px; padding: 0 7px; border-radius: 4px;

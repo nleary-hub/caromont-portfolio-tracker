@@ -12,4 +12,6 @@ export class AppConfig {
   static readonly IMPORT_MAX_ROWS = 500;
   /** Calendar used for "today", report dates and overdue checks. */
   static readonly TIME_ZONE = "America/New_York";
+  /** A report row is "Stale" when its latest update is this many days or more before the report date. */
+  static readonly STALE_AFTER_DAYS = 14;
 }

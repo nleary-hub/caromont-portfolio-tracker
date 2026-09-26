@@ -120,8 +120,58 @@ model ReportSnapshot {
   /// ADMIN-ONLY. ViewSettingsValue (report context) in effect at freeze, kept for reproducibility.
   /// Never render to non-admins (VisibilityPolicy.snapshotForViewer strips it). Null only before migration 0002.
   viewSettingsJson     Json?
+  /// ADMIN-ONLY. Latest delivery outcome (DeliveryRecord: Drive file ids or the signed fallback link).
+  /// The only snapshot field that may change more than once (delivery retries); every attempt is
+  /// also logged append-only in report_deliveries.
+  deliveryJson         Json?
+  /// ReportOptionsValue (e.g. key page on/off) in effect at freeze. Immutable. Null before migration 0004.
+  optionsJson          Json?
 
+  artifacts  ReportArtifact[]
+  deliveries ReportDelivery[]
+
+  /// One snapshot per report period: the freeze job is idempotent on this key.
+  @@unique([periodStart, periodEnd])
   @@index([generatedAt])
+}
+
+/// Immutable rendered files of a snapshot (PDF, handoff.json). ReportSnapshot.pdfStorageKey points here
+/// as "db:report_artifacts/<id>". DB triggers block UPDATE/DELETE.
+model ReportArtifact {
+  id          String   @id @default(uuid()) @db.Uuid
+  snapshotId  String   @db.Uuid
+  /// "pdf" | "handoff"
+  kind        String
+  fileName    String
+  contentType String
+  bytes       Bytes
+  byteSize    Int
+  sha256      String
+  createdAt   DateTime @default(now())
+
+  snapshot ReportSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+
+  @@unique([snapshotId, kind])
+  @@map("report_artifacts")
+}
+
+/// Append-only log of delivery attempts (Drive upload or signed-link fallback). DB trigger blocks UPDATE/DELETE.
+model ReportDelivery {
+  id          String   @id @default(uuid()) @db.Uuid
+  snapshotId  String   @db.Uuid
+  attemptedAt DateTime @default(now())
+  /// "drive" | "signed_link"
+  method      String
+  /// "ok" | "failed" | "skipped"
+  status      String
+  /// Method details: Drive file ids and links, or the signed link and its expiry, or the error.
+  detailJson  Json
+  triggeredBy String
+
+  snapshot ReportSnapshot @relation(fields: [snapshotId], references: [id], onDelete: Restrict)
+
+  @@index([snapshotId, attemptedAt])
+  @@map("report_deliveries")
 }
 
 /// Kept in the schema, but nothing drives sending from it: the report email goes to Nick's work email only.
@@ -164,4 +214,28 @@ model ViewSettingsHistory {
 
   @@index([context, changedAt])
   @@map("view_settings_history")
+}
+
+/// Admin report options, one row (id "report"). Only ReportOptionsService writes it; every change is
+/// appended to report_options_history in the same transaction.
+model ReportOptions {
+  id          String   @id @default("report")
+  /// Last page with the status and flag key. Default on.
+  showKeyPage Boolean  @default(true)
+  updatedAt   DateTime @updatedAt
+  updatedBy   String
+
+  @@map("report_options")
+}
+
+/// Append-only audit trail of report options changes. DB trigger blocks UPDATE/DELETE.
+model ReportOptionsHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  oldValue  Json
+  newValue  Json
+  changedAt DateTime @default(now())
+  changedBy String
+
+  @@index([changedAt])
+  @@map("report_options_history")
 }

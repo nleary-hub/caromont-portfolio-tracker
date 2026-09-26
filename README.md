@@ -228,17 +228,18 @@ the URL directly.
 - **CLI:** `npm run import:csv -- file.csv` is a dry run; add `--commit --as admin@...` (or set
   `IMPORT_ACTOR_EMAIL`) to save. The actor must be an admin (`ADMIN_EMAILS`, and also on `ALLOWED_EMAILS`). Loads `.env.local`, then `.env`.
 
-## Stubbed / not built yet
+## Report PDF, freeze and delivery
 
-- PDF generation (`PdfReportRenderer.render` returns no storage key). "Generate report" button is disabled.
-- handoff.json (not built yet). Rules for when it is: build it on `VisibilityPolicy` from the frozen
-  snapshot; flags are computed only on rows visible in the frozen report view (snapshot `rowsJson`).
-  The report email goes to Nick's work email only, so handoff.json carries no To/Cc lists; the Recipient
-  table stays in the schema but nothing drives sending from it. Missing champions come from the snapshot's
-  `missingChampionsJson`, which covers visible rows only.
+See [docs/REPORTS.md](docs/REPORTS.md): renderer (`@react-pdf/renderer`, embedded Inter), biweekly freeze
+(`/api/cron/freeze`, Vercel cron), handoff.json, Google Drive delivery with a signed-link fallback, the
+`/reports` archive, the admin "Freeze now" and "Generate PDF now" (draft) actions, and the env vars.
+
+## Not built yet
+
 - History timeline UI in the drawer (the filtered read path `ProjectHistoryService.forProject` exists),
-  project create/edit forms, recipient management, sending email.
-- Report period picker in the top bar (shows latest snapshot only).
+  project create/edit forms, recipient management. The app never sends email: handoff.json is for the
+  person who sends it.
+- Admin toggle for the optional "Next:" line on report rows (deferred).
 
 ## PDF report spec (for the renderer; constants in `src/lib/report/PdfReportLayout.ts`)
 
@@ -250,9 +251,12 @@ the URL directly.
 - Line 2: the note, starting under Next milestone and running to the right margin (5.95 in), clipped
   to two lines. A 200-char note fits in two lines at the report table size (see mockup `measurement.json`).
 - Rows never split across pages.
-- Every page repeats the header: report date, period covered, status counts per service area.
+- Every page repeats the header: page 1 has the full meta block and per-area status grid; later pages
+  have a running head (title, report date, period) and a one-line per-area status count strip.
 - Pages are numbered ("Page X of Y").
 - Flags are text plus color so they read in black and white: Changed = outlined, Overdue = solid.
+- Status pills carry a shape (`StatusShapes`), also on the dashboard pills. Cancelled has no strikethrough
+  (the X shape carries it, per status-shapes.html).
 - Use the light status/flag tokens (`--status-*-light-*`, `--flag-*-light-*`) and report type scale.
 
 ## Deploying later (not done)
