@@ -5,6 +5,7 @@ import { FlagSlots, type FlagKind } from "@/lib/domain/FlagSlots";
 import { Requester } from "@/lib/domain/Requester";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { InforNumber } from "@/lib/domain/InforNumber";
+import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
@@ -247,7 +248,15 @@ export type RowCell =
       contracts: ContractsLine | null;
     }
   | { kind: "status"; x: number; w: number; pill: PillBox; change: StatusChange | null }
-  | { kind: "nextMilestone"; x: number; w: number; lines: string[]; muted: boolean }
+  | {
+      kind: "nextMilestone";
+      x: number;
+      w: number;
+      lines: string[];
+      muted: boolean;
+      /** "2 of 6" after the milestone (MilestoneProgress.progressLabel): on its last line when it fits, else below. */
+      progress: { text: string; x: number; line: number } | null;
+    }
   | { kind: "due"; x: number; w: number; text: string; overdue: boolean; muted: boolean }
   | { kind: "flags"; x: number; w: number; flags: PlacedFlag[] };
 
@@ -602,8 +611,10 @@ export class ReportLayout {
           const text = row.nextMilestone?.trim();
           // Blank (allowed for Not started, On hold, Complete, Cancelled) renders as nothing.
           const lines = text ? TextMeasure.wrap(m, text, inner, S.table, g.MILESTONE_WEIGHT, 2) : [];
-          lineOneH = Math.max(lineOneH, Math.max(1, lines.length) * g.TABLE_LH);
-          cells.push({ kind: "nextMilestone", x: col.x, w: inner, lines, muted: !text });
+          const progress = lines.length ? ReportLayout.milestoneProgress(m, row, lines, inner) : null;
+          const lineCount = Math.max(1, lines.length, progress ? progress.line + 1 : 0);
+          lineOneH = Math.max(lineOneH, lineCount * g.TABLE_LH);
+          cells.push({ kind: "nextMilestone", x: col.x, w: inner, lines, muted: !text, progress });
           break;
         }
         case "due": {
@@ -771,6 +782,22 @@ export class ReportLayout {
       return l;
     });
     return { kind: "completed", y: 0, height: y + 2, area, headerH: st.HEADER_H, rows: laid };
+  }
+
+  /** Gap between the milestone text and its "X of Y" label. */
+  static readonly PROGRESS_GAP = 4;
+
+  /**
+   * "X of Y" for a checklist (only when MilestoneProgress.progressLabel shows it: 2 or more steps), in
+   * small secondary text after the last milestone line when it fits there, otherwise on its own line below.
+   */
+  static milestoneProgress(m: Measurer, row: ReportRow, lines: readonly string[], inner: number): { text: string; x: number; line: number } | null {
+    const text = MilestoneProgress.progressLabel(row.milestoneProgress);
+    if (!text) return null;
+    const S = ReportGeometry.SIZE;
+    const last = lines.length - 1;
+    const x = m.width(lines[last], S.table, ReportGeometry.MILESTONE_WEIGHT) + ReportLayout.PROGRESS_GAP;
+    return x + m.width(text, S.small, 400) <= inner ? { text, x, line: last } : { text, x: 0, line: last + 1 };
   }
 
   static header(m: Measurer, input: ReportDocInput, header: ReportHeader): HeaderModel {

@@ -1,18 +1,21 @@
 import type { DueFlagsVisibility, MilestoneUpdateVisibility } from "@/lib/dashboard/DashboardColumnModel";
 import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
 import { FlagSlots, type FlagKind } from "@/lib/domain/FlagSlots";
+import { MilestoneProgress, type MilestoneCount } from "@/lib/domain/MilestoneProgress";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 
 /** The fields a stacked Next milestone / Latest update cell reads. */
 export interface MilestoneUpdateSource {
   nextMilestone: string | null | undefined;
+  /** Checklist done/total; "X of Y" follows the milestone when MilestoneProgress.progressLabel shows it. */
+  milestoneProgress?: MilestoneCount | null;
   note: string | null | undefined;
   changed: boolean;
 }
 
 /** One line of the Next milestone / Latest update cell. */
 export type MilestoneUpdateLine =
-  | { kind: "milestone"; text: string }
+  | { kind: "milestone"; text: string; progress: string | null }
   | { kind: "update"; prefix: string | null; text: string | null; full: string; muted: boolean };
 
 /**
@@ -35,7 +38,7 @@ export class MilestoneUpdateStack {
   static lines(row: MilestoneUpdateSource, visible: MilestoneUpdateVisibility): MilestoneUpdateLine[] {
     const out: MilestoneUpdateLine[] = [];
     const milestone = row.nextMilestone?.replace(/\s+/g, " ").trim();
-    if (visible.milestone && milestone) out.push({ kind: "milestone", text: milestone });
+    if (visible.milestone && milestone) out.push({ kind: "milestone", text: milestone, progress: MilestoneProgress.progressLabel(row.milestoneProgress) });
     const update = visible.update ? LatestUpdate.line(row) : null;
     if (update) out.push({ kind: "update", ...update });
     return out;

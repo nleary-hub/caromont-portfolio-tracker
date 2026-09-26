@@ -1,4 +1,5 @@
 import type { ProjectStatus, RecipientLine, ServiceArea } from "@/generated/prisma/enums";
+import type { MilestoneCount } from "@/lib/domain/MilestoneProgress";
 import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 
 /** Fields of a Project that the domain logic needs. Structurally compatible with the Prisma model. */
@@ -18,8 +19,12 @@ export interface ProjectRecord {
   /** One of AppConfig.CONTRACTS_LEADS, or null ("To assign"). */
   contractsLead: string | null;
   status: ProjectStatus;
+  /** After MilestoneProgress.applyAll: the derived next milestone (first step not done), else the legacy text. */
   nextMilestone: string | null;
+  /** After MilestoneProgress.applyAll: the next step's due date, else the legacy due date. */
   dueDate: Date | null;
+  /** Checklist done/total (MilestoneProgress.applyAll). Absent or null: no steps, legacy fields in use. */
+  milestoneProgress?: MilestoneCount | null;
   targetCompletion: Date | null;
   percentComplete: number | null;
   note: string | null;
@@ -78,6 +83,11 @@ export interface ReportRow {
   inforRequestNumber?: number | null;
   /** Contracts lead. Absent on snapshots frozen before 0013. */
   contractsLead?: string | null;
+  /**
+   * Checklist done/total for the "X of Y" label (MilestoneProgress.progressLabel decides when it shows).
+   * Absent for projects without steps and on snapshots frozen before 0015. Not part of handoff.json.
+   */
+  milestoneProgress?: MilestoneCount | null;
   changed: boolean;
   overdue: boolean;
   /** YYYY-MM-DD (America/New_York) of the latest public change. Absent on snapshots before 0004. */

@@ -50,12 +50,13 @@ export class AdminMenu {
     { id: "reports", group: "work", kind: "link", icon: "archive", label: "Reports", href: "/reports", shipped: true },
     { id: "freeze", group: "work", kind: "link", icon: "snowflake", label: "Freeze and report options", href: "/reports#report-admin", shipped: true },
     // Group 2: libraries (not built yet; hidden until shipped).
-    { id: "templates", group: "library", kind: "link", icon: "template", label: "Templates", href: "/admin/templates", shipped: false },
     { id: "people", group: "library", kind: "link", icon: "people", label: "People", href: "/admin/people", shipped: false },
     // Group 3: oversight and settings.
     { id: "audit", group: "admin", kind: "link", icon: "audit", label: "Audit log", href: "/admin/audit", shipped: true },
     { id: "settings", group: "admin", kind: "viewSettings", icon: "settings", label: "Settings", href: `/${AdminMenu.VIEW_SETTINGS_HASH}`, shipped: true },
     { id: "service-line", group: "admin", kind: "link", icon: "tag", label: "Service line", href: "/admin/settings", shipped: true },
+    // Milestone templates, next to the Service line settings.
+    { id: "templates", group: "admin", kind: "link", icon: "template", label: "Templates", href: "/admin/templates", shipped: true },
   ];
 
   /** Every defined item, shipped or not (for tests and docs). */

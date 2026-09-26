@@ -4,18 +4,31 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
+import { MilestoneEditorModel } from "@/lib/projects/MilestoneEditorModel";
 import { ProjectFormModel, type FormField, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
+import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
+import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { FieldErrors } from "@/lib/validation/ProjectValidator";
+import { MilestonesEditor } from "./MilestonesEditor";
 
-/** Resolves to the saved project's id, or a message plus per-field errors from ProjectValidator. */
+/**
+ * Resolves to the saved project's id, or a message plus per-field errors from ProjectValidator. `milestones`
+ * is the checklist when it changed in this edit (null otherwise); it saves with the other fields.
+ */
 export type ProjectFormSubmit = (
   values: Partial<ProjectFormValues>,
+  milestones: MilestoneEdit | null,
 ) => Promise<{ ok: true; id: string } | { ok: false; error: string; fieldErrors?: FieldErrors }>;
 
 export interface ProjectEditFormProps {
   mode: "edit" | "new";
   /** Stored values (ProjectFormModel.empty() for a new project). */
   original: ProjectFormValues;
+  /** Stored checklist steps ([] for a new project or one without steps). */
+  milestones: readonly MilestoneStepDto[];
+  /** Templates for "Apply a template". */
+  templates: readonly TemplateDto[];
   /** YYYY-MM-DD in America/New_York (Completed on prefill). */
   today: string;
   /** The People editor (saves on pick). Null for a new project. */
@@ -45,6 +58,8 @@ const TEXTAREA = "block w-full min-w-0 resize-none rounded-control border border
 export function ProjectEditForm({
   mode,
   original: originalProp,
+  milestones,
+  templates,
   today,
   people,
   adminDelete,
@@ -67,21 +82,43 @@ export function ProjectEditForm({
   const [saving, setSaving] = useState(false);
   const bodyRef = useRef<HTMLDivElement>(null);
 
-  const dirty = ProjectFormModel.isDirty(values, original);
+  // Checklist: local until Save, like the other fields (one history group per save).
+  const [msOriginal] = useState(() => MilestoneEditorModel.initial(milestones, { nextMilestone: originalProp.nextMilestone, dueDate: originalProp.dueDate }));
+  const [ms, setMs] = useState(msOriginal);
+  const msDirty = MilestoneEditorModel.isDirty(ms, msOriginal);
+  const msStepErrors = MilestoneEditorModel.errors(ms, msOriginal);
+
+  const dirty = ProjectFormModel.isDirty(values, original) || msDirty;
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
-  const clientErrors = useMemo(() => ProjectFormModel.errors(values, original, isNew), [values, original, isNew]);
+  // The next milestone the checklist yields (first step not done, else the last step) stands in for the old
+  // Next milestone field in the "required for this status" check.
+  const derivedNext = ms.steps.find((s) => !s.done)?.name ?? ms.steps.at(-1)?.name ?? "";
+  const checkedValues = useMemo(() => ({ ...values, nextMilestone: derivedNext }), [values, derivedNext]);
+  const checkedOriginal = useMemo(() => ({ ...original, nextMilestone: msOriginal.steps.find((s) => !s.done)?.name ?? msOriginal.steps.at(-1)?.name ?? "" }), [original, msOriginal]);
+  const clientErrors = useMemo(() => {
+    const e = ProjectFormModel.errors(checkedValues, checkedOriginal, isNew);
+    if (Object.keys(msStepErrors).length) e.milestones = ["Fix the highlighted milestones"];
+    return e;
+  }, [checkedValues, checkedOriginal, isNew, msStepErrors]);
   const shown = (f: FormField): string[] => {
     const client = attempted || touched[f] || values[f] !== original[f] ? (clientErrors[f] ?? []) : [];
     return [...client, ...(serverErrors[f] ?? [])].filter((m, i, all) => all.indexOf(m) === i);
   };
+  // Checklist messages: the milestone requirement (shown once attempted or edited), step errors, server errors.
+  const milestoneMessages = [
+    ...(attempted || msDirty || values.status !== original.status ? (clientErrors.nextMilestone ?? []) : []),
+    ...(serverErrors.nextMilestone ?? []),
+    ...(serverErrors.milestones ?? []),
+  ].filter((m, i, all) => all.indexOf(m) === i);
   const allErrors: FieldErrors = {};
   for (const f of ProjectFormModel.ORDER) {
     const list = [...(clientErrors[f] ?? []), ...(serverErrors[f] ?? [])];
     if (list.length) allErrors[f] = list;
   }
+  if (clientErrors.milestones?.length || serverErrors.milestones?.length) allErrors.milestones = [...(clientErrors.milestones ?? []), ...(serverErrors.milestones ?? [])];
   const blocked = ProjectFormModel.hasErrors(allErrors);
-  const visiblyBlocked = ProjectFormModel.ORDER.some((f) => shown(f).length > 0);
+  const visiblyBlocked = ProjectFormModel.ORDER.some((f) => shown(f).length > 0) || milestoneMessages.length > 0 || Object.keys(msStepErrors).length > 0;
 
   const set = (f: FormField, v: string) => {
     setValues((prev) => ({ ...prev, [f]: v }));
@@ -91,7 +128,7 @@ export function ProjectEditForm({
   const touch = (f: FormField) => setTouched((t) => (t[f] ? t : { ...t, [f]: true }));
 
   const scrollToFirstError = (errors: FieldErrors) => {
-    const first = ProjectFormModel.firstErrorField(errors);
+    const first = ProjectFormModel.firstErrorField(errors) ?? (errors.milestones?.length ? "nextMilestone" : null);
     if (!first) return;
     requestAnimationFrame(() => {
       const el = bodyRef.current?.querySelector<HTMLElement>(`[data-field="${first}"]`);
@@ -107,7 +144,7 @@ export function ProjectEditForm({
     setSaving(true);
     setFormError(null);
     try {
-      const result = await onSubmit(isNew ? values : ProjectFormModel.changes(values, original));
+      const result = await onSubmit(isNew ? values : ProjectFormModel.changes(values, original), MilestoneEditorModel.edit(ms, msOriginal));
       if (result.ok) return onSaved(result.id);
       setFormError(result.error);
       if (result.fieldErrors) {
@@ -193,20 +230,19 @@ export function ProjectEditForm({
         </Section>
 
         <Section title="Progress">
-          <Field field="nextMilestone" label="Next milestone" errors={shown("nextMilestone")} value={values.nextMilestone}>
-            <input
-              id="pf-nextMilestone"
-              className={INPUT}
-              value={values.nextMilestone}
-              maxLength={ProjectFormModel.maxLength("nextMilestone")}
-              onChange={(e) => set("nextMilestone", e.target.value)}
-              onBlur={() => touch("nextMilestone")}
-            />
-          </Field>
+          <MilestonesEditor
+            state={ms}
+            original={msOriginal}
+            templates={templates}
+            today={today}
+            onChange={(next) => {
+              setMs(next);
+              setServerErrors((prev) => (prev.milestones || prev.nextMilestone || prev.dueDate ? { ...prev, milestones: undefined, nextMilestone: undefined, dueDate: undefined } : prev));
+              setFormError(null);
+            }}
+            errors={milestoneMessages}
+          />
           <div className="grid grid-cols-2 gap-3">
-            <Field field="dueDate" label="Due date" errors={shown("dueDate")}>
-              <input id="pf-dueDate" type="date" className={INPUT} value={values.dueDate} onChange={(e) => set("dueDate", e.target.value)} />
-            </Field>
             <Field field="percentComplete" label="% complete" errors={shown("percentComplete")}>
               <input
                 id="pf-percentComplete"

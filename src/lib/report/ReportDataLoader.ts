@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { DateOnly } from "@/lib/domain/DateOnly";
+import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { CompletedRow, MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { ChampionCheck } from "@/lib/report/ChampionCheck";
@@ -7,6 +8,7 @@ import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import { CompletedThisPeriod } from "@/lib/report/CompletedThisPeriod";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
+import { MilestoneService } from "@/lib/services/MilestoneService";
 import { ServiceLineService } from "@/lib/services/ServiceLineService";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
@@ -39,7 +41,9 @@ export class ReportDataLoader {
       orderBy: { generatedAt: "desc" },
       select: { generatedAt: true },
     });
-    const projects = await db.project.findMany({ where: { archivedAt: null } });
+    const stored = await db.project.findMany({ where: { archivedAt: null } });
+    // Derived next milestone and due date (first step not done); projects without steps keep their legacy fields.
+    const projects = MilestoneProgress.applyAll(stored, await MilestoneService.loadSteps(db, stored.map((p) => p.id)));
     // All public history for these projects: Changed and "from <status>" look at the window since the
     // previous report, "Updated <date>" at the latest entry overall.
     const history = await db.projectHistory.findMany({

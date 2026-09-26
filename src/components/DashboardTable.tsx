@@ -244,8 +244,13 @@ export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdate
     <div className="flex flex-col text-[13px] leading-[18px]" style={{ gap: MilestoneUpdateStack.LINE_GAP_PX }} data-testid="milestone-update">
       {lines.map((l) =>
         l.kind === "milestone" ? (
-          <div key="milestone" data-line="milestone" title={l.text} className="line-clamp-2 break-words font-semibold text-fg">
+          <div key="milestone" data-line="milestone" title={l.progress ? `${l.text} (${l.progress})` : l.text} className="line-clamp-2 break-words font-semibold text-fg">
             {l.text}
+            {l.progress && (
+              <span data-part="milestone-progress" className="ml-1.5 whitespace-nowrap font-normal text-muted">
+                {l.progress}
+              </span>
+            )}
           </div>
         ) : (
           <div key="update" data-line="update" data-muted={l.muted || undefined} className="break-words font-normal text-muted">

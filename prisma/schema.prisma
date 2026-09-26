@@ -55,7 +55,7 @@ model Project {
   physicianChampion      String?
   physicianChampionEmail String?
   /// Requester (physicianChampion) marked Not applicable: renders blank. A name clears it.
-  requesterNotApplicable Boolean @default(false)
+  requesterNotApplicable Boolean       @default(false)
   /// Contracts lead, one of AppConfig.CONTRACTS_LEADS (null = "To assign").
   contractsLead          String?
   status                 ProjectStatus
@@ -92,7 +92,8 @@ model Project {
   /// rule). Kept so existing data is not destroyed; nothing reads or writes it.
   closedReportedAt       DateTime?
 
-  history ProjectHistory[]
+  history    ProjectHistory[]
+  milestones ProjectMilestone[]
 
   @@index([serviceArea, status])
   @@index([archivedAt])
@@ -288,4 +289,79 @@ model ServiceLineSettingsHistory {
 
   @@index([changedAt])
   @@map("service_line_settings_history")
+}
+
+/// One step of a project's milestone checklist (migration 0015). The derived next milestone is the first
+/// step that is not done, by position (MilestoneProgress). Only MilestoneService writes steps; every change
+/// writes ProjectHistory rows in the same transaction. Name: 40 characters for new or renamed steps
+/// (MilestoneRules); text migrated from Project.nextMilestone may be longer until it is edited.
+model ProjectMilestone {
+  id               String    @id @default(uuid()) @db.Uuid
+  projectId        String    @db.Uuid
+  name             String
+  dueDate          DateTime? @db.Date
+  done             Boolean   @default(false)
+  /// America/New_York calendar date the step was checked off. Null while not done (DB check).
+  doneAt           DateTime? @db.Date
+  /// 1-based order within the project.
+  position         Int
+  /// Template the step was copied from (kept for the "From '<template>'" note). Editing or deleting the
+  /// template never changes the step.
+  sourceTemplateId String?   @db.Uuid
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @default(now()) @updatedAt
+
+  project        Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  sourceTemplate MilestoneTemplate? @relation(fields: [sourceTemplateId], references: [id], onDelete: SetNull)
+
+  @@index([projectId, position])
+  @@map("project_milestones")
+}
+
+/// Admin-editable milestone template (seeded by migration 0015). Only MilestoneTemplateService writes it;
+/// every change is appended to milestone_template_history in the same transaction.
+model MilestoneTemplate {
+  id        String   @id @default(uuid()) @db.Uuid
+  name      String
+  position  Int
+  createdAt DateTime @default(now())
+  updatedAt DateTime @default(now()) @updatedAt
+  updatedBy String
+
+  items      MilestoneTemplateItem[]
+  milestones ProjectMilestone[]
+
+  @@map("milestone_templates")
+}
+
+model MilestoneTemplateItem {
+  id         String   @id @default(uuid()) @db.Uuid
+  templateId String   @db.Uuid
+  /// Up to 40 characters (MilestoneRules; DB check as backstop).
+  name       String
+  /// 1-based order within the template.
+  position   Int
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @default(now()) @updatedAt
+
+  template MilestoneTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@index([templateId, position])
+  @@map("milestone_template_items")
+}
+
+/// Append-only audit trail of template changes (old value, new value, who, when). DB trigger blocks
+/// UPDATE/DELETE. templateId is not a foreign key so the trail outlives a deleted template.
+model MilestoneTemplateHistory {
+  id         String   @id @default(uuid()) @db.Uuid
+  templateId String?  @db.Uuid
+  /// e.g. "template_created", "template_renamed", "item_added", "items_reordered", "template_deleted".
+  action     String
+  oldValue   Json?
+  newValue   Json?
+  changedAt  DateTime @default(now())
+  changedBy  String
+
+  @@index([changedAt])
+  @@map("milestone_template_history")
 }

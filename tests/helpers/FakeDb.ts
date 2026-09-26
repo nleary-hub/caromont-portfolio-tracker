@@ -16,6 +16,10 @@ interface State {
   reportOptionsHistory: Row[];
   serviceLineSettings: Row[];
   serviceLineSettingsHistory: Row[];
+  milestones: Row[];
+  templates: Row[];
+  templateItems: Row[];
+  templateHistory: Row[];
 }
 
 /**
@@ -37,8 +41,14 @@ export class FakeDb {
     reportOptionsHistory: [],
     serviceLineSettings: [],
     serviceLineSettingsHistory: [],
+    milestones: [],
+    templates: [],
+    templateItems: [],
+    templateHistory: [],
   };
   writes: { model: string; op: string; inTx: boolean; txId: number | null }[] = [];
+  /** Simulate a database without migration 0015 (project_milestones missing). */
+  missingMilestoneTable = false;
   transactions = 0;
   private txCounter = 0;
   private txQueue: Promise<unknown> = Promise.resolve();
@@ -58,6 +68,10 @@ export class FakeDb {
       reportOptionsHistory: c(state.reportOptionsHistory),
       serviceLineSettings: c(state.serviceLineSettings),
       serviceLineSettingsHistory: c(state.serviceLineSettingsHistory),
+      milestones: c(state.milestones),
+      templates: c(state.templates),
+      templateItems: c(state.templateItems),
+      templateHistory: c(state.templateHistory),
     };
   }
 
@@ -278,6 +292,107 @@ export class FakeDb {
         },
         findMany: async ({ take }: { orderBy?: unknown; take?: number } = {}) =>
           [...this.state.serviceLineSettingsHistory]
+            .sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime())
+            .slice(0, take ?? undefined)
+            .map((r) => ({ ...r })),
+      },
+      projectMilestone: {
+        findMany: async ({ where }: { where?: Row } = {}) => {
+          if (this.missingMilestoneTable) throw Object.assign(new Error("The table `project_milestones` does not exist"), { code: "P2021" });
+          return this.state.milestones.filter((m) => matches(m, where)).map((m) => ({ ...m }));
+        },
+        create: async ({ data }: { data: Row }) => {
+          rec("projectMilestone", "create");
+          if (!this.state.projects.some((p) => p.id === data.projectId)) throw new Error("FK project_milestones_projectId_fkey");
+          const now = new Date();
+          const row = { id: randomUUID(), done: false, doneAt: null, dueDate: null, sourceTemplateId: null, createdAt: now, updatedAt: now, ...data };
+          this.state.milestones.push(row);
+          return { ...row };
+        },
+        update: async ({ where, data }: { where: { id: string }; data: Row }) => {
+          rec("projectMilestone", "update");
+          const r = this.state.milestones.find((m) => m.id === where.id);
+          if (!r) throw new Error("not found");
+          Object.assign(r, data, { updatedAt: new Date() });
+          return { ...r };
+        },
+        delete: async ({ where }: { where: { id: string } }) => {
+          rec("projectMilestone", "delete");
+          const i = this.state.milestones.findIndex((m) => m.id === where.id);
+          if (i < 0) throw new Error("not found");
+          const [r] = this.state.milestones.splice(i, 1);
+          return { ...r };
+        },
+      },
+      milestoneTemplate: {
+        findMany: async ({ where, select }: { where?: Row; select?: Record<string, boolean> } = {}) =>
+          this.state.templates.filter((t) => matches(t, where)).map((t) => pick(t, select)),
+        findUnique: async ({ where }: { where: { id: string } }) => {
+          const r = this.state.templates.find((t) => t.id === where.id);
+          return r ? { ...r } : null;
+        },
+        create: async ({ data }: { data: Row }) => {
+          rec("milestoneTemplate", "create");
+          const now = new Date();
+          const row = { id: randomUUID(), createdAt: now, updatedAt: now, ...data };
+          this.state.templates.push(row);
+          return { ...row };
+        },
+        update: async ({ where, data }: { where: { id: string }; data: Row }) => {
+          rec("milestoneTemplate", "update");
+          const r = this.state.templates.find((t) => t.id === where.id);
+          if (!r) throw new Error("not found");
+          Object.assign(r, data, { updatedAt: new Date() });
+          return { ...r };
+        },
+        delete: async ({ where }: { where: { id: string } }) => {
+          rec("milestoneTemplate", "delete");
+          const i = this.state.templates.findIndex((t) => t.id === where.id);
+          if (i < 0) throw new Error("not found");
+          const [r] = this.state.templates.splice(i, 1);
+          // ON DELETE CASCADE (items) and SET NULL (project steps), as in migration 0015.
+          this.state.templateItems = this.state.templateItems.filter((it) => it.templateId !== r.id);
+          for (const m of this.state.milestones) if (m.sourceTemplateId === r.id) m.sourceTemplateId = null;
+          return { ...r };
+        },
+      },
+      milestoneTemplateItem: {
+        findMany: async ({ where }: { where?: Row } = {}) => this.state.templateItems.filter((t) => matches(t, where)).map((t) => ({ ...t })),
+        findUnique: async ({ where }: { where: { id: string } }) => {
+          const r = this.state.templateItems.find((t) => t.id === where.id);
+          return r ? { ...r } : null;
+        },
+        create: async ({ data }: { data: Row }) => {
+          rec("milestoneTemplateItem", "create");
+          const now = new Date();
+          const row = { id: randomUUID(), createdAt: now, updatedAt: now, ...data };
+          this.state.templateItems.push(row);
+          return { ...row };
+        },
+        update: async ({ where, data }: { where: { id: string }; data: Row }) => {
+          rec("milestoneTemplateItem", "update");
+          const r = this.state.templateItems.find((t) => t.id === where.id);
+          if (!r) throw new Error("not found");
+          Object.assign(r, data, { updatedAt: new Date() });
+          return { ...r };
+        },
+        delete: async ({ where }: { where: { id: string } }) => {
+          rec("milestoneTemplateItem", "delete");
+          const i = this.state.templateItems.findIndex((t) => t.id === where.id);
+          if (i < 0) throw new Error("not found");
+          const [r] = this.state.templateItems.splice(i, 1);
+          return { ...r };
+        },
+      },
+      milestoneTemplateHistory: {
+        create: async ({ data }: { data: Row }) => {
+          rec("milestoneTemplateHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), oldValue: null, newValue: null, ...data };
+          this.state.templateHistory.push(row);
+          return { ...row };
+        },
+        findMany: async ({ take }: { orderBy?: unknown; take?: number } = {}) =>
+          [...this.state.templateHistory]
             .sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime())
             .slice(0, take ?? undefined)
             .map((r) => ({ ...r })),

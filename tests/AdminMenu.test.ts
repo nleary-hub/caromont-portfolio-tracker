@@ -21,6 +21,7 @@ describe("AdminMenu.itemsFor", () => {
       ["admin", "Audit log", "/admin/audit"],
       ["admin", "Settings", "/#view-settings"],
       ["admin", "Service line", "/admin/settings"],
+      ["admin", "Templates", "/admin/templates"],
     ]);
     expect(items.find((i) => i.id === "generate-pdf")).toMatchObject({ kind: "action", caption: "Draft" });
   });
@@ -31,14 +32,11 @@ describe("AdminMenu.itemsFor", () => {
     expect(AdminMenu.itemsFor(undefined)).toBeNull();
   });
 
-  it("defines Templates and People but does not show them until they ship", () => {
+  it("ships Templates next to Service line and keeps People hidden until it ships", () => {
     const unshipped = AdminMenu.definitions().filter((d) => !d.shipped);
-    expect(unshipped.map((d) => [d.label, d.group])).toEqual([
-      ["Templates", "library"],
-      ["People", "library"],
-    ]);
+    expect(unshipped.map((d) => [d.label, d.group])).toEqual([["People", "library"]]);
     const labels = AdminMenu.itemsFor(ADMIN)!.map((i) => i.label);
-    expect(labels).not.toContain("Templates");
+    expect(labels.indexOf("Templates")).toBe(labels.indexOf("Service line") + 1);
     expect(labels).not.toContain("People");
   });
 
@@ -97,16 +95,15 @@ describe("AdminMenuButton (open)", () => {
   const html = renderToStaticMarkup(createElement(AdminMenuButton, { items: AdminMenu.itemsFor(ADMIN)!, initialOpen: true }));
 
   it("renders every shipped item as a menuitem, with one divider between the two non-empty groups", () => {
-    expect(html.match(/role="menuitem"/g)).toHaveLength(9);
+    expect(html.match(/role="menuitem"/g)).toHaveLength(10);
     expect(html.match(/role="separator"/g)).toHaveLength(1);
-    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "Audit log", "Settings", "Service line"]) {
+    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "Audit log", "Settings", "Service line", "Templates"]) {
       expect(html).toContain(`>${label}<`);
     }
     expect(html).toContain('<span class="am-caption">Draft</span>');
   });
 
   it("never renders unshipped placeholders or disabled coming-soon items", () => {
-    expect(html).not.toContain("Templates");
     expect(html).not.toContain("People");
     expect(html).not.toContain("aria-disabled");
     expect(html).not.toMatch(/coming soon/i);

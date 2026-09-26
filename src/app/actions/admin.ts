@@ -5,7 +5,8 @@ import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
-import { ProjectArchivedError, ProjectNotFoundError, ProjectService } from "@/lib/services/ProjectService";
+import { MilestoneRules } from "@/lib/domain/MilestoneRules";
+import { ProjectArchivedError, ProjectNotFoundError, ProjectService, type MilestoneEdit } from "@/lib/services/ProjectService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { ProjectValidationError, type FieldErrors } from "@/lib/validation/ProjectValidator";
 
@@ -56,6 +57,19 @@ class ProjectFormAction {
     }
   }
 
+  /** The drawer's checklist (drafts in order, plus the template applied in this edit), sanitized. Null = untouched. */
+  static milestones(raw: unknown): MilestoneEdit | null {
+    if (!raw || typeof raw !== "object") return null;
+    const r = raw as { drafts?: unknown; applied?: unknown };
+    if (!Array.isArray(r.drafts)) return null;
+    const a = (r.applied && typeof r.applied === "object" ? r.applied : null) as Record<string, unknown> | null;
+    const applied =
+      a && typeof a.templateId === "string" && typeof a.templateName === "string" && (a.mode === "replace" || a.mode === "append")
+        ? { templateId: a.templateId, templateName: a.templateName.slice(0, 200), mode: a.mode as "replace" | "append" }
+        : null;
+    return { drafts: MilestoneRules.drafts(r.drafts), applied };
+  }
+
   /** Only form fields, as strings (anything else in the payload is dropped). */
   static values(raw: unknown): Partial<ProjectFormValues> {
     const out: Partial<ProjectFormValues> = {};
@@ -68,17 +82,26 @@ class ProjectFormAction {
   }
 }
 
-/** Save the changed non-People fields of a project together (one history entry). */
-export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>): Promise<ProjectFormResult> {
+/**
+ * Save the changed non-People fields of a project together with its checklist (one history entry).
+ * `milestones` is omitted when the checklist was not touched.
+ */
+export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
   return ProjectFormAction.run("saveProjectForm", (admin) =>
-    ProjectService.saveForm(String(projectId), ProjectFormModel.toInput(ProjectFormAction.values(changes)), admin),
+    ProjectService.saveForm(
+      String(projectId),
+      ProjectFormModel.toInput(ProjectFormAction.values(changes)),
+      admin,
+      undefined,
+      ProjectFormAction.milestones(milestones),
+    ),
   );
 }
 
-/** Create a project from the New project drawer (name and department required). */
-export async function createProjectFromForm(values: Partial<ProjectFormValues>): Promise<ProjectFormResult> {
+/** Create a project from the New project drawer (name and department required), with its checklist. */
+export async function createProjectFromForm(values: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
   return ProjectFormAction.run("createProjectFromForm", (admin) =>
-    ProjectService.createFromForm(ProjectFormModel.toInput(ProjectFormAction.values(values)), admin),
+    ProjectService.createFromForm(ProjectFormModel.toInput(ProjectFormAction.values(values)), admin, undefined, ProjectFormAction.milestones(milestones)),
   );
 }
 
