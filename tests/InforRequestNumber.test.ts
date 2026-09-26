@@ -219,7 +219,7 @@ describe("Infor request number: view settings", () => {
       columnOrder: ["project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note"],
       hiddenColumns: ["note"],
     });
-    expect(old.columnOrder.at(-1)).toBe("inforNumber");
+    expect(old.columnOrder.slice(-2)).toEqual(["inforNumber", "contractsLead"]);
     expect(ViewSettings.isColumnVisible(old, "inforNumber")).toBe(true);
   });
 });
@@ -230,6 +230,7 @@ describe("Infor request number: dashboard", () => {
     name: "Alpha",
     serviceArea: "Cath",
     owner: "Owner A",
+    contractsLead: null,
     physicianChampion: null,
     requesterNotApplicable: false,
     status: "OnTrack",

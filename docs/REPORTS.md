@@ -69,7 +69,7 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
 - `ReportLayout` measures text with the same font files, wraps and clips it, sizes rows and paginates.
   The renderer draws the precomputed lines, so layout is unit-tested without rendering.
 - US Letter landscape, 0.5 in margins, grouped by service area, two-line rows, spec column widths,
-  note clipped at 2 lines, rows never split, section head kept with its first row and repeated with
+  note never cut off (wraps, the row grows), rows never split, section head kept with its first row and repeated with
   "(continued)", header on every page, "Page X of Y".
 - Respects the frozen report view settings: column order, hidden columns (widths rescale to fill),
   hidden statuses (no grid column, no rows), per-project hide and soft delete (via `VisibilityPolicy`).

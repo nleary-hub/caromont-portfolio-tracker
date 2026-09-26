@@ -17,6 +17,8 @@ export interface DashboardRow {
   owner: string | null;
   physicianChampion: string | null;
   requesterNotApplicable: boolean;
+  /** One of AppConfig.CONTRACTS_LEADS, or null ("To assign"). */
+  contractsLead: string | null;
   status: ProjectStatus;
   statusLabel: string;
   nextMilestone: string | null;
@@ -76,6 +78,7 @@ export class DashboardViewModel {
       owner: p.owner,
       physicianChampion: p.physicianChampion,
       requesterNotApplicable: p.requesterNotApplicable,
+      contractsLead: p.contractsLead ?? null,
       status: p.status,
       statusLabel: ProjectStatusInfo.label(p.status),
       nextMilestone: p.nextMilestone,
@@ -128,7 +131,7 @@ export class DashboardViewModel {
     return rows.filter((r) => {
       if (area !== "All" && ServiceAreaInfo.groupOf(r.serviceArea) !== area) return false;
       if (!q) return true;
-      return [r.name, InforNumber.format(r.inforRequestNumber), r.owner, r.physicianChampion, r.nextMilestone, r.note]
+      return [r.name, InforNumber.format(r.inforRequestNumber), r.owner, r.physicianChampion, r.contractsLead, r.nextMilestone, r.note]
         .some((v) => v?.toLowerCase().includes(q));
     });
   }

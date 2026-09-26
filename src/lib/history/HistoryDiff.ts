@@ -18,6 +18,7 @@ export class HistoryDiff {
     "physicianChampion",
     "physicianChampionEmail",
     "requesterNotApplicable",
+    "contractsLead",
     "status",
     "nextMilestone",
     "dueDate",

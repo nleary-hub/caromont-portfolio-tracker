@@ -51,7 +51,7 @@ export type Tx = Prisma.TransactionClient;
  * The only write path for projects. Every mutation writes ProjectHistory rows in the
  * same transaction. There is intentionally no hard-delete method.
  */
-export type PeopleField = "owner" | "physicianChampion" | "requesterNotApplicable" | "serviceArea";
+export type PeopleField = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "serviceArea";
 
 export class ProjectService {
   static async create(input: ProjectInput, actor: Actor, db: PrismaClient = Db.client): Promise<Project> {
@@ -223,14 +223,14 @@ export class ProjectService {
 
   /** Admin per-project hide/unhide for one context. No-op when unchanged; otherwise audited. */
   /** Fields the admin drawer panel edits, one at a time (saved on change). */
-  static readonly PEOPLE_FIELDS = ["owner", "physicianChampion", "requesterNotApplicable", "serviceArea"] as const;
+  static readonly PEOPLE_FIELDS = ["owner", "physicianChampion", "requesterNotApplicable", "contractsLead", "serviceArea"] as const;
 
   static isPeopleField(field: string): field is PeopleField {
     return (ProjectService.PEOPLE_FIELDS as readonly string[]).includes(field);
   }
 
   /**
-   * Admin drawer panel: set owner, requester (physicianChampion), requester Not applicable ("true"/"false")
+   * Admin drawer panel: set owner, requester (physicianChampion), requester Not applicable ("true"/"false"), contracts lead (pick-list)
    * or service area. A blank owner or requester goes back to "To assign". Goes through update(), so
    * validation applies and ProjectHistory records the change (no-op when unchanged).
    */
@@ -298,6 +298,7 @@ export class ProjectService {
     "physicianChampion",
     "physicianChampionEmail",
     "requesterNotApplicable",
+    "contractsLead",
     "status",
     "nextMilestone",
     "dueDate",

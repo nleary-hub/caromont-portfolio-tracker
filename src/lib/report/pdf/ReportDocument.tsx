@@ -1,4 +1,5 @@
 import { Circle, Document, Page, Path, Rect, Svg, Text, View } from "@react-pdf/renderer";
+import { Fragment } from "react";
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { StatusShapes, type ShapePart } from "@/lib/domain/StatusShapes";
@@ -12,6 +13,7 @@ import {
   type HeaderModel,
   type KeyModel,
   CompletedBlockStyle,
+  type ContractsLine,
   type MetaRun,
   type PageLayout,
   type PillBox,
@@ -443,6 +445,7 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
         <>
           <Line x={cell.x} y={0} w={cell.w} text={cell.owner} size={S.table} color={cell.ownerMissing ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
           {cell.champion && <Line x={cell.x} y={two} w={cell.w} text={cell.champion} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />}
+          {cell.contracts && <ContractsText c={cell.contracts} x={cell.x} y={two + (cell.champion ? G.SMALL_LH : 0)} w={cell.w} />}
         </>
       );
     case "status":
@@ -528,6 +531,27 @@ function Row({ row, y }: { row: RowLayout; y: number }) {
   );
 }
 
+/** "Contracts Shea Waldron": prefix at weight 500, name regular, both in the requester's small gray. */
+function ContractsText({ c, x, y, w }: { c: ContractsLine; x: number; y: number; w: number }) {
+  const S = G.SIZE;
+  return (
+    <>
+      {c.lines.map((l, i) => {
+        const ly = y + i * G.SMALL_LH;
+        const tx = l.prefix ? x + c.prefixW : x;
+        return (
+          <Fragment key={i}>
+            {l.prefix && (
+              <Line x={x} y={ly} w={c.prefixW + 1} text={l.prefix.trimEnd()} size={S.small} weight={ReportLayout.CONTRACTS_PREFIX_WEIGHT} color={C.MUTED} lh={G.SMALL_LH} />
+            )}
+            <Line x={tx} y={ly} w={w - (tx - x)} text={l.text} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />
+          </Fragment>
+        );
+      })}
+    </>
+  );
+}
+
 /** Check shape (the Complete status shape) at 10-unit viewBox scale. */
 function Check({ x, y, size, color }: { x: number; y: number; size: number; color: string }) {
   return (
@@ -587,6 +611,14 @@ function CompletedBlock({ block, top }: { block: Extract<BodyBlock, { kind: "com
                 <Line x={r.owner.x} y={inner} w={r.owner.w} text={r.owner.owner} size={S.table} color={r.owner.ownerMissing ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
                 {r.owner.champion && (
                   <Line x={r.owner.x} y={inner + G.TABLE_LH + G.LINE_GAP} w={r.owner.w} text={r.owner.champion} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />
+                )}
+                {r.owner.contracts && (
+                  <ContractsText
+                    c={r.owner.contracts}
+                    x={r.owner.x}
+                    y={inner + G.TABLE_LH + G.LINE_GAP + (r.owner.champion ? G.SMALL_LH : 0)}
+                    w={r.owner.w}
+                  />
                 )}
               </>
             )}

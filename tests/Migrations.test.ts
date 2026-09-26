@@ -76,9 +76,22 @@ describe("migrations (PGlite)", () => {
     ]);
   });
 
-  it("0012_completed_this_period is the latest migration and adds nullable columns only", async () => {
-    const folders = Migrations.folders();
-    expect(folders.at(-1)).toBe("0012_completed_this_period");
+  it("0013_project_contracts_lead is the latest migration: one nullable text column, additive only", async () => {
+    expect(Migrations.folders().at(-1)).toBe("0013_project_contracts_lead");
+    const statements = Migrations.sql("0013_project_contracts_lead")
+      .split("\n")
+      .filter((l) => l.trim() && !l.trim().startsWith("--"));
+    expect(statements).toEqual(['ALTER TABLE "Project" ADD COLUMN     "contractsLead" TEXT;']);
+    const db = await Migrations.applyAll();
+    const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
+      `select data_type, is_nullable, column_default from information_schema.columns
+       where table_name = 'Project' and column_name = 'contractsLead'`,
+    );
+    expect(col.rows).toEqual([{ data_type: "text", is_nullable: "YES", column_default: null }]);
+    await db.close();
+  }, 30_000);
+
+  it("0012_completed_this_period adds nullable columns only", async () => {
     const db = await Migrations.applyAll();
     const cols = await db.query<{ table_name: string; column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(
       `select table_name, column_name, data_type, is_nullable, column_default from information_schema.columns

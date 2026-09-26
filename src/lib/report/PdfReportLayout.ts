@@ -13,18 +13,35 @@ export class PdfReportLayout {
   static readonly TITLE = "Cardiac Service Line: Project Status Report";
   static readonly PAGE = { size: "Letter", orientation: "landscape", widthIn: 11, heightIn: 8.5, theme: "light" } as const;
 
-  /** Column widths in inches, line 1 of each row. Owner cell shows the requester in small gray beneath. */
+  /** Owner column before the Contracts lead line (Figma spec). */
+  static readonly OWNER_BASE_IN = 1.0;
+  /**
+   * Extra owner width so "Contracts Mellisa Gonzales" (the longest name) fits on one line at 7 pt. Taken in
+   * full from the Flags column, so the total table width is unchanged.
+   */
+  static readonly OWNER_CONTRACTS_EXTRA_IN = 0.35;
+  static readonly FLAGS_BASE_IN = 3.35;
+
+  /** Column widths in inches, line 1 of each row. Owner cell shows requester and contracts lead in small gray beneath. */
   static readonly COLUMNS_IN = {
     project: 2.2,
-    owner: 1.0,
+    owner: PdfReportLayout.OWNER_BASE_IN + PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 1.35
     status: 0.85,
     nextMilestone: 2.0,
     due: 0.6,
-    flags: 3.35,
-  } as const;
+    flags: PdfReportLayout.FLAGS_BASE_IN - PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 3.0
+  };
 
-  /** Line 2: note starts under Next milestone and runs to the right margin (2.0 + 0.6 + 3.35 = 5.95 in), max 2 lines, clipped. */
-  static readonly NOTE = { startColumn: "nextMilestone", widthIn: 5.95, maxLines: 2 } as const;
+  /**
+   * Line 2: note starts under Next milestone and runs to the right margin (2.0 + 0.6 + 3.0 = 5.6 in). A note
+   * is never cut off: it wraps to as many lines as it needs and the row grows. Usually one or two lines; a
+   * 200-character note with the "No change." prefix takes three.
+   */
+  static readonly NOTE = {
+    startColumn: "nextMilestone",
+    widthIn: PdfReportLayout.COLUMNS_IN.nextMilestone + PdfReportLayout.COLUMNS_IN.due + PdfReportLayout.COLUMNS_IN.flags,
+    maxLines: Number.POSITIVE_INFINITY,
+  } as const;
 
   static readonly RULES = {
     groupBy: "serviceArea",
@@ -53,6 +70,11 @@ export class PdfReportLayout {
 
   static showsChampion(settings: ViewSettingsValue): boolean {
     return ViewSettings.isColumnVisible(settings, "owner") && ViewSettings.isColumnVisible(settings, "physicianChampion");
+  }
+
+  /** The Contracts lead line sits in the owner stack, so it needs the owner column. */
+  static showsContracts(settings: ViewSettingsValue): boolean {
+    return ViewSettings.isColumnVisible(settings, "owner") && ViewSettings.isColumnVisible(settings, "contractsLead");
   }
 
   static showsNote(settings: ViewSettingsValue): boolean {

@@ -171,7 +171,7 @@ describe("Requester: edit panel", () => {
     const props = (s: (typeof STATES)[keyof typeof STATES]) => ({
       projectId: "p1",
       owner: null,
-      physicianChampionEmail: undefined,
+      contractsLead: null,
       serviceArea: "Cath" as const,
       ownerSuggestions: [],
       requesterSuggestions: ["Dr. Sample A", "Dr. Sample B"],
