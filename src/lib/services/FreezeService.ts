@@ -162,7 +162,7 @@ export class FreezeService {
         pdf: { fileName: pdf.fileName, sha256: pdf.sha256, byteSize: pdf.byteSize },
         baseUrl,
         reportRecipient,
-        serviceLineName: input.serviceLine.name,
+        serviceLineName: input.serviceLine?.name,
       });
       handoff = await ReportArtifactService.store(
         {

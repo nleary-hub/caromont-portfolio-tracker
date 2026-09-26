@@ -24,7 +24,8 @@ export interface ReportRenderInput {
   /** Report options frozen at generation (defaults for snapshots before 0004). */
   options: ReportOptionsValue;
   /** Service line name frozen at generation (legacy name for snapshots before 0014). */
-  serviceLine: ServiceLineValue;
+  /** Null for snapshots frozen before migration 0014 (legacy header). */
+  serviceLine: ServiceLineValue | null;
   periodStart: string;
   periodEnd: string;
   generatedAt: Date;
@@ -67,7 +68,7 @@ export class PdfReportRenderer {
       ...(input.completed ? { completed: input.completed } : {}),
       viewSettings: input.viewSettings,
       showKeyPage: input.options.showKeyPage,
-      serviceLineName: input.serviceLine.name,
+      serviceLine: input.serviceLine,
       reportDate: input.reportDate,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
@@ -97,7 +98,7 @@ export class PdfReportRenderer {
     const element = createElement(ReportDocument, {
       layout,
       draft: Boolean(doc.draft),
-      title: PdfReportLayout.title(doc.serviceLineName),
+      title: PdfReportLayout.title(doc.serviceLine?.name),
     }) as unknown as ReactElement<DocumentProps>;
     return renderToBuffer(element);
   }

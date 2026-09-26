@@ -12,12 +12,15 @@ export interface LayoutColumn {
  */
 export class PdfReportLayout {
   /**
-   * Title used when no service line name is given: snapshots frozen before migration 0014 (no
-   * serviceLineJson) and design samples. Live reports use ServiceLine.reportTitle(setting).
+   * Legacy combined title: snapshots frozen before migration 0014 (no serviceLineJson) still draw it as
+   * their one-line page 1 title and running header, so those reports never change.
    */
   static readonly TITLE = ServiceLine.reportTitle({ name: ServiceLine.LEGACY_REPORT_NAME });
 
-  /** Report title for a service line name (legacy title when absent). */
+  /**
+   * Combined one-line "<name>: Project Status Report" (legacy title when absent). Only for the PDF
+   * metadata title and the handoff.json title; the drawn header uses an overline plus title line.
+   */
   static title(serviceLineName: string | null | undefined): string {
     return serviceLineName ? ServiceLine.reportTitle({ name: serviceLineName }) : PdfReportLayout.TITLE;
   }

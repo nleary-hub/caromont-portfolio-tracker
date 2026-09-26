@@ -1,4 +1,4 @@
-/** Service line name shown in the top bar and the report title (admin setting, frozen into snapshots). */
+/** Service line name shown in the top bar and the report header (admin setting, frozen into snapshots). */
 export interface ServiceLineValue {
   /** Full name, e.g. "Cardiovascular & Pulmonary Service Line". */
   name: string;
@@ -61,12 +61,24 @@ export class ServiceLine {
     };
   }
 
-  /** The name a frozen snapshot renders with: its own frozen name, or the legacy name for pre-0014 snapshots. */
-  static fromSnapshot(serviceLineJson: unknown): ServiceLineValue {
-    if (serviceLineJson === null || serviceLineJson === undefined) {
-      return { name: ServiceLine.LEGACY_REPORT_NAME, shortName: ServiceLine.SEED.shortName };
-    }
+  /**
+   * The service line a frozen snapshot renders with: its own frozen value, or null for snapshots frozen
+   * before migration 0014 (no serviceLineJson, so no short name either). Null renders the legacy header
+   * exactly as those reports were drawn: one combined title line with LEGACY_REPORT_NAME.
+   */
+  static fromSnapshot(serviceLineJson: unknown): ServiceLineValue | null {
+    if (serviceLineJson === null || serviceLineJson === undefined) return null;
     return ServiceLine.normalize(serviceLineJson);
+  }
+
+  /** Combined one-line title for PDF metadata and handoff.json only (legacy name when null). */
+  static metadataTitle(value: Pick<ServiceLineValue, "name"> | null | undefined): string {
+    return ServiceLine.reportTitle({ name: value?.name || ServiceLine.LEGACY_REPORT_NAME });
+  }
+
+  /** Running header lead on report pages 2 and later: "CVPSL \u00b7 Project Status Report". */
+  static runningTitle(value: Pick<ServiceLineValue, "shortName">): string {
+    return `${value.shortName} \u00b7 ${ServiceLine.REPORT_TITLE_SUFFIX}`;
   }
 
   static reportTitle(value: Pick<ServiceLineValue, "name">): string {

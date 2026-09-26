@@ -27,7 +27,7 @@ export class DraftReportService {
       completed: data.completed,
       viewSettings: data.viewSettings,
       showKeyPage: data.options.showKeyPage,
-      serviceLineName: data.serviceLine.name,
+      serviceLine: data.serviceLine,
       reportDate: data.reportDate,
       periodStart: period.periodStart,
       periodEnd: period.periodEnd,

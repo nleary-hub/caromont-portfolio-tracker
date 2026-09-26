@@ -7,7 +7,7 @@ import { ServiceLine, ServiceLineValidationError } from "@/lib/domain/ServiceLin
 import { HandoffBuilder } from "@/lib/report/HandoffBuilder";
 import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
-import { ReportLayout } from "@/lib/report/pdf/ReportLayout";
+import { ReportGeometry, ReportLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { SampleReportData } from "@/lib/report/SampleReportData";
 import { ProjectService } from "@/lib/services/ProjectService";
@@ -127,19 +127,22 @@ describe("report title and frozen snapshots", () => {
 
     const in1 = PdfReportRenderer.inputFromSnapshot(fake.state.snapshots.find((s) => s.id === s1.id) as never);
     const in2 = PdfReportRenderer.inputFromSnapshot(s2);
-    expect(in1.serviceLine.name).toBe(SEED.name);
-    expect(in2.serviceLine.name).toBe("Heart and Vascular Service Line");
+    expect(in1.serviceLine).toEqual(SEED);
+    expect(in2.serviceLine).toEqual({ name: "Heart and Vascular Service Line", shortName: "HVSL" });
 
     const m = new TextMeasure();
     const l1 = ReportLayout.layout(PdfReportRenderer.docInput(in1), m);
     const l2 = ReportLayout.layout(PdfReportRenderer.docInput(in2), m);
-    expect(l1.header.title).toBe("Cardiovascular & Pulmonary Service Line: Project Status Report");
-    expect(l2.header.title).toBe("Heart and Vascular Service Line: Project Status Report");
+    expect(l1.header.overline?.lines).toEqual(["CARDIOVASCULAR & PULMONARY SERVICE LINE"]);
+    expect(l1.header.runningTitle).toBe("CVPSL \u00b7 Project Status Report");
+    expect(l2.header.overline?.lines).toEqual(["HEART AND VASCULAR SERVICE LINE"]);
+    expect(l2.header.runningTitle).toBe("HVSL \u00b7 Project Status Report");
     vi.restoreAllMocks();
   });
 
-  it("snapshots frozen before migration 0014 (no serviceLineJson) keep the legacy title", () => {
-    expect(ServiceLine.fromSnapshot(null).name).toBe("Cardiac Service Line");
+  it("snapshots frozen before migration 0014 (no serviceLineJson, no short name) keep the legacy header", () => {
+    expect(ServiceLine.fromSnapshot(null)).toBeNull();
+    expect(ServiceLine.fromSnapshot(undefined)).toBeNull();
     const input = PdfReportRenderer.inputFromSnapshot({
       id: "old",
       rowsJson: [],
@@ -152,17 +155,69 @@ describe("report title and frozen snapshots", () => {
       periodEnd: new Date("2026-09-09T00:00:00Z"),
       generatedAt: new Date("2026-09-09T21:00:00Z"),
     });
-    expect(PdfReportRenderer.docInput(input).serviceLineName).toBe("Cardiac Service Line");
-    expect(PdfReportLayout.title(input.serviceLine.name)).toBe("Cardiac Service Line: Project Status Report");
-    expect(PdfReportLayout.TITLE).toBe("Cardiac Service Line: Project Status Report");
+    const doc = PdfReportRenderer.docInput(input);
+    expect(doc.serviceLine).toBeNull();
+    const h = ReportLayout.layout(doc, new TextMeasure()).header;
+    // Exactly what those reports drew: one combined line on page 1 and in the running header and footer.
+    expect(h.overline).toBeNull();
+    expect(h.title).toBe("Cardiac Service Line: Project Status Report");
+    expect(h.runningTitle).toBe("Cardiac Service Line: Project Status Report");
+    expect(h.footerLeft).toContain("Cardiac Service Line: Project Status Report");
+    expect(h.titleBarHeight).toBe(ReportGeometry.TITLE_BAR_H);
+    expect(PdfReportLayout.title(input.serviceLine?.name)).toBe("Cardiac Service Line: Project Status Report");
+    expect(ServiceLine.metadataTitle(null)).toBe("Cardiac Service Line: Project Status Report");
+  });
+});
+
+describe("PDF header (Figma spec: overline, title line, short-name running header)", () => {
+  const m = new TextMeasure();
+  const G = ReportGeometry;
+  const LONGEST = "Cardiovascular Thoracic, Pulmonary and Vascular Surgery & Interventional Service"; // 80 chars
+  const WIDEST = "W".repeat(ServiceLine.NAME_MAX_LENGTH);
+
+  it("page 1 draws the name as an 8 pt uppercase overline and 'Project Status Report' as its own title line", () => {
+    const h = ReportLayout.layout(SampleReportData.docInput({ serviceLine: SEED }), m).header;
+    expect(h.overline).toEqual({ lines: ["CARDIOVASCULAR & PULMONARY SERVICE LINE"], size: 8, tracking: G.OVERLINE.tracking });
+    expect(h.title).toBe("Project Status Report");
+    expect(h.title).not.toContain(SEED.name);
+    expect(h.titleBarHeight).toBe(G.TITLE_BAR_H + G.OVERLINE.lineH + G.OVERLINE.gap);
   });
 
-  it("drafts and samples: the layout title and footer use the given name; no name keeps the legacy title", () => {
-    const m = new TextMeasure();
-    const named = ReportLayout.layout(SampleReportData.docInput({ serviceLineName: "Heart" }), m);
-    expect(named.header.title).toBe("Heart: Project Status Report");
-    expect(named.header.footerLeft).toContain("Heart: Project Status Report");
-    expect(ReportLayout.layout(SampleReportData.docInput(), m).header.title).toBe(PdfReportLayout.TITLE);
+  it("pages 2+ lead the running header with the short name, and the footer uses the same short form", () => {
+    const layout = ReportLayout.layout(SampleReportData.docInput({ serviceLine: SEED }), m);
+    expect(layout.pages.length).toBeGreaterThan(1);
+    expect(layout.header.runningTitle).toBe("CVPSL \u00b7 Project Status Report");
+    expect(layout.header.footerLeft).toContain("\u00b7 CVPSL \u00b7 Project Status Report");
+    expect(layout.header.footerLeft).not.toContain(": Project Status Report");
+  });
+
+  it("the combined one-line title is kept only for PDF metadata and handoff.json", () => {
+    expect(PdfReportLayout.title(SEED.name)).toBe("Cardiovascular & Pulmonary Service Line: Project Status Report");
+    expect(ServiceLine.metadataTitle(SEED)).toBe("Cardiovascular & Pulmonary Service Line: Project Status Report");
+  });
+
+  it("the longest allowed name (80 chars) fits on one line at 8 pt, even beside the EXAMPLE DATA or DRAFT badge", () => {
+    expect(LONGEST).toHaveLength(80);
+    for (const extra of [{}, { draft: true }, { exampleData: true }, { exampleData: false }]) {
+      const h = ReportLayout.layout(SampleReportData.docInput({ serviceLine: { name: LONGEST, shortName: "CTPVS" }, ...extra }), m).header;
+      expect(h.overline?.lines).toEqual([LONGEST.toUpperCase()]);
+      expect(h.overline?.size).toBe(8);
+      expect(ReportLayout.overlineWidth(m, LONGEST.toUpperCase(), 8)).toBeLessThanOrEqual(ReportLayout.overlineMaxWidth(m, h.badge));
+    }
+  });
+
+  it("a pathological 80-char name shrinks, then wraps within the width, and page 1 grows to fit", () => {
+    const h = ReportLayout.overline(m, WIDEST, "EXAMPLE DATA");
+    const maxW = ReportLayout.overlineMaxWidth(m, "EXAMPLE DATA");
+    expect(h.size).toBeGreaterThanOrEqual(G.OVERLINE.minSize);
+    expect(h.size).toBeLessThan(8);
+    expect(h.lines.length).toBeLessThanOrEqual(G.OVERLINE.maxLines);
+    for (const line of h.lines) expect(ReportLayout.overlineWidth(m, line, h.size)).toBeLessThanOrEqual(maxW);
+    const spaced = ReportLayout.overline(m, Array.from({ length: 16 }, () => "WWWW").join(" "), "EXAMPLE DATA");
+    for (const line of spaced.lines) expect(ReportLayout.overlineWidth(m, line, spaced.size)).toBeLessThanOrEqual(maxW);
+    const input = SampleReportData.docInput({ serviceLine: { name: WIDEST, shortName: "W" } });
+    const layout = ReportLayout.layout(input, m);
+    expect(layout.pages[0].headerHeight).toBe(ReportLayout.firstHeaderHeight(input, layout.header.titleBarHeight));
   });
 
   it("handoff.json title follows the frozen name", () => {

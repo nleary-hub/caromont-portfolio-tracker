@@ -1,3 +1,4 @@
+import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
@@ -166,6 +167,7 @@ export class SampleReportData {
       exampleData: true,
       showKeyPage: true,
       completed: SampleReportData.completed(),
+      serviceLine: ServiceLine.defaults(),
       ...overrides,
     };
   }
