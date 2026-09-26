@@ -50,7 +50,8 @@ See `.env.example` for the full annotated list.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | Postgres connection string (pooled URL on Vercel/Neon) |
+| `DATABASE_URL` | yes | Postgres connection string used by the app at runtime (pooled URL on Vercel/Neon) |
+| `DATABASE_URL_UNPOOLED` | recommended on Neon | Direct (non-pooled) URL used by the Prisma CLI (`migrate deploy`/`dev`). Falls back to `DATABASE_URL` if unset. Set automatically by the Vercel Neon integration |
 | `AUTH_SECRET` | yes | `npx auth secret` or `openssl rand -base64 32` |
 | `ALLOWED_EMAILS` | yes | Comma/space separated emails or `@domain` entries. Empty = nobody (fails closed) |
 | `AUTH_MICROSOFT_ENTRA_ID_ID` / `_SECRET` / `_ISSUER` | optional | Enables Microsoft sign-in. Use the tenant-specific issuer |
@@ -66,9 +67,13 @@ OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 - `main` deploys to Production; every PR gets a Preview deployment (Git integration).
 - `vercel.json` sets the build command to `sh scripts/vercel-build.sh`, which runs
   `prisma generate`, then `prisma migrate deploy`, then `next build`.
-- Migrations run only when `DATABASE_URL` is set and the deployment is Production, or when
+- Migrations run only when `DATABASE_URL_UNPOOLED` or `DATABASE_URL` is set and the deployment is Production, or when
   `PRISMA_MIGRATE_ON_PREVIEW=true` is set for Preview. Only set that when Preview has its own
   database (for example a Neon branch per preview); otherwise PR migrations would hit the production DB.
+- `prisma migrate deploy` uses the direct connection `DATABASE_URL_UNPOOLED` when present
+  (`prisma.config.ts`), because migrations over Neon's PgBouncer pooler can fail (advisory locks,
+  prepared statements). The running app keeps using the pooled `DATABASE_URL` via `@prisma/adapter-pg`;
+  no `pgbouncer=true` flag is needed with driver adapters.
 - All secrets live in Vercel Project Settings > Environment Variables, never in the repo.
 
 ## Auth model
