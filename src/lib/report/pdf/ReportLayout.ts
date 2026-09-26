@@ -1,9 +1,9 @@
-import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import type { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { Assignee } from "@/lib/domain/Assignee";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { PdfReportLayout, type LayoutColumn } from "@/lib/report/PdfReportLayout";
@@ -216,15 +216,15 @@ export type BodyBlock =
       kind: "section";
       y: number;
       height: number;
-      area: ServiceArea;
+      area: AreaGroup;
       label: string;
       count: number;
       /** Rows in this area's "Completed this period" block (not part of `count` or any status count). */
       completedCount: number;
       continued: boolean;
     }
-  | { kind: "completed"; y: number; height: number; area: ServiceArea; headerH: number; rows: CompletedRowLayout[] }
-  | { kind: "row"; y: number; height: number; area: ServiceArea; row: RowLayout }
+  | { kind: "completed"; y: number; height: number; area: AreaGroup; headerH: number; rows: CompletedRowLayout[] }
+  | { kind: "row"; y: number; height: number; area: AreaGroup; row: RowLayout }
   | { kind: "empty"; y: number; height: number; text: string };
 
 export interface GridColumn {
@@ -239,10 +239,12 @@ export interface GridRow {
   label: string;
   cells: number[];
   total: boolean;
+  /** Unassigned row: label and numbers in the secondary gray. */
+  muted?: boolean;
 }
 
 export interface StripItem {
-  area: ServiceArea;
+  area: AreaGroup;
   label: string;
   /** x offsets are relative to the item start. */
   counts: { status: ProjectStatus; count: number; iconX: number; numX: number }[];
@@ -630,7 +632,7 @@ export class ReportLayout {
   }
 
   /** The whole block for one area (header plus rows). Never split across pages. */
-  static completedBlock(m: Measurer, area: ServiceArea, rows: readonly CompletedRow[], settings: ViewSettingsValue, reportDate: string): Extract<BodyBlock, { kind: "completed" }> {
+  static completedBlock(m: Measurer, area: AreaGroup, rows: readonly CompletedRow[], settings: ViewSettingsValue, reportDate: string): Extract<BodyBlock, { kind: "completed" }> {
     const st = CompletedBlockStyle;
     let y = st.SPACE_ABOVE + st.HEADER_H;
     const laid = rows.map((r) => {
@@ -656,9 +658,10 @@ export class ReportLayout {
       }),
       { key: "total" as const, width: g.GRID_MIN_COL_W, label: "Total" },
     ];
-    const areaRows: GridRow[] = ServiceAreaInfo.all().map((a) => {
-      const counts = header.byArea[a];
-      const areaRows = input.rows.filter((r) => r.serviceArea === a);
+    // Departments, then an Unassigned row (gray) only when some listed project has no department.
+    const areaRows: GridRow[] = ReportLayout.gridAreas(input.rows).map((a) => {
+      const counts = ReportBuilder.areaCounts(header, a);
+      const areaRows = input.rows.filter((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a);
       const total = statuses.reduce((sum, s) => sum + counts[s], 0);
       return {
         label: ServiceAreaInfo.label(a),
@@ -670,6 +673,7 @@ export class ReportLayout {
           total,
         ],
         total: false,
+        muted: a === ServiceAreaInfo.UNASSIGNED,
       };
     });
     const totalRow: GridRow = {
@@ -679,7 +683,9 @@ export class ReportLayout {
     };
     const gridWidth = g.GRID_AREA_W + columns.reduce((s, c) => s + c.width, 0);
 
-    const areasWithRows = ServiceAreaInfo.all().filter((a) => input.rows.some((r) => r.serviceArea === a));
+    const areasWithRows = ServiceAreaInfo.groups().filter((a) => input.rows.some((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a));
+    // "N across M service areas": Unassigned is not a service area.
+    const departments = areasWithRows.filter((a) => a !== ServiceAreaInfo.UNASSIGNED);
     const strip = ReportLayout.strip(m, header, areasWithRows, statuses);
 
     const cols = ReportLayout.columns(settings).map((c) => ({
@@ -692,7 +698,7 @@ export class ReportLayout {
     const n = header.totalProjects;
     const metaWidth = g.CONTENT_W - gridWidth - g.HEADER_GAP;
     const period = input.periodStart && input.periodEnd ? ReportFormat.period(input.periodStart, input.periodEnd) : null;
-    const projectsLine = `${n} across ${areasWithRows.length} service ${areasWithRows.length === 1 ? "area" : "areas"}`;
+    const projectsLine = `${n} across ${departments.length} service ${departments.length === 1 ? "area" : "areas"}`;
     const metaRows: [string, string][] = [
       ["Report date", ReportFormat.longDate(input.reportDate)],
       ["Period covered", period ?? "Not set"],
@@ -755,7 +761,7 @@ export class ReportLayout {
   static strip(
     m: Measurer,
     header: ReportHeader,
-    areas: readonly ServiceArea[],
+    areas: readonly AreaGroup[],
     statuses: readonly ProjectStatus[],
   ): StripItem[][] {
     const g = ReportGeometry;
@@ -763,9 +769,9 @@ export class ReportLayout {
       const label = ServiceAreaInfo.label(a);
       let cursor = m.width(label, g.SIZE.small, 600) + 4;
       const counts = statuses
-        .filter((s) => header.byArea[a][s] > 0)
+        .filter((s) => ReportBuilder.areaCounts(header, a)[s] > 0)
         .map((s) => {
-          const count = header.byArea[a][s];
+          const count = ReportBuilder.areaCounts(header, a)[s];
           const iconX = cursor;
           const numX = iconX + g.ICON + 1.5;
           cursor = numX + m.width(String(count), g.SIZE.small, 500) + 5;
@@ -789,12 +795,18 @@ export class ReportLayout {
     return lines;
   }
 
+  /** Page 1 area table rows: every department, then Unassigned only when a listed row has no department. */
+  static gridAreas(rows: readonly ReportRow[]): AreaGroup[] {
+    const unassigned = rows.some((r) => r.serviceArea === null);
+    return ServiceAreaInfo.groups().filter((a) => a !== ServiceAreaInfo.UNASSIGNED || unassigned);
+  }
+
   static firstHeaderHeight(input: ReportDocInput): number {
     const g = ReportGeometry;
     // Up to one extra meta row for "Completed this period N" (still shorter than the grid).
     const rows = input.completed ? 5 : 4;
     const meta = rows * g.META_ROW_H + (rows - 1) * g.META_GAP + 6 + 3 * g.LEGEND_LINE_H;
-    const grid = g.GRID_HEAD_H + (ServiceAreaInfo.all().length + 1) * g.GRID_ROW_H + 1;
+    const grid = g.GRID_HEAD_H + (ReportLayout.gridAreas(input.rows).length + 1) * g.GRID_ROW_H + 1;
     return g.TITLE_BAR_H + (input.draft ? g.DRAFT_LINE_H : 0) + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
   }
 
@@ -844,7 +856,7 @@ export class ReportLayout {
 
     const sectionH = (atTop: boolean) => (atTop ? 0 : g.SECTION_MT) + g.SECTION_H;
     const completed = input.completed ?? [];
-    const pushSection = (area: ServiceArea, count: number, completedCount: number, continued: boolean) => {
+    const pushSection = (area: AreaGroup, count: number, completedCount: number, continued: boolean) => {
       const h = sectionH(y === 0);
       page.blocks.push({ kind: "section", y, height: h, area, label: ServiceAreaInfo.label(area), count, completedCount, continued });
       y += h;
@@ -854,9 +866,10 @@ export class ReportLayout {
       page.blocks.push({ kind: "empty", y: 0, height: 20, text: "No projects to report." });
     }
 
-    for (const area of ServiceAreaInfo.all()) {
-      const rows = input.rows.filter((r) => r.serviceArea === area);
-      const done = completed.filter((c) => c.serviceArea === area);
+    // Departments in order, then Unassigned (null) last; Completed blocks work the same in every group.
+    for (const area of ServiceAreaInfo.groups()) {
+      const rows = input.rows.filter((r) => ServiceAreaInfo.groupOf(r.serviceArea) === area);
+      const done = completed.filter((c) => ServiceAreaInfo.groupOf(c.serviceArea) === area);
       if (rows.length === 0 && done.length === 0) continue;
       rows.forEach((row, i) => {
         const layout = ReportLayout.rowLayout(m, row, input.viewSettings, input.reportDate);

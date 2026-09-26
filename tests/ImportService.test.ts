@@ -90,7 +90,7 @@ describe("ImportService: new projects", () => {
     );
     expect(preview.rows.map((r) => r.status)).toEqual(["error", "error"]);
     expect(preview.rows[0].errors.service_area?.[0]).toBe(
-      '"Cardiology" is not a service area. Use one of: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR',
+      '"Cardiology" is not a service area. Use one of: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR, or Unassigned (or leave blank)',
     );
     expect(preview.rows[1].errors.status?.[0]).toMatch(/^"Done" is not a status\. Use one of: Not started, On track/);
     expect(preview.canCommit).toBe(false);

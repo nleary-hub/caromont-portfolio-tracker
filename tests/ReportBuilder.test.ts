@@ -112,8 +112,8 @@ describe("ReportBuilder.build", () => {
     expect(result.header.totals).toMatchObject({ OnTrack: 2, AtRisk: 1, Complete: 0, Cancelled: 0 });
     expect(result.header.byArea.Cath).toMatchObject({ AtRisk: 1, Complete: 0 });
     expect(result.header.byArea.EP).toMatchObject({ OnTrack: 1, Complete: 0 });
-    expect(result.header.byArea.IR.Cancelled).toBe(0);
-    expect(result.header.byArea.Echo.OnTrack).toBe(1);
+    expect(result.header.byArea.IR!.Cancelled).toBe(0);
+    expect(result.header.byArea.Echo!.OnTrack).toBe(1);
     expect(result.header).toMatchObject({ overdue: 1, changed: 1 });
   });
 

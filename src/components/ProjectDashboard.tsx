@@ -3,13 +3,13 @@
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import type { ServiceArea, ViewContext } from "@/generated/prisma/enums";
+import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Assignee } from "@/lib/domain/Assignee";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
@@ -79,7 +79,11 @@ class DashboardColumns {
       width: "w-[120px]",
       cell: (r, td) => (
         <td className={td}>
-          <span className="area-tag">{ServiceAreaInfo.label(r.serviceArea)}</span>
+          {r.serviceArea ? (
+            <span className="area-tag">{ServiceAreaInfo.label(r.serviceArea)}</span>
+          ) : (
+            <span className="text-muted">{ServiceAreaInfo.UNASSIGNED}</span>
+          )}
         </td>
       ),
     },
@@ -152,7 +156,7 @@ export function ProjectDashboard({
   admin,
   signOutAction,
 }: Props) {
-  const [area, setArea] = useState<ServiceArea | "All">("All");
+  const [area, setArea] = useState<AreaGroup | "All">("All");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -298,11 +302,13 @@ export function ProjectDashboard({
           <button type="button" className="chip" aria-pressed={area === "All"} onClick={() => setArea("All")}>
             All <b>{summary.total}</b>
           </button>
-          {ServiceAreaInfo.all().map((a) => (
-            <button key={a} type="button" className="chip" aria-pressed={area === a} onClick={() => setArea(a)}>
-              {ServiceAreaInfo.label(a)} <b>{summary.byArea[a]}</b>
-            </button>
-          ))}
+          {ServiceAreaInfo.groups()
+            .filter((a) => a !== ServiceAreaInfo.UNASSIGNED || summary.byArea[a] > 0)
+            .map((a) => (
+              <button key={a} type="button" className="chip" aria-pressed={area === a} onClick={() => setArea(a)}>
+                {ServiceAreaInfo.label(a)} <b>{summary.byArea[a]}</b>
+              </button>
+            ))}
           <div className="flex-1" />
           <span className="type-caption text-muted">Showing {visible.length} projects</span>
         </section>

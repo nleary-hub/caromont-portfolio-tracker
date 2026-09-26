@@ -76,7 +76,7 @@ describe("SnapshotService.create", () => {
     expect(rows.map((r) => r.name).sort()).toEqual(["DashHidden", "Visible"]);
     const header = s.headerJson as unknown as ReportHeader;
     expect(Sum.counts(header)).toBe(2);
-    expect(header.byArea.Cath.OnTrack).toBe(2);
+    expect(header.byArea.Cath!.OnTrack).toBe(2);
     expect((s.missingChampionsJson as unknown as MissingChampion[]).map((m) => m.name)).toEqual(["Dr. Visible"]);
     const json = JSON.stringify({ rows: s.rowsJson, header: s.headerJson, champions: s.missingChampionsJson });
     expect(json).not.toMatch(/Secret|Gone/);

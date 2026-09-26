@@ -201,7 +201,8 @@ the URL directly.
 - **Template:** `docs/project-import-template.csv` (also "Download template" on the page). Columns:
   `name, description, infor_request_number, service_area, owner, physician_champion, physician_champion_email, status, next_milestone,
   due_date, percent_complete, note, accomplishment, completed_on, include_in_report`. Required columns:
-  `name, service_area, status` (a `department` header is read as `service_area`). `owner` is optional
+  `name, service_area, status` (a `department` header is read as `service_area`; a blank value or
+  `Unassigned` means no department, shown as the Unassigned group, last). `owner` is optional
   (blank or missing = "To assign"); a blank `status` on a new project means On track. The two `Example:` rows are fake and are skipped.
   - `service_area`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR. `status`: Not started, On track, At risk,
     Off track, On hold, Complete, Cancelled. Case and spaces do not matter (`on track`, `OnTrack`).
@@ -214,8 +215,8 @@ the URL directly.
   - `accomplishment` (optional, max 200) and `completed_on` (optional date, same formats as `due_date`, display
     only) feed the report's "Completed this period" block; see docs/REPORTS.md.
   - `older_update` (added by Writing Bot) is recognized but not imported: the app has no place for older
-    updates yet, so the preview shows a warning and the values are ignored. `owner_suggested` is a reference
-    column: never read, the preview notes that it is not imported.
+    updates yet, so the preview shows a warning and the values are ignored. `owner_suggested` and `department_basis`
+    are reference columns: never read, the preview notes that they are not imported.
 - **New projects mode:** every row is validated with `ProjectValidator`; the preview shows per-row errors.
   Rows matching a non-archived project by (name, service area), ignoring case and extra spaces, are
   skipped with a warning and never overwritten. "Import N projects" is all-or-nothing in one

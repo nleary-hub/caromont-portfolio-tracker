@@ -181,7 +181,7 @@ export class ImportService {
   }
 
   /** Case- and whitespace-insensitive (name, service area) key. */
-  static duplicateKey(name: string, serviceArea: string): string {
+  static duplicateKey(name: string, serviceArea: string | null): string {
     return `${name.trim().replace(/\s+/g, " ").toLowerCase()}|${serviceArea}`;
   }
 

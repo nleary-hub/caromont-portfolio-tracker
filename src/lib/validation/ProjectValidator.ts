@@ -3,6 +3,7 @@ import { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectRecord } from "@/lib/domain/types";
 
 /** Editable project fields as received from a form/API. Dates are "YYYY-MM-DD". */
@@ -12,7 +13,8 @@ export interface ProjectInput {
   description?: string | null;
   /** Optional Infor request number: whole number 1 to 99999 (a digits-only string is accepted). Blank = null. */
   inforRequestNumber?: number | string | null;
-  serviceArea: ServiceArea | string;
+  /** Blank, null or "Unassigned" = no department. */
+  serviceArea?: ServiceArea | string | null;
   /** Optional; blank = null ("To assign"). */
   owner?: string | null;
   physicianChampion?: string | null;
@@ -35,7 +37,7 @@ export interface ProjectData {
   name: string;
   description: string | null;
   inforRequestNumber: number | null;
-  serviceArea: ServiceArea;
+  serviceArea: ServiceArea | null;
   owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
@@ -190,7 +192,10 @@ export class ProjectValidator {
             .max(ProjectValidator.INFOR_MAX, ProjectValidator.INFOR_MESSAGE)
             .nullable(),
         ),
-        serviceArea: z.enum(ServiceArea, { error: "Service area must be one of the defined areas" }),
+        serviceArea: z.preprocess(
+          (v) => (v === undefined || v === null || (typeof v === "string" && (v.trim() === "" || ServiceAreaInfo.isUnassignedText(v))) ? null : v),
+          z.enum(ServiceArea, { error: "Service area must be one of the defined areas (or Unassigned)" }).nullable(),
+        ),
         owner: ProjectValidator.optionalText({ label: "Owner", length: ProjectValidator.NAME_MAX }),
         physicianChampion: ProjectValidator.optionalText(),
         physicianChampionEmail: z.preprocess(

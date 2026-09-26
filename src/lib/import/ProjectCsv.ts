@@ -154,6 +154,7 @@ export class ProjectCsv {
     older_update:
       'Column "older_update" is not imported: the app has no place for older updates yet, so its values are ignored.',
     owner_suggested: 'Column "owner_suggested" is a reference column and is not imported. Owners are set in the app.',
+    department_basis: 'Column "department_basis" is a reference column and is not imported.',
   };
 
   /** Other header names accepted for a column (normalized). */
@@ -190,7 +191,7 @@ export class ProjectCsv {
       name: p.name,
       description: p.description ?? "",
       infor_request_number: p.inforRequestNumber === null ? "" : String(p.inforRequestNumber),
-      service_area: ServiceAreaInfo.label(p.serviceArea),
+      service_area: p.serviceArea ? ServiceAreaInfo.label(p.serviceArea) : "",
       owner: p.owner ?? "",
       physician_champion: p.physicianChampion ?? "",
       physician_champion_email: p.physicianChampionEmail ?? "",
@@ -283,14 +284,17 @@ export class ProjectCsv {
       const value = raw.trim();
       switch (col) {
         case "service_area": {
+          // Blank or "Unassigned" (any case) = no department (grouped as Unassigned).
+          if (value === "" || ServiceAreaInfo.isUnassignedText(value)) {
+            input.serviceArea = null;
+            break;
+          }
           const area = ProjectCsv.resolveServiceArea(value);
           if (area) input.serviceArea = area;
           else {
             fail(
               col,
-              value === ""
-                ? `Service area (department) is blank. Use one of: ${ServiceAreaInfo.all().join(", ")}`
-                : `"${value}" is not a service area. Use one of: ${ServiceAreaInfo.all().join(", ")}`,
+              `"${value}" is not a service area. Use one of: ${ServiceAreaInfo.all().join(", ")}, or Unassigned (or leave blank)`,
             );
             input.serviceArea = value;
           }

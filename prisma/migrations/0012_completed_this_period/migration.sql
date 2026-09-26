@@ -47,3 +47,7 @@ ALTER TABLE "Project" ALTER COLUMN "owner" DROP NOT NULL;
 ALTER TABLE "Project" DROP CONSTRAINT "Project_nextMilestone_required";
 ALTER TABLE "Project" ADD CONSTRAINT "Project_nextMilestone_required"
     CHECK ("status" IN ('NotStarted', 'OnHold', 'Complete', 'Cancelled') OR ("nextMilestone" IS NOT NULL AND btrim("nextMilestone") <> ''));
+
+-- Department (service area) is optional: null shows as "Unassigned", grouped last. Relaxes a constraint
+-- only; the ("serviceArea", "status") index stays.
+ALTER TABLE "Project" ALTER COLUMN "serviceArea" DROP NOT NULL;

@@ -109,7 +109,7 @@ describe("Admin edit panel", () => {
 describe("CSV: optional owner, department header, blank status", () => {
   const csv = (header: string, ...lines: string[]) => [header, ...lines].join("\n") + "\n";
 
-  it("imports without an owner column; blank status is On track; department is read as service_area; owner_suggested is never read", async () => {
+  it("imports without an owner column; blank status is On track; department is read as service_area (blank = Unassigned); owner_suggested is never read", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const file = csv("department,name,status,next_milestone,owner_suggested", "Cath,Alpha,,Kickoff,Nicole Smith", ",Beta,,Kickoff,Nick Leary");
@@ -120,8 +120,9 @@ describe("CSV: optional owner, department header, blank status", () => {
     expect(preview.rows[0].status).toBe("ready");
     expect(preview.rows[0].input).toMatchObject({ serviceArea: "Cath", status: "OnTrack" });
     expect(preview.rows[0].input?.owner).toBeUndefined();
-    expect(preview.rows[1].status).toBe("error");
-    expect(Object.keys(preview.rows[1].errors)).toEqual(["service_area"]);
+    // Blank department = Unassigned (null), no longer an error.
+    expect(preview.rows[1].status).toBe("ready");
+    expect(preview.rows[1].input?.serviceArea).toBeNull();
     const parsed = ProjectCsv.parse(file, ProjectCsv.REQUIRED_FOR_CREATE);
     expect(Object.keys(parsed.rows[0].cells)).not.toContain("owner_suggested");
   });

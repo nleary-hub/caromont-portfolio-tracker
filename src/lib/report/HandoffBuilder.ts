@@ -1,6 +1,6 @@
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
@@ -23,14 +23,14 @@ export interface HandoffInput {
 
 export interface HandoffFlagged {
   name: string;
-  serviceArea: ServiceArea;
+  serviceArea: ServiceArea | null;
   status: string;
   dueDate: string | null;
 }
 
 export interface HandoffCompleted {
   name: string;
-  serviceArea: ServiceArea;
+  serviceArea: ServiceArea | null;
   /** YYYY-MM-DD shown in the report (completedOn when set, else the in-app completion date). */
   completedOn: string;
   accomplishment: string | null;
@@ -47,7 +47,7 @@ export interface Handoff {
   frozenAtEt: string;
   reportRecipient?: string;
   totals: { projects: number; byStatus: Partial<Record<ProjectStatus, number>> };
-  byArea: { area: ServiceArea; label: string; projects: number; byStatus: Partial<Record<ProjectStatus, number>> }[];
+  byArea: { area: AreaGroup; label: string; projects: number; byStatus: Partial<Record<ProjectStatus, number>> }[];
   flags: {
     changed: { count: number; projects: HandoffFlagged[] };
     overdue: { count: number; projects: HandoffFlagged[] };
@@ -98,8 +98,9 @@ export class HandoffBuilder {
       frozenAtEt: ReportFormat.dateTimeEt(input.frozenAt),
       ...(input.reportRecipient ? { reportRecipient: input.reportRecipient } : {}),
       totals: { projects: input.rows.length, byStatus: HandoffBuilder.nonZero(header.totals) },
-      byArea: ServiceAreaInfo.all().map((a) => {
-        const counts = header.byArea[a];
+      // Every department, then Unassigned only when it has projects.
+      byArea: HandoffBuilder.areas(input.rows).map((a) => {
+        const counts = ReportBuilder.areaCounts(header, a);
         return {
           area: a,
           label: ServiceAreaInfo.label(a),
@@ -128,5 +129,11 @@ export class HandoffBuilder {
 
   static toBytes(handoff: Handoff): Buffer {
     return Buffer.from(`${JSON.stringify(handoff, null, 2)}\n`, "utf8");
+  }
+
+  /** Departments in order, then "Unassigned" only when some listed row has no department. */
+  private static areas(rows: readonly ReportRow[]): AreaGroup[] {
+    const unassigned = rows.some((r) => r.serviceArea === null);
+    return ServiceAreaInfo.groups().filter((a) => a !== ServiceAreaInfo.UNASSIGNED || unassigned);
   }
 }

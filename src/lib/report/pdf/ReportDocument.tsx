@@ -1,5 +1,6 @@
 import { Circle, Document, Page, Path, Rect, Svg, Text, View } from "@react-pdf/renderer";
 import type { ProjectStatus } from "@/generated/prisma/enums";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { StatusShapes, type ShapePart } from "@/lib/domain/StatusShapes";
 import { ReportFonts } from "@/lib/report/pdf/ReportFonts";
 import {
@@ -333,7 +334,7 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
     const ry = top + G.GRID_HEAD_H + ri * G.GRID_ROW_H;
     if (r.total) els.push(<Rule key={`gtr`} x={gx} y={ry} w={h.grid.width} h={1} />);
     const weight = r.total ? 600 : 400;
-    els.push(<Line key={`ga${ri}`} x={gx} y={ry + 1.5} w={G.GRID_AREA_W} text={r.label} size={S.table} weight={r.total ? 600 : 500} lh={G.TABLE_LH} />);
+    els.push(<Line key={`ga${ri}`} x={gx} y={ry + 1.5} w={G.GRID_AREA_W} text={r.label} size={S.table} weight={r.total ? 600 : 500} color={r.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />);
     r.cells.forEach((n, ci) => {
       const isTotal = ci === r.cells.length - 1;
       els.push(
@@ -345,7 +346,7 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
           text={n === 0 ? "\u00b7" : String(n)}
           size={S.table}
           weight={isTotal || r.total ? 600 : weight}
-          color={n === 0 ? C.MUTED : C.TEXT}
+          color={n === 0 || r.muted ? C.MUTED : C.TEXT}
           lh={G.TABLE_LH}
           align="center"
         />,
@@ -379,7 +380,7 @@ function ContinuationHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
     let x = 0;
     const ly = y + li * G.STRIP_LINE_H;
     for (const it of line) {
-      els.push(<Line key={`s${li}${it.area}`} x={x} y={ly} w={60} text={it.label} size={S.small} weight={600} lh={G.SMALL_LH} />);
+      els.push(<Line key={`s${li}${it.area}`} x={x} y={ly} w={60} text={it.label} size={S.small} weight={600} color={it.area === ServiceAreaInfo.UNASSIGNED ? C.MUTED : C.TEXT} lh={G.SMALL_LH} />);
       for (const c of it.counts) {
         const col = C.STATUS[c.status].fg;
         els.push(
@@ -612,10 +613,12 @@ function Block({ block, top }: { block: BodyBlock; top: number }) {
   if (block.kind === "empty") return <Line x={0} y={top + block.y + 6} w={G.CONTENT_W} text={block.text} size={S.body} color={C.MUTED} lh={12} />;
   const sy = top + block.y + block.height - G.SECTION_H;
   const count = ReportLayout.sectionCountText(block.count, block.completedCount);
+  // Unassigned: same section head, name and left border in the secondary gray (no amber, no italics).
+  const ink = block.area === ServiceAreaInfo.UNASSIGNED ? C.MUTED : C.TEXT;
   return (
     <View style={{ position: "absolute", left: 0, top: sy, width: G.CONTENT_W, height: G.SECTION_H, backgroundColor: C.SECTION_BG }}>
-      <View style={{ position: "absolute", left: 0, top: 0, width: 2, height: G.SECTION_H, backgroundColor: C.TEXT }} />
-      <Line x={7} y={2} w={300} text={`${block.label}${block.continued ? " (continued)" : ""}`} size={S.section} weight={600} lh={12} />
+      <View style={{ position: "absolute", left: 0, top: 0, width: 2, height: G.SECTION_H, backgroundColor: ink }} />
+      <Line x={7} y={2} w={300} text={`${block.label}${block.continued ? " (continued)" : ""}`} size={S.section} weight={600} color={ink} lh={12} />
       <Line x={G.CONTENT_W - 205} y={4} w={200} text={count} size={S.small} color={C.MUTED} lh={G.SMALL_LH} align="right" />
     </View>
   );

@@ -117,6 +117,9 @@ A Complete project is listed once, in the first FROZEN report after it became Co
   split across pages. The section head reads "2 projects · 2 completed this period"; page 1 shows
   "Completed this period N" beside the Projects line (or on its own line under it when it does not fit).
   Nothing here feeds the status grid, totals or the projects line.
+- **Unassigned:** projects with no department form an "Unassigned" group after every department (section
+  head and page 1 table row in secondary gray; the table row appears only when there is one). It is not
+  counted in "N across M service areas". The Completed block works there like in any other group.
 - **handoff.json:** `completedThisPeriod: { count, projects: [{ name, serviceArea, completedOn, accomplishment }] }`.
 
 ## Draft PDF (admin "Generate PDF now")

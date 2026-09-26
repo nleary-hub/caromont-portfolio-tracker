@@ -95,8 +95,9 @@ describe("migrations (PGlite)", () => {
     const sql = Migrations.sql("0012_completed_this_period");
     const code = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
     // The only DROPs relax constraints (owner optional; milestone optional for more statuses); no data changes.
-    expect(code.replace('ALTER COLUMN "owner" DROP NOT NULL', "").replace('DROP CONSTRAINT "Project_nextMilestone_required"', "")).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE\b/);
+    expect(code.replace('ALTER COLUMN "owner" DROP NOT NULL', "").replace('DROP CONSTRAINT "Project_nextMilestone_required"', "").replace('ALTER COLUMN "serviceArea" DROP NOT NULL', "")).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE\b/);
     expect(code).toContain('ALTER TABLE "Project" ALTER COLUMN "owner" DROP NOT NULL;');
+    expect(code).toContain('ALTER TABLE "Project" ALTER COLUMN "serviceArea" DROP NOT NULL;');
     expect(sql).toContain('OR NEW."completedJson" IS DISTINCT FROM OLD."completedJson"');
     await db.close();
   }, 30_000);

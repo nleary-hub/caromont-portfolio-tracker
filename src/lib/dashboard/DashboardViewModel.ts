@@ -2,7 +2,7 @@ import type { ProjectStatus, ServiceArea, ViewContext } from "@/generated/prisma
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord, StatusCounts } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
@@ -12,7 +12,8 @@ import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 export interface DashboardRow {
   id: string;
   name: string;
-  serviceArea: ServiceArea;
+  /** Null = Unassigned. */
+  serviceArea: ServiceArea | null;
   owner: string | null;
   physicianChampion: string | null;
   status: ProjectStatus;
@@ -37,7 +38,8 @@ export interface DashboardRow {
 export interface DashboardSummary {
   total: number;
   byStatus: Record<ProjectStatus, number>;
-  byArea: Record<ServiceArea, number>;
+  /** Departments plus "Unassigned". */
+  byArea: Record<AreaGroup, number>;
   overdue: number;
   changed: number;
 }
@@ -92,12 +94,12 @@ export class DashboardViewModel {
   /** Tiles and chip counts. Pass only rows() output (visible rows). */
   static summarize(rows: readonly DashboardRow[]): DashboardSummary {
     const byStatus = Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as Record<ProjectStatus, number>;
-    const byArea = Object.fromEntries(ServiceAreaInfo.all().map((a) => [a, 0])) as Record<ServiceArea, number>;
+    const byArea = Object.fromEntries(ServiceAreaInfo.groups().map((a) => [a, 0])) as Record<AreaGroup, number>;
     let overdue = 0;
     let changed = 0;
     for (const r of rows) {
       byStatus[r.status] += 1;
-      byArea[r.serviceArea] += 1;
+      byArea[ServiceAreaInfo.groupOf(r.serviceArea)] += 1;
       if (r.overdue) overdue += 1;
       if (r.changed) changed += 1;
     }
@@ -119,10 +121,10 @@ export class DashboardViewModel {
   }
 
   /** Area filter + free-text search over name, Infor number, owner, champion, milestone, note. */
-  static filter(rows: readonly DashboardRow[], area: ServiceArea | "All", query: string): DashboardRow[] {
+  static filter(rows: readonly DashboardRow[], area: AreaGroup | "All", query: string): DashboardRow[] {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      if (area !== "All" && r.serviceArea !== area) return false;
+      if (area !== "All" && ServiceAreaInfo.groupOf(r.serviceArea) !== area) return false;
       if (!q) return true;
       return [r.name, InforNumber.format(r.inforRequestNumber), r.owner, r.physicianChampion, r.nextMilestone, r.note]
         .some((v) => v?.toLowerCase().includes(q));

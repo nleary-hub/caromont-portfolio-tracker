@@ -1,4 +1,5 @@
 import type { ProjectStatus, RecipientLine, ServiceArea } from "@/generated/prisma/enums";
+import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 
 /** Fields of a Project that the domain logic needs. Structurally compatible with the Prisma model. */
 export interface ProjectRecord {
@@ -7,7 +8,8 @@ export interface ProjectRecord {
   description: string | null;
   /** Optional Infor request number, whole number 1 to 99999 (null = none). Displayed as "REQ-5081". */
   inforRequestNumber: number | null;
-  serviceArea: ServiceArea;
+  /** Null = Unassigned (grouped last). */
+  serviceArea: ServiceArea | null;
   /** Null = not assigned yet (shown as "To assign"). */
   owner: string | null;
   physicianChampion: string | null;
@@ -53,7 +55,8 @@ export interface HistoryEntryRecord {
 export interface ReportRow {
   projectId: string;
   name: string;
-  serviceArea: ServiceArea;
+  /** Null = Unassigned (grouped last). */
+  serviceArea: ServiceArea | null;
   /** Null = not assigned yet (shown as "To assign"). */
   owner: string | null;
   physicianChampion: string | null;
@@ -82,7 +85,8 @@ export interface ReportRow {
 export interface CompletedRow {
   projectId: string;
   name: string;
-  serviceArea: ServiceArea;
+  /** Null = Unassigned (grouped last). */
+  serviceArea: ServiceArea | null;
   /** Null = not assigned yet (shown as "To assign"). */
   owner: string | null;
   accomplishment: string | null;
@@ -112,7 +116,8 @@ export interface ReportHeader {
   totalProjects: number;
   totals: StatusCounts;
   /** Per service area status counts (repeated in the page header for each area). */
-  byArea: Record<ServiceArea, StatusCounts>;
+  /** Per department, plus "Unassigned" (absent on snapshots frozen before 0012: read with ReportBuilder.areaCounts). */
+  byArea: Partial<Record<AreaGroup, StatusCounts>>;
   overdue: number;
   changed: number;
   /** Absent on snapshots before 0004. */

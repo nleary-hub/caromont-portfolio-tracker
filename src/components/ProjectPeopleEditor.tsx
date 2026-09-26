@@ -12,7 +12,7 @@ export interface ProjectPeopleEditorProps {
   owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
-  serviceArea: ServiceArea;
+  serviceArea: ServiceArea | null;
   /** Owner datalist (department leaders plus existing owners). The champion field has no suggestions. */
   ownerSuggestions: readonly string[];
   /** Resolves to an error message, or null on success. */
@@ -148,7 +148,8 @@ function PeopleText({
 }
 
 function DepartmentSelect({ projectId, serviceArea, saveAction }: ProjectPeopleEditorProps) {
-  const [value, setValue] = useState<string>(serviceArea);
+  // "" = Unassigned (clears the department).
+  const [value, setValue] = useState<string>(serviceArea ?? "");
   const [state, save] = useFieldState();
   const id = `serviceArea-${projectId}`;
   return (
@@ -174,6 +175,7 @@ function DepartmentSelect({ projectId, serviceArea, saveAction }: ProjectPeopleE
             {ServiceAreaInfo.label(a)}
           </option>
         ))}
+        <option value="">{ServiceAreaInfo.UNASSIGNED}</option>
       </select>
     </Row>
   );
