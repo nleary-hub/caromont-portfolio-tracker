@@ -185,4 +185,43 @@ export class MilestoneEditorModel {
     const t = top ? templates.find((x) => x.id === top[0]) : undefined;
     return t ? t.name : null;
   }
+
+  /** Apply template confirm when the project has steps: "This project has 3 milestones (1 done)." */
+  static applyPrompt(state: EditorState): string {
+    const total = state.steps.length;
+    const done = state.steps.filter((s) => s.done).length;
+    return `This project has ${total} ${total === 1 ? "milestone" : "milestones"} (${done} done).`;
+  }
+
+  /** "23/40" while naming a step. */
+  static nameCounter(name: string): string {
+    return `${name.length}/${MilestoneEditorModel.NAME_MAX}`;
+  }
+
+  private static readonly SHORT = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });
+
+  /** "Sep 26" for a YYYY-MM-DD date. */
+  static shortDate(iso: string): string {
+    return MilestoneEditorModel.SHORT.format(new Date(`${iso}T00:00:00Z`));
+  }
+
+  /**
+   * What sits where the due date goes: "Done Sep 26" (teal) on a done step, the due date on an open step
+   * (overdue color once it is before today), or "Add due date" when there is none.
+   */
+  static dateLabel(step: EditorStep, today: string): { text: string; tone: "done" | "overdue" | "due" | "empty" } {
+    if (step.done) return { text: step.doneAt ? `Done ${MilestoneEditorModel.shortDate(step.doneAt)}` : "Done", tone: "done" };
+    if (!step.dueDate) return { text: "Add due date", tone: "empty" };
+    return { text: MilestoneEditorModel.shortDate(step.dueDate), tone: step.dueDate < today ? "overdue" : "due" };
+  }
+
+  /** New project "Start from" value for no template. */
+  static readonly BLANK_START = "blank";
+
+  /** New project checklist for a "Start from" choice: empty for Blank, else the template's steps (editable). */
+  static startFrom(id: string, templates: readonly TemplateDto[]): EditorState {
+    const empty: EditorState = { steps: [], applied: null };
+    const t = templates.find((x) => x.id === id);
+    return t ? MilestoneEditorModel.applyTemplate(empty, t, "replace") : empty;
+  }
 }

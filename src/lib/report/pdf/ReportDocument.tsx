@@ -499,7 +499,7 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
       return (
         <>
           {cell.lines.map((l, i) => (
-            <Line key={i} x={cell.x} y={i * G.TABLE_LH} w={cell.w} text={l} size={S.table} weight={G.MILESTONE_WEIGHT} color={cell.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
+            <Line key={i} x={cell.x} y={i * G.TABLE_LH} w={cell.w} text={l} size={S.table} weight={G.MILESTONE_WEIGHT} color={cell.done ? C.STATUS.Complete.fg : cell.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
           ))}
           {cell.progress && (
             <Line

@@ -254,8 +254,10 @@ export type RowCell =
       w: number;
       lines: string[];
       muted: boolean;
-      /** "2 of 6" after the milestone (MilestoneProgress.progressLabel): on its last line when it fits, else below. */
+      /** "· 2 of 6" at the end of the last milestone line (MilestoneProgress.progressLabel); never its own line. */
       progress: { text: string; x: number; line: number } | null;
+      /** Every step done: the text is "All milestones done", drawn in the complete (teal) color. */
+      done: boolean;
     }
   | { kind: "due"; x: number; w: number; text: string; overdue: boolean; muted: boolean }
   | { kind: "flags"; x: number; w: number; flags: PlacedFlag[] };
@@ -608,13 +610,13 @@ export class ReportLayout {
           break;
         }
         case "nextMilestone": {
-          const text = row.nextMilestone?.trim();
+          const allDone = MilestoneProgress.allDone(row.milestoneProgress);
+          // A finished checklist reads "All milestones done" (teal); otherwise the derived next milestone.
+          const text = allDone ? MilestoneProgress.ALL_DONE_TEXT : row.nextMilestone?.trim();
           // Blank (allowed for Not started, On hold, Complete, Cancelled) renders as nothing.
-          const lines = text ? TextMeasure.wrap(m, text, inner, S.table, g.MILESTONE_WEIGHT, 2) : [];
-          const progress = lines.length ? ReportLayout.milestoneProgress(m, row, lines, inner) : null;
-          const lineCount = Math.max(1, lines.length, progress ? progress.line + 1 : 0);
-          lineOneH = Math.max(lineOneH, lineCount * g.TABLE_LH);
-          cells.push({ kind: "nextMilestone", x: col.x, w: inner, lines, muted: !text, progress });
+          const { lines, progress } = text ? ReportLayout.milestoneLines(m, text, MilestoneProgress.progressLabel(row.milestoneProgress), inner) : { lines: [], progress: null };
+          lineOneH = Math.max(lineOneH, Math.max(1, lines.length) * g.TABLE_LH);
+          cells.push({ kind: "nextMilestone", x: col.x, w: inner, lines, muted: !text, progress, done: allDone });
           break;
         }
         case "due": {
@@ -784,20 +786,29 @@ export class ReportLayout {
     return { kind: "completed", y: 0, height: y + 2, area, headerH: st.HEADER_H, rows: laid };
   }
 
-  /** Gap between the milestone text and its "X of Y" label. */
-  static readonly PROGRESS_GAP = 4;
+  /** Gap between the milestone text and its "· X of Y" label. */
+  static readonly PROGRESS_GAP = 3;
 
   /**
-   * "X of Y" for a checklist (only when MilestoneProgress.progressLabel shows it: 2 or more steps), in
-   * small secondary text after the last milestone line when it fits there, otherwise on its own line below.
+   * Milestone lines (up to 2) plus the "· X of Y" label at the END of the last line, in 7pt secondary. The
+   * label never wraps onto its own line: when it does not fit after the last line, the text is wrapped
+   * narrower to make room. No label (null) leaves the wrap exactly as before.
    */
-  static milestoneProgress(m: Measurer, row: ReportRow, lines: readonly string[], inner: number): { text: string; x: number; line: number } | null {
-    const text = MilestoneProgress.progressLabel(row.milestoneProgress);
-    if (!text) return null;
+  static milestoneLines(
+    m: Measurer,
+    text: string,
+    label: string | null,
+    inner: number,
+  ): { lines: string[]; progress: { text: string; x: number; line: number } | null } {
     const S = ReportGeometry.SIZE;
+    const W = ReportGeometry.MILESTONE_WEIGHT;
+    let lines = TextMeasure.wrap(m, text, inner, S.table, W, 2);
+    if (!label || lines.length === 0) return { lines, progress: null };
+    const tag = `· ${label}`;
+    const tagW = m.width(tag, S.small, 400) + ReportLayout.PROGRESS_GAP;
+    if (m.width(lines[lines.length - 1], S.table, W) + tagW > inner) lines = TextMeasure.wrap(m, text, Math.max(inner - tagW, inner / 2), S.table, W, 2);
     const last = lines.length - 1;
-    const x = m.width(lines[last], S.table, ReportGeometry.MILESTONE_WEIGHT) + ReportLayout.PROGRESS_GAP;
-    return x + m.width(text, S.small, 400) <= inner ? { text, x, line: last } : { text, x: 0, line: last + 1 };
+    return { lines, progress: { text: tag, x: m.width(lines[last], S.table, W) + ReportLayout.PROGRESS_GAP, line: last } };
   }
 
   static header(m: Measurer, input: ReportDocInput, header: ReportHeader): HeaderModel {

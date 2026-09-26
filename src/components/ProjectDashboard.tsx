@@ -24,6 +24,7 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { ProjectFormSubmit } from "./ProjectEditForm";
+import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { DashboardTable } from "./DashboardTable";
@@ -67,7 +68,9 @@ export interface AdminDashboardProps {
   milestoneSteps: Record<string, MilestoneStepDto[]>;
   /** Milestone templates for "Apply a template". */
   templates: TemplateDto[];
-  /** Edit form Save: the changed non-People fields and the checklist, saved together (one history entry). */
+  /** Drawer Milestones autosave ("Saves as you go"): one checklist change, saved immediately. */
+  saveMilestonesAction: (projectId: string, milestones: MilestoneEdit) => Promise<MilestoneSaveActionResult>;
+  /** Edit form Save: the changed non-People fields, saved together (one history entry). Milestones autosave. */
   saveProjectFormAction: (projectId: string, changes: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
   /** New project drawer: create (name and department required), with its checklist. */
   createProjectAction: (values: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
@@ -494,6 +497,7 @@ export function ProjectDashboard({
                     />
                   }
                   onSubmit={(changes, milestones) => admin.saveProjectFormAction(selected.id, changes, milestones)}
+                  saveMilestones={(edit) => admin.saveMilestonesAction(selected.id, edit)}
                   onSaved={onSaved}
                   onCancel={() =>
                     guard(() => {

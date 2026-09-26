@@ -244,14 +244,22 @@ export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdate
     <div className="flex flex-col text-[13px] leading-[18px]" style={{ gap: MilestoneUpdateStack.LINE_GAP_PX }} data-testid="milestone-update">
       {lines.map((l) =>
         l.kind === "milestone" ? (
-          <div key="milestone" data-line="milestone" title={l.progress ? `${l.text} (${l.progress})` : l.text} className="line-clamp-2 break-words font-semibold text-fg">
-            {l.text}
-            {l.progress && (
-              <span data-part="milestone-progress" className="ml-1.5 whitespace-nowrap font-normal text-muted">
-                {l.progress}
-              </span>
-            )}
-          </div>
+          l.progress || l.done ? (
+            // Checklist: "· X of Y" (12px secondary, tabular) sits at the END of the milestone line and never wraps
+            // onto its own line; a finished checklist reads "All milestones done" in teal.
+            <div key="milestone" data-line="milestone" title={l.progress ? `${l.text} ${l.progress}` : l.text} className="flex min-w-0 items-end gap-1.5">
+              <span className={`line-clamp-2 min-w-0 break-words font-semibold ${l.done ? "text-(--status-complete-dark-fg)" : "text-fg"}`}>{l.text}</span>
+              {l.progress && (
+                <span data-part="milestone-progress" className="shrink-0 whitespace-nowrap text-[12px] font-normal tabular-nums text-muted">
+                  · {l.progress}
+                </span>
+              )}
+            </div>
+          ) : (
+            <div key="milestone" data-line="milestone" title={l.text} className="line-clamp-2 break-words font-semibold text-fg">
+              {l.text}
+            </div>
+          )
         ) : (
           <div key="update" data-line="update" data-muted={l.muted || undefined} className="break-words font-normal text-muted">
             {l.prefix && <span data-part="no-change">{l.prefix}</span>}

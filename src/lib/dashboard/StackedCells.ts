@@ -15,7 +15,7 @@ export interface MilestoneUpdateSource {
 
 /** One line of the Next milestone / Latest update cell. */
 export type MilestoneUpdateLine =
-  | { kind: "milestone"; text: string; progress: string | null }
+  | { kind: "milestone"; text: string; progress: string | null; done: boolean }
   | { kind: "update"; prefix: string | null; text: string | null; full: string; muted: boolean };
 
 /**
@@ -37,8 +37,9 @@ export class MilestoneUpdateStack {
 
   static lines(row: MilestoneUpdateSource, visible: MilestoneUpdateVisibility): MilestoneUpdateLine[] {
     const out: MilestoneUpdateLine[] = [];
-    const milestone = row.nextMilestone?.replace(/\s+/g, " ").trim();
-    if (visible.milestone && milestone) out.push({ kind: "milestone", text: milestone, progress: MilestoneProgress.progressLabel(row.milestoneProgress) });
+    const done = MilestoneProgress.allDone(row.milestoneProgress);
+    const milestone = done ? MilestoneProgress.ALL_DONE_TEXT : row.nextMilestone?.replace(/\s+/g, " ").trim();
+    if (visible.milestone && milestone) out.push({ kind: "milestone", text: milestone, progress: MilestoneProgress.progressLabel(row.milestoneProgress), done });
     const update = visible.update ? LatestUpdate.line(row) : null;
     if (update) out.push({ kind: "update", ...update });
     return out;

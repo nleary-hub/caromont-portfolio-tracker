@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
-import { createProjectFromForm, deleteProject, saveProjectForm, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
+import { createProjectFromForm, deleteProject, saveProjectForm, saveProjectMilestones, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
@@ -32,7 +32,7 @@ interface DashboardLoad {
   /** Present only for admins. */
   admin: Omit<
     AdminDashboardProps,
-    "saveViewSettingsAction" | "setProjectHiddenAction" | "deleteProjectAction" | "setPeopleFieldAction" | "saveProjectFormAction" | "createProjectAction"
+    "saveViewSettingsAction" | "setProjectHiddenAction" | "deleteProjectAction" | "setPeopleFieldAction" | "saveProjectFormAction" | "createProjectAction" | "saveMilestonesAction"
   > | null;
   error: string | null;
 }
@@ -207,6 +207,10 @@ export default async function DashboardPage() {
               saveProjectFormAction: async (projectId, changes, milestones) => {
                 "use server";
                 return saveProjectForm(projectId, changes, milestones);
+              },
+              saveMilestonesAction: async (projectId, milestones) => {
+                "use server";
+                return saveProjectMilestones(projectId, milestones);
               },
               createProjectAction: async (values, milestones) => {
                 "use server";
