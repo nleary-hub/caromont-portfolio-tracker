@@ -5,6 +5,7 @@ import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 /** Column keys the show/hide picker knows about. Not every context offers every column. */
 export type ViewColumn =
   | "project"
+  | "inforNumber"
   | "serviceArea"
   | "owner"
   | "physicianChampion"
@@ -33,15 +34,25 @@ export class ViewSettings {
   /** Always shown, cannot be hidden. */
   static readonly LOCKED_COLUMNS: ReadonlySet<ViewColumn> = new Set<ViewColumn>(["project", "status"]);
 
+  /**
+   * Inline columns render inside another cell instead of taking a table column of their own:
+   * the Infor request number sits on the small meta line under the project name ("Infor 4656 · Updated Sep 24").
+   * Hiding one removes only that piece; its position in the order has no effect.
+   */
+  static readonly INLINE_COLUMNS: ReadonlySet<ViewColumn> = new Set<ViewColumn>(["inforNumber"]);
+
   /** Default order per context. The report groups by service area, so it has no area column. */
   private static readonly DEFAULT_ORDER: Record<ViewContext, readonly ViewColumn[]> = {
-    dashboard: ["project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags"],
-    report: ["project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note"],
+    // inforNumber is inline (meta line under Project), so its place in the order does not matter. It is
+    // last so saved settings from before it existed (normalize appends missing columns) match the defaults.
+    dashboard: ["project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags", "inforNumber"],
+    report: ["project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber"],
   };
 
   private static readonly LABELS: Record<ViewContext, Record<ViewColumn, string>> = {
     dashboard: {
       project: "Project",
+      inforNumber: "Infor request # (under Project)",
       serviceArea: "Service area",
       owner: "Owner",
       physicianChampion: "Physician champion",
@@ -53,6 +64,7 @@ export class ViewSettings {
     },
     report: {
       project: "Project",
+      inforNumber: "Infor request # (under Project)",
       serviceArea: "Service area",
       owner: "Owner",
       physicianChampion: "Physician champion (under Owner)",
@@ -83,6 +95,15 @@ export class ViewSettings {
 
   static columnLabel(context: ViewContext, column: ViewColumn): string {
     return ViewSettings.LABELS[context][column];
+  }
+
+  static isInline(column: ViewColumn): boolean {
+    return ViewSettings.INLINE_COLUMNS.has(column);
+  }
+
+  /** Visible columns that take a table column of their own (inline columns excluded), in display order. */
+  static tableColumns(value: ViewSettingsValue): ViewColumn[] {
+    return ViewSettings.visibleColumns(value).filter((c) => !ViewSettings.isInline(c));
   }
 
   static isLocked(column: ViewColumn): boolean {

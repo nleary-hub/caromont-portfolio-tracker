@@ -48,6 +48,19 @@ export class SampleReportData {
     ["IR", "Sample: Dialysis access clinic", "OnTrack", "Clinic template live", "2026-10-12", "Template built; go-live after scheduler training.", false, null, "2026-09-16"],
   ];
 
+  /** Fake Infor request numbers by seed index (free text, as entered). The rest have none. */
+  private static readonly INFOR: Readonly<Record<number, string>> = {
+    0: "4656",
+    1: "4656 / 5081",
+    3: "4702 / 4703 / 4719 / 4720 / 4788",
+    4: "5012",
+    9: "4981",
+    12: "5104",
+    15: "4870",
+    19: "5033 / 5034",
+    22: "4999",
+  };
+
   static rows(): ReportRow[] {
     const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     const rows = SampleReportData.SEEDS.map(([area, name, status, next, due, note, changed, from, updatedOn], i): ReportRow => {
@@ -68,6 +81,7 @@ export class SampleReportData {
         targetCompletion: null,
         percentComplete: null,
         note: note === "LONG" ? SampleReportData.LONG_NOTE : note,
+        inforRequestNumber: SampleReportData.INFOR[i] ?? null,
         changed,
         overdue,
         updatedOn,

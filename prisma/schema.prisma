@@ -47,6 +47,9 @@ model Project {
   name                   String
   /// What the project is. Optional. Length limit is AppConfig.DESCRIPTION_MAX_LENGTH (200), enforced in app validation.
   description            String?
+  /// Infor request number: optional free text (e.g. "4656" or "4656 / 5081"), stored trimmed, blank = null.
+  /// Length limit is AppConfig.INFOR_REQUEST_NUMBER_MAX_LENGTH (40), enforced in app validation.
+  inforRequestNumber     String?       @map("infor_request_number")
   serviceArea            ServiceArea
   owner                  String
   physicianChampion      String?

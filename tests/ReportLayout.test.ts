@@ -177,6 +177,7 @@ describe("ReportLayout visibility", () => {
       id: name,
       name,
       description: null,
+      inforRequestNumber: null,
       serviceArea: "Cath" as const,
       owner: "Owner A",
       physicianChampion: null,

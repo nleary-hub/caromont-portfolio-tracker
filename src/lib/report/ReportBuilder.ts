@@ -180,6 +180,7 @@ export class ReportBuilder {
       targetCompletion: DateOnly.fromDbDate(project.targetCompletion),
       percentComplete: project.percentComplete,
       note: project.note,
+      inforRequestNumber: project.inforRequestNumber ?? null,
       changed: flags.changed,
       overdue: flags.overdue,
       updatedOn: details.updatedOn ?? null,

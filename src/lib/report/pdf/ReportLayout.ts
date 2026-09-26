@@ -1,5 +1,6 @@
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
+import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ReportHeader, ReportRow } from "@/lib/domain/types";
@@ -76,7 +77,20 @@ export class ReportGeometry {
   /** Minimum width for the note beside the row-2 cells; narrower and it gets its own full-width line. */
   static readonly NOTE_MIN_W = 108;
 
-  static readonly SIZE = { title: 15, body: 9, section: 9, table: 8, small: 7, pill: 7 } as const;
+  static readonly SIZE = { title: 15, body: 9, section: 9, table: 8, small: 7, pill: 7, mono: 6.5 } as const;
+  /** Built-in PDF Courier: every glyph advances 0.6 em. Used for the Infor number (no font embedding needed). */
+  static readonly MONO_ADVANCE_EM = 0.6;
+}
+
+/** One run of text on the project meta line ("Infor " label, the number, separator, "Updated <date>"). */
+export interface MetaRun {
+  text: string;
+  /** x offset from the start of the cell. */
+  x: number;
+  /** mono = Courier (the Infor number); sans = Inter. */
+  font: "sans" | "mono";
+  weight: FontWeight;
+  tone: "muted" | "stale";
 }
 
 export type FlagKind = "changed" | "overdue" | "stale";
@@ -109,7 +123,16 @@ export interface TextLine {
 
 /** One laid-out cell. Positions are relative to the row's top-left (inside the row padding). */
 export type RowCell =
-  | { kind: "project"; x: number; w: number; lines: string[]; updated: string | null; stale: boolean }
+  | {
+      kind: "project";
+      x: number;
+      w: number;
+      lines: string[];
+      updated: string | null;
+      stale: boolean;
+      /** Meta line(s) under the name: "Infor 4656 · Updated Sep 24", wrapped when it does not fit. */
+      meta: MetaRun[][];
+    }
   | { kind: "owner"; x: number; w: number; owner: string; champion: string | null }
   | { kind: "status"; x: number; w: number; pill: PillBox; change: StatusChange | null }
   | { kind: "nextMilestone"; x: number; w: number; lines: string[]; muted: boolean }
@@ -243,6 +266,9 @@ export class ReportLayout {
         { flag: ReportLayout.flag(m, "stale"), meaning: `No update in ${AppConfig.STALE_AFTER_DAYS} or more days before the report date.` },
       ],
       details: [
+        ...(ViewSettings.isColumnVisible(settings, "inforNumber")
+          ? [{ sample: "Infor 4656", meaning: "Infor request number, when the project has one." }]
+          : []),
         { sample: "Updated Sep 22", meaning: "Date of the latest update to the project." },
         { sample: "Updated Sep 1", meaning: `In amber when the project is stale (${AppConfig.STALE_AFTER_DAYS}+ days without an update).` },
         { sample: "\u2193 from On track", meaning: "Status moved since the last report (\u2193 worse, \u2191 better)." },
@@ -317,6 +343,81 @@ export class ReportLayout {
     return { arrow, text: full, lines: [full] };
   }
 
+  /** Width of the Infor number: Courier advance for printable Latin-1, Inter otherwise (see monoSafe). */
+  static monoWidth(m: Measurer, text: string): number {
+    const g = ReportGeometry;
+    return ReportLayout.monoSafe(text)
+      ? Array.from(text).length * g.MONO_ADVANCE_EM * g.SIZE.mono
+      : m.width(text, g.SIZE.mono, 400);
+  }
+
+  /** Built-in Courier covers printable Latin-1 only; any other character falls back to Inter so nothing is lost. */
+  static monoSafe(text: string): boolean {
+    return /^[\x20-\x7E\u00A0-\u00FF]*$/.test(text);
+  }
+
+  /**
+   * The project meta line: "Infor 4656 · Updated Sep 24". The report prints the full number (no
+   * display cap). When everything does not fit on one line, Updated moves to the next line (no
+   * separator), and a number wider than the cell breaks by character. With no number the line is
+   * just "Updated <date>"; with neither, there is no meta line.
+   */
+  static metaLines(m: Measurer, infor: string | null, updated: string | null, stale: boolean, width: number): MetaRun[][] {
+    const g = ReportGeometry;
+    const small = g.SIZE.small;
+    const lines: MetaRun[][] = [];
+    let line: MetaRun[] = [];
+    let x = 0;
+    const put = (run: Omit<MetaRun, "x">, w: number) => {
+      line.push({ ...run, x });
+      x += w;
+    };
+    const breakLine = () => {
+      lines.push(line);
+      line = [];
+      x = 0;
+    };
+    if (infor) {
+      const label = `${InforNumber.LABEL} `;
+      put({ text: label, font: "sans", weight: 400, tone: "muted" }, m.width(label, small, 400));
+      const font = ReportLayout.monoSafe(infor) ? "mono" : "sans";
+      let rest = Array.from(infor);
+      while (rest.length) {
+        let n = rest.length;
+        while (n > 0 && x + ReportLayout.monoWidth(m, rest.slice(0, n).join("")) > width) n -= 1;
+        if (n === 0) {
+          if (x > 0) {
+            breakLine();
+            continue;
+          }
+          n = 1; // a single glyph wider than the cell: draw it anyway rather than loop forever
+        }
+        const chunk = rest.slice(0, n).join("");
+        put({ text: chunk, font, weight: 400, tone: "muted" }, ReportLayout.monoWidth(m, chunk));
+        rest = rest.slice(n);
+        if (rest.length) breakLine();
+      }
+    }
+    if (updated) {
+      const weight: FontWeight = stale ? 500 : 400;
+      const tone = stale ? "stale" : "muted";
+      const w = m.width(updated, small, weight);
+      const sep = " \u00b7 ";
+      const sepW = m.width(sep, small, 400);
+      if (line.length && x + sepW + w <= width) {
+        // Draw only the dot (the PDF renderer trims leading spaces in a text run); the spaces are in the advance.
+        const space = m.width(" ", small, 400);
+        line.push({ text: "\u00b7", font: "sans", weight: 400, tone: "muted", x: x + space });
+        x += sepW;
+      } else if (line.length) {
+        breakLine();
+      }
+      put({ text: updated, font: "sans", weight, tone }, w);
+    }
+    if (line.length) lines.push(line);
+    return lines;
+  }
+
   static rowLayout(m: Measurer, row: ReportRow, settings: ViewSettingsValue, reportDate: string): RowLayout {
     const g = ReportGeometry;
     const S = g.SIZE;
@@ -332,8 +433,11 @@ export class ReportLayout {
         case "project": {
           const lines = TextMeasure.wrap(m, row.name, inner, S.table, 600, 4);
           const updated = row.updatedOn ? `Updated ${ReportFormat.shortDate(row.updatedOn, reportDate)}` : null;
-          projectH = lines.length * g.TABLE_LH + (updated ? g.SMALL_LH : 0);
-          cells.push({ kind: "project", x: col.x, w: inner, lines, updated, stale: Boolean(row.stale) });
+          const infor = ViewSettings.isColumnVisible(settings, "inforNumber") ? InforNumber.normalize(row.inforRequestNumber) : null;
+          const stale = Boolean(row.stale);
+          const meta = ReportLayout.metaLines(m, infor, updated, stale, inner);
+          projectH = lines.length * g.TABLE_LH + meta.length * g.SMALL_LH;
+          cells.push({ kind: "project", x: col.x, w: inner, lines, updated, stale, meta });
           break;
         }
         case "owner": {

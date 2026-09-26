@@ -135,7 +135,7 @@ describe("ImportService: new projects", () => {
   });
 
   it("a file without the description column still imports (description stays empty)", async () => {
-    const cols = ProjectCsv.TEMPLATE_COLUMNS.filter((c) => c !== "description");
+    const cols = ProjectCsv.TEMPLATE_COLUMNS.filter((c) => c !== "description" && c !== "infor_request_number");
     const file = `${cols.join(",")}\nNo desc project,Cath,Owner A,,,On track,Kickoff,,,,\n`;
     const r = await ImportService.commitCreate(file, ADMIN, fake.asClient());
     expect(r.created).toBe(1);

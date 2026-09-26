@@ -10,6 +10,7 @@ import {
   type FlagBox,
   type HeaderModel,
   type KeyModel,
+  type MetaRun,
   type PageLayout,
   type PillBox,
   type RowCell,
@@ -82,6 +83,31 @@ function Line({
       }}
     >
       {text}
+    </Text>
+  );
+}
+
+/** One run of the project meta line. The Infor number uses built-in Courier at 6.5 pt, baseline-aligned with the 7 pt text. */
+function MetaText({ run, x, y, w }: { run: MetaRun; x: number; y: number; w: number }) {
+  const mono = run.font === "mono";
+  const size = mono ? G.SIZE.mono : G.SIZE.small;
+  return (
+    <Text
+      style={{
+        position: "absolute",
+        left: x + run.x,
+        // Same line box as the 7 pt text; nudge the smaller mono run down so baselines line up.
+        top: y + (mono ? (G.SIZE.small - G.SIZE.mono) * 0.8 : 0),
+        width: Math.max(1, w - run.x) + 12,
+        fontFamily: mono ? "Courier" : F,
+        fontSize: size,
+        fontWeight: mono ? undefined : run.weight,
+        lineHeight: G.SMALL_LH / size,
+        color: run.tone === "stale" ? C.STALE.fg : C.MUTED,
+        maxLines: 1,
+      }}
+    >
+      {run.text}
     </Text>
   );
 }
@@ -392,17 +418,10 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
           {cell.lines.map((l, i) => (
             <Line key={i} x={cell.x} y={i * G.TABLE_LH} w={cell.w} text={l} size={S.table} weight={600} lh={G.TABLE_LH} />
           ))}
-          {cell.updated && (
-            <Line
-              x={cell.x}
-              y={cell.lines.length * G.TABLE_LH}
-              w={cell.w}
-              text={cell.updated}
-              size={S.small}
-              weight={cell.stale ? 500 : 400}
-              color={cell.stale ? C.STALE.fg : C.MUTED}
-              lh={G.SMALL_LH}
-            />
+          {cell.meta.map((runs, li) =>
+            runs.map((run, ri) => (
+              <MetaText key={`m${li}-${ri}`} run={run} x={cell.x} y={cell.lines.length * G.TABLE_LH + li * G.SMALL_LH} w={cell.w} />
+            )),
           )}
         </>
       );

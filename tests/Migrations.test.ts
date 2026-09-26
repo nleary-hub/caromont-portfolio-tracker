@@ -63,4 +63,37 @@ describe("migrations (PGlite)", () => {
     ]);
     await db.close();
   }, 30_000);
+
+  it("0011_project_infor_request_number is additive only and is the latest migration", () => {
+    const folders = Migrations.folders();
+    expect(folders.at(-1)).toBe("0011_project_infor_request_number");
+    expect(folders.indexOf("0011_project_infor_request_number")).toBeGreaterThan(folders.indexOf("0010_project_description"));
+    const statements = Migrations.sql("0011_project_infor_request_number")
+      .split("\n")
+      .filter((l) => l.trim() && !l.trim().startsWith("--"));
+    expect(statements).toEqual(['ALTER TABLE "Project" ADD COLUMN     "infor_request_number" TEXT;']);
+  });
+
+  it("infor_request_number is a nullable text column that accepts null and free text", async () => {
+    const db = await Migrations.applyAll();
+    const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
+      `select data_type, is_nullable, column_default from information_schema.columns
+       where table_name = 'Project' and column_name = 'infor_request_number'`,
+    );
+    expect(col.rows).toEqual([{ data_type: "text", is_nullable: "YES", column_default: null }]);
+    await db.query(
+      `insert into "Project" (id, name, infor_request_number, "serviceArea", owner, status, "nextMilestone", "updatedAt", "updatedBy")
+       values (gen_random_uuid(), 'With number', $1, 'EP', 'Owner B', 'OnTrack', 'Kickoff', now(), 'test'),
+              (gen_random_uuid(), 'No number', null, 'Cath', 'Owner A', 'OnTrack', 'Kickoff', now(), 'test')`,
+      ["4656 / 5081"],
+    );
+    const rows = await db.query<{ name: string; infor_request_number: string | null }>(
+      `select name, infor_request_number from "Project" order by name`,
+    );
+    expect(rows.rows).toEqual([
+      { name: "No number", infor_request_number: null },
+      { name: "With number", infor_request_number: "4656 / 5081" },
+    ]);
+    await db.close();
+  }, 30_000);
 });

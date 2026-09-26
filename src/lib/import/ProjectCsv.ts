@@ -13,6 +13,7 @@ export type CsvColumn =
   | "id"
   | "name"
   | "description"
+  | "infor_request_number"
   | "service_area"
   | "owner"
   | "physician_champion"
@@ -60,6 +61,7 @@ export class ProjectCsv {
   static readonly TEMPLATE_COLUMNS: readonly CsvColumn[] = [
     "name",
     "description",
+    "infor_request_number",
     "service_area",
     "owner",
     "physician_champion",
@@ -85,6 +87,7 @@ export class ProjectCsv {
   static readonly FIELD_BY_COLUMN: Readonly<Record<Exclude<CsvColumn, "id">, TemplateField>> = {
     name: "name",
     description: "description",
+    infor_request_number: "inforRequestNumber",
     service_area: "serviceArea",
     owner: "owner",
     physician_champion: "physicianChampion",
@@ -104,6 +107,7 @@ export class ProjectCsv {
     {
       name: "Example: Sample cath lab project (delete this row)",
       description: "Fake example: replace the cath lab 3 imaging system. Optional, up to 200 characters.",
+      infor_request_number: "4656 / 5081",
       service_area: "Cath",
       owner: "Example Owner A",
       physician_champion: "Dr. Example A",
@@ -118,6 +122,7 @@ export class ProjectCsv {
     {
       name: "Example: Sample EP pathway (delete this row)",
       description: "",
+      infor_request_number: "",
       service_area: "EP",
       owner: "Example Owner B",
       physician_champion: "",
@@ -161,6 +166,7 @@ export class ProjectCsv {
       id: p.id,
       name: p.name,
       description: p.description ?? "",
+      infor_request_number: p.inforRequestNumber ?? "",
       service_area: ServiceAreaInfo.label(p.serviceArea),
       owner: p.owner,
       physician_champion: p.physicianChampion ?? "",

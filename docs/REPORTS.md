@@ -77,6 +77,11 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
   or the page 2+ count strip and are not counted anywhere (area totals, All areas, "Projects: N across
   M", Overdue, Changed, Stale). Turning a status on in the report view settings adds its column and
   counts. `ReportLayout` recomputes every count from the listed rows, so counts always match the page.
+- Project meta line: "Infor 4656 · Updated Sep 22". "Infor " in the 7 pt gray text, the number in built-in
+  Courier at 6.5 pt, printed in full (no cap). If it does not fit, Updated moves to the next line (and a
+  number wider than the cell breaks by character). No number, or the "Infor request #" column hidden in the
+  report view settings, drops the whole "Infor N · " prefix. Stale amber is on the Updated date only.
+  Snapshots frozen before migration 0011 have no number and print as before.
 - Row details that exist in data today: "Updated <date>" (latest public change), "from <status>" with an
   arrow when the status moved since the last report (wraps under the pill, never truncated), "No
   change." for unchanged rows.

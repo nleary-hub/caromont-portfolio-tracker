@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import type { ServiceArea, ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
@@ -57,9 +58,12 @@ interface ColumnSpec {
   cell: (r: DashboardRow, td: string) => ReactNode;
 }
 
+/** Columns that take a table column of their own (inline ones such as the Infor number render in the Project cell). */
+type TableColumn = Exclude<ViewColumn, "inforNumber">;
+
 /** Dashboard table columns, rendered in the order and visibility from the dashboard view settings. */
 class DashboardColumns {
-  static readonly SPECS: Record<ViewColumn, ColumnSpec> = {
+  static readonly SPECS: Record<TableColumn, ColumnSpec> = {
     // The table renders the project cell itself (selection bar); this is the plain fallback.
     project: { header: "Project", width: "w-[256px]", cell: (r, td) => <td className={td}>{r.name}</td> },
     serviceArea: {
@@ -145,7 +149,9 @@ export function ProjectDashboard({
 
   const summary = useMemo(() => DashboardViewModel.summarize(rows), [rows]);
   const visible = useMemo(() => DashboardViewModel.filter(rows, area, query), [rows, area, query]);
-  const columns = settings ? ViewSettings.visibleColumns(settings.dashboard) : columnsProp;
+  const visibleColumns = settings ? ViewSettings.visibleColumns(settings.dashboard) : columnsProp;
+  const columns = visibleColumns.filter((c): c is TableColumn => !ViewSettings.isInline(c));
+  const showInfor = visibleColumns.includes("inforNumber");
   const selected = rows.find((r) => r.id === selectedId) ?? null;
 
   /** Optimistic: apply locally, persist, roll back on failure. */
@@ -333,7 +339,8 @@ export function ProjectDashboard({
                             key={c}
                             className={`${td} type-table-strong ${isSel ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}
                           >
-                            {r.name}
+                            <div className="truncate">{r.name}</div>
+                            <ProjectMetaLine row={r} showInfor={showInfor} />
                           </td>
                         ) : (
                           <Fragment key={c}>{DashboardColumns.SPECS[c].cell(r, td)}</Fragment>
@@ -372,6 +379,31 @@ export function ProjectDashboard({
             ) : null
           }
         />
+      )}
+    </div>
+  );
+}
+
+/**
+ * Small gray line under the project name: "Infor 4656 · Updated Sep 24". The number is monospace,
+ * 9px (one step under the 10px meta text) and slightly brighter; long values are cut at
+ * AppConfig.INFOR_DISPLAY_MAX_CHARS with the full value on hover. With no number (or the Infor
+ * column hidden) the whole "Infor N · " prefix is omitted. Stale amber applies to the Updated date only.
+ */
+export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInfor: boolean }) {
+  const infor = showInfor ? InforNumber.display(row.inforRequestNumber) : null;
+  const updated = DateFormat.short(row.updatedOn);
+  if (!infor && !updated) return null;
+  return (
+    <div className="truncate text-[10px] leading-3 font-normal text-muted">
+      {infor && (
+        <span title={infor.full} data-testid="infor-number">
+          {InforNumber.LABEL} <span className="font-mono text-[9px] text-[#B8BEC8]">{infor.text}</span>
+        </span>
+      )}
+      {infor && updated && " · "}
+      {updated && (
+        <span className={row.stale ? "font-medium text-(--status-at-risk-dark-fg)" : undefined}>Updated {updated}</span>
       )}
     </div>
   );
@@ -416,6 +448,8 @@ function ProjectDrawer({
       <dl className="grid grid-cols-[130px_1fr] gap-y-2 border-y border-line py-3 type-table">
         <dt className="text-muted">Service area</dt>
         <dd>{ServiceAreaInfo.label(row.serviceArea)}</dd>
+        <dt className="text-muted">Infor request #</dt>
+        <dd className="break-words">{row.inforRequestNumber ?? "–"}</dd>
         <dt className="text-muted">Owner</dt>
         <dd>{row.owner}</dd>
         <dt className="text-muted">Physician champion</dt>

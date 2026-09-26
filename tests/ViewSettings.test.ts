@@ -13,10 +13,10 @@ describe("ViewSettings defaults", () => {
 
   it("offers per-context columns in the agreed default order", () => {
     expect(ViewSettings.defaults("dashboard").columnOrder).toEqual([
-      "project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags",
+      "project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags", "inforNumber",
     ]);
     expect(ViewSettings.defaults("report").columnOrder).toEqual([
-      "project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note",
+      "project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber",
     ]);
     expect(ViewSettings.columnLabel("report", "note")).toBe("Note");
   });
@@ -35,7 +35,7 @@ describe("ViewSettings.normalize", () => {
       hiddenColumns: ["project", "status", "note", "serviceArea", "nope"],
       hiddenStatuses: ["Cancelled", "Complete", "Nope", "OnHold"],
     });
-    expect(v.columnOrder).toEqual(["due", "project", "owner", "physicianChampion", "status", "nextMilestone", "flags", "note"]);
+    expect(v.columnOrder).toEqual(["due", "project", "owner", "physicianChampion", "status", "nextMilestone", "flags", "note", "inforNumber"]);
     expect(v.hiddenColumns).toEqual(["note"]);
     expect(v.hiddenStatuses).toEqual(["OnHold", "Complete", "Cancelled"]);
   });
@@ -81,12 +81,17 @@ describe("ViewSettings edits", () => {
 });
 
 describe("migration 0002 seed rows", () => {
-  it("match ViewSettings.defaults() for both contexts", async () => {
+  /** Columns added after 0002 seeded the rows. normalize() appends them, so seeded rows still equal the defaults. */
+  const ADDED_AFTER_0002 = ["inforNumber"];
+
+  it("match ViewSettings.defaults() for both contexts (after normalize adds later columns)", async () => {
     const { readFileSync } = await import("node:fs");
     const sql = readFileSync("prisma/migrations/0002_view_settings/migration.sql", "utf8");
     for (const c of ViewSettings.CONTEXTS) {
       const d = ViewSettings.defaults(c);
-      const order = d.columnOrder.map((k) => `'${k}'`).join(", ");
+      const seeded = d.columnOrder.filter((k) => !ADDED_AFTER_0002.includes(k));
+      expect(ViewSettings.normalize(c, { columnOrder: seeded, hiddenColumns: [], hiddenStatuses: d.hiddenStatuses })).toEqual(d);
+      const order = seeded.map((k) => `'${k}'`).join(", ");
       const statuses = d.hiddenStatuses.map((s) => `'${s}'`).join(", ");
       expect(sql).toContain(`('${c}',\n     ARRAY[${order}],\n     ARRAY[]::TEXT[],\n     ARRAY[${statuses}]::"ProjectStatus"[]`);
     }

@@ -10,6 +10,8 @@ export interface ProjectInput {
   name: string;
   /** Optional "what the project is" text, max AppConfig.DESCRIPTION_MAX_LENGTH. */
   description?: string | null;
+  /** Optional free-text Infor request number, max AppConfig.INFOR_REQUEST_NUMBER_MAX_LENGTH. Blank = null. */
+  inforRequestNumber?: string | null;
   serviceArea: ServiceArea | string;
   owner: string;
   physicianChampion?: string | null;
@@ -27,6 +29,7 @@ export interface ProjectInput {
 export interface ProjectData {
   name: string;
   description: string | null;
+  inforRequestNumber: string | null;
   serviceArea: ServiceArea;
   owner: string;
   physicianChampion: string | null;
@@ -63,6 +66,7 @@ export class ProjectValidator {
   static readonly NAME_MAX = AppConfig.SHORT_TEXT_MAX_LENGTH;
   static readonly MILESTONE_MAX = AppConfig.MILESTONE_MAX_LENGTH;
   static readonly DESCRIPTION_MAX = AppConfig.DESCRIPTION_MAX_LENGTH;
+  static readonly INFOR_MAX = AppConfig.INFOR_REQUEST_NUMBER_MAX_LENGTH;
 
   private static readonly schema = ProjectValidator.buildSchema();
 
@@ -90,6 +94,7 @@ export class ProjectValidator {
     return {
       name: project.name,
       description: project.description,
+      inforRequestNumber: project.inforRequestNumber,
       serviceArea: project.serviceArea,
       owner: project.owner,
       physicianChampion: project.physicianChampion,
@@ -144,6 +149,10 @@ export class ProjectValidator {
         description: ProjectValidator.optionalText({
           label: "Description",
           length: ProjectValidator.DESCRIPTION_MAX,
+        }),
+        inforRequestNumber: ProjectValidator.optionalText({
+          label: "Infor request number",
+          length: ProjectValidator.INFOR_MAX,
         }),
         serviceArea: z.enum(ServiceArea, { error: "Service area must be one of the defined areas" }),
         owner: ProjectValidator.requiredText("Owner", ProjectValidator.NAME_MAX),

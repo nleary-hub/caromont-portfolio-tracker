@@ -12,6 +12,7 @@ export class HistoryDiff {
   static readonly TRACKED_FIELDS = [
     "name",
     "description",
+    "inforRequestNumber",
     "serviceArea",
     "owner",
     "physicianChampion",
