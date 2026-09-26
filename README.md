@@ -205,7 +205,7 @@ the URL directly.
   `name, service_area, status` (a `department` header is read as `service_area`; a blank value or
   `Unassigned` means no department, shown as the Unassigned group, last). `owner` is optional
   (blank or missing = "To assign"); a blank `status` on a new project means On track. The two `Example:` rows are fake and are skipped.
-  - `service_area`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR. `status`: Not started, On track, At risk,
+  - `service_area`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR (also `Cath Lab` and `EP Lab`, `ServiceAreaInfo.ALIASES`). `status`: Not started, On track, At risk,
     Off track, On hold, Complete, Cancelled. Case and spaces do not matter (`on track`, `OnTrack`).
   - `due_date`: YYYY-MM-DD or M/D/YYYY. `percent_complete`: 0 to 100 (a trailing % is fine).
     `include_in_report`: yes/no (blank = yes). `description` is optional (blank is fine; the column

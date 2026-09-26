@@ -7,6 +7,7 @@ import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { CompletedRow, ReportRow } from "@/lib/domain/types";
 import { ExportService } from "@/lib/import/ExportService";
 import { ImportService } from "@/lib/import/ImportService";
+import { ProjectCsv } from "@/lib/import/ProjectCsv";
 import { HandoffBuilder } from "@/lib/report/HandoffBuilder";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
@@ -44,6 +45,16 @@ describe("Unassigned department", () => {
       expect(r.ok && r.data.serviceArea, String(serviceArea)).toBeNull();
     }
     expect(ProjectValidator.validate({ ...base, serviceArea: "Cardiology" }).ok).toBe(false);
+  });
+
+  it("CSV department accepts display names (Cath Lab, EP Lab, ...) in any case, plus enum values", () => {
+    const cases: [string, string][] = [
+      ["Cath Lab", "Cath"], ["cath lab", "Cath"], ["CATHLAB", "Cath"], ["Cath", "Cath"],
+      ["EP Lab", "EP"], ["ep lab", "EP"], ["EP", "EP"],
+      ["echo", "Echo"], ["cvss", "CVSS"], ["Inu", "INU"], ["cardioneuro", "CardioNeuro"], ["Cardio Neuro", "CardioNeuro"], ["ir", "IR"],
+    ];
+    for (const [raw, want] of cases) expect(ProjectCsv.resolveServiceArea(raw), raw).toBe(want);
+    expect(ProjectCsv.resolveServiceArea("Cath Lab 2")).toBeNull();
   });
 
   it("CSV: blank or 'Unassigned' imports as null; export writes blank; round trip keeps it", async () => {

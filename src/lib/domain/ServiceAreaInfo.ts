@@ -27,6 +27,15 @@ export class ServiceAreaInfo {
     IR: "IR",
   };
 
+  /**
+   * Other names accepted for a department on import (display names used in the tracker spreadsheet), in
+   * addition to the enum values and labels. Matched ignoring case, spaces and punctuation.
+   */
+  static readonly ALIASES: Readonly<Record<string, ServiceArea>> = {
+    "Cath Lab": "Cath",
+    "EP Lab": "EP",
+  };
+
   static all(): readonly ServiceArea[] {
     return ServiceAreaInfo.ORDER;
   }

@@ -401,7 +401,12 @@ export class ProjectCsv {
   /** Case- and whitespace-insensitive match against enum keys and display labels. */
   static resolveServiceArea(value: string): ServiceArea | null {
     const key = ProjectCsv.enumKey(value);
-    return (Object.values(ServiceArea) as ServiceArea[]).find((a) => ProjectCsv.enumKey(a) === key) ?? null;
+    const direct = (Object.values(ServiceArea) as ServiceArea[]).find(
+      (a) => ProjectCsv.enumKey(a) === key || ProjectCsv.enumKey(ServiceAreaInfo.label(a)) === key,
+    );
+    if (direct) return direct;
+    const alias = Object.entries(ServiceAreaInfo.ALIASES).find(([name]) => ProjectCsv.enumKey(name) === key);
+    return alias ? alias[1] : null;
   }
 
   static resolveStatus(value: string): ProjectStatus | null {
