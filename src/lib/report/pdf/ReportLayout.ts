@@ -3,7 +3,7 @@ import { AppConfig } from "@/lib/config/AppConfig";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
-import type { ReportHeader, ReportRow } from "@/lib/domain/types";
+import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { PdfReportLayout, type LayoutColumn } from "@/lib/report/PdfReportLayout";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
@@ -28,6 +28,11 @@ export interface ReportDocInput {
   exampleData?: boolean;
   /** Append the status and flag key as the last page (admin report option, default on). */
   showKeyPage?: boolean;
+  /**
+   * "Completed this period" rows (listed in a block at the end of each department group). Undefined for
+   * snapshots frozen before migration 0012: no blocks and no count on page 1.
+   */
+  completed?: readonly CompletedRow[];
 }
 
 /** Geometry in PDF points (1 in = 72 pt). Mirrors portfolio-tracker-mockups/report.css. */
@@ -97,6 +102,49 @@ export interface MetaRun {
   tone: "muted" | "stale";
 }
 
+/**
+ * "Completed this period" block styling (design: portfolio-tracker-mockups/completed-period.png). A designer
+ * refines these later, so every value lives here.
+ */
+export class CompletedBlockStyle {
+  static readonly SPACE_ABOVE = 5;
+  static readonly FILL = "#F4FBFA";
+  /** --status-complete-light-bg */
+  static readonly BORDER = "#D6F1EE";
+  static readonly BORDER_W = 0.75;
+  /** --status-complete-light-fg (heading, left edge, check and date) */
+  static readonly ACCENT = "#0E6961";
+  static readonly EDGE_W = 2;
+  static readonly RADIUS = 2;
+  static readonly SEPARATOR = "#D9EEEB";
+  static readonly SEPARATOR_W = 0.5;
+  static readonly HEADER_H = 15;
+  /** Left inset of the project column text inside the container (clears the left edge). */
+  static readonly INSET = 6;
+  static readonly HEADING = "COMPLETED THIS PERIOD";
+  static readonly NOTE = "Shown once, then moves to the Completed section";
+  static readonly HEADING_SIZE = 7;
+  static readonly CHECK = 7;
+  static readonly ACCOMPLISHMENT_MAX_LINES = 2;
+  static readonly NAME_MAX_LINES = 3;
+  static readonly NO_CHAMPION = "No champion";
+}
+
+/** One laid-out row of a "Completed this period" block. x values are relative to the content left. */
+export interface CompletedRowLayout {
+  projectId: string;
+  /** y relative to the block top. */
+  y: number;
+  height: number;
+  name: { x: number; w: number; lines: string[] };
+  /** REQ number in the Infor slot under the name (null when none or hidden). */
+  req: MetaRun | null;
+  owner: { x: number; w: number; owner: string; champion: string | null } | null;
+  /** Check and completion date ("Sep 22"), in the status column. */
+  date: { x: number; w: number; text: string } | null;
+  accomplishment: { x: number; w: number; lines: string[] } | null;
+}
+
 export type FlagKind = "changed" | "overdue" | "stale";
 
 export interface StatusChange {
@@ -154,7 +202,18 @@ export interface RowLayout {
 }
 
 export type BodyBlock =
-  | { kind: "section"; y: number; height: number; area: ServiceArea; label: string; count: number; continued: boolean }
+  | {
+      kind: "section";
+      y: number;
+      height: number;
+      area: ServiceArea;
+      label: string;
+      count: number;
+      /** Rows in this area's "Completed this period" block (not part of `count` or any status count). */
+      completedCount: number;
+      continued: boolean;
+    }
+  | { kind: "completed"; y: number; height: number; area: ServiceArea; headerH: number; rows: CompletedRowLayout[] }
   | { kind: "row"; y: number; height: number; area: ServiceArea; row: RowLayout }
   | { kind: "empty"; y: number; height: number; text: string };
 
@@ -186,6 +245,13 @@ export interface HeaderModel {
   reportDateMedium: string;
   period: string | null;
   projectsLine: string;
+  /** "Completed this period N" beside the Projects line on page 1. Null for snapshots before 0012. */
+  completedCount: number | null;
+  /**
+   * Where "[check] Completed this period N" goes: meta row index and x relative to the value start. Beside the
+   * Projects value when it fits, otherwise on its own row under it (value column). Null when not shown.
+   */
+  completedAt: { row: number; x: number } | null;
   preparedBy: string;
   badge: "DRAFT" | "EXAMPLE DATA" | null;
   draftLine: string | null;
@@ -237,6 +303,9 @@ export interface DocumentLayout {
  */
 export class ReportLayout {
   static readonly PREPARED_BY = "Cardiac Procedure Services";
+  static readonly COMPLETED_META_LABEL = "Completed this period";
+  /** Space between the Projects value and the completed count on page 1. */
+  static readonly COMPLETED_META_GAP = 14;
 
   private static readonly COLUMN_LABELS: Record<LayoutColumn["key"], { label: string; sub: (s: ViewSettingsValue) => string | null }> = {
     project: { label: "PROJECT", sub: () => null },
@@ -278,6 +347,7 @@ export class ReportLayout {
         { sample: "\u2193 from On track", meaning: "Status moved since the last report (\u2193 worse, \u2191 better)." },
         { sample: "No change.", meaning: "Nothing changed since the last report; the note is repeated in gray." },
         { sample: "Due in red", meaning: "Overdue due date." },
+        { sample: "Completed this period", meaning: "Completed since the last report. Listed once, not in the status counts." },
       ],
       footnote: "Status is always shown as text and a shape, never color alone. Counts include only the projects listed in this report.",
     };
@@ -463,6 +533,89 @@ export class ReportLayout {
     return { projectId: row.projectId, height: g.ROW_PAD * 2 + content + g.ROW_BORDER, cells, note, lineTwoY };
   }
 
+  /** Section head count text: "2 projects · 2 completed this period" (second part only when non-zero). */
+  static sectionCountText(count: number, completedCount: number): string {
+    const projects = `${count} ${count === 1 ? "project" : "projects"}`;
+    if (completedCount === 0) return projects;
+    const completed = `${completedCount} completed this period`;
+    return count === 0 ? completed : `${projects} \u00b7 ${completed}`;
+  }
+
+  /**
+   * One "Completed this period" row, aligned to the report columns: project name (bold) with the REQ slot
+   * under it, owner with champion under it, a check and the completion date in the status column, and the
+   * accomplishment from the next milestone column to the right edge (max 2 lines).
+   */
+  static completedRowLayout(m: Measurer, row: CompletedRow, settings: ViewSettingsValue, reportDate: string, y: number): CompletedRowLayout {
+    const g = ReportGeometry;
+    const S = g.SIZE;
+    const st = CompletedBlockStyle;
+    const cols = ReportLayout.columns(settings);
+    const col = (k: LayoutColumn["key"]) => cols.find((c) => c.key === k) ?? null;
+    const project = col("project")!;
+    const nameX = project.x + st.INSET;
+    const nameW = project.w - st.INSET - g.CELL_PAD_R;
+    const lines = TextMeasure.wrap(m, row.name, nameW, S.table, 600, st.NAME_MAX_LINES);
+    const showInfor = ViewSettings.isColumnVisible(settings, "inforNumber");
+    const reqText = showInfor ? InforNumber.format(row.inforRequestNumber) : null;
+    const req: MetaRun | null = reqText ? { text: reqText, x: 0, font: "mono", weight: 400, tone: "muted" } : null;
+    let h = lines.length * g.TABLE_LH + (req ? g.SMALL_LH : 0);
+
+    const ownerCol = col("owner");
+    let owner: CompletedRowLayout["owner"] = null;
+    if (ownerCol) {
+      const w = ownerCol.w - g.CELL_PAD_R;
+      const champion = PdfReportLayout.showsChampion(settings)
+        ? TextMeasure.fitLine(m, row.physicianChampion ?? st.NO_CHAMPION, w, S.small, 400)
+        : null;
+      owner = { x: ownerCol.x, w, owner: TextMeasure.fitLine(m, row.owner, w, S.table, 400), champion };
+      h = Math.max(h, g.TABLE_LH + (champion ? g.LINE_GAP + g.SMALL_LH : 0));
+    }
+
+    const statusCol = col("status");
+    const date = statusCol
+      ? { x: statusCol.x, w: statusCol.w - g.CELL_PAD_R, text: ReportFormat.shortDate(row.completedOn, reportDate) }
+      : null;
+
+    // Accomplishment: from the next milestone column (or the first column after project/owner/status) to the edge.
+    const startCol = col("nextMilestone") ?? cols.find((c) => !["project", "owner", "status"].includes(c.key)) ?? null;
+    const accX = startCol ? startCol.x : ReportLayout.completedFallbackX(cols);
+    const accW = g.CONTENT_W - accX - g.CELL_PAD_R;
+    let accomplishment: CompletedRowLayout["accomplishment"] = null;
+    if (row.accomplishment && accW > 40) {
+      const accLines = TextMeasure.wrap(m, row.accomplishment, accW, S.table, 400, st.ACCOMPLISHMENT_MAX_LINES);
+      accomplishment = { x: accX, w: accW, lines: accLines };
+      h = Math.max(h, accLines.length * g.TABLE_LH);
+    }
+    return {
+      projectId: row.projectId,
+      y,
+      height: g.ROW_PAD * 2 + h + st.SEPARATOR_W,
+      name: { x: nameX, w: nameW, lines },
+      req,
+      owner,
+      date,
+      accomplishment,
+    };
+  }
+
+  private static completedFallbackX(cols: { key: LayoutColumn["key"]; x: number; w: number }[]): number {
+    const last = cols.filter((c) => ["project", "owner", "status"].includes(c.key)).at(-1)!;
+    return last.x + last.w;
+  }
+
+  /** The whole block for one area (header plus rows). Never split across pages. */
+  static completedBlock(m: Measurer, area: ServiceArea, rows: readonly CompletedRow[], settings: ViewSettingsValue, reportDate: string): Extract<BodyBlock, { kind: "completed" }> {
+    const st = CompletedBlockStyle;
+    let y = st.SPACE_ABOVE + st.HEADER_H;
+    const laid = rows.map((r) => {
+      const l = ReportLayout.completedRowLayout(m, r, settings, reportDate, y);
+      y += l.height;
+      return l;
+    });
+    return { kind: "completed", y: 0, height: y + 2, area, headerH: st.HEADER_H, rows: laid };
+  }
+
   static header(m: Measurer, input: ReportDocInput, header: ReportHeader): HeaderModel {
     const g = ReportGeometry;
     const settings = input.viewSettings;
@@ -521,24 +674,46 @@ export class ReportLayout {
       ["Projects", projectsLine],
       ["Prepared by", ReportLayout.PREPARED_BY],
     ];
+    let meta = ReportLayout.meta(m, metaRows, metaWidth);
+    let completedAt: HeaderModel["completedAt"] = null;
+    if (input.completed) {
+      const projectsRow = metaRows.findIndex(([k]) => k === "Projects");
+      const x = ReportLayout.completedLabelX(m, meta, projectsLine, metaWidth, input.completed.length);
+      if (x !== null) completedAt = { row: projectsRow, x };
+      else {
+        metaRows.splice(projectsRow + 1, 0, ["", ""]);
+        meta = { ...meta, rows: metaRows };
+        completedAt = { row: projectsRow + 1, x: 0 };
+      }
+    }
     return {
       title: PdfReportLayout.TITLE,
       reportDateLong: ReportFormat.longDate(input.reportDate),
       reportDateMedium: ReportFormat.mediumDate(input.reportDate),
       period,
       projectsLine,
+      completedCount: input.completed ? input.completed.length : null,
+      completedAt,
       preparedBy: ReportLayout.PREPARED_BY,
       badge: input.draft ? "DRAFT" : input.exampleData ? "EXAMPLE DATA" : null,
       draftLine: input.draft ? `Draft, generated ${generated}. Not an official snapshot.` : null,
       grid: { columns, rows: [...areaRows, totalRow], width: gridWidth },
       metaWidth,
-      meta: ReportLayout.meta(m, metaRows, metaWidth),
+      meta,
       strip,
       columns: cols,
       footerLeft: `${input.draft ? "Draft" : "Generated"} ${generated} \u00b7 ${PdfReportLayout.TITLE}${
         input.exampleData ? " \u00b7 Example data (fictional sample projects)" : ""
       }`,
     };
+  }
+
+  /** Where "[check] Completed this period N" starts after the Projects value, or null if it would not fit. */
+  static completedLabelX(m: Measurer, meta: HeaderModel["meta"], projectsLine: string, metaWidth: number, count: number): number | null {
+    const st = CompletedBlockStyle;
+    const x = m.width(projectsLine, meta.size, 500) + ReportLayout.COMPLETED_META_GAP;
+    const w = st.CHECK + 3 + m.width(`${ReportLayout.COMPLETED_META_LABEL} ${count}`, meta.size, 700);
+    return meta.keyWidth + x + w <= metaWidth ? x : null;
   }
 
   /** 9 pt meta when keys and values fit beside the grid, else 8 pt (values clip with an ellipsis as a last resort). */
@@ -591,7 +766,9 @@ export class ReportLayout {
 
   static firstHeaderHeight(input: ReportDocInput): number {
     const g = ReportGeometry;
-    const meta = 4 * g.META_ROW_H + 3 * g.META_GAP + 6 + 3 * g.LEGEND_LINE_H;
+    // Up to one extra meta row for "Completed this period N" (still shorter than the grid).
+    const rows = input.completed ? 5 : 4;
+    const meta = rows * g.META_ROW_H + (rows - 1) * g.META_GAP + 6 + 3 * g.LEGEND_LINE_H;
     const grid = g.GRID_HEAD_H + (ServiceAreaInfo.all().length + 1) * g.GRID_ROW_H + 1;
     return g.TITLE_BAR_H + (input.draft ? g.DRAFT_LINE_H : 0) + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
   }
@@ -641,32 +818,47 @@ export class ReportLayout {
     newPage();
 
     const sectionH = (atTop: boolean) => (atTop ? 0 : g.SECTION_MT) + g.SECTION_H;
-    const pushSection = (area: ServiceArea, count: number, continued: boolean) => {
+    const completed = input.completed ?? [];
+    const pushSection = (area: ServiceArea, count: number, completedCount: number, continued: boolean) => {
       const h = sectionH(y === 0);
-      page.blocks.push({ kind: "section", y, height: h, area, label: ServiceAreaInfo.label(area), count, continued });
+      page.blocks.push({ kind: "section", y, height: h, area, label: ServiceAreaInfo.label(area), count, completedCount, continued });
       y += h;
     };
 
-    if (input.rows.length === 0) {
+    if (input.rows.length === 0 && completed.length === 0) {
       page.blocks.push({ kind: "empty", y: 0, height: 20, text: "No projects to report." });
     }
 
     for (const area of ServiceAreaInfo.all()) {
       const rows = input.rows.filter((r) => r.serviceArea === area);
-      if (rows.length === 0) continue;
+      const done = completed.filter((c) => c.serviceArea === area);
+      if (rows.length === 0 && done.length === 0) continue;
       rows.forEach((row, i) => {
         const layout = ReportLayout.rowLayout(m, row, input.viewSettings, input.reportDate);
         if (i === 0) {
           // Keep the section head with its first row.
           if (y > 0 && y + sectionH(false) + layout.height > page.bodyHeight) newPage();
-          pushSection(area, rows.length, false);
+          pushSection(area, rows.length, done.length, false);
         } else if (y + layout.height > page.bodyHeight) {
           newPage();
-          pushSection(area, rows.length, true);
+          pushSection(area, rows.length, done.length, true);
         }
         page.blocks.push({ kind: "row", y, height: layout.height, area, row: layout });
         y += layout.height;
       });
+      if (done.length) {
+        // "Completed this period" at the end of the group, never split across pages.
+        const block = ReportLayout.completedBlock(m, area, done, input.viewSettings, input.reportDate);
+        if (rows.length === 0) {
+          if (y > 0 && y + sectionH(false) + block.height > page.bodyHeight) newPage();
+          pushSection(area, 0, done.length, false);
+        } else if (y + block.height > page.bodyHeight) {
+          newPage();
+          pushSection(area, rows.length, done.length, true);
+        }
+        page.blocks.push({ ...block, y });
+        y += block.height;
+      }
     }
 
     const key = input.showKeyPage ? ReportLayout.key(m, input.viewSettings) : null;

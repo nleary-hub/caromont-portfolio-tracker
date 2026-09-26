@@ -1,5 +1,5 @@
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
-import type { ReportRow } from "@/lib/domain/types";
+import type { CompletedRow, ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import type { ReportDocInput } from "@/lib/report/pdf/ReportLayout";
@@ -92,6 +92,46 @@ export class SampleReportData {
     return ReportBuilder.sort(rows);
   }
 
+  /** Fictional "Completed this period" rows (two in Cath, one in EP; one without a REQ number or champion). */
+  static completed(): CompletedRow[] {
+    return [
+      {
+        projectId: "sample-done-1",
+        name: "Sample: Hemodynamic system replacement",
+        serviceArea: "Cath",
+        owner: "Owner C",
+        accomplishment:
+          "New hemodynamic system live in all four procedure rooms 9/22; 212 cases recorded in the first two weeks with no downtime and every tech validated.",
+        completedOn: "2026-09-22",
+        completedInAppOn: "2026-09-23",
+        inforRequestNumber: 4871,
+        physicianChampion: "Dr. Sample K",
+      },
+      {
+        projectId: "sample-done-2",
+        name: "Sample: Vascular closure device standard",
+        serviceArea: "Cath",
+        owner: "Owner D",
+        accomplishment: "Single closure device adopted for all femoral cases 9/17; three vendors reduced to one, with the contract in place before Q2 pricing.",
+        completedOn: "2026-09-17",
+        completedInAppOn: "2026-09-17",
+        inforRequestNumber: null,
+        physicianChampion: null,
+      },
+      {
+        projectId: "sample-done-3",
+        name: "Sample: Loop recorder clinic workflow",
+        serviceArea: "EP",
+        owner: "Owner E",
+        accomplishment: "Remote transmissions now triaged within one business day.",
+        completedOn: "2026-09-24",
+        completedInAppOn: "2026-09-24",
+        inforRequestNumber: 5120,
+        physicianChampion: "Dr. Sample F",
+      },
+    ];
+  }
+
   /**
    * Sample document input with the real default report view settings (Complete and Cancelled
    * hidden). Rows include every sample project; ReportLayout lists and counts only visible statuses,
@@ -110,6 +150,7 @@ export class SampleReportData {
       generatedAt: SampleReportData.GENERATED_AT,
       exampleData: true,
       showKeyPage: true,
+      completed: SampleReportData.completed(),
       ...overrides,
     };
   }

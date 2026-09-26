@@ -2,7 +2,7 @@ import { createElement, type ReactElement } from "react";
 import { Font, renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 import type { ReportSnapshot } from "@/generated/prisma/client";
 import { DateOnly } from "@/lib/domain/DateOnly";
-import type { ReportHeader, ReportRow } from "@/lib/domain/types";
+import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
 import { ReportDocument } from "@/lib/report/pdf/ReportDocument";
@@ -16,6 +16,8 @@ export interface ReportRenderInput {
   rows: readonly ReportRow[];
   /** Null only for snapshots created before view settings existed. */
   header: ReportHeader | null;
+  /** "Completed this period" rows frozen at generation. Absent (undefined) before migration 0012. */
+  completed?: readonly CompletedRow[];
   /** Report-context settings frozen at generation (column order and visibility). */
   viewSettings: ViewSettingsValue;
   /** Report options frozen at generation (defaults for snapshots before 0004). */
@@ -38,12 +40,13 @@ export class PdfReportRenderer {
 
   /** Rebuild the render input from a stored snapshot (old snapshots fall back to report defaults). */
   static inputFromSnapshot(
-    snapshot: Pick<ReportSnapshot, "id" | "rowsJson" | "headerJson" | "viewSettingsJson" | "optionsJson" | "periodStart" | "periodEnd" | "generatedAt">,
+    snapshot: Pick<ReportSnapshot, "id" | "rowsJson" | "headerJson" | "completedJson" | "viewSettingsJson" | "optionsJson" | "periodStart" | "periodEnd" | "generatedAt">,
   ): ReportRenderInput {
     return {
       snapshotId: snapshot.id,
       rows: snapshot.rowsJson as unknown as ReportRow[],
       header: (snapshot.headerJson as unknown as ReportHeader | null) ?? null,
+      ...(snapshot.completedJson ? { completed: snapshot.completedJson as unknown as CompletedRow[] } : {}),
       viewSettings: ViewSettings.normalize("report", snapshot.viewSettingsJson ?? undefined),
       options: ReportOptionsService.normalize(snapshot.optionsJson),
       periodStart: DateOnly.fromDbDate(snapshot.periodStart)!,
@@ -57,6 +60,7 @@ export class PdfReportRenderer {
     return {
       rows: input.rows,
       header: input.header,
+      ...(input.completed ? { completed: input.completed } : {}),
       viewSettings: input.viewSettings,
       showKeyPage: input.options.showKeyPage,
       reportDate: input.reportDate,

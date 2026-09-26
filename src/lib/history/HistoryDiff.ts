@@ -23,6 +23,8 @@ export class HistoryDiff {
     "targetCompletion",
     "percentComplete",
     "note",
+    "accomplishment",
+    "completedOn",
     "includeInReport",
     "archivedAt",
     "deletedBy",
@@ -31,7 +33,7 @@ export class HistoryDiff {
   ] as const;
 
   /** Fields stored as DATE (serialize as YYYY-MM-DD) vs timestamps (full ISO). */
-  private static readonly DATE_ONLY_FIELDS: ReadonlySet<string> = new Set(["dueDate", "targetCompletion"]);
+  private static readonly DATE_ONLY_FIELDS: ReadonlySet<string> = new Set(["dueDate", "targetCompletion", "completedOn"]);
 
   static serialize(field: string, value: unknown): string | null {
     if (value === null || value === undefined) return null;

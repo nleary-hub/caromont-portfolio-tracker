@@ -24,7 +24,7 @@ class Setup {
     await ProjectService.create({ ...base, name: "Visible ok", serviceArea: "EP", status: "AtRisk" }, actor, db);
     const hidden = await ProjectService.create({ ...base, name: "SecretHidden", dueDate: "2026-09-01" }, actor, db);
     await ProjectService.setHidden(hidden.id, "report", true, Factory.ADMIN, db);
-    await ProjectService.create({ ...base, name: "SecretDone", status: "Complete" }, actor, db);
+    await ProjectService.create({ ...base, name: "Wrapped up", status: "Complete" }, actor, db);
     return { fake, db };
   }
 
@@ -142,6 +142,10 @@ describe("handoff.json", () => {
     expect(h.pdf.fileName).toBe("cardiac-portfolio-report-2026-09-29.pdf");
     const text = JSON.stringify(h);
     expect(text).not.toMatch(/Secret/);
+    // The Complete project is listed once under completedThisPeriod, never in totals or byArea.
+    expect(h.completedThisPeriod.count).toBe(1);
+    expect(h.completedThisPeriod.projects.map((p) => p.name)).toEqual(["Wrapped up"]);
+    expect(JSON.stringify(h.totals)).not.toContain("Wrapped up");
     expect(text).not.toMatch(/"to"|"cc"|missingChampion|Dr\. Sample/i);
     expect(text).not.toContain("\u2014");
   });
@@ -158,7 +162,7 @@ describe("handoff.json", () => {
     age(quiet.id, "2026-09-10T16:00:00Z"); // 19 days before Sep 29
     age(edge.id, "2026-09-16T16:00:00Z"); // 13 days
     // Hidden and Complete projects are old too, but never counted.
-    for (const p of fake.state.projects) if (String(p.name).startsWith("Secret")) age(String(p.id), "2026-08-01T16:00:00Z");
+    for (const p of fake.state.projects) if (String(p.name).startsWith("Secret") || p.name === "Wrapped up") age(String(p.id), "2026-08-01T16:00:00Z");
     await FreezeService.run(Setup.opts(), db);
     const h = Setup.handoff(fake);
     expect(h.flags.stale.count).toBe(1);

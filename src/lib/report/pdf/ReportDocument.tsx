@@ -10,6 +10,7 @@ import {
   type FlagBox,
   type HeaderModel,
   type KeyModel,
+  CompletedBlockStyle,
   type MetaRun,
   type PageLayout,
   type PillBox,
@@ -264,9 +265,22 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
     const ly = top + i * (G.META_ROW_H + G.META_GAP);
     els.push(<Line key={`k${i}`} x={0} y={ly} w={keyWidth} text={k} size={metaSize} color={C.MUTED} lh={G.META_ROW_H} />);
     els.push(<Line key={`v${i}`} x={keyWidth} y={ly} w={valueW} text={v} size={metaSize} weight={500} lh={G.META_ROW_H} />);
+    if (h.completedCount !== null && h.completedAt?.row === i) {
+      const cx = keyWidth + h.completedAt.x;
+      const st = CompletedBlockStyle;
+      els.push(<Check key="cc" x={cx} y={ly + (G.META_ROW_H - st.CHECK) / 2} size={st.CHECK} color={st.ACCENT} />);
+      els.push(
+        <Text
+          key="ct"
+          style={{ position: "absolute", left: cx + st.CHECK + 3, top: ly, width: 200, fontFamily: F, fontSize: metaSize, lineHeight: G.META_ROW_H / metaSize, color: st.ACCENT, maxLines: 1 }}
+        >
+          {ReportLayout.COMPLETED_META_LABEL} <Text style={{ fontWeight: 700 }}>{String(h.completedCount)}</Text>
+        </Text>,
+      );
+    }
   });
   // Legend
-  const ly = top + 4 * G.META_ROW_H + 3 * G.META_GAP + 6;
+  const ly = top + meta.length * G.META_ROW_H + (meta.length - 1) * G.META_GAP + 6;
   const changed: FlagBox = h.grid.columns.find((c) => c.key === "changed")!.flag!;
   const overdue: FlagBox = h.grid.columns.find((c) => c.key === "overdue")!.flag!;
   const stale: FlagBox = h.grid.columns.find((c) => c.key === "stale")!.flag!;
@@ -513,12 +527,91 @@ function Row({ row, y }: { row: RowLayout; y: number }) {
   );
 }
 
+/** Check shape (the Complete status shape) at 10-unit viewBox scale. */
+function Check({ x, y, size, color }: { x: number; y: number; size: number; color: string }) {
+  return (
+    <View style={{ position: "absolute", left: x, top: y, width: size, height: size }}>
+      <Shape status="Complete" size={size} color={color} />
+    </View>
+  );
+}
+
+/** "Completed this period" block: tinted container, header line, then one row per completed project. */
+function CompletedBlock({ block, top }: { block: Extract<BodyBlock, { kind: "completed" }>; top: number }) {
+  const S = G.SIZE;
+  const st = CompletedBlockStyle;
+  const y0 = top + block.y + st.SPACE_ABOVE;
+  const h = block.height - st.SPACE_ABOVE;
+  return (
+    <View wrap={false} style={{ position: "absolute", left: 0, top: y0, width: G.CONTENT_W, height: h }}>
+      <View
+        style={{
+          position: "absolute",
+          left: 0,
+          top: 0,
+          width: G.CONTENT_W,
+          height: h,
+          backgroundColor: st.FILL,
+          borderWidth: st.BORDER_W,
+          borderColor: st.BORDER,
+          borderLeftWidth: st.EDGE_W,
+          borderLeftColor: st.ACCENT,
+          borderRadius: st.RADIUS,
+        }}
+      />
+      <Check x={st.INSET} y={(st.HEADER_H - st.CHECK) / 2} size={st.CHECK} color={st.ACCENT} />
+      <Line
+        x={st.INSET + st.CHECK + 3}
+        y={(st.HEADER_H - G.SMALL_LH) / 2}
+        w={200}
+        text={st.HEADING}
+        size={st.HEADING_SIZE}
+        weight={600}
+        color={st.ACCENT}
+        lh={G.SMALL_LH}
+      />
+      <Line x={G.CONTENT_W - 306} y={(st.HEADER_H - G.SMALL_LH) / 2} w={300} text={st.NOTE} size={st.HEADING_SIZE} color={st.ACCENT} lh={G.SMALL_LH} align="right" />
+      {block.rows.map((r) => {
+        const ry = r.y - st.SPACE_ABOVE;
+        const inner = ry + G.ROW_PAD;
+        return (
+          <View key={r.projectId} style={{ position: "absolute", left: 0, top: 0, width: G.CONTENT_W, height: h }}>
+            <Rule y={ry} h={st.SEPARATOR_W} color={st.SEPARATOR} x={st.EDGE_W} w={G.CONTENT_W - st.EDGE_W - st.BORDER_W} />
+            {r.name.lines.map((l, i) => (
+              <Line key={`n${i}`} x={r.name.x} y={inner + i * G.TABLE_LH} w={r.name.w} text={l} size={S.table} weight={600} lh={G.TABLE_LH} />
+            ))}
+            {r.req && <MetaText run={r.req} x={r.name.x} y={inner + r.name.lines.length * G.TABLE_LH} w={r.name.w} />}
+            {r.owner && (
+              <>
+                <Line x={r.owner.x} y={inner} w={r.owner.w} text={r.owner.owner} size={S.table} lh={G.TABLE_LH} />
+                {r.owner.champion && (
+                  <Line x={r.owner.x} y={inner + G.TABLE_LH + G.LINE_GAP} w={r.owner.w} text={r.owner.champion} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />
+                )}
+              </>
+            )}
+            {r.date && (
+              <>
+                <Check x={r.date.x} y={inner + (G.TABLE_LH - st.CHECK) / 2} size={st.CHECK} color={st.ACCENT} />
+                <Line x={r.date.x + st.CHECK + 3} y={inner} w={r.date.w - st.CHECK - 3} text={r.date.text} size={S.table} weight={500} color={st.ACCENT} lh={G.TABLE_LH} />
+              </>
+            )}
+            {r.accomplishment?.lines.map((l, i) => (
+              <Line key={`a${i}`} x={r.accomplishment!.x} y={inner + i * G.TABLE_LH} w={r.accomplishment!.w} text={l} size={S.table} lh={G.TABLE_LH} />
+            ))}
+          </View>
+        );
+      })}
+    </View>
+  );
+}
+
 function Block({ block, top }: { block: BodyBlock; top: number }) {
   const S = G.SIZE;
   if (block.kind === "row") return <Row row={block.row} y={top + block.y} />;
+  if (block.kind === "completed") return <CompletedBlock block={block} top={top} />;
   if (block.kind === "empty") return <Line x={0} y={top + block.y + 6} w={G.CONTENT_W} text={block.text} size={S.body} color={C.MUTED} lh={12} />;
   const sy = top + block.y + block.height - G.SECTION_H;
-  const count = `${block.count} ${block.count === 1 ? "project" : "projects"}`;
+  const count = ReportLayout.sectionCountText(block.count, block.completedCount);
   return (
     <View style={{ position: "absolute", left: 0, top: sy, width: G.CONTENT_W, height: G.SECTION_H, backgroundColor: C.SECTION_BG }}>
       <View style={{ position: "absolute", left: 0, top: 0, width: 2, height: G.SECTION_H, backgroundColor: C.TEXT }} />

@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient, ReportSnapshot } from "@/generated/prisma/cl
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ReportDataLoader } from "@/lib/report/ReportDataLoader";
+import { ProjectService } from "@/lib/services/ProjectService";
 
 export interface CreateSnapshotInput {
   /** YYYY-MM-DD */
@@ -43,6 +44,9 @@ export class SnapshotService {
       return await db.$transaction(
         async (tx) => {
           const data = await ReportDataLoader.load(tx, generatedAt);
+          // Same transaction as the snapshot: the block is frozen in completedJson and its projects are
+          // marked so the next freeze does not list them again (all or nothing).
+          await ProjectService.markCompletionReported(tx, data.completed.map((c) => c.projectId), generatedAt);
           return tx.reportSnapshot.create({
             data: {
               periodStart,
@@ -54,6 +58,7 @@ export class SnapshotService {
               headerJson: data.header as unknown as Prisma.InputJsonValue,
               viewSettingsJson: data.viewSettings as unknown as Prisma.InputJsonValue,
               optionsJson: data.options as unknown as Prisma.InputJsonValue,
+              completedJson: data.completed as unknown as Prisma.InputJsonValue,
             },
           });
         },

@@ -64,9 +64,8 @@ describe("migrations (PGlite)", () => {
     await db.close();
   }, 30_000);
 
-  it("0011_project_infor_request_number is additive only and is the latest migration", () => {
+  it("0011_project_infor_request_number is additive only", () => {
     const folders = Migrations.folders();
-    expect(folders.at(-1)).toBe("0011_project_infor_request_number");
     expect(folders.indexOf("0011_project_infor_request_number")).toBeGreaterThan(folders.indexOf("0010_project_description"));
     const statements = Migrations.sql("0011_project_infor_request_number")
       .split("\n")
@@ -76,6 +75,29 @@ describe("migrations (PGlite)", () => {
       'ALTER TABLE "Project" ADD CONSTRAINT "Project_infor_request_number_range" CHECK ("infor_request_number" IS NULL OR "infor_request_number" BETWEEN 1 AND 99999);',
     ]);
   });
+
+  it("0012_completed_this_period is the latest migration and adds nullable columns only", async () => {
+    const folders = Migrations.folders();
+    expect(folders.at(-1)).toBe("0012_completed_this_period");
+    const db = await Migrations.applyAll();
+    const cols = await db.query<{ table_name: string; column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(
+      `select table_name, column_name, data_type, is_nullable, column_default from information_schema.columns
+       where (table_name = 'Project' and column_name in ('accomplishment', 'completedOn', 'completionReportedAt'))
+          or (table_name = 'ReportSnapshot' and column_name = 'completedJson')
+       order by table_name, column_name`,
+    );
+    expect(cols.rows).toEqual([
+      { table_name: "Project", column_name: "accomplishment", data_type: "text", is_nullable: "YES", column_default: null },
+      { table_name: "Project", column_name: "completedOn", data_type: "date", is_nullable: "YES", column_default: null },
+      { table_name: "Project", column_name: "completionReportedAt", data_type: "timestamp without time zone", is_nullable: "YES", column_default: null },
+      { table_name: "ReportSnapshot", column_name: "completedJson", data_type: "jsonb", is_nullable: "YES", column_default: null },
+    ]);
+    const sql = Migrations.sql("0012_completed_this_period");
+    const code = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+    expect(code).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE\b/);
+    expect(sql).toContain('OR NEW."completedJson" IS DISTINCT FROM OLD."completedJson"');
+    await db.close();
+  }, 30_000);
 
   it("infor_request_number is a nullable integer column limited to 1..99999", async () => {
     const db = await Migrations.applyAll();

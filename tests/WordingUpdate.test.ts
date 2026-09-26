@@ -127,7 +127,7 @@ describe("CSV export and wording update", () => {
     expect(preview.rows[0].errors.id).toEqual(["This project is archived and cannot be updated"]);
   });
 
-  it("rejects a row when any column other than description / note / next_milestone differs from the database", async () => {
+  it("rejects a row when any column other than description / note / next_milestone / accomplishment differs from the database", async () => {
     const [cath] = Sheet.rows((await ExportService.exportCsv(db)).csv);
     const variants: [string, string][] = [
       ["name", "Radial lounge expansion phase 2"],
@@ -139,6 +139,7 @@ describe("CSV export and wording update", () => {
       ["due_date", "2026-10-20"],
       ["percent_complete", "35"],
       ["include_in_report", "no"],
+      ["completed_on", "2026-09-20"],
     ];
     const rows = variants.map(([col, value]) => ({ ...cath, [col]: value, note: "Rewritten note." }));
     // Each variant needs its own file (same id twice is itself an error).
@@ -147,13 +148,13 @@ describe("CSV export and wording update", () => {
       const [col] = variants[i];
       expect(preview.rows[0].status, col).toBe("error");
       expect(preview.rows[0].errors[col as keyof (typeof preview.rows)[0]["errors"]]?.[0], col).toMatch(
-        /A wording update may only change description, note and next_milestone\.$/,
+        /A wording update may only change description, note, next_milestone and accomplishment\.$/,
       );
       expect(preview.canCommit).toBe(false);
     }
     const status = await ImportService.previewWording(Sheet.write([{ ...cath, status: "On track" }]), db);
     expect(status.rows[0].errors.status).toEqual([
-      'Changed from "At risk" to "On track". A wording update may only change description, note and next_milestone.',
+      'Changed from "At risk" to "On track". A wording update may only change description, note, next_milestone and accomplishment.',
     ]);
     await expect(ImportService.commitWording(Sheet.write([rows[5]]), ADMIN, db)).rejects.toBeInstanceOf(ImportBlockedError);
     expect(fake.writes).toHaveLength(0);

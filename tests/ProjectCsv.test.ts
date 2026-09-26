@@ -25,6 +25,8 @@ describe("ProjectCsv", () => {
       "due_date",
       "percent_complete",
       "note",
+      "accomplishment",
+      "completed_on",
       "include_in_report",
     ]);
     expect(parsed.rows).toHaveLength(2);

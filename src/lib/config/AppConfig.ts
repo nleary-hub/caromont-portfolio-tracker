@@ -11,6 +11,8 @@ export class AppConfig {
   /** Infor request number range (optional whole number, shown as "REQ-5081"). DB check constraint matches. */
   static readonly INFOR_REQUEST_NUMBER_MIN = 1;
   static readonly INFOR_REQUEST_NUMBER_MAX = 99999;
+  /** Max characters in a project's accomplishment (shown in "Completed this period"; enforced on every save). */
+  static readonly ACCOMPLISHMENT_MAX_LENGTH = 200;
   /** Max data rows accepted in one CSV import file. */
   static readonly IMPORT_MAX_ROWS = 500;
   /** Calendar used for "today", report dates and overdue checks. */

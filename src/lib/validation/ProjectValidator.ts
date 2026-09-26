@@ -22,6 +22,10 @@ export interface ProjectInput {
   targetCompletion?: string | null;
   percentComplete?: number | null;
   note?: string | null;
+  /** Optional, max AppConfig.ACCOMPLISHMENT_MAX_LENGTH. Blank = null. */
+  accomplishment?: string | null;
+  /** Optional "YYYY-MM-DD". Display only. */
+  completedOn?: string | null;
   includeInReport?: boolean;
 }
 
@@ -40,6 +44,8 @@ export interface ProjectData {
   targetCompletion: Date | null;
   percentComplete: number | null;
   note: string | null;
+  accomplishment: string | null;
+  completedOn: Date | null;
   includeInReport: boolean;
 }
 
@@ -121,6 +127,8 @@ export class ProjectValidator {
       targetCompletion: DateOnly.fromDbDate(project.targetCompletion),
       percentComplete: project.percentComplete,
       note: project.note,
+      accomplishment: project.accomplishment,
+      completedOn: DateOnly.fromDbDate(project.completedOn),
       includeInReport: project.includeInReport,
     };
   }
@@ -208,6 +216,11 @@ export class ProjectValidator {
             .max(ProjectValidator.NOTE_MAX, `Note must be at most ${ProjectValidator.NOTE_MAX} characters`)
             .nullable(),
         ),
+        accomplishment: ProjectValidator.optionalText({
+          label: "Accomplishment",
+          length: AppConfig.ACCOMPLISHMENT_MAX_LENGTH,
+        }),
+        completedOn: ProjectValidator.optionalDate("Completed on"),
         includeInReport: z.boolean().default(true),
       })
       .superRefine((p, ctx) => {

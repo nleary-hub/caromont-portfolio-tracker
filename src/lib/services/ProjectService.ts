@@ -102,6 +102,12 @@ export class ProjectService {
     const merged: ProjectInput = { ...ProjectValidator.toInput(existing), ...ProjectService.pickEditable(patch) };
     const data: Record<string, unknown> = { ...ProjectValidator.parse(merged) };
 
+    // Reopening (status leaves Complete) clears completionReportedAt, so a later completion is listed
+    // in "Completed this period" again. Bookkeeping only: not a tracked history field.
+    if (existing.status === "Complete" && data.status !== "Complete" && existing.completionReportedAt) {
+      data.completionReportedAt = null;
+    }
+
     const changes = HistoryDiff.diff(existing, data);
     if (changes.length === 0) return existing;
 
@@ -231,6 +237,23 @@ export class ProjectService {
     });
   }
 
+  /**
+   * Freeze bookkeeping: mark projects listed in a frozen report's "Completed this period" block so they
+   * are listed only once. Runs inside the snapshot transaction. Writes no history row on purpose: a
+   * history row would set the Changed flag and the "Updated" date, and nothing about the project changed.
+   * Only rows still unmarked are touched, so re-running is harmless.
+   */
+  static async markCompletionReported(tx: Tx, projectIds: readonly string[], at: Date): Promise<number> {
+    let count = 0;
+    for (const id of projectIds) {
+      const p = await tx.project.findUnique({ where: { id } });
+      if (!p || p.completionReportedAt || p.status !== "Complete") continue;
+      await tx.project.update({ where: { id }, data: { completionReportedAt: at } });
+      count += 1;
+    }
+    return count;
+  }
+
   private static actorOf(admin: Viewer, comment?: string): Actor {
     return { changedBy: admin.email, comment: comment ?? null };
   }
@@ -256,6 +279,8 @@ export class ProjectService {
     "targetCompletion",
     "percentComplete",
     "note",
+    "accomplishment",
+    "completedOn",
     "includeInReport",
   ];
 

@@ -1,7 +1,7 @@
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
-import type { ReportHeader, ReportRow } from "@/lib/domain/types";
+import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
@@ -14,6 +14,8 @@ export interface HandoffInput {
   frozenAt: Date;
   rows: readonly ReportRow[];
   header: ReportHeader | null;
+  /** "Completed this period" rows (undefined for snapshots before 0012). */
+  completed?: readonly CompletedRow[];
   pdf: { fileName: string; sha256: string; byteSize: number };
   baseUrl: string | null;
   reportRecipient: string | null;
@@ -24,6 +26,14 @@ export interface HandoffFlagged {
   serviceArea: ServiceArea;
   status: string;
   dueDate: string | null;
+}
+
+export interface HandoffCompleted {
+  name: string;
+  serviceArea: ServiceArea;
+  /** YYYY-MM-DD shown in the report (completedOn when set, else the in-app completion date). */
+  completedOn: string;
+  accomplishment: string | null;
 }
 
 /** handoff.json: what the person sending the report email needs. Visible rows only. */
@@ -43,6 +53,8 @@ export interface Handoff {
     overdue: { count: number; projects: HandoffFlagged[] };
     stale: { count: number; projects: HandoffFlagged[] };
   };
+  /** Listed once in the report's "Completed this period" blocks; not part of totals or byArea. */
+  completedThisPeriod: { count: number; projects: HandoffCompleted[] };
   pdf: { fileName: string; sha256: string; byteSize: number };
   archiveUrl: string;
 }
@@ -99,6 +111,15 @@ export class HandoffBuilder {
         changed: { count: changed.length, projects: HandoffBuilder.flagged(changed) },
         overdue: { count: overdue.length, projects: HandoffBuilder.flagged(overdue) },
         stale: { count: stale.length, projects: HandoffBuilder.flagged(stale) },
+      },
+      completedThisPeriod: {
+        count: input.completed?.length ?? 0,
+        projects: (input.completed ?? []).map((c) => ({
+          name: c.name,
+          serviceArea: c.serviceArea,
+          completedOn: c.completedOn,
+          accomplishment: c.accomplishment,
+        })),
       },
       pdf: input.pdf,
       archiveUrl: HandoffBuilder.archiveUrl(input.baseUrl),

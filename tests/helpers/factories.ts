@@ -21,6 +21,8 @@ export class Factory {
       targetCompletion: null,
       percentComplete: null,
       note: null,
+      accomplishment: null,
+      completedOn: null,
       includeInReport: true,
       archivedAt: null,
       deletedBy: null,

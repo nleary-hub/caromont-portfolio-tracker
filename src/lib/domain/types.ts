@@ -17,6 +17,10 @@ export interface ProjectRecord {
   targetCompletion: Date | null;
   percentComplete: number | null;
   note: string | null;
+  /** What the finished project accomplished (optional). */
+  accomplishment: string | null;
+  /** Completion date as entered (display only; not the "Completed this period" clock). */
+  completedOn: Date | null;
   includeInReport: boolean;
   archivedAt: Date | null;
   deletedBy: string | null;
@@ -70,6 +74,21 @@ export interface ReportRow {
   statusFrom?: ProjectStatus | null;
   /** Latest update (updatedOn) is AppConfig.STALE_AFTER_DAYS or more before the report date. Absent before 0004. */
   stale?: boolean;
+}
+
+/** One row of a "Completed this period" block, as stored in ReportSnapshot.completedJson. */
+export interface CompletedRow {
+  projectId: string;
+  name: string;
+  serviceArea: ServiceArea;
+  owner: string;
+  accomplishment: string | null;
+  /** YYYY-MM-DD shown in the report: completedOn when set, else the in-app completion date. */
+  completedOn: string;
+  /** YYYY-MM-DD (America/New_York) when the status became Complete in the app (the period clock). */
+  completedInAppOn: string;
+  inforRequestNumber: number | null;
+  physicianChampion: string | null;
 }
 
 /** Stored in ReportSnapshot.missingChampionsJson. */

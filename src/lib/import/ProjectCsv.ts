@@ -23,6 +23,8 @@ export type CsvColumn =
   | "due_date"
   | "percent_complete"
   | "note"
+  | "accomplishment"
+  | "completed_on"
   | "include_in_report";
 
 /** Editable ProjectInput fields that have a template column. */
@@ -71,6 +73,8 @@ export class ProjectCsv {
     "due_date",
     "percent_complete",
     "note",
+    "accomplishment",
+    "completed_on",
     "include_in_report",
   ];
 
@@ -97,6 +101,8 @@ export class ProjectCsv {
     due_date: "dueDate",
     percent_complete: "percentComplete",
     note: "note",
+    accomplishment: "accomplishment",
+    completed_on: "completedOn",
     include_in_report: "includeInReport",
   };
 
@@ -117,6 +123,8 @@ export class ProjectCsv {
       due_date: "2026-10-15",
       percent_complete: "25",
       note: "Fake example row. Delete it before importing. Notes can be up to 200 characters.",
+      accomplishment: "",
+      completed_on: "",
       include_in_report: "yes",
     },
     {
@@ -132,6 +140,8 @@ export class ProjectCsv {
       due_date: "11/2/2026",
       percent_complete: "",
       note: "Fake example row showing an M/D/YYYY date and blank optional fields.",
+      accomplishment: "",
+      completed_on: "",
       include_in_report: "no",
     },
   ];
@@ -185,6 +195,8 @@ export class ProjectCsv {
       due_date: DateOnly.fromDbDate(p.dueDate) ?? "",
       percent_complete: p.percentComplete === null ? "" : String(p.percentComplete),
       note: p.note ?? "",
+      accomplishment: p.accomplishment ?? "",
+      completed_on: DateOnly.fromDbDate(p.completedOn) ?? "",
       include_in_report: p.includeInReport ? "yes" : "no",
     };
   }
@@ -290,6 +302,14 @@ export class ProjectCsv {
             fail(col, `"${value}" is not a valid date. Use YYYY-MM-DD or M/D/YYYY`);
             input.dueDate = value;
           } else input.dueDate = iso;
+          break;
+        }
+        case "completed_on": {
+          const iso = ProjectCsv.resolveDate(value);
+          if (iso === undefined) {
+            fail(col, `"${value}" is not a valid date. Use YYYY-MM-DD or M/D/YYYY`);
+            input.completedOn = value;
+          } else input.completedOn = iso;
           break;
         }
         case "percent_complete": {
