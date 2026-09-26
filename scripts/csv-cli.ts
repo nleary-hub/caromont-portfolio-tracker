@@ -50,7 +50,7 @@ class CsvCli {
       return 2;
     }
     if (commit && !AdminPolicy.isAdmin(actor)) {
-      console.error("--commit needs an admin email (--as or IMPORT_ACTOR_EMAIL) that is listed in ADMIN_EMAILS.");
+      console.error("--commit needs an admin email (--as or IMPORT_ACTOR_EMAIL) that is listed in ADMIN_EMAILS and ALLOWED_EMAILS.");
       return 2;
     }
     const csv = readFileSync(file, "utf8");

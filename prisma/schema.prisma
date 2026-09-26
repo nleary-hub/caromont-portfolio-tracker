@@ -31,6 +31,12 @@ enum ProjectStatus {
   Cancelled
 }
 
+/// Where a set of view settings applies.
+enum ViewContext {
+  dashboard
+  report
+}
+
 enum RecipientLine {
   To
   Cc
@@ -58,9 +64,16 @@ model Project {
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   updatedBy              String
-  /// Soft delete only; projects are never hard deleted.
+  /// Soft delete only (admin "Delete"); projects are never hard deleted. Deleted projects are invisible to non-admins.
   archivedAt             DateTime?
-  /// Set when a Complete/Cancelled project first appears in a snapshot.
+  /// Who soft-deleted the project (admin email). Set together with archivedAt; cleared on restore.
+  deletedBy              String?
+  /// Admin per-project hide, per context. Hidden projects are invisible to non-admins in that context
+  /// (rows, counts, flags, history). Only ProjectService admin methods write these; every change is audited.
+  hiddenFromDashboard    Boolean       @default(false)
+  hiddenFromReport       Boolean       @default(false)
+  /// DEPRECATED (unused since view settings replaced the "closed projects drop off after one report"
+  /// rule). Kept so existing data is not destroyed; nothing reads or writes it.
   closedReportedAt       DateTime?
 
   history ProjectHistory[]
@@ -93,7 +106,7 @@ model ReportSnapshot {
   periodEnd            DateTime  @db.Date
   generatedAt          DateTime  @default(now())
   generatedBy          String
-  /// Frozen copy of the included report rows (ReportRow[]).
+  /// Frozen copy of the rows visible in the report view at freeze (ReportRow[]).
   rowsJson             Json
   /// Storage reference (URL or blob key) for the rendered PDF. Null until rendered.
   pdfStorageKey        String?
@@ -101,10 +114,17 @@ model ReportSnapshot {
   sentToJson           Json?
   /// MissingChampion[] computed at generation time.
   missingChampionsJson Json
+  /// ReportHeader: status counts overall and per area, computed from the visible (listed) rows only.
+  /// Null only for snapshots created before migration 0002.
+  headerJson           Json?
+  /// ADMIN-ONLY. ViewSettingsValue (report context) in effect at freeze, kept for reproducibility.
+  /// Never render to non-admins (VisibilityPolicy.snapshotForViewer strips it). Null only before migration 0002.
+  viewSettingsJson     Json?
 
   @@index([generatedAt])
 }
 
+/// Kept in the schema, but nothing drives sending from it: the report email goes to Nick's work email only.
 model Recipient {
   id          String        @id @default(uuid()) @db.Uuid
   name        String
@@ -115,4 +135,33 @@ model Recipient {
   line        RecipientLine
   /// Deactivate, never delete.
   active      Boolean       @default(true)
+}
+
+/// Global (not per-user) show/hide settings, one row per context. Only written by ViewSettingsService.
+model ViewSettings {
+  context        ViewContext     @id
+  /// Full column order for the context (ViewColumn keys, see ViewSettings). Validated in the app.
+  columnOrder    String[]
+  /// Hidden ViewColumn keys. Locked columns (project, status) are never stored here.
+  hiddenColumns  String[]
+  hiddenStatuses ProjectStatus[]
+  updatedAt      DateTime        @updatedAt
+  updatedBy      String
+
+  @@map("view_settings")
+}
+
+/// Append-only audit trail of view settings changes. DB trigger blocks UPDATE/DELETE.
+model ViewSettingsHistory {
+  id        String      @id @default(uuid()) @db.Uuid
+  context   ViewContext
+  /// ViewSettingsValue before the change.
+  oldValue  Json
+  /// ViewSettingsValue after the change.
+  newValue  Json
+  changedAt DateTime    @default(now())
+  changedBy String
+
+  @@index([context, changedAt])
+  @@map("view_settings_history")
 }

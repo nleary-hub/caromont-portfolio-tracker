@@ -1,6 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 import { ProjectArchivedError, ProjectService, MilestoneError } from "@/lib/services/ProjectService";
 import { ProjectValidationError } from "@/lib/validation/ProjectValidator";
+import { AdminRequiredError } from "@/lib/auth/AdminPolicy";
+import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
 
 const actor = { changedBy: "nick.leary@example.org" };
@@ -93,26 +95,81 @@ describe("ProjectService", () => {
     expect(fake.state.projects[0].archivedAt).toBeNull();
   });
 
-  it("reopening a reported closed project clears closedReportedAt (with history)", async () => {
+  it("reopening a closed project only records the status change (closedReportedAt is no longer used)", async () => {
     const p = await ProjectService.create({ ...input, status: "Complete" }, actor, fake.asClient());
-    fake.state.projects[0].closedReportedAt = new Date("2026-10-07T10:00:00Z");
-    const u = await ProjectService.update(p.id, { status: "OnTrack" }, actor, fake.asClient());
-    expect(u.closedReportedAt).toBeNull();
-    expect(fake.state.history.map((h) => h.field)).toContain("closedReportedAt");
+    fake.state.history = [];
+    await ProjectService.update(p.id, { status: "OnTrack" }, actor, fake.asClient());
+    expect(fake.state.history.map((h) => h.field)).toEqual(["status"]);
   });
 
-  it("archive soft-deletes with history and blocks further edits", async () => {
+  it("softDelete (admin) sets archivedAt + deletedBy with audit rows and blocks further edits", async () => {
     const p = await ProjectService.create(input, actor, fake.asClient());
-    const a = await ProjectService.archive(p.id, actor, fake.asClient());
+    const a = await ProjectService.softDelete(p.id, Factory.ADMIN, fake.asClient());
     expect(a.archivedAt).toBeInstanceOf(Date);
-    expect(fake.state.projects).toHaveLength(1);
-    expect(fake.state.history.at(-1)).toMatchObject({ field: "archivedAt", oldValue: null });
+    expect(a.deletedBy).toBe(Factory.ADMIN.email);
+    expect(fake.state.projects).toHaveLength(1); // record kept
+    expect(fake.state.history.slice(-2).map((h) => [h.field, h.oldValue, h.changedBy])).toEqual([
+      ["archivedAt", null, Factory.ADMIN.email],
+      ["deletedBy", null, Factory.ADMIN.email],
+    ]);
     await expect(ProjectService.update(p.id, { note: "x" }, actor, fake.asClient())).rejects.toThrow(ProjectArchivedError);
+  });
+
+  it("restore (admin) clears the soft delete and writes audit rows", async () => {
+    const p = await ProjectService.create(input, actor, fake.asClient());
+    await ProjectService.softDelete(p.id, Factory.ADMIN, fake.asClient());
+    const before = fake.state.history.length;
+    const r = await ProjectService.restore(p.id, Factory.ADMIN, fake.asClient());
+    expect(r).toMatchObject({ archivedAt: null, deletedBy: null });
+    const rows = fake.state.history.slice(before);
+    expect(rows.map((h) => [h.field, h.newValue, h.changedBy])).toEqual([
+      ["archivedAt", null, Factory.ADMIN.email],
+      ["deletedBy", null, Factory.ADMIN.email],
+    ]);
+    expect(rows[1].oldValue).toBe(Factory.ADMIN.email);
+    // Restoring a live project is a no-op.
+    await ProjectService.restore(p.id, Factory.ADMIN, fake.asClient());
+    expect(fake.state.history.length).toBe(before + 2);
+  });
+
+  it("setHidden (admin) hides per context with audit rows; no-op when unchanged", async () => {
+    const p = await ProjectService.create(input, actor, fake.asClient());
+    const h = await ProjectService.setHidden(p.id, "report", true, Factory.ADMIN, fake.asClient());
+    expect(h).toMatchObject({ hiddenFromReport: true, hiddenFromDashboard: false });
+    expect(fake.state.history.at(-1)).toMatchObject({
+      field: "hiddenFromReport",
+      oldValue: "false",
+      newValue: "true",
+      changedBy: Factory.ADMIN.email,
+    });
+    const before = fake.state.history.length;
+    await ProjectService.setHidden(p.id, "report", true, Factory.ADMIN, fake.asClient());
+    expect(fake.state.history.length).toBe(before);
+    const d = await ProjectService.setHidden(p.id, "dashboard", true, Factory.ADMIN, fake.asClient());
+    expect(d).toMatchObject({ hiddenFromReport: true, hiddenFromDashboard: true });
+    expect(fake.state.history.at(-1)).toMatchObject({ field: "hiddenFromDashboard", newValue: "true" });
+  });
+
+  it("non-admins cannot hide, delete or restore", async () => {
+    const p = await ProjectService.create(input, actor, fake.asClient());
+    fake.writes = [];
+    await expect(ProjectService.setHidden(p.id, "dashboard", true, Factory.MEMBER, fake.asClient())).rejects.toThrow(AdminRequiredError);
+    await expect(ProjectService.softDelete(p.id, Factory.MEMBER, fake.asClient())).rejects.toThrow(AdminRequiredError);
+    await expect(ProjectService.restore(p.id, Factory.MEMBER, fake.asClient())).rejects.toThrow(AdminRequiredError);
+    expect(fake.writes).toHaveLength(0);
+  });
+
+  it("hide flags and deletedBy are not user-editable through update()", async () => {
+    const p = await ProjectService.create(input, actor, fake.asClient());
+    fake.writes = [];
+    await ProjectService.update(p.id, { hiddenFromDashboard: true, deletedBy: "x" } as never, actor, fake.asClient());
+    expect(fake.writes).toHaveLength(0);
   });
 
   it("exposes no hard-delete or history-mutation methods", () => {
     const names = Object.getOwnPropertyNames(ProjectService);
-    expect(names.some((n) => /delete|remove|destroy/i.test(n))).toBe(false);
+    // softDelete only sets archivedAt/deletedBy; nothing removes rows.
+    expect(names.filter((n) => /delete|remove|destroy/i.test(n))).toEqual(["softDelete"]);
   });
 });
 

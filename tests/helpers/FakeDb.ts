@@ -8,6 +8,8 @@ interface State {
   history: Row[];
   snapshots: Row[];
   recipients: Row[];
+  viewSettings: Row[];
+  viewSettingsHistory: Row[];
 }
 
 /**
@@ -16,14 +18,21 @@ interface State {
  * happened inside a transaction so tests can assert atomicity.
  */
 export class FakeDb {
-  state: State = { projects: [], history: [], snapshots: [], recipients: [] };
+  state: State = { projects: [], history: [], snapshots: [], recipients: [], viewSettings: [], viewSettingsHistory: [] };
   writes: { model: string; op: string; inTx: boolean; txId: number | null }[] = [];
   transactions = 0;
   private txCounter = 0;
 
   static clone(state: State): State {
     const c = (rows: Row[]) => rows.map((r) => ({ ...r }));
-    return { projects: c(state.projects), history: c(state.history), snapshots: c(state.snapshots), recipients: c(state.recipients) };
+    return {
+      projects: c(state.projects),
+      history: c(state.history),
+      snapshots: c(state.snapshots),
+      recipients: c(state.recipients),
+      viewSettings: c(state.viewSettings),
+      viewSettingsHistory: c(state.viewSettingsHistory),
+    };
   }
 
   asClient(): PrismaClient {
@@ -35,8 +44,9 @@ export class FakeDb {
     const matches = (row: Row, where: Row = {}): boolean =>
       Object.entries(where).every(([k, v]) => {
         if (v && typeof v === "object" && !(v instanceof Date)) {
-          const cond = v as { in?: unknown[]; gt?: Date };
+          const cond = v as { in?: unknown[]; notIn?: unknown[]; gt?: Date };
           if (cond.in) return cond.in.includes(row[k]);
+          if (cond.notIn) return !cond.notIn.includes(row[k]);
           if (cond.gt) return (row[k] as Date).getTime() > cond.gt.getTime();
         }
         return row[k] === v;
@@ -72,7 +82,9 @@ export class FakeDb {
             note: null,
             includeInReport: true,
             archivedAt: null,
-            closedReportedAt: null,
+            deletedBy: null,
+            hiddenFromDashboard: false,
+            hiddenFromReport: false,
             createdAt: now,
             updatedAt: now,
             ...data,
@@ -139,6 +151,33 @@ export class FakeDb {
           Object.assign(r, data);
           return { ...r };
         },
+      },
+      viewSettings: {
+        findUnique: async ({ where }: { where: { context: string } }) => {
+          const r = this.state.viewSettings.find((v) => v.context === where.context);
+          return r ? { ...r } : null;
+        },
+        upsert: async ({ where, create, update }: { where: { context: string }; create: Row; update: Row }) => {
+          rec("viewSettings", "upsert");
+          const r = this.state.viewSettings.find((v) => v.context === where.context);
+          if (r) {
+            Object.assign(r, update, { updatedAt: new Date() });
+            return { ...r };
+          }
+          const row = { ...create, updatedAt: new Date() };
+          this.state.viewSettings.push(row);
+          return { ...row };
+        },
+      },
+      viewSettingsHistory: {
+        create: async ({ data }: { data: Row }) => {
+          rec("viewSettingsHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), ...data };
+          this.state.viewSettingsHistory.push(row);
+          return { ...row };
+        },
+        findMany: async ({ where }: { where?: Row } = {}) =>
+          this.state.viewSettingsHistory.filter((h) => matches(h, where)).map((h) => ({ ...h })),
       },
       recipient: {
         findMany: async ({ where }: { where?: Row } = {}) =>
