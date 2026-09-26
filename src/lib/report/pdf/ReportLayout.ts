@@ -1,5 +1,6 @@
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
+import { Assignee } from "@/lib/domain/Assignee";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
@@ -127,7 +128,6 @@ export class CompletedBlockStyle {
   static readonly CHECK = 7;
   static readonly ACCOMPLISHMENT_MAX_LINES = 2;
   static readonly NAME_MAX_LINES = 3;
-  static readonly NO_CHAMPION = "No champion";
 }
 
 /** One laid-out row of a "Completed this period" block. x values are relative to the content left. */
@@ -139,7 +139,7 @@ export interface CompletedRowLayout {
   name: { x: number; w: number; lines: string[] };
   /** REQ number in the Infor slot under the name (null when none or hidden). */
   req: MetaRun | null;
-  owner: { x: number; w: number; owner: string; champion: string | null } | null;
+  owner: { x: number; w: number; owner: string; ownerMissing: boolean; champion: string | null } | null;
   /** Check and completion date ("Sep 22"), in the status column. */
   date: { x: number; w: number; text: string } | null;
   accomplishment: { x: number; w: number; lines: string[] } | null;
@@ -185,7 +185,17 @@ export type RowCell =
       /** Meta line under the name: REQ number in a fixed slot, then "Updated <date>". Empty = no meta line. */
       meta: MetaRun[];
     }
-  | { kind: "owner"; x: number; w: number; owner: string; champion: string | null }
+  | {
+      kind: "owner";
+      x: number;
+      w: number;
+      owner: string;
+      /** Owner blank: owner reads "To assign" in muted text. */
+      ownerMissing: boolean;
+      /** Null when the champion column is hidden. */
+      champion: string | null;
+      championMissing: boolean;
+    }
   | { kind: "status"; x: number; w: number; pill: PillBox; change: StatusChange | null }
   | { kind: "nextMilestone"; x: number; w: number; lines: string[]; muted: boolean }
   | { kind: "due"; x: number; w: number; text: string; overdue: boolean; muted: boolean }
@@ -464,10 +474,18 @@ export class ReportLayout {
           break;
         }
         case "owner": {
-          const champion =
-            showsChampion && row.physicianChampion ? TextMeasure.fitLine(m, row.physicianChampion, inner, S.small, 400) : null;
+          // Blank owner or champion reads "To assign" (muted), keeping the owner/champion stack.
+          const champion = showsChampion ? TextMeasure.fitLine(m, Assignee.label(row.physicianChampion), inner, S.small, 400) : null;
           if (champion) lineTwoH = Math.max(lineTwoH, g.SMALL_LH);
-          cells.push({ kind: "owner", x: col.x, w: inner, owner: TextMeasure.fitLine(m, row.owner, inner, S.table, 400), champion });
+          cells.push({
+            kind: "owner",
+            x: col.x,
+            w: inner,
+            owner: TextMeasure.fitLine(m, Assignee.label(row.owner), inner, S.table, 400),
+            ownerMissing: !Assignee.isAssigned(row.owner),
+            champion,
+            championMissing: !Assignee.isAssigned(row.physicianChampion),
+          });
           break;
         }
         case "status": {
@@ -566,9 +584,15 @@ export class ReportLayout {
     if (ownerCol) {
       const w = ownerCol.w - g.CELL_PAD_R;
       const champion = PdfReportLayout.showsChampion(settings)
-        ? TextMeasure.fitLine(m, row.physicianChampion ?? st.NO_CHAMPION, w, S.small, 400)
+        ? TextMeasure.fitLine(m, Assignee.label(row.physicianChampion), w, S.small, 400)
         : null;
-      owner = { x: ownerCol.x, w, owner: TextMeasure.fitLine(m, row.owner, w, S.table, 400), champion };
+      owner = {
+        x: ownerCol.x,
+        w,
+        owner: TextMeasure.fitLine(m, Assignee.label(row.owner), w, S.table, 400),
+        ownerMissing: !Assignee.isAssigned(row.owner),
+        champion,
+      };
       h = Math.max(h, g.TABLE_LH + (champion ? g.LINE_GAP + g.SMALL_LH : 0));
     }
 

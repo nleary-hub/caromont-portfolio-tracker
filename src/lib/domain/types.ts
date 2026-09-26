@@ -8,7 +8,8 @@ export interface ProjectRecord {
   /** Optional Infor request number, whole number 1 to 99999 (null = none). Displayed as "REQ-5081". */
   inforRequestNumber: number | null;
   serviceArea: ServiceArea;
-  owner: string;
+  /** Null = not assigned yet (shown as "To assign"). */
+  owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
   status: ProjectStatus;
@@ -53,7 +54,8 @@ export interface ReportRow {
   projectId: string;
   name: string;
   serviceArea: ServiceArea;
-  owner: string;
+  /** Null = not assigned yet (shown as "To assign"). */
+  owner: string | null;
   physicianChampion: string | null;
   status: ProjectStatus;
   statusLabel: string;
@@ -81,7 +83,8 @@ export interface CompletedRow {
   projectId: string;
   name: string;
   serviceArea: ServiceArea;
-  owner: string;
+  /** Null = not assigned yet (shown as "To assign"). */
+  owner: string | null;
   accomplishment: string | null;
   /** YYYY-MM-DD shown in the report: completedOn when set, else the in-app completion date. */
   completedOn: string;

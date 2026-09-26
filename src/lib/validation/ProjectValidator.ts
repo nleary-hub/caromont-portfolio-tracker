@@ -13,7 +13,8 @@ export interface ProjectInput {
   /** Optional Infor request number: whole number 1 to 99999 (a digits-only string is accepted). Blank = null. */
   inforRequestNumber?: number | string | null;
   serviceArea: ServiceArea | string;
-  owner: string;
+  /** Optional; blank = null ("To assign"). */
+  owner?: string | null;
   physicianChampion?: string | null;
   physicianChampionEmail?: string | null;
   status: ProjectStatus | string;
@@ -35,7 +36,7 @@ export interface ProjectData {
   description: string | null;
   inforRequestNumber: number | null;
   serviceArea: ServiceArea;
-  owner: string;
+  owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
   status: ProjectStatus;
@@ -187,7 +188,7 @@ export class ProjectValidator {
             .nullable(),
         ),
         serviceArea: z.enum(ServiceArea, { error: "Service area must be one of the defined areas" }),
-        owner: ProjectValidator.requiredText("Owner", ProjectValidator.NAME_MAX),
+        owner: ProjectValidator.optionalText({ label: "Owner", length: ProjectValidator.NAME_MAX }),
         physicianChampion: ProjectValidator.optionalText(),
         physicianChampionEmail: z.preprocess(
           (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim().toLowerCase()) : v ?? null),

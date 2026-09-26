@@ -6,16 +6,19 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import type { ServiceArea, ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import { Assignee } from "@/lib/domain/Assignee";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { Flags, StatusPill } from "./StatusPill";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
+const ProjectPeopleEditor = dynamic(() => import("./ProjectPeopleEditor").then((m) => m.ProjectPeopleEditor));
 
 export interface LatestReport {
   /** YYYY-MM-DD */
@@ -35,6 +38,11 @@ export interface AdminDashboardProps {
   saveViewSettingsAction: (context: ViewContext, value: ViewSettingsValue) => Promise<string | null>;
   setProjectHiddenAction: (projectId: string, context: ViewContext, hidden: boolean) => Promise<string | null>;
   deleteProjectAction: (projectId: string) => Promise<string | null>;
+  /** Owner datalist for the drawer edit panel (department leaders plus existing owners). */
+  ownerSuggestions: string[];
+  /** Champion emails by project id (admin only; not on DashboardRow). */
+  championEmails: Record<string, string | null>;
+  setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
 }
 
 interface Props {
@@ -75,11 +83,15 @@ class DashboardColumns {
         </td>
       ),
     },
-    owner: { header: "Owner", width: "w-[84px]", cell: (r, td) => <td className={td}>{r.owner}</td> },
+    owner: { header: "Owner", width: "w-[84px]", cell: (r, td) => <td className={td}><AssigneeText value={r.owner} /></td> },
     physicianChampion: {
       header: "Physician champion",
       width: "w-[164px]",
-      cell: (r, td) => <td className={`${td} ${r.physicianChampion ? "" : "text-muted"}`}>{r.physicianChampion ?? "–"}</td>,
+      cell: (r, td) => (
+        <td className={td}>
+          <AssigneeText value={r.physicianChampion} />
+        </td>
+      ),
     },
     status: {
       header: "Status",
@@ -366,6 +378,20 @@ export function ProjectDashboard({
           row={selected}
           today={today}
           onClose={() => setSelectedId(null)}
+          peopleEditor={
+            admin ? (
+              <ProjectPeopleEditor
+                key={selected.id}
+                projectId={selected.id}
+                owner={selected.owner}
+                physicianChampion={selected.physicianChampion}
+                physicianChampionEmail={admin.championEmails[selected.id] ?? null}
+                serviceArea={selected.serviceArea}
+                ownerSuggestions={admin.ownerSuggestions}
+                saveAction={admin.setPeopleFieldAction}
+              />
+            ) : null
+          }
           adminControls={
             admin ? (
               <ProjectAdminControls
@@ -382,6 +408,14 @@ export function ProjectDashboard({
       )}
     </div>
   );
+}
+
+/**
+ * Owner or champion name, or "To assign" when blank: regular weight, same size as a name, in the secondary
+ * text color (--dark-text-secondary). Not a warning, so no amber, icon or chip.
+ */
+export function AssigneeText({ value }: { value: string | null }) {
+  return Assignee.isAssigned(value) ? <>{value}</> : <span className="font-normal text-muted">{Assignee.TO_ASSIGN}</span>;
 }
 
 /** Dashboard meta line geometry. The designer tunes these two values. */
@@ -424,11 +458,14 @@ function ProjectDrawer({
   row,
   today,
   onClose,
+  peopleEditor,
   adminControls,
 }: {
   row: DashboardRow;
   today: string;
   onClose: () => void;
+  /** Admin-only edit panel (owner, champion, department), shown at the top. Null for non-admins. */
+  peopleEditor: ReactNode;
   /** Rendered only for admins. */
   adminControls: ReactNode;
 }) {
@@ -456,15 +493,24 @@ function ProjectDrawer({
         <StatusPill status={row.status} />
         {(row.changed || row.overdue) && <Flags changed={row.changed} overdue={row.overdue} />}
       </div>
+      {peopleEditor}
       <dl className="grid grid-cols-[130px_1fr] gap-y-2 border-y border-line py-3 type-table">
-        <dt className="text-muted">Service area</dt>
-        <dd>{ServiceAreaInfo.label(row.serviceArea)}</dd>
+        {!peopleEditor && (
+          <>
+            <dt className="text-muted">Department</dt>
+            <dd>{ServiceAreaInfo.label(row.serviceArea)}</dd>
+            <dt className="text-muted">Owner</dt>
+            <dd>
+              <AssigneeText value={row.owner} />
+            </dd>
+            <dt className="text-muted">Physician champion</dt>
+            <dd>
+              <AssigneeText value={row.physicianChampion} />
+            </dd>
+          </>
+        )}
         <dt className="text-muted">Infor request #</dt>
         <dd className="font-mono">{InforNumber.format(row.inforRequestNumber) ?? "–"}</dd>
-        <dt className="text-muted">Owner</dt>
-        <dd>{row.owner}</dd>
-        <dt className="text-muted">Physician champion</dt>
-        <dd>{row.physicianChampion ?? "–"}</dd>
         <dt className="text-muted">Next milestone</dt>
         <dd>{row.nextMilestone ?? "–"}</dd>
         <dt className="text-muted">Due date</dt>
@@ -499,16 +545,7 @@ function ProjectDrawer({
         <p className="text-muted type-caption">History timeline coming soon.</p>
       </div>
       {adminControls}
-      <div className="mt-auto flex items-center justify-end border-t border-line pt-3">
-        <button
-          type="button"
-          disabled
-          title="Editing coming soon"
-          className="h-[30px] rounded-control border border-line bg-input px-3 type-table-strong disabled:opacity-60"
-        >
-          Edit project
-        </button>
-      </div>
+
     </aside>
   );
 }

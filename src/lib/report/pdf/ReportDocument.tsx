@@ -440,7 +440,7 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
     case "owner":
       return (
         <>
-          <Line x={cell.x} y={0} w={cell.w} text={cell.owner} size={S.table} lh={G.TABLE_LH} />
+          <Line x={cell.x} y={0} w={cell.w} text={cell.owner} size={S.table} color={cell.ownerMissing ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
           {cell.champion && <Line x={cell.x} y={two} w={cell.w} text={cell.champion} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />}
         </>
       );
@@ -583,7 +583,7 @@ function CompletedBlock({ block, top }: { block: Extract<BodyBlock, { kind: "com
             {r.req && <MetaText run={r.req} x={r.name.x} y={inner + r.name.lines.length * G.TABLE_LH} w={r.name.w} />}
             {r.owner && (
               <>
-                <Line x={r.owner.x} y={inner} w={r.owner.w} text={r.owner.owner} size={S.table} lh={G.TABLE_LH} />
+                <Line x={r.owner.x} y={inner} w={r.owner.w} text={r.owner.owner} size={S.table} color={r.owner.ownerMissing ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
                 {r.owner.champion && (
                   <Line x={r.owner.x} y={inner + G.TABLE_LH + G.LINE_GAP} w={r.owner.w} text={r.owner.champion} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />
                 )}

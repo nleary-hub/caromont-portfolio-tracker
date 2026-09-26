@@ -82,7 +82,7 @@ export class ProjectCsv {
   static readonly EXPORT_COLUMNS: readonly CsvColumn[] = ["id", ...ProjectCsv.TEMPLATE_COLUMNS];
 
   /** Columns a new-project import file must have. */
-  static readonly REQUIRED_FOR_CREATE: readonly CsvColumn[] = ["name", "service_area", "owner", "status"];
+  static readonly REQUIRED_FOR_CREATE: readonly CsvColumn[] = ["name", "service_area", "status"];
 
   /** Columns a wording-update file must have (description is optional; absent means unchanged). */
   static readonly REQUIRED_FOR_WORDING: readonly CsvColumn[] = ["id", "note", "next_milestone"];
@@ -153,7 +153,11 @@ export class ProjectCsv {
   static readonly RECOGNIZED_IGNORED_COLUMNS: Readonly<Record<string, string>> = {
     older_update:
       'Column "older_update" is not imported: the app has no place for older updates yet, so its values are ignored.',
+    owner_suggested: 'Column "owner_suggested" is a reference column and is not imported. Owners are set in the app.',
   };
+
+  /** Other header names accepted for a column (normalized). */
+  static readonly COLUMN_ALIASES: Readonly<Record<string, CsvColumn>> = { department: "service_area" };
 
   private static readonly KNOWN_COLUMNS: ReadonlySet<string> = new Set(ProjectCsv.EXPORT_COLUMNS);
   private static readonly TRUE_WORDS: ReadonlySet<string> = new Set(["yes", "y", "true", "t", "1"]);
@@ -187,7 +191,7 @@ export class ProjectCsv {
       description: p.description ?? "",
       infor_request_number: p.inforRequestNumber === null ? "" : String(p.inforRequestNumber),
       service_area: ServiceAreaInfo.label(p.serviceArea),
-      owner: p.owner,
+      owner: p.owner ?? "",
       physician_champion: p.physicianChampion ?? "",
       physician_champion_email: p.physicianChampionEmail ?? "",
       status: ProjectStatusInfo.label(p.status),
@@ -226,7 +230,7 @@ export class ProjectCsv {
       return result;
     }
 
-    const header = records[0].record.map(ProjectCsv.normalizeHeader);
+    const header = records[0].record.map(ProjectCsv.normalizeHeader).map((h) => ProjectCsv.COLUMN_ALIASES[h] ?? h);
     const indexByColumn = new Map<CsvColumn, number>();
     header.forEach((h, i) => {
       if (!h) return;
@@ -268,7 +272,7 @@ export class ProjectCsv {
   }
 
   /** Convert the present cells of a row to ProjectInput values. Validation proper is ProjectValidator's job. */
-  static toInput(row: CsvRow): RowConversion {
+  static toInput(row: CsvRow, opts: { blankStatus?: ProjectStatus } = {}): RowConversion {
     const input: Partial<ProjectInput> = {};
     const errors: RowConversion["errors"] = {};
     const fail = (col: CsvColumn, msg: string) => (errors[col] ??= []).push(msg);
@@ -282,12 +286,22 @@ export class ProjectCsv {
           const area = ProjectCsv.resolveServiceArea(value);
           if (area) input.serviceArea = area;
           else {
-            fail(col, `"${value}" is not a service area. Use one of: ${ServiceAreaInfo.all().join(", ")}`);
+            fail(
+              col,
+              value === ""
+                ? `Service area (department) is blank. Use one of: ${ServiceAreaInfo.all().join(", ")}`
+                : `"${value}" is not a service area. Use one of: ${ServiceAreaInfo.all().join(", ")}`,
+            );
             input.serviceArea = value;
           }
           break;
         }
         case "status": {
+          if (value === "" && opts.blankStatus) {
+            // New projects: a blank status means On track.
+            input.status = opts.blankStatus;
+            break;
+          }
           const status = ProjectCsv.resolveStatus(value);
           if (status) input.status = status;
           else {

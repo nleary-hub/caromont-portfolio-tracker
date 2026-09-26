@@ -321,7 +321,7 @@ export class ImportService {
 
   /** Convert a row and run ProjectValidator, returning errors keyed by CSV column. */
   private static validateRow(row: CsvRow): { input: Partial<ProjectInput>; errors: RowErrors } {
-    const { input, errors: conversionErrors } = ProjectCsv.toInput(row);
+    const { input, errors: conversionErrors } = ProjectCsv.toInput(row, { blankStatus: "OnTrack" });
     const errors: RowErrors = { ...conversionErrors };
     const validation = ProjectValidator.validate(input);
     if (!validation.ok) {

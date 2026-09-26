@@ -51,7 +51,7 @@ model Project {
   /// validation (AppConfig.INFOR_REQUEST_NUMBER_MIN/MAX); DB check constraint as backstop.
   inforRequestNumber     Int?          @map("infor_request_number")
   serviceArea            ServiceArea
-  owner                  String
+  owner                  String?
   physicianChampion      String?
   physicianChampionEmail String?
   status                 ProjectStatus

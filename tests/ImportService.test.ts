@@ -162,7 +162,8 @@ describe("ImportService: new projects", () => {
     expect(a.errors.next_milestone).toEqual(["Next milestone is required unless the project is Complete or Cancelled"]);
     expect(b.errors.percent_complete).toEqual(["Percent complete must be between 0 and 100"]);
     expect(c.errors.physician_champion_email).toEqual(["Physician champion email is not a valid email"]);
-    expect(d.errors).toMatchObject({ name: ["Name is required"], owner: ["Owner is required"] });
+    expect(d.errors).toMatchObject({ name: ["Name is required"] });
+    expect(d.errors).not.toHaveProperty("owner"); // owner is optional ("To assign")
     expect(e.errors).toMatchObject({ include_in_report: ['"maybe" is not yes or no'], percent_complete: ['"abc" is not a number'] });
     expect(preview.rows.map((r) => r.line)).toEqual([2, 3, 4, 5, 6]);
   });

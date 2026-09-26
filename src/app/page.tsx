@@ -1,11 +1,12 @@
 import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
-import { deleteProject, saveViewSettings, setProjectHidden } from "@/app/actions/admin";
+import { deleteProject, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Db } from "@/lib/db/Db";
+import { Assignee } from "@/lib/domain/Assignee";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext } from "@/lib/domain/ViewSettings";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
@@ -16,7 +17,7 @@ interface DashboardLoad {
   columns: ViewColumn[];
   latestReport: LatestReport | null;
   /** Present only for admins. */
-  admin: Omit<AdminDashboardProps, "saveViewSettingsAction" | "setProjectHiddenAction" | "deleteProjectAction"> | null;
+  admin: Omit<AdminDashboardProps, "saveViewSettingsAction" | "setProjectHiddenAction" | "deleteProjectAction" | "setPeopleFieldAction"> | null;
   error: string | null;
 }
 
@@ -32,7 +33,7 @@ class DashboardData {
       columns: ViewSettings.visibleColumns(settings.dashboard),
       latestReport: null,
       admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [] }
+        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), championEmails: {} }
         : null,
       error,
     };
@@ -92,6 +93,8 @@ class DashboardData {
               viewSettings: settings,
               pickerCounts: DashboardViewModel.adminPickerCounts(projects),
               hiddenFromReportIds: visible.filter((p) => p.hiddenFromReport).map((p) => p.id),
+              ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner)),
+              championEmails: Object.fromEntries(visible.map((p) => [p.id, p.physicianChampionEmail])),
             }
           : null,
         error: null,
@@ -133,6 +136,11 @@ export default async function DashboardPage() {
               setProjectHiddenAction: async (projectId, context, hidden) => {
                 "use server";
                 const r = await setProjectHidden(projectId, context, hidden);
+                return r.ok ? null : r.error;
+              },
+              setPeopleFieldAction: async (projectId, field, value) => {
+                "use server";
+                const r = await setProjectPeopleField(projectId, field, value);
                 return r.ok ? null : r.error;
               },
               deleteProjectAction: async (projectId) => {

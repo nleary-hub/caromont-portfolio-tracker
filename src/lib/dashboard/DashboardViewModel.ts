@@ -13,7 +13,7 @@ export interface DashboardRow {
   id: string;
   name: string;
   serviceArea: ServiceArea;
-  owner: string;
+  owner: string | null;
   physicianChampion: string | null;
   status: ProjectStatus;
   statusLabel: string;

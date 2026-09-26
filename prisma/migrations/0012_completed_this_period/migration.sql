@@ -38,3 +38,6 @@ BEGIN
     RETURN NEW;
 END;
 $$ LANGUAGE plpgsql;
+
+-- Owner is optional: blank owners show as "To assign". Relaxes a constraint only (no data change).
+ALTER TABLE "Project" ALTER COLUMN "owner" DROP NOT NULL;

@@ -94,7 +94,9 @@ describe("migrations (PGlite)", () => {
     ]);
     const sql = Migrations.sql("0012_completed_this_period");
     const code = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
-    expect(code).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE\b/);
+    // The only DROP relaxes a constraint (owner becomes optional); no data changes.
+    expect(code.replace('ALTER COLUMN "owner" DROP NOT NULL', "")).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE\b/);
+    expect(code).toContain('ALTER TABLE "Project" ALTER COLUMN "owner" DROP NOT NULL;');
     expect(sql).toContain('OR NEW."completedJson" IS DISTINCT FROM OLD."completedJson"');
     await db.close();
   }, 30_000);

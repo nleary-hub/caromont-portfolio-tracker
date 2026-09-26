@@ -200,7 +200,9 @@ the URL directly.
 
 - **Template:** `docs/project-import-template.csv` (also "Download template" on the page). Columns:
   `name, description, infor_request_number, service_area, owner, physician_champion, physician_champion_email, status, next_milestone,
-  due_date, percent_complete, note, include_in_report`. The two `Example:` rows are fake and are skipped.
+  due_date, percent_complete, note, accomplishment, completed_on, include_in_report`. Required columns:
+  `name, service_area, status` (a `department` header is read as `service_area`). `owner` is optional
+  (blank or missing = "To assign"); a blank `status` on a new project means On track. The two `Example:` rows are fake and are skipped.
   - `service_area`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR. `status`: Not started, On track, At risk,
     Off track, On hold, Complete, Cancelled. Case and spaces do not matter (`on track`, `OnTrack`).
   - `due_date`: YYYY-MM-DD or M/D/YYYY. `percent_complete`: 0 to 100 (a trailing % is fine).
@@ -209,20 +211,23 @@ the URL directly.
     fine; decimals, letters, signs, lists like "4656 / 5081", 0 and over 99999 are row errors). Blank = no
     number; the column may be left out, so older files still import and their new projects get no number.
     Export writes the plain number. `description` max 200, `note` max 200, `next_milestone` max 40 (`AppConfig`).
+  - `accomplishment` (optional, max 200) and `completed_on` (optional date, same formats as `due_date`, display
+    only) feed the report's "Completed this period" block; see docs/REPORTS.md.
   - `older_update` (added by Writing Bot) is recognized but not imported: the app has no place for older
-    updates yet, so the preview shows a warning and the values are ignored.
+    updates yet, so the preview shows a warning and the values are ignored. `owner_suggested` is a reference
+    column: never read, the preview notes that it is not imported.
 - **New projects mode:** every row is validated with `ProjectValidator`; the preview shows per-row errors.
   Rows matching a non-archived project by (name, service area), ignoring case and extra spaces, are
   skipped with a warning and never overwritten. "Import N projects" is all-or-nothing in one
   transaction, through `ProjectService`, so each project gets its `created` history row
   (`changedBy` = the admin, `comment` = `csv_import`). Any row error blocks the whole import.
 - **Wording update mode** (the Writing Bot round-trip): "Export CSV" (or `npm run export:csv`) writes
-  `id` + the template columns for non-archived projects. Edit `description` / `note` / `next_milestone`,
+  `id` + the template columns for non-archived projects. Edit `description` / `note` / `next_milestone` / `accomplishment`,
   then upload with the wording option (or `--update-wording`). Rows match by `id` only. If any other
   column differs from the database, the row is rejected. `description` may be left out of a wording
   file (it is then unchanged); `id`, `note` and `next_milestone` are required. `infor_request_number` is a
   data field, not wording: a wording file may leave the column out (unchanged) or carry the exported value,
-  but changing it rejects the row. The preview shows old versus new per row; commit is all-or-nothing
+  but changing it rejects the row (same for `completed_on`). The preview shows old versus new per row; commit is all-or-nothing
   through `ProjectService.updateInTx`, writing field history rows with `comment` = `csv_wording_update`.
 - **CLI:** `npm run import:csv -- file.csv` is a dry run; add `--commit --as admin@...` (or set
   `IMPORT_ACTOR_EMAIL`) to save. The actor must be in `ADMIN_EMAILS`. Loads `.env.local`, then `.env`.

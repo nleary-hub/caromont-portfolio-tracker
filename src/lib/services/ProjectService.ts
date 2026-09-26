@@ -50,6 +50,8 @@ export type Tx = Prisma.TransactionClient;
  * The only write path for projects. Every mutation writes ProjectHistory rows in the
  * same transaction. There is intentionally no hard-delete method.
  */
+export type PeopleField = "owner" | "physicianChampion" | "physicianChampionEmail" | "serviceArea";
+
 export class ProjectService {
   static async create(input: ProjectInput, actor: Actor, db: PrismaClient = Db.client): Promise<Project> {
     ProjectValidator.parse(input); // fail fast, before opening a transaction
@@ -218,6 +220,23 @@ export class ProjectService {
   }
 
   /** Admin per-project hide/unhide for one context. No-op when unchanged; otherwise audited. */
+  /** Fields the admin drawer panel edits, one at a time (saved on change). */
+  static readonly PEOPLE_FIELDS = ["owner", "physicianChampion", "physicianChampionEmail", "serviceArea"] as const;
+
+  static isPeopleField(field: string): field is PeopleField {
+    return (ProjectService.PEOPLE_FIELDS as readonly string[]).includes(field);
+  }
+
+  /**
+   * Admin drawer panel: set owner, physician champion (and email) or service area. Blank owner or champion
+   * clears it back to "To assign". Goes through update(), so validation applies and ProjectHistory records
+   * the change (no-op when unchanged).
+   */
+  static async setPeopleField(id: string, field: PeopleField, value: string, admin: Viewer, db: PrismaClient = Db.client): Promise<Project> {
+    AdminPolicy.assertAdmin(admin);
+    return ProjectService.update(id, { [field]: value }, ProjectService.actorOf(admin), db);
+  }
+
   static async setHidden(
     id: string,
     context: ViewContext,

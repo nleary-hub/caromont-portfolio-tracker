@@ -92,7 +92,7 @@ export class SampleReportData {
     return ReportBuilder.sort(rows);
   }
 
-  /** Fictional "Completed this period" rows (two in Cath, one in EP; one without a REQ number or champion). */
+  /** Fictional "Completed this period" rows (two in Cath, one in EP; one without a REQ number, owner or champion). */
   static completed(): CompletedRow[] {
     return [
       {
@@ -111,7 +111,7 @@ export class SampleReportData {
         projectId: "sample-done-2",
         name: "Sample: Vascular closure device standard",
         serviceArea: "Cath",
-        owner: "Owner D",
+        owner: null,
         accomplishment: "Single closure device adopted for all femoral cases 9/17; three vendors reduced to one, with the contract in place before Q2 pricing.",
         completedOn: "2026-09-17",
         completedInAppOn: "2026-09-17",

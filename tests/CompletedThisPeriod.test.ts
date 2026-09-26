@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { Assignee } from "@/lib/domain/Assignee";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ExportService } from "@/lib/import/ExportService";
@@ -296,7 +297,8 @@ describe("Completed this period: PDF layout", () => {
     expect(first.req?.text).toBe("REQ-4871");
     expect(second.req).toBeNull();
     expect(first.owner).toMatchObject({ x: x("owner"), owner: "Owner C", champion: "Dr. Sample K" });
-    expect(second.owner!.champion).toBe(CompletedBlockStyle.NO_CHAMPION);
+    expect(second.owner).toMatchObject({ owner: Assignee.TO_ASSIGN, ownerMissing: true });
+    expect(second.owner!.champion).toBe(Assignee.TO_ASSIGN);
     expect(first.date).toMatchObject({ x: x("status"), text: "Sep 22" });
     expect(first.accomplishment!.x).toBe(x("nextMilestone"));
     const long = ReportLayout.completedRowLayout(m, { ...SampleReportData.completed()[0], accomplishment: "word ".repeat(80).trim() }, ViewSettings.defaults("report"), input.reportDate, 0);

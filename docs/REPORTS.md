@@ -95,6 +95,30 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
 - Sample: `npx vite-node --config vitest.config.ts scripts/render-sample-report.mts out.pdf [--draft]`
   (fictional data from `SampleReportData`).
 
+## Completed this period
+
+A Complete project is listed once, in the first FROZEN report after it became Complete, then drops off.
+
+- **Clock:** when the status became Complete in the app: the latest `ProjectHistory` status change to
+  Complete, or the `created` entry (creation or CSV import) if it was created as Complete. `completedOn`
+  (as entered) is display only and never decides the period.
+- **Listed when:** status Complete, a report candidate (not deleted, not hidden from the report, included in
+  the report), Complete at or before the freeze time, and `completionReportedAt` is null. Only while
+  Complete is hidden in the report view settings (the default); if an admin shows Complete, those projects
+  are regular rows and no block is drawn.
+- **Once only:** the freeze sets `Project.completionReportedAt` on the listed projects in the same
+  transaction that writes the snapshot (`ReportSnapshot.completedJson`). Drafts never mark. Re-running a
+  freeze for a frozen period re-renders from `completedJson`, so the block is never lost. Reopening (status
+  leaves Complete) clears `completionReportedAt`. `completionReportedAt` is new rather than reusing the
+  retired `closedReportedAt`, which had different semantics and could hold stale values.
+- **PDF:** a tinted block at the end of each department group (style constants in `CompletedBlockStyle`):
+  name with the REQ slot, owner with champion, a check and the date (`completedOn`, else the in-app
+  completion date), and the accomplishment (max 2 lines) from the Next milestone column. The block is never
+  split across pages. The section head reads "2 projects · 2 completed this period"; page 1 shows
+  "Completed this period N" beside the Projects line (or on its own line under it when it does not fit).
+  Nothing here feeds the status grid, totals or the projects line.
+- **handoff.json:** `completedThisPeriod: { count, projects: [{ name, serviceArea, completedOn, accomplishment }] }`.
+
 ## Draft PDF (admin "Generate PDF now")
 
 `GET /api/reports/preview`, admin only (404 for everyone else). Same loader, builder, visibility gate,
