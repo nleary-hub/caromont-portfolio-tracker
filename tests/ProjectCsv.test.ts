@@ -15,6 +15,7 @@ describe("ProjectCsv", () => {
     expect(parsed.columns).toEqual([
       "name",
       "description",
+      "infor_request_number",
       "service_area",
       "owner",
       "physician_champion",

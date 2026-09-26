@@ -100,7 +100,8 @@ OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 - `ProjectStatus`: NotStarted, OnTrack, AtRisk, OffTrack, OnHold, Complete, Cancelled
   (labels in `ProjectStatusInfo`).
 - `Project`: optional `description` (what the project is; migration `0010_project_description`; not shown
-  in the UI or report yet); soft delete only (admin "Delete" sets `archivedAt` + `deletedBy`; the DB blocks hard deletes;
+  in the UI or report yet); optional `inforRequestNumber` (DB column `infor_request_number`, migration
+  `0011_project_infor_request_number`; whole number 1 to 99999, shown as "REQ-5081"; DB check constraint); soft delete only (admin "Delete" sets `archivedAt` + `deletedBy`; the DB blocks hard deletes;
   record and history are kept). Admin per-project hide: `hiddenFromDashboard`, `hiddenFromReport`
   (migration 0003). `closedReportedAt` is deprecated and unused (kept so no data is dropped).
 - `ProjectHistory`: append-only audit trail. Hide/unhide/delete/restore changes are recorded here too
@@ -122,6 +123,7 @@ OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 | Note max 200 chars | `ProjectValidator` using `AppConfig.NOTE_MAX_LENGTH` | (none, by design: single constant) |
 | Next milestone max 40 chars | `ProjectValidator` using `AppConfig.MILESTONE_MAX_LENGTH` | (none, by design: single constant) |
 | Description (optional) max 200 chars | `ProjectValidator` using `AppConfig.DESCRIPTION_MAX_LENGTH` | (none, by design: single constant) |
+| Infor request number (optional) whole number 1 to 99999, blank = null | `ProjectValidator` using `AppConfig.INFOR_REQUEST_NUMBER_MIN/MAX` | CHECK constraint (migration 0011) |
 | Next milestone required unless Complete/Cancelled | `ProjectValidator` | CHECK constraint |
 | Percent complete 0 to 100 | `ProjectValidator` | CHECK constraint |
 | History written in the same transaction | `ProjectService` (only write path) | n/a |
@@ -189,6 +191,13 @@ utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes a
 - `/signin`: provider buttons, access-denied message.
 - `/`: status and flag tiles, service-area filter chips, search (`/` shortcut), one row per project,
   detail drawer. Copy avoids em dashes.
+- Project meta line (small gray text under the project name, same row height): "REQ-5081", then "Updated Sep 24".
+  The number is monospace, 9px, slightly brighter, left-aligned in a fixed slot (`DashboardMetaLine.INFOR_SLOT_WIDTH`,
+  9ch, sized for "REQ-99999") followed by a fixed gap (`DashboardMetaLine.INFOR_GAP`, 8px), so "Updated" lines up
+  on every row. No separator glyph. No number: blank slot plus gap (no dash). "Infor request # (REQ-, under
+  Project)" hidden in the view settings: no slot and no gap, so "Updated" starts at the left edge. "Updated" is
+  the latest public change (same rule as the report) and turns amber when stale; the number never does. The
+  drawer shows the number; search matches "REQ-5081".
 - View picker (ADMIN ONLY; `ViewSettingsPicker`, styles in `src/styles/view-picker.css`, design
   `picker.html`, code-split so non-admins never load it): Dashboard tab applies immediately; Report tab is a
   draft saved with "Save report view". Columns can be toggled and dragged (or moved with arrow keys on the
@@ -207,13 +216,18 @@ Functions and download routes all re-check server-side via `AdminGate`). There i
 the URL directly.
 
 - **Template:** `docs/project-import-template.csv` (also "Download template" on the page). Columns:
-  `name, description, service_area, owner, physician_champion, physician_champion_email, status, next_milestone,
+  `name, description, infor_request_number, service_area, owner, physician_champion, physician_champion_email, status, next_milestone,
   due_date, percent_complete, note, include_in_report`. The two `Example:` rows are fake and are skipped.
   - `service_area`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR. `status`: Not started, On track, At risk,
     Off track, On hold, Complete, Cancelled. Case and spaces do not matter (`on track`, `OnTrack`).
   - `due_date`: YYYY-MM-DD or M/D/YYYY. `percent_complete`: 0 to 100 (a trailing % is fine).
     `include_in_report`: yes/no (blank = yes). `description` is optional (blank is fine; the column
-    may be left out). `description` max 200, `note` max 200, `next_milestone` max 40 (`AppConfig`).
+    may be left out). `infor_request_number` is optional: a whole number 1 to 99999 (surrounding spaces are
+    fine; decimals, letters, signs, lists like "4656 / 5081", 0 and over 99999 are row errors). Blank = no
+    number; the column may be left out, so older files still import and their new projects get no number.
+    Export writes the plain number. `description` max 200, `note` max 200, `next_milestone` max 40 (`AppConfig`).
+  - `older_update` (added by Writing Bot) is recognized but not imported: the app has no place for older
+    updates yet, so the preview shows a warning and the values are ignored.
 - **New projects mode:** every row is validated with `ProjectValidator`; the preview shows per-row errors.
   Rows matching a non-archived project by (name, service area), ignoring case and extra spaces, are
   skipped with a warning and never overwritten. "Import N projects" is all-or-nothing in one
@@ -223,7 +237,9 @@ the URL directly.
   `id` + the template columns for non-archived projects. Edit `description` / `note` / `next_milestone`,
   then upload with the wording option (or `--update-wording`). Rows match by `id` only. If any other
   column differs from the database, the row is rejected. `description` may be left out of a wording
-  file (it is then unchanged); `id`, `note` and `next_milestone` are required. The preview shows old versus new per row; commit is all-or-nothing
+  file (it is then unchanged); `id`, `note` and `next_milestone` are required. `infor_request_number` is a
+  data field, not wording: a wording file may leave the column out (unchanged) or carry the exported value,
+  but changing it rejects the row. The preview shows old versus new per row; commit is all-or-nothing
   through `ProjectService.updateInTx`, writing field history rows with `comment` = `csv_wording_update`.
 - **CLI:** `npm run import:csv -- file.csv` is a dry run; add `--commit --as admin@...` (or set
   `IMPORT_ACTOR_EMAIL`) to save. The actor must be an admin (`ADMIN_EMAILS`, and also on `ALLOWED_EMAILS`). Loads `.env.local`, then `.env`.

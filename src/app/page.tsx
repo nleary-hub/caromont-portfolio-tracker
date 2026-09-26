@@ -61,8 +61,24 @@ class DashboardData {
         select: { projectId: true, changedAt: true, field: true },
         distinct: ["projectId"],
       });
+      // "Updated <date>" on the meta line: latest public history entry per visible project (all time).
+      const lastUpdates = await db.projectHistory.groupBy({
+        by: ["projectId"],
+        where: { projectId: { in: visible.map((p) => p.id) }, ...VisibilityPolicy.publicHistoryWhere() },
+        _max: { changedAt: true },
+      });
+      const latestUpdates = lastUpdates.flatMap((g) =>
+        g._max.changedAt ? [{ projectId: g.projectId, changedAt: g._max.changedAt, field: "update" }] : [],
+      );
       return {
-        rows: DashboardViewModel.rows(projects, settings.dashboard, history, latest?.generatedAt ?? null, today),
+        rows: DashboardViewModel.rows(
+          projects,
+          settings.dashboard,
+          history,
+          latest?.generatedAt ?? null,
+          today,
+          latestUpdates,
+        ),
         columns: ViewSettings.visibleColumns(settings.dashboard),
         latestReport: latest
           ? {

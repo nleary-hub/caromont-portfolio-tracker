@@ -176,8 +176,9 @@ describe("ReportLayout visibility", () => {
     const p = (name: string, extra = {}) => ({
       id: name,
       name,
-      serviceArea: "Cath" as const,
       description: null,
+      inforRequestNumber: null,
+      serviceArea: "Cath" as const,
       owner: "Owner A",
       physicianChampion: null,
       physicianChampionEmail: null,

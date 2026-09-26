@@ -10,6 +10,7 @@ export class Factory {
       id: `p${seq}`,
       name: `Project ${seq}`,
       description: null,
+      inforRequestNumber: null,
       serviceArea: "Cath",
       owner: "Owner A",
       physicianChampion: null,

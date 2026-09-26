@@ -6,6 +6,7 @@ import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "
 import type { ServiceArea, ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
@@ -57,9 +58,12 @@ interface ColumnSpec {
   cell: (r: DashboardRow, td: string) => ReactNode;
 }
 
+/** Columns that take a table column of their own (inline ones such as the Infor number render in the Project cell). */
+type TableColumn = Exclude<ViewColumn, "inforNumber">;
+
 /** Dashboard table columns, rendered in the order and visibility from the dashboard view settings. */
 class DashboardColumns {
-  static readonly SPECS: Record<ViewColumn, ColumnSpec> = {
+  static readonly SPECS: Record<TableColumn, ColumnSpec> = {
     // The table renders the project cell itself (selection bar); this is the plain fallback.
     project: { header: "Project", width: "w-[256px]", cell: (r, td) => <td className={td}>{r.name}</td> },
     serviceArea: {
@@ -145,7 +149,9 @@ export function ProjectDashboard({
 
   const summary = useMemo(() => DashboardViewModel.summarize(rows), [rows]);
   const visible = useMemo(() => DashboardViewModel.filter(rows, area, query), [rows, area, query]);
-  const columns = settings ? ViewSettings.visibleColumns(settings.dashboard) : columnsProp;
+  const visibleColumns = settings ? ViewSettings.visibleColumns(settings.dashboard) : columnsProp;
+  const columns = visibleColumns.filter((c): c is TableColumn => !ViewSettings.isInline(c));
+  const showInfor = visibleColumns.includes("inforNumber");
   const selected = rows.find((r) => r.id === selectedId) ?? null;
 
   /** Optimistic: apply locally, persist, roll back on failure. */
@@ -333,7 +339,8 @@ export function ProjectDashboard({
                             key={c}
                             className={`${td} type-table-strong ${isSel ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}
                           >
-                            {r.name}
+                            <div className="truncate">{r.name}</div>
+                            <ProjectMetaLine row={r} showInfor={showInfor} />
                           </td>
                         ) : (
                           <Fragment key={c}>{DashboardColumns.SPECS[c].cell(r, td)}</Fragment>
@@ -372,6 +379,42 @@ export function ProjectDashboard({
             ) : null
           }
         />
+      )}
+    </div>
+  );
+}
+
+/** Dashboard meta line geometry. The designer tunes these two values. */
+export class DashboardMetaLine {
+  /** Fixed slot for "REQ-99999": 9 characters of the 9px monospace font. */
+  static readonly INFOR_SLOT_WIDTH = "9ch";
+  /** Gap between the slot and "Updated". */
+  static readonly INFOR_GAP = "8px";
+}
+
+/**
+ * Small gray line under the project name: "REQ-5081  Updated Sep 24". The number sits left-aligned in a
+ * fixed-width monospace slot (9px, slightly brighter) followed by a fixed gap, so "Updated" lines up on
+ * every row. No number: the slot and gap stay, blank (no dash). Column hidden in the view settings: no
+ * slot and no gap, so "Updated" starts at the left edge. Stale amber applies to the Updated date only.
+ */
+export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInfor: boolean }) {
+  const updated = DateFormat.short(row.updatedOn);
+  const req = InforNumber.format(row.inforRequestNumber);
+  if (!updated && !(showInfor && req)) return null;
+  return (
+    <div className="truncate text-[10px] leading-3 font-normal text-muted">
+      {showInfor && (
+        <span
+          data-testid="infor-slot"
+          className="font-mono text-[9px] text-[#B8BEC8]"
+          style={{ display: "inline-block", width: DashboardMetaLine.INFOR_SLOT_WIDTH, marginRight: DashboardMetaLine.INFOR_GAP, textAlign: "left" }}
+        >
+          {req ?? ""}
+        </span>
+      )}
+      {updated && (
+        <span className={row.stale ? "font-medium text-(--status-at-risk-dark-fg)" : undefined}>Updated {updated}</span>
       )}
     </div>
   );
@@ -416,6 +459,8 @@ function ProjectDrawer({
       <dl className="grid grid-cols-[130px_1fr] gap-y-2 border-y border-line py-3 type-table">
         <dt className="text-muted">Service area</dt>
         <dd>{ServiceAreaInfo.label(row.serviceArea)}</dd>
+        <dt className="text-muted">Infor request #</dt>
+        <dd className="font-mono">{InforNumber.format(row.inforRequestNumber) ?? "–"}</dd>
         <dt className="text-muted">Owner</dt>
         <dd>{row.owner}</dd>
         <dt className="text-muted">Physician champion</dt>

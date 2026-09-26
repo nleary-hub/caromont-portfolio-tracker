@@ -1,5 +1,6 @@
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
+import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ReportHeader, ReportRow } from "@/lib/domain/types";
@@ -76,7 +77,24 @@ export class ReportGeometry {
   /** Minimum width for the note beside the row-2 cells; narrower and it gets its own full-width line. */
   static readonly NOTE_MIN_W = 108;
 
-  static readonly SIZE = { title: 15, body: 9, section: 9, table: 8, small: 7, pill: 7 } as const;
+  static readonly SIZE = { title: 15, body: 9, section: 9, table: 8, small: 7, pill: 7, mono: 6.5 } as const;
+  /** Built-in PDF Courier: every glyph advances 0.6 em. Used for the Infor number (no font embedding needed). */
+  static readonly MONO_ADVANCE_EM = 0.6;
+  /** Fixed slot for "REQ-99999" on the meta line: 9 chars x 0.6 em x 6.5 pt = 35.1 pt. The designer tunes this. */
+  static readonly INFOR_SLOT_W = 35.1;
+  /** Gap between the Infor slot and "Updated". The designer tunes this. */
+  static readonly INFOR_GAP = 5;
+}
+
+/** One run of text on the project meta line (the REQ number, "Updated <date>"). */
+export interface MetaRun {
+  text: string;
+  /** x offset from the start of the cell. */
+  x: number;
+  /** mono = Courier (the Infor number); sans = Inter. */
+  font: "sans" | "mono";
+  weight: FontWeight;
+  tone: "muted" | "stale";
 }
 
 export type FlagKind = "changed" | "overdue" | "stale";
@@ -109,7 +127,16 @@ export interface TextLine {
 
 /** One laid-out cell. Positions are relative to the row's top-left (inside the row padding). */
 export type RowCell =
-  | { kind: "project"; x: number; w: number; lines: string[]; updated: string | null; stale: boolean }
+  | {
+      kind: "project";
+      x: number;
+      w: number;
+      lines: string[];
+      updated: string | null;
+      stale: boolean;
+      /** Meta line under the name: REQ number in a fixed slot, then "Updated <date>". Empty = no meta line. */
+      meta: MetaRun[];
+    }
   | { kind: "owner"; x: number; w: number; owner: string; champion: string | null }
   | { kind: "status"; x: number; w: number; pill: PillBox; change: StatusChange | null }
   | { kind: "nextMilestone"; x: number; w: number; lines: string[]; muted: boolean }
@@ -243,6 +270,9 @@ export class ReportLayout {
         { flag: ReportLayout.flag(m, "stale"), meaning: `No update in ${AppConfig.STALE_AFTER_DAYS} or more days before the report date.` },
       ],
       details: [
+        ...(ViewSettings.isColumnVisible(settings, "inforNumber")
+          ? [{ sample: "REQ-4656", meaning: "Infor request number, when the project has one." }]
+          : []),
         { sample: "Updated Sep 22", meaning: "Date of the latest update to the project." },
         { sample: "Updated Sep 1", meaning: `In amber when the project is stale (${AppConfig.STALE_AFTER_DAYS}+ days without an update).` },
         { sample: "\u2193 from On track", meaning: "Status moved since the last report (\u2193 worse, \u2191 better)." },
@@ -317,6 +347,30 @@ export class ReportLayout {
     return { arrow, text: full, lines: [full] };
   }
 
+  /**
+   * The project meta line: "REQ-5081" left-aligned in a fixed slot (ReportGeometry.INFOR_SLOT_W), a fixed
+   * gap (INFOR_GAP), then "Updated <date>", so Updated lines up on every row. No number: the slot and gap
+   * stay blank (no dash). Column hidden (showInfor false): no slot and no gap, Updated starts at x = 0.
+   * The slot fits the widest value (5 digits), so the line never wraps. Empty result = no meta line.
+   */
+  static metaLine(m: Measurer, showInfor: boolean, number: number | null, updated: string | null, stale: boolean): MetaRun[] {
+    const g = ReportGeometry;
+    const req = showInfor ? InforNumber.format(number) : null;
+    if (!updated && !req) return [];
+    const runs: MetaRun[] = [];
+    if (req) runs.push({ text: req, x: 0, font: "mono", weight: 400, tone: "muted" });
+    if (updated) {
+      runs.push({
+        text: updated,
+        x: showInfor ? g.INFOR_SLOT_W + g.INFOR_GAP : 0,
+        font: "sans",
+        weight: stale ? 500 : 400,
+        tone: stale ? "stale" : "muted",
+      });
+    }
+    return runs;
+  }
+
   static rowLayout(m: Measurer, row: ReportRow, settings: ViewSettingsValue, reportDate: string): RowLayout {
     const g = ReportGeometry;
     const S = g.SIZE;
@@ -332,8 +386,11 @@ export class ReportLayout {
         case "project": {
           const lines = TextMeasure.wrap(m, row.name, inner, S.table, 600, 4);
           const updated = row.updatedOn ? `Updated ${ReportFormat.shortDate(row.updatedOn, reportDate)}` : null;
-          projectH = lines.length * g.TABLE_LH + (updated ? g.SMALL_LH : 0);
-          cells.push({ kind: "project", x: col.x, w: inner, lines, updated, stale: Boolean(row.stale) });
+          const stale = Boolean(row.stale);
+          const showInfor = ViewSettings.isColumnVisible(settings, "inforNumber");
+          const meta = ReportLayout.metaLine(m, showInfor, row.inforRequestNumber ?? null, updated, stale);
+          projectH = lines.length * g.TABLE_LH + (meta.length ? g.SMALL_LH : 0);
+          cells.push({ kind: "project", x: col.x, w: inner, lines, updated, stale, meta });
           break;
         }
         case "owner": {

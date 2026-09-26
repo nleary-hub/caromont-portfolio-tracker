@@ -63,4 +63,46 @@ describe("migrations (PGlite)", () => {
     ]);
     await db.close();
   }, 30_000);
+
+  it("0011_project_infor_request_number is additive only and is the latest migration", () => {
+    const folders = Migrations.folders();
+    expect(folders.at(-1)).toBe("0011_project_infor_request_number");
+    expect(folders.indexOf("0011_project_infor_request_number")).toBeGreaterThan(folders.indexOf("0010_project_description"));
+    const statements = Migrations.sql("0011_project_infor_request_number")
+      .split("\n")
+      .filter((l) => l.trim() && !l.trim().startsWith("--"));
+    expect(statements).toEqual([
+      'ALTER TABLE "Project" ADD COLUMN     "infor_request_number" INTEGER;',
+      'ALTER TABLE "Project" ADD CONSTRAINT "Project_infor_request_number_range" CHECK ("infor_request_number" IS NULL OR "infor_request_number" BETWEEN 1 AND 99999);',
+    ]);
+  });
+
+  it("infor_request_number is a nullable integer column limited to 1..99999", async () => {
+    const db = await Migrations.applyAll();
+    const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
+      `select data_type, is_nullable, column_default from information_schema.columns
+       where table_name = 'Project' and column_name = 'infor_request_number'`,
+    );
+    expect(col.rows).toEqual([{ data_type: "integer", is_nullable: "YES", column_default: null }]);
+    const insert = (name: string, n: number | null) =>
+      db.query(
+        `insert into "Project" (id, name, infor_request_number, "serviceArea", owner, status, "nextMilestone", "updatedAt", "updatedBy")
+         values (gen_random_uuid(), $1, $2, 'EP', 'Owner B', 'OnTrack', 'Kickoff', now(), 'test')`,
+        [name, n],
+      );
+    await insert("No number", null);
+    await insert("Low", 1);
+    await insert("High", 99999);
+    await expect(insert("Zero", 0)).rejects.toThrow(/Project_infor_request_number_range/);
+    await expect(insert("Too big", 100000)).rejects.toThrow(/Project_infor_request_number_range/);
+    const rows = await db.query<{ name: string; infor_request_number: number | null }>(
+      `select name, infor_request_number from "Project" order by name`,
+    );
+    expect(rows.rows).toEqual([
+      { name: "High", infor_request_number: 99999 },
+      { name: "Low", infor_request_number: 1 },
+      { name: "No number", infor_request_number: null },
+    ]);
+    await db.close();
+  }, 30_000);
 });

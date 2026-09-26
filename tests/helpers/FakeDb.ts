@@ -111,6 +111,7 @@ export class FakeDb {
           const row = {
             id: randomUUID(),
             description: null,
+            inforRequestNumber: null,
             physicianChampion: null,
             physicianChampionEmail: null,
             nextMilestone: null,

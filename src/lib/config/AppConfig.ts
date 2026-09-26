@@ -8,6 +8,9 @@ export class AppConfig {
   static readonly MILESTONE_MAX_LENGTH = 40;
   /** Max characters in a project's description (optional "what the project is" text; enforced on every save). */
   static readonly DESCRIPTION_MAX_LENGTH = 200;
+  /** Infor request number range (optional whole number, shown as "REQ-5081"). DB check constraint matches. */
+  static readonly INFOR_REQUEST_NUMBER_MIN = 1;
+  static readonly INFOR_REQUEST_NUMBER_MAX = 99999;
   /** Max data rows accepted in one CSV import file. */
   static readonly IMPORT_MAX_ROWS = 500;
   /** Calendar used for "today", report dates and overdue checks. */
