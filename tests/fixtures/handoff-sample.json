@@ -1,0 +1,260 @@
+{
+  "schemaVersion": 1,
+  "title": "Cardiovascular & Pulmonary Service Line: Project Status Report",
+  "snapshotId": "sample-snapshot",
+  "reportDate": "2026-09-29",
+  "period": {
+    "start": "2026-09-15",
+    "end": "2026-09-29",
+    "label": "Sep 15 – Sep 29, 2026"
+  },
+  "frozenAt": "2026-09-29T21:00:00.000Z",
+  "frozenAtEt": "Sep 29, 2026, 5:00 PM ET",
+  "reportRecipient": "frank@example.org",
+  "totals": {
+    "projects": 23,
+    "byStatus": {
+      "NotStarted": 3,
+      "OnTrack": 9,
+      "AtRisk": 5,
+      "OffTrack": 3,
+      "OnHold": 3
+    }
+  },
+  "byArea": [
+    {
+      "area": "Cath",
+      "label": "Cath",
+      "projects": 4,
+      "byStatus": {
+        "NotStarted": 1,
+        "OnTrack": 1,
+        "AtRisk": 1,
+        "OffTrack": 1
+      }
+    },
+    {
+      "area": "EP",
+      "label": "EP",
+      "projects": 4,
+      "byStatus": {
+        "OnTrack": 2,
+        "OffTrack": 1,
+        "OnHold": 1
+      }
+    },
+    {
+      "area": "Echo",
+      "label": "Echo",
+      "projects": 2,
+      "byStatus": {
+        "NotStarted": 1,
+        "AtRisk": 1
+      }
+    },
+    {
+      "area": "CVSS",
+      "label": "CVSS",
+      "projects": 3,
+      "byStatus": {
+        "OnTrack": 1,
+        "AtRisk": 1,
+        "OnHold": 1
+      }
+    },
+    {
+      "area": "INU",
+      "label": "INU",
+      "projects": 3,
+      "byStatus": {
+        "OnTrack": 2,
+        "OffTrack": 1
+      }
+    },
+    {
+      "area": "CardioNeuro",
+      "label": "CardioNeuro",
+      "projects": 3,
+      "byStatus": {
+        "NotStarted": 1,
+        "OnTrack": 1,
+        "AtRisk": 1
+      }
+    },
+    {
+      "area": "IR",
+      "label": "IR",
+      "projects": 4,
+      "byStatus": {
+        "OnTrack": 2,
+        "AtRisk": 1,
+        "OnHold": 1
+      }
+    }
+  ],
+  "flags": {
+    "changed": {
+      "count": 11,
+      "projects": [
+        {
+          "name": "Sample: Hemodynamic system upgrade across all four procedure rooms and the hybrid suite",
+          "serviceArea": "Cath",
+          "status": "Off track",
+          "dueDate": "2026-09-18"
+        },
+        {
+          "name": "Sample: Radial lounge expansion",
+          "serviceArea": "Cath",
+          "status": "At risk",
+          "dueDate": "2026-09-25"
+        },
+        {
+          "name": "Sample: EP lab mapping system upgrade",
+          "serviceArea": "EP",
+          "status": "Off track",
+          "dueDate": "2026-09-22"
+        },
+        {
+          "name": "Sample: Pulsed field ablation launch",
+          "serviceArea": "EP",
+          "status": "On track",
+          "dueDate": "2026-10-28"
+        },
+        {
+          "name": "Sample: Stress echo scheduling redesign",
+          "serviceArea": "Echo",
+          "status": "At risk",
+          "dueDate": "2026-10-09"
+        },
+        {
+          "name": "Sample: Surgical site infection bundle",
+          "serviceArea": "CVSS",
+          "status": "At risk",
+          "dueDate": "2026-10-01"
+        },
+        {
+          "name": "Sample: ERAS pathway for valve surgery",
+          "serviceArea": "CVSS",
+          "status": "On track",
+          "dueDate": "2026-10-15"
+        },
+        {
+          "name": "Sample: Discharge before noon",
+          "serviceArea": "INU",
+          "status": "Off track",
+          "dueDate": "2026-09-20"
+        },
+        {
+          "name": "Sample: INU bed flow redesign",
+          "serviceArea": "INU",
+          "status": "On track",
+          "dueDate": "2026-10-16"
+        },
+        {
+          "name": "Sample: Stroke and AF monitoring pathway",
+          "serviceArea": "CardioNeuro",
+          "status": "On track",
+          "dueDate": "2026-10-30"
+        },
+        {
+          "name": "Sample: Peripheral vascular outpatient lab",
+          "serviceArea": "IR",
+          "status": "At risk",
+          "dueDate": "2026-10-05"
+        }
+      ]
+    },
+    "overdue": {
+      "count": 4,
+      "projects": [
+        {
+          "name": "Sample: Hemodynamic system upgrade across all four procedure rooms and the hybrid suite",
+          "serviceArea": "Cath",
+          "status": "Off track",
+          "dueDate": "2026-09-18"
+        },
+        {
+          "name": "Sample: Radial lounge expansion",
+          "serviceArea": "Cath",
+          "status": "At risk",
+          "dueDate": "2026-09-25"
+        },
+        {
+          "name": "Sample: EP lab mapping system upgrade",
+          "serviceArea": "EP",
+          "status": "Off track",
+          "dueDate": "2026-09-22"
+        },
+        {
+          "name": "Sample: Discharge before noon",
+          "serviceArea": "INU",
+          "status": "Off track",
+          "dueDate": "2026-09-20"
+        }
+      ]
+    },
+    "stale": {
+      "count": 4,
+      "projects": [
+        {
+          "name": "Sample: Same-day discharge PCI pathway",
+          "serviceArea": "Cath",
+          "status": "Not started",
+          "dueDate": "2026-11-04"
+        },
+        {
+          "name": "Sample: Device clinic remote monitoring",
+          "serviceArea": "EP",
+          "status": "On hold",
+          "dueDate": null
+        },
+        {
+          "name": "Sample: Autonomic testing lab setup",
+          "serviceArea": "CardioNeuro",
+          "status": "Not started",
+          "dueDate": "2026-11-20"
+        },
+        {
+          "name": "Sample: Y-90 program readiness",
+          "serviceArea": "IR",
+          "status": "On hold",
+          "dueDate": "2026-12-01"
+        }
+      ]
+    }
+  },
+  "completedThisPeriod": {
+    "count": 3,
+    "projects": [
+      {
+        "name": "Sample: Hemodynamic system replacement",
+        "serviceArea": "Cath",
+        "completedOn": "2026-09-22",
+        "accomplishment": "New hemodynamic system live in all four procedure rooms 9/22; 212 cases recorded in the first two weeks with no downtime and every tech validated."
+      },
+      {
+        "name": "Sample: Vascular closure device standard",
+        "serviceArea": "Cath",
+        "completedOn": "2026-09-17",
+        "accomplishment": "Single closure device adopted for all femoral cases 9/17; three vendors reduced to one, with the contract in place before Q2 pricing."
+      },
+      {
+        "name": "Sample: Loop recorder clinic workflow",
+        "serviceArea": "EP",
+        "completedOn": "2026-09-24",
+        "accomplishment": "Remote transmissions now triaged within one business day."
+      }
+    ]
+  },
+  "completedFiscalYear": {
+    "label": "FY27",
+    "fiscalYearStart": "2026-07-01",
+    "count": 9
+  },
+  "pdf": {
+    "fileName": "report-2026-09-29.pdf",
+    "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "byteSize": 12345
+  },
+  "archiveUrl": "https://example.org/reports"
+}

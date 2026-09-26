@@ -32,7 +32,9 @@ describe("DashboardViewModel", () => {
     expect(s.byStatus.OnTrack).toBe(1);
     expect(s.byArea.Cath).toBe(1);
     expect(s.byArea.IR).toBe(0);
-    expect(s).toMatchObject({ overdue: 1, changed: 1 });
+    // No flag totals (flags stay on each row).
+    expect(Object.keys(s).sort()).toEqual(["byArea", "byStatus", "total"]);
+    expect(rows.filter((r) => r.overdue)).toHaveLength(1);
   });
 
   it("filters by area and search text", () => {
@@ -61,8 +63,9 @@ describe("DashboardViewModel", () => {
     expect(s.total).toBe(3);
     expect(s.byStatus).toMatchObject({ Complete: 0, Cancelled: 0, OffTrack: 0, AtRisk: 1, OnTrack: 2 });
     expect(s.byArea).toMatchObject({ IR: 0, Echo: 1, Cath: 1, EP: 1 });
-    // Hotel's overdue/changed flags and Alpha's hide event do not leak into the flag tiles.
-    expect(s).toMatchObject({ overdue: 1, changed: 0 });
+    // Hotel's overdue/changed flags and Alpha's hide event do not leak into the visible rows' flags.
+    expect(visible.filter((r) => r.overdue)).toHaveLength(1);
+    expect(visible.filter((r) => r.changed)).toHaveLength(0);
 
     const showClosed = ViewSettings.normalize("dashboard", { hiddenStatuses: ["AtRisk"] });
     const v2 = DashboardViewModel.rows(all, showClosed, [], null, "2026-10-07");
