@@ -3,12 +3,8 @@ import { AuthError } from "next-auth";
 import { auth, signIn, SIGN_IN_PATH } from "@/auth";
 import { AuthProviders } from "@/lib/auth/AuthProviders";
 import { EmailAllowlist } from "@/lib/auth/EmailAllowlist";
+import { SignInMessages } from "@/lib/auth/SignInMessages";
 
-const ERROR_MESSAGES: Record<string, string> = {
-  AccessDenied: "That account is not authorized for this app. Contact the app owner to be added.",
-  Configuration: "Sign-in is misconfigured on the server.",
-  CredentialsSignin: "Sign-in failed.",
-};
 
 class SafeRedirect {
   /** Reduce any callback URL to a same-site path (drops scheme/host, so it can never leave the app). */
@@ -49,7 +45,7 @@ export default async function SignInPage({
 
   const providers = AuthProviders.summaries();
   const errorCode = Array.isArray(params.error) ? params.error[0] : params.error;
-  const error = errorCode ? (ERROR_MESSAGES[errorCode] ?? "Sign-in failed.") : null;
+  const error = SignInMessages.forCode(errorCode);
 
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
