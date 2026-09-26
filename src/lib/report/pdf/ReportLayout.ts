@@ -1,6 +1,7 @@
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { Assignee } from "@/lib/domain/Assignee";
+import { FlagSlots, type FlagKind } from "@/lib/domain/FlagSlots";
 import { Requester } from "@/lib/domain/Requester";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { InforNumber } from "@/lib/domain/InforNumber";
@@ -89,6 +90,10 @@ export class ReportGeometry {
   static readonly ROW_PAD = 4;
   static readonly ROW_BORDER = 0.5;
   static readonly LINE_GAP = 1;
+  /** Gap between the next milestone and the note under it (milestone emphasis). */
+  static readonly NOTE_GAP = 3;
+  /** The next milestone prints semibold so it stands out from the note below (primary vs secondary). */
+  static readonly MILESTONE_WEIGHT = 600;
   static readonly CELL_PAD_R = 6;
   static readonly TABLE_LH = 10;
   static readonly SMALL_LH = 9;
@@ -177,7 +182,7 @@ export interface CompletedRowLayout {
   accomplishment: { x: number; w: number; lines: string[] } | null;
 }
 
-export type FlagKind = "changed" | "overdue" | "stale";
+export type { FlagKind };
 
 export interface StatusChange {
   arrow: "up" | "down" | null;
@@ -197,6 +202,12 @@ export interface FlagBox {
   kind: FlagKind;
   label: string;
   width: number;
+}
+
+/** A row flag placed in its fixed slot (FlagSlots order): `dx` is the slot's offset from the column start. */
+export interface PlacedFlag extends FlagBox {
+  slot: number;
+  dx: number;
 }
 
 export interface TextLine {
@@ -233,13 +244,16 @@ export type RowCell =
   | { kind: "status"; x: number; w: number; pill: PillBox; change: StatusChange | null }
   | { kind: "nextMilestone"; x: number; w: number; lines: string[]; muted: boolean }
   | { kind: "due"; x: number; w: number; text: string; overdue: boolean; muted: boolean }
-  | { kind: "flags"; x: number; w: number; flags: FlagBox[] };
+  | { kind: "flags"; x: number; w: number; flags: PlacedFlag[] };
 
 export interface RowLayout {
   projectId: string;
   height: number;
   cells: RowCell[];
-  /** Line 2 note (or its own line when there is no room beside the row-2 cells). */
+  /**
+   * Line 2 note (or its own line when there is no room beside the row-2 cells), NOTE_GAP below line 1.
+   * Always printed regular in the secondary color; `muted` = unchanged since the last report ("No change.").
+   */
   note: { x: number; y: number; w: number; lines: TextLine[]; muted: boolean } | null;
   /** y of line 2 relative to the content top. */
   lineTwoY: number;
@@ -408,7 +422,7 @@ export class ReportLayout {
         { sample: "Updated Sep 22", meaning: "Date of the latest update to the project." },
         { sample: "Updated Sep 1", meaning: `In amber when the project is stale (${AppConfig.STALE_AFTER_DAYS}+ days without an update).` },
         { sample: "\u2193 from On track", meaning: "Status moved since the last report (\u2193 worse, \u2191 better)." },
-        { sample: "No change.", meaning: "Nothing changed since the last report; the note is repeated in gray." },
+        { sample: "No change.", meaning: "Nothing changed since the last report; the note is repeated." },
         { sample: "Due in red", meaning: "Overdue due date." },
         { sample: "Completed this period", meaning: "Completed since the last report. Listed once, not in the status counts." },
       ],
@@ -424,9 +438,30 @@ export class ReportLayout {
 
   static flag(m: Measurer, kind: FlagKind): FlagBox {
     const g = ReportGeometry;
-    const label = kind === "changed" ? "Changed" : kind === "stale" ? "Stale" : "! Overdue";
+    const label = FlagSlots.label(kind);
     const icon = kind === "overdue" ? 0 : g.DIAMOND + 2.5;
     return { kind, label, width: g.FLAG_PAD * 2 + icon + m.width(label, g.SIZE.pill, 700) };
+  }
+
+  /**
+   * Fixed flag slots for the Flags column, in FlagSlots order. Each slot is as wide as its own pill and
+   * slots are FLAG_GAP apart, so a flag's x never depends on which other flags apply (empty slots stay blank).
+   */
+  static flagSlots(m: Measurer): { kind: FlagKind; dx: number; width: number }[] {
+    let dx = 0;
+    return FlagSlots.ORDER.map((kind) => {
+      const width = ReportLayout.flag(m, kind).width;
+      const slot = { kind, dx, width };
+      dx += width + ReportGeometry.FLAG_GAP;
+      return slot;
+    });
+  }
+
+  /** Total width of all flag slots (must fit the Flags column). */
+  static flagSlotsWidth(m: Measurer): number {
+    const slots = ReportLayout.flagSlots(m);
+    const last = slots[slots.length - 1];
+    return last.dx + last.width;
   }
 
   /** Columns in points for the frozen report settings. */
@@ -559,7 +594,7 @@ export class ReportLayout {
         case "nextMilestone": {
           const text = row.nextMilestone?.trim();
           // Blank (allowed for Not started, On hold, Complete, Cancelled) renders as nothing.
-          const lines = text ? TextMeasure.wrap(m, text, inner, S.table, 400, 2) : [];
+          const lines = text ? TextMeasure.wrap(m, text, inner, S.table, g.MILESTONE_WEIGHT, 2) : [];
           lineOneH = Math.max(lineOneH, Math.max(1, lines.length) * g.TABLE_LH);
           cells.push({ kind: "nextMilestone", x: col.x, w: inner, lines, muted: !text });
           break;
@@ -570,10 +605,10 @@ export class ReportLayout {
           break;
         }
         case "flags": {
-          const flags: FlagBox[] = [];
-          if (row.changed) flags.push(ReportLayout.flag(m, "changed"));
-          if (row.overdue) flags.push(ReportLayout.flag(m, "overdue"));
-          if (row.stale) flags.push(ReportLayout.flag(m, "stale"));
+          const slots = ReportLayout.flagSlots(m);
+          const flags: PlacedFlag[] = FlagSlots.slots({ changed: row.changed, overdue: row.overdue, stale: Boolean(row.stale) }).flatMap((kind, slot) =>
+            kind ? [{ ...ReportLayout.flag(m, kind), slot, dx: slots[slot].dx }] : [],
+          );
           if (flags.length) lineOneH = Math.max(lineOneH, g.PILL_H);
           cells.push({ kind: "flags", x: col.x, w: inner, flags });
           break;
@@ -582,6 +617,7 @@ export class ReportLayout {
     }
 
     let note: RowLayout["note"] = null;
+    let noteH = 0;
     const placement = ReportLayout.notePlacement(settings);
     if (PdfReportLayout.showsNote(settings)) {
       const text = row.note?.replace(/\s+/g, " ").trim() ?? "";
@@ -593,19 +629,19 @@ export class ReportLayout {
           i === 0 && prefix && t.startsWith(prefix) ? { text: t, mutedPrefix: prefix.length } : { text: t },
         );
         note = { x: placement.x, y: 0, w: placement.w, lines, muted: !row.changed };
-        if (!placement.ownLine) lineTwoH = Math.max(lineTwoH, lines.length * g.TABLE_LH);
+        if (!placement.ownLine) noteH = lines.length * g.TABLE_LH;
       }
     }
 
     const lineTwoY = lineOneH + g.LINE_GAP;
-    const right = lineOneH + (lineTwoH > 0 ? g.LINE_GAP + lineTwoH : 0);
+    const right = Math.max(lineOneH + (lineTwoH > 0 ? g.LINE_GAP + lineTwoH : 0), lineOneH + (noteH > 0 ? g.NOTE_GAP + noteH : 0));
     let content = Math.max(projectH, right);
     if (note) {
       if (placement.ownLine) {
-        note.y = content + g.LINE_GAP;
+        note.y = content + g.NOTE_GAP;
         content = note.y + note.lines.length * g.TABLE_LH;
       } else {
-        note.y = lineTwoY;
+        note.y = lineOneH + g.NOTE_GAP;
       }
     }
     return { projectId: row.projectId, height: g.ROW_PAD * 2 + content + g.ROW_BORDER, cells, note, lineTwoY };

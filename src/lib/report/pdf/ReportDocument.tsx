@@ -17,6 +17,7 @@ import {
   type MetaRun,
   type PageLayout,
   type PillBox,
+  type PlacedFlag,
   type RowCell,
   type RowLayout,
 } from "@/lib/report/pdf/ReportLayout";
@@ -219,12 +220,12 @@ function Flag({ flag, x, y }: { flag: FlagBox; x: number; y: number }) {
   );
 }
 
-function Flags({ flags, x, y }: { flags: FlagBox[]; x: number; y: number }) {
-  const offsets = flags.map((_, i) => flags.slice(0, i).reduce((sum, f) => sum + f.width + G.FLAG_GAP, 0));
+/** Row flags, each in its fixed slot (ReportLayout.flagSlots): empty slots stay blank. */
+function Flags({ flags, x, y }: { flags: PlacedFlag[]; x: number; y: number }) {
   return (
     <>
-      {flags.map((f, i) => (
-        <Flag key={f.kind} flag={f} x={x + offsets[i]} y={y} />
+      {flags.map((f) => (
+        <Flag key={f.kind} flag={f} x={x + f.dx} y={y} />
       ))}
     </>
   );
@@ -501,7 +502,7 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
       return (
         <>
           {cell.lines.map((l, i) => (
-            <Line key={i} x={cell.x} y={i * G.TABLE_LH} w={cell.w} text={l} size={S.table} color={cell.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
+            <Line key={i} x={cell.x} y={i * G.TABLE_LH} w={cell.w} text={l} size={S.table} weight={G.MILESTONE_WEIGHT} color={cell.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
           ))}
         </>
       );
@@ -543,18 +544,13 @@ function Row({ row, y }: { row: RowLayout; y: number }) {
               fontFamily: F,
               fontSize: S.table,
               lineHeight: G.TABLE_LH / S.table,
-              color: row.note!.muted ? C.MUTED : C.TEXT,
+              // Milestone emphasis: the note is always regular in the secondary color ("No change." included).
+              fontWeight: 400,
+              color: C.MUTED,
               maxLines: 1,
             }}
           >
-            {l.mutedPrefix ? (
-              <>
-                <Text style={{ color: C.MUTED }}>{l.text.slice(0, l.mutedPrefix)}</Text>
-                {l.text.slice(l.mutedPrefix)}
-              </>
-            ) : (
-              l.text
-            )}
+            {l.text}
           </Text>
         ))}
       <Rule y={row.height - G.ROW_PAD - G.ROW_BORDER} h={G.ROW_BORDER} color={C.DIVIDER} />

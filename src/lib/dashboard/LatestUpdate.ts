@@ -1,19 +1,32 @@
 /**
- * The dashboard "Latest update" column: the project's current note (the latest update, the same text the
- * PDF prints on line 2 of each row). Like the PDF there is no date before it (the "Updated <date>" sits on
- * the meta line under the project name) and whitespace is collapsed. The PDF also prefixes "No change."
- * when nothing changed since the last report; the dashboard shows that with the Changed flag instead.
+ * The dashboard "Latest update" line: the project's current note (the latest update), composed the way the
+ * PDF prints it under the next milestone. Like the PDF there is no date before it (the "Updated <date>"
+ * sits on the meta line under the project name) and whitespace is collapsed. When nothing changed since
+ * the last report the PDF prefixes "No change.", even when the note is blank; a changed row with a blank
+ * note prints nothing. Both print the line regular in the secondary color, under a semibold milestone.
  */
 export class LatestUpdate {
-  /** Shown when there is no note. A UI glyph, not prose, so it is the one place an em dash is rendered. */
+  /** Empty-cell glyph. A UI glyph, not prose, so it is the one place an em dash is rendered. */
   static readonly EMPTY_NOTE_GLYPH = "\u2014";
 
-  /** Lines shown before the cell clamps (full text on hover or focus, and in the drawer). */
-  static readonly CLAMP_LINES = 3;
+  /** Prefix the PDF shows (secondary color) when the row did not change since the last report. */
+  static readonly NO_CHANGE_PREFIX = "No change.";
 
   /** The note to show, whitespace collapsed, or null when blank. */
   static text(row: { note: string | null | undefined }): string | null {
     const t = row.note?.replace(/\s+/g, " ").trim() ?? "";
     return t === "" ? null : t;
+  }
+
+  /**
+   * The composed line as the PDF prints it: prefix (unchanged rows only) plus note, or null when there is
+   * nothing to print. `muted` = unchanged since the last report (the line is secondary either way).
+   */
+  static line(row: { note: string | null | undefined; changed: boolean }): { prefix: string | null; text: string | null; full: string; muted: boolean } | null {
+    const text = LatestUpdate.text(row);
+    const prefix = row.changed ? null : LatestUpdate.NO_CHANGE_PREFIX;
+    const full = [prefix, text].filter(Boolean).join(" ");
+    if (!full) return null;
+    return { prefix, text, full, muted: !row.changed };
   }
 }

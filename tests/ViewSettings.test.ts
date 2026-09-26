@@ -13,8 +13,10 @@ describe("ViewSettings defaults", () => {
 
   it("offers per-context columns in the agreed default order", () => {
     expect(ViewSettings.defaults("dashboard").columnOrder).toEqual([
-      "project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "latestUpdate", "flags", "inforNumber", "contractsLead",
+      "project", "owner", "physicianChampion", "status", "nextMilestone", "due", "latestUpdate", "flags", "inforNumber", "contractsLead",
     ]);
+    // The dashboard has no department column (the group header names it); the report never listed one.
+    expect(ViewSettings.defaults("dashboard").columnOrder).not.toContain("serviceArea");
     expect(ViewSettings.defaults("report").columnOrder).toEqual([
       "project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber", "contractsLead",
     ]);
@@ -68,9 +70,9 @@ describe("ViewSettings edits", () => {
 
   it("reorders columns and keeps visibleColumns in that order", () => {
     const moved = ViewSettings.withColumnMoved("dashboard", d, "flags", 1);
-    expect(moved.columnOrder.slice(0, 3)).toEqual(["project", "flags", "serviceArea"]);
-    const hidden = ViewSettings.withColumnHidden("dashboard", moved, "serviceArea", true);
-    expect(ViewSettings.visibleColumns(hidden).slice(0, 3)).toEqual(["project", "flags", "owner"]);
+    expect(moved.columnOrder.slice(0, 3)).toEqual(["project", "flags", "owner"]);
+    const hidden = ViewSettings.withColumnHidden("dashboard", moved, "owner", true);
+    expect(ViewSettings.visibleColumns(hidden).slice(0, 3)).toEqual(["project", "flags", "physicianChampion"]);
     expect(ViewSettings.withColumnMoved("dashboard", d, "project", 99).columnOrder.at(-1)).toBe("project");
   });
 
@@ -91,7 +93,9 @@ describe("migration 0002 seed rows", () => {
     for (const c of ViewSettings.CONTEXTS) {
       const d = ViewSettings.defaults(c);
       // The seeded dashboard row still says "note"; normalize reads it as latestUpdate (renamed, no migration).
-      const seeded = d.columnOrder.filter((k) => !ADDED_AFTER_0002.includes(k)).map((k) => (c === "dashboard" && k === "latestUpdate" ? "note" : k));
+      // It also lists "serviceArea" second, which the dashboard no longer offers; normalize drops it quietly.
+      const kept = d.columnOrder.filter((k) => !ADDED_AFTER_0002.includes(k)).map((k) => (c === "dashboard" && k === "latestUpdate" ? "note" : k));
+      const seeded = c === "dashboard" ? [kept[0], "serviceArea", ...kept.slice(1)] : kept;
       expect(ViewSettings.normalize(c, { columnOrder: seeded, hiddenColumns: [], hiddenStatuses: d.hiddenStatuses })).toEqual(d);
       const order = seeded.map((k) => `'${k}'`).join(", ");
       const statuses = d.hiddenStatuses.map((s) => `'${s}'`).join(", ");

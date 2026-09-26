@@ -77,6 +77,9 @@ body {
   }
   .fl-changed { background: var(--flag-changed-dark-bg); color: var(--flag-changed-dark-fg); border: 1px dashed var(--flag-changed-dark-fg); }
   .fl-overdue { background: var(--flag-overdue-dark-bg); color: var(--flag-overdue-dark-fg); }
+  /* PDF Stale flag (dashed, amber, clock icon) in the dark at-risk tokens, the same amber as the stale Updated date. */
+  .fl-stale { background: var(--status-at-risk-dark-bg); color: var(--status-at-risk-dark-fg); border: 1px dashed var(--status-at-risk-dark-fg); }
+  .flag > svg { flex: none; width: 8px; height: 8px; margin-right: 4px; }
 
   .chip {
     height: 28px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--dark-border);
