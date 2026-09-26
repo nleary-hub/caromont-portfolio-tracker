@@ -14,6 +14,7 @@ export interface ProjectRecord {
   owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
+  requesterNotApplicable: boolean;
   status: ProjectStatus;
   nextMilestone: string | null;
   dueDate: Date | null;
@@ -60,6 +61,8 @@ export interface ReportRow {
   /** Null = not assigned yet (shown as "To assign"). */
   owner: string | null;
   physicianChampion: string | null;
+  /** Requester marked Not applicable (renders blank). Absent in snapshots frozen before it existed. */
+  requesterNotApplicable?: boolean;
   status: ProjectStatus;
   statusLabel: string;
   nextMilestone: string | null;
@@ -96,6 +99,8 @@ export interface CompletedRow {
   completedInAppOn: string;
   inforRequestNumber: number | null;
   physicianChampion: string | null;
+  /** Requester marked Not applicable (renders blank). Absent in snapshots frozen before it existed. */
+  requesterNotApplicable?: boolean;
 }
 
 /** Stored in ReportSnapshot.missingChampionsJson. */
@@ -122,4 +127,15 @@ export interface ReportHeader {
   changed: number;
   /** Absent on snapshots before 0004. */
   stale?: number;
+  /** "Completed FY27 to date N" (page 1). Frozen with the header; absent on older snapshots. */
+  completedFiscalYear?: FiscalYearCount;
+}
+
+/** Fiscal-year-to-date completed count. */
+export interface FiscalYearCount {
+  /** "FY27" */
+  label: string;
+  /** YYYY-MM-DD first day of the fiscal year. */
+  start: string;
+  count: number;
 }

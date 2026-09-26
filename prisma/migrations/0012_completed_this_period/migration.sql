@@ -51,3 +51,9 @@ ALTER TABLE "Project" ADD CONSTRAINT "Project_nextMilestone_required"
 -- Department (service area) is optional: null shows as "Unassigned", grouped last. Relaxes a constraint
 -- only; the ("serviceArea", "status") index stays.
 ALTER TABLE "Project" ALTER COLUMN "serviceArea" DROP NOT NULL;
+
+-- Requester (the physicianChampion column, shown as "Requester") can be marked Not applicable.
+-- Default false keeps every existing row "not yet addressed" or named. A row cannot be both.
+ALTER TABLE "Project" ADD COLUMN "requesterNotApplicable" BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE "Project" ADD CONSTRAINT "Project_requester_na_blank"
+    CHECK (NOT "requesterNotApplicable" OR "physicianChampion" IS NULL OR btrim("physicianChampion") = '');

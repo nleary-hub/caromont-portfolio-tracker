@@ -1,3 +1,4 @@
+import { Requester } from "@/lib/domain/Requester";
 import { z } from "zod";
 import { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
@@ -19,6 +20,7 @@ export interface ProjectInput {
   owner?: string | null;
   physicianChampion?: string | null;
   physicianChampionEmail?: string | null;
+  requesterNotApplicable?: boolean;
   status: ProjectStatus | string;
   nextMilestone?: string | null;
   dueDate?: string | null;
@@ -41,6 +43,7 @@ export interface ProjectData {
   owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
+  requesterNotApplicable: boolean;
   status: ProjectStatus;
   nextMilestone: string | null;
   dueDate: Date | null;
@@ -127,6 +130,7 @@ export class ProjectValidator {
       owner: project.owner,
       physicianChampion: project.physicianChampion,
       physicianChampionEmail: project.physicianChampionEmail,
+      requesterNotApplicable: project.requesterNotApplicable,
       status: project.status,
       nextMilestone: project.nextMilestone,
       dueDate: DateOnly.fromDbDate(project.dueDate),
@@ -200,8 +204,9 @@ export class ProjectValidator {
         physicianChampion: ProjectValidator.optionalText(),
         physicianChampionEmail: z.preprocess(
           (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim().toLowerCase()) : v ?? null),
-          z.email("Physician champion email is not a valid email").nullable(),
+          z.email("Requester email is not a valid email").nullable(),
         ),
+        requesterNotApplicable: z.boolean().default(false),
         status: z.enum(ProjectStatus, { error: "Status must be one of the defined statuses" }),
         nextMilestone: ProjectValidator.optionalText({
           label: "Next milestone",
@@ -240,6 +245,12 @@ export class ProjectValidator {
             message: ProjectValidator.MILESTONE_REQUIRED_MESSAGE,
           });
         }
+      })
+      // Requester: a name and Not applicable never coexist. On the merged record NA wins (update() has
+      // already cleared it when the patch set a name); "Not applicable" text in the name means NA.
+      .transform((p) => {
+        const na = p.requesterNotApplicable || Requester.isNotApplicableText(p.physicianChampion);
+        return { ...p, physicianChampion: na ? null : p.physicianChampion, requesterNotApplicable: na };
       });
   }
 }

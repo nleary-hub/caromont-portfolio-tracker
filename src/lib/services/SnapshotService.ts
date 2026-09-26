@@ -24,7 +24,7 @@ export class SnapshotExistsError extends Error {
 
 /**
  * Creates immutable report snapshots. The snapshot stores only what was visible in the report
- * view at freeze (rows, header counts and missing champions all come from VisibilityPolicy's
+ * view at freeze (rows, header counts and missing requesters all come from VisibilityPolicy's
  * visible rows). The report view settings in effect are frozen too (viewSettingsJson, admin-only)
  * so an old report can always be rebuilt exactly. Rendering and delivery happen afterwards in
  * FreezeService, outside the transaction.

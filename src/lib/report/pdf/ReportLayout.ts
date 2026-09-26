@@ -1,11 +1,13 @@
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { Assignee } from "@/lib/domain/Assignee";
+import { Requester } from "@/lib/domain/Requester";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import { PdfReportLayout, type LayoutColumn } from "@/lib/report/PdfReportLayout";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
@@ -192,7 +194,7 @@ export type RowCell =
       owner: string;
       /** Owner blank: owner reads "To assign" in muted text. */
       ownerMissing: boolean;
-      /** Null when the champion column is hidden. */
+      /** Requester line. Null when the column is hidden or the requester is Not applicable. */
       champion: string | null;
       championMissing: boolean;
     }
@@ -257,11 +259,15 @@ export interface HeaderModel {
   reportDateMedium: string;
   period: string | null;
   projectsLine: string;
-  /** "Completed this period N" beside the Projects line on page 1. Null for snapshots before 0012. */
-  completedCount: number | null;
   /**
-   * Where "[check] Completed this period N" goes: meta row index and x relative to the value start. Beside the
-   * Projects value when it fits, otherwise on its own row under it (value column). Null when not shown.
+   * "[check] Completed FY27 to date N" beside the Projects line on page 1 (teal, number bold). Null for
+   * snapshots frozen before the count existed. The per-department "Completed this period" blocks are
+   * unchanged; page 1 no longer shows a period count.
+   */
+  completedFy: { label: string; count: number } | null;
+  /**
+   * Where the FY count goes: meta row index and x relative to the value start. Beside the Projects value
+   * when it fits, otherwise on its own row under it (value column). Null when not shown.
    */
   completedAt: { row: number; x: number } | null;
   preparedBy: string;
@@ -315,13 +321,12 @@ export interface DocumentLayout {
  */
 export class ReportLayout {
   static readonly PREPARED_BY = "Cardiac Procedure Services";
-  static readonly COMPLETED_META_LABEL = "Completed this period";
-  /** Space between the Projects value and the completed count on page 1. */
+  /** Space between the Projects value and the FY completed count on page 1. */
   static readonly COMPLETED_META_GAP = 14;
 
-  private static readonly COLUMN_LABELS: Record<LayoutColumn["key"], { label: string; sub: (s: ViewSettingsValue) => string | null }> = {
+  static readonly COLUMN_LABELS: Record<LayoutColumn["key"], { label: string; sub: (s: ViewSettingsValue) => string | null }> = {
     project: { label: "PROJECT", sub: () => null },
-    owner: { label: "OWNER", sub: (s) => (PdfReportLayout.showsChampion(s) ? "Champion" : null) },
+    owner: { label: "OWNER", sub: (s) => (PdfReportLayout.showsChampion(s) ? Requester.LABEL : null) },
     status: { label: "STATUS", sub: () => null },
     nextMilestone: { label: "NEXT MILESTONE", sub: (s) => (PdfReportLayout.showsNote(s) ? "Note below" : null) },
     due: { label: "DUE", sub: () => null },
@@ -390,7 +395,7 @@ export class ReportLayout {
 
   /**
    * Where the note goes: from the first column after the last column that has line-2 content
-   * (project spans both lines, champion sits under owner, the status change under status) to the
+   * (project spans both lines, requester sits under owner, the status change under status) to the
    * right margin. With the default order that is Next milestone to the margin (5.95 in).
    */
   static notePlacement(settings: ViewSettingsValue): { x: number; w: number; ownLine: boolean } {
@@ -476,8 +481,9 @@ export class ReportLayout {
           break;
         }
         case "owner": {
-          // Blank owner or champion reads "To assign" (muted), keeping the owner/champion stack.
-          const champion = showsChampion ? TextMeasure.fitLine(m, Assignee.label(row.physicianChampion), inner, S.small, 400) : null;
+          // Blank owner or requester reads "To assign" (muted). A requester marked Not applicable drops its line.
+          const requester = showsChampion ? Requester.display(row.physicianChampion, row.requesterNotApplicable) : null;
+          const champion = requester ? TextMeasure.fitLine(m, requester.text, inner, S.small, 400) : null;
           if (champion) lineTwoH = Math.max(lineTwoH, g.SMALL_LH);
           cells.push({
             kind: "owner",
@@ -486,7 +492,7 @@ export class ReportLayout {
             owner: TextMeasure.fitLine(m, Assignee.label(row.owner), inner, S.table, 400),
             ownerMissing: !Assignee.isAssigned(row.owner),
             champion,
-            championMissing: !Assignee.isAssigned(row.physicianChampion),
+            championMissing: requester?.muted ?? false,
           });
           break;
         }
@@ -564,7 +570,7 @@ export class ReportLayout {
 
   /**
    * One "Completed this period" row, aligned to the report columns: project name (bold) with the REQ slot
-   * under it, owner with champion under it, a check and the completion date in the status column, and the
+   * under it, owner with requester under it, a check and the completion date in the status column, and the
    * accomplishment from the next milestone column to the right edge (max 2 lines).
    */
   static completedRowLayout(m: Measurer, row: CompletedRow, settings: ViewSettingsValue, reportDate: string, y: number): CompletedRowLayout {
@@ -586,8 +592,9 @@ export class ReportLayout {
     let owner: CompletedRowLayout["owner"] = null;
     if (ownerCol) {
       const w = ownerCol.w - g.CELL_PAD_R;
-      const champion = PdfReportLayout.showsChampion(settings)
-        ? TextMeasure.fitLine(m, Assignee.label(row.physicianChampion), w, S.small, 400)
+      const requester = PdfReportLayout.showsChampion(settings) ? Requester.display(row.physicianChampion, row.requesterNotApplicable) : null;
+      const champion = requester
+        ? TextMeasure.fitLine(m, requester.text, w, S.small, 400)
         : null;
       owner = {
         x: ownerCol.x,
@@ -707,9 +714,11 @@ export class ReportLayout {
     ];
     let meta = ReportLayout.meta(m, metaRows, metaWidth);
     let completedAt: HeaderModel["completedAt"] = null;
-    if (input.completed) {
+    const fy = header.completedFiscalYear;
+    const completedFy = fy ? { label: CompletedFiscalYear.label(fy), count: fy.count } : null;
+    if (completedFy) {
       const projectsRow = metaRows.findIndex(([k]) => k === "Projects");
-      const x = ReportLayout.completedLabelX(m, meta, projectsLine, metaWidth, input.completed.length);
+      const x = ReportLayout.completedLabelX(m, meta, projectsLine, metaWidth, `${completedFy.label} ${completedFy.count}`);
       if (x !== null) completedAt = { row: projectsRow, x };
       else {
         metaRows.splice(projectsRow + 1, 0, ["", ""]);
@@ -723,7 +732,7 @@ export class ReportLayout {
       reportDateMedium: ReportFormat.mediumDate(input.reportDate),
       period,
       projectsLine,
-      completedCount: input.completed ? input.completed.length : null,
+      completedFy,
       completedAt,
       preparedBy: ReportLayout.PREPARED_BY,
       badge: input.draft ? "DRAFT" : input.exampleData ? "EXAMPLE DATA" : null,
@@ -739,11 +748,11 @@ export class ReportLayout {
     };
   }
 
-  /** Where "[check] Completed this period N" starts after the Projects value, or null if it would not fit. */
-  static completedLabelX(m: Measurer, meta: HeaderModel["meta"], projectsLine: string, metaWidth: number, count: number): number | null {
+  /** Where "[check] Completed FY27 to date N" starts after the Projects value, or null if it would not fit. */
+  static completedLabelX(m: Measurer, meta: HeaderModel["meta"], projectsLine: string, metaWidth: number, text: string): number | null {
     const st = CompletedBlockStyle;
     const x = m.width(projectsLine, meta.size, 500) + ReportLayout.COMPLETED_META_GAP;
-    const w = st.CHECK + 3 + m.width(`${ReportLayout.COMPLETED_META_LABEL} ${count}`, meta.size, 700);
+    const w = st.CHECK + 3 + m.width(text, meta.size, 700);
     return meta.keyWidth + x + w <= metaWidth ? x : null;
   }
 
@@ -803,8 +812,8 @@ export class ReportLayout {
 
   static firstHeaderHeight(input: ReportDocInput): number {
     const g = ReportGeometry;
-    // Up to one extra meta row for "Completed this period N" (still shorter than the grid).
-    const rows = input.completed ? 5 : 4;
+    // Up to one extra meta row for "Completed FY27 to date N" (still shorter than the grid).
+    const rows = input.header?.completedFiscalYear ? 5 : 4;
     const meta = rows * g.META_ROW_H + (rows - 1) * g.META_GAP + 6 + 3 * g.LEGEND_LINE_H;
     const grid = g.GRID_HEAD_H + (ReportLayout.gridAreas(input.rows).length + 1) * g.GRID_ROW_H + 1;
     return g.TITLE_BAR_H + (input.draft ? g.DRAFT_LINE_H : 0) + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
@@ -828,7 +837,8 @@ export class ReportLayout {
     // every count (grid, strip, projects line, flags) matches what is on the page.
     const rows = input.rows.filter((r) => ViewSettings.isStatusVisible(input.viewSettings, r.status));
     input = { ...input, rows };
-    const header = ReportBuilder.header(rows);
+    // The FY-to-date count is not derived from rows: it comes from the (frozen) header as stored.
+    const header = { ...ReportBuilder.header(rows), completedFiscalYear: input.header?.completedFiscalYear };
     const model = ReportLayout.header(m, input, header);
     const firstH = ReportLayout.firstHeaderHeight(input);
     const contH = ReportLayout.continuationHeaderHeight(input, model);

@@ -182,6 +182,7 @@ describe("ReportLayout visibility", () => {
       owner: "Owner A",
       physicianChampion: null,
       physicianChampionEmail: null,
+      requesterNotApplicable: false,
       status: "OnTrack" as const,
       nextMilestone: "M",
       dueDate: null,

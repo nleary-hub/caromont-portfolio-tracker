@@ -178,6 +178,7 @@ export class ReportBuilder {
       serviceArea: project.serviceArea,
       owner: project.owner,
       physicianChampion: project.physicianChampion,
+      requesterNotApplicable: project.requesterNotApplicable,
       status: project.status,
       statusLabel: ProjectStatusInfo.label(project.status),
       nextMilestone: project.nextMilestone,

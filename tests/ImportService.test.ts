@@ -15,8 +15,7 @@ class Csv {
       description: "",
       service_area: "Cath",
       owner: "Owner A",
-      physician_champion: "Dr. A",
-      physician_champion_email: "dr.a@example.org",
+      requester: "Dr. A",
       status: "On track",
       next_milestone: "Equipment install",
       due_date: "2026-10-21",
@@ -136,7 +135,7 @@ describe("ImportService: new projects", () => {
 
   it("a file without the description column still imports (description stays empty)", async () => {
     const cols = ProjectCsv.TEMPLATE_COLUMNS.filter((c) => c !== "description" && c !== "infor_request_number");
-    const file = `${cols.join(",")}\nNo desc project,Cath,Owner A,,,On track,Kickoff,,,,\n`;
+    const file = `${cols.join(",")}\nNo desc project,Cath,Owner A,,On track,Kickoff,,,,\n`;
     const r = await ImportService.commitCreate(file, ADMIN, fake.asClient());
     expect(r.created).toBe(1);
     expect(fake.state.projects[0].description).toBeNull();
@@ -152,7 +151,7 @@ describe("ImportService: new projects", () => {
       Csv.file(
         Csv.row({ next_milestone: "" }),
         Csv.row({ name: "B", percent_complete: "140" }),
-        Csv.row({ name: "C", physician_champion_email: "not-an-email" }),
+        Csv.row({ name: "C", requester: "N/A" }),
         Csv.row({ name: "", owner: "" }),
         Csv.row({ name: "E", include_in_report: "maybe", percent_complete: "abc" }),
       ),
@@ -161,7 +160,7 @@ describe("ImportService: new projects", () => {
     const [a, b, c, d, e] = preview.rows;
     expect(a.errors.next_milestone).toEqual(["Next milestone is required unless the project is Not started, On hold, Complete or Cancelled"]);
     expect(b.errors.percent_complete).toEqual(["Percent complete must be between 0 and 100"]);
-    expect(c.errors.physician_champion_email).toEqual(["Physician champion email is not a valid email"]);
+    expect(c.input).toMatchObject({ physicianChampion: null, requesterNotApplicable: true });
     expect(d.errors).toMatchObject({ name: ["Name is required"] });
     expect(d.errors).not.toHaveProperty("owner"); // owner is optional ("To assign")
     expect(e.errors).toMatchObject({ include_in_report: ['"maybe" is not yes or no'], percent_complete: ['"abc" is not a number'] });

@@ -1,5 +1,5 @@
 /**
- * Owner and physician champion are optional people fields. Blank shows as "To assign" in muted secondary
+ * Owner and requester are optional people fields. Blank shows as "To assign" in muted secondary
  * text (not a warning): dashboard, drawer, report rows and the "Completed this period" block.
  */
 export class Assignee {
@@ -7,7 +7,7 @@ export class Assignee {
 
   /**
    * Base owner suggestions: department leaders. Extend here. Contracts people are not owners and do not
-   * belong in this list. The champion field has no suggestions.
+   * belong in this list. The requester picker lists existing requester names instead.
    */
   static readonly OWNER_BASE_SUGGESTIONS: readonly string[] = ["Nicole Smith", "Nick Leary"];
 

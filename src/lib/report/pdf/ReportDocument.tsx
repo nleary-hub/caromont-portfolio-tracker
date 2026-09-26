@@ -266,7 +266,7 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
     const ly = top + i * (G.META_ROW_H + G.META_GAP);
     els.push(<Line key={`k${i}`} x={0} y={ly} w={keyWidth} text={k} size={metaSize} color={C.MUTED} lh={G.META_ROW_H} />);
     els.push(<Line key={`v${i}`} x={keyWidth} y={ly} w={valueW} text={v} size={metaSize} weight={500} lh={G.META_ROW_H} />);
-    if (h.completedCount !== null && h.completedAt?.row === i) {
+    if (h.completedFy && h.completedAt?.row === i) {
       const cx = keyWidth + h.completedAt.x;
       const st = CompletedBlockStyle;
       els.push(<Check key="cc" x={cx} y={ly + (G.META_ROW_H - st.CHECK) / 2} size={st.CHECK} color={st.ACCENT} />);
@@ -275,7 +275,7 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
           key="ct"
           style={{ position: "absolute", left: cx + st.CHECK + 3, top: ly, width: 200, fontFamily: F, fontSize: metaSize, lineHeight: G.META_ROW_H / metaSize, color: st.ACCENT, maxLines: 1 }}
         >
-          {ReportLayout.COMPLETED_META_LABEL} <Text style={{ fontWeight: 700 }}>{String(h.completedCount)}</Text>
+          {h.completedFy.label} <Text style={{ fontWeight: 700 }}>{String(h.completedFy.count)}</Text>
         </Text>,
       );
     }

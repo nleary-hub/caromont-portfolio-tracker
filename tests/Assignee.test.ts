@@ -84,13 +84,14 @@ describe("Admin edit panel", () => {
     expect(ProjectService.isPeopleField("status")).toBe(false);
   });
 
-  it("renders owner with the suggestion list and champion as plain text", () => {
+  it("renders owner with the suggestion list and the requester picker (no email field)", () => {
     const html = renderToStaticMarkup(
       createElement(ProjectPeopleEditor, {
         projectId: "p1",
         owner: null,
         physicianChampion: null,
-        physicianChampionEmail: null,
+        requesterNotApplicable: false,
+        requesterSuggestions: [],
         serviceArea: "Cath",
         ownerSuggestions: Assignee.ownerSuggestions([]),
         saveAction: async () => null,
@@ -99,8 +100,10 @@ describe("Admin edit panel", () => {
     expect(html).toContain('list="owner-suggestions-p1"');
     expect(html).toContain('<option value="Nicole Smith">');
     expect(html).toContain('<option value="Nick Leary">');
-    expect((html.match(/ list="/g) ?? []).length).toBe(1); // champion has no datalist
-    expect((html.match(/placeholder="To assign"/g) ?? []).length).toBe(2);
+    expect((html.match(/ list="/g) ?? []).length).toBe(1); // requester is a picker, not a datalist
+    expect((html.match(/placeholder="To assign"/g) ?? []).length).toBe(1);
+    expect(html).toContain('data-testid="requester-value"');
+    expect(html).not.toMatch(/type="email"|Champion email/);
     expect(html).toContain("<select");
     expect(html).not.toContain("Edit mode");
   });

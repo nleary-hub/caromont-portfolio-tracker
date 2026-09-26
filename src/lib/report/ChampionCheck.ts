@@ -2,8 +2,8 @@ import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { MissingChampion, ProjectRecord, RecipientRecord } from "@/lib/domain/types";
 
 /**
- * Finds physician champions on active projects who are not active report recipients.
- * Report-only: never creates recipients.
+ * Finds requesters (stored as physicianChampion) on active projects who are not active report
+ * recipients. Rows marked Not applicable are never flagged. Report-only: never creates recipients.
  */
 export class ChampionCheck {
   static normalizeEmail(email: string | null | undefined): string | null {
@@ -21,7 +21,7 @@ export class ChampionCheck {
     return !project.archivedAt && !ProjectStatusInfo.isClosed(project.status);
   }
 
-  /** Is this champion covered by an active recipient? Email match when the champion has an email, else name match. */
+  /** Is this requester covered by an active recipient? Email match when the requester has an email, else name match. */
   static isCovered(
     champion: { name: string | null; email: string | null },
     recipients: readonly RecipientRecord[],
@@ -30,7 +30,7 @@ export class ChampionCheck {
     const email = ChampionCheck.normalizeEmail(champion.email);
     if (email) return active.some((r) => ChampionCheck.normalizeEmail(r.email) === email);
     const name = ChampionCheck.normalizeName(champion.name);
-    if (!name) return true; // no champion at all
+    if (!name) return true; // no requester at all
     return active.some((r) => ChampionCheck.normalizeName(r.name) === name);
   }
 
@@ -40,7 +40,7 @@ export class ChampionCheck {
   ): MissingChampion[] {
     const byKey = new Map<string, MissingChampion>();
     for (const p of projects) {
-      if (!ChampionCheck.isActiveProject(p)) continue;
+      if (!ChampionCheck.isActiveProject(p) || p.requesterNotApplicable) continue;
       const email = ChampionCheck.normalizeEmail(p.physicianChampionEmail);
       const name = p.physicianChampion?.trim().replace(/\s+/g, " ") || null;
       if (!email && !name) continue;

@@ -3,6 +3,7 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import type { CompletedRow, MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { ChampionCheck } from "@/lib/report/ChampionCheck";
+import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import { CompletedThisPeriod } from "@/lib/report/CompletedThisPeriod";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
@@ -59,6 +60,8 @@ export class ReportDataLoader {
       recipients,
     );
     const completed = CompletedThisPeriod.select({ projects, history, viewSettings, cutoff: now });
+    // Frozen with the header (headerJson), so a frozen report keeps its count.
+    header.completedFiscalYear = CompletedFiscalYear.count({ projects, history, reportDate });
     return { rows, header, missingChampions, completed, viewSettings, options, reportDate, previousSnapshotGeneratedAt };
   }
 }

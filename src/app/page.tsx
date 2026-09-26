@@ -7,6 +7,9 @@ import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Db } from "@/lib/db/Db";
 import { Assignee } from "@/lib/domain/Assignee";
+import { Requester } from "@/lib/domain/Requester";
+import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
+import type { FiscalYearCount } from "@/lib/domain/types";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext } from "@/lib/domain/ViewSettings";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
@@ -16,6 +19,8 @@ interface DashboardLoad {
   rows: DashboardRow[];
   columns: ViewColumn[];
   latestReport: LatestReport | null;
+  /** "Completed FY27 to date N" for the summary strip. Null when the data could not be loaded. */
+  completedFiscalYear: FiscalYearCount | null;
   /** Present only for admins. */
   admin: Omit<AdminDashboardProps, "saveViewSettingsAction" | "setProjectHiddenAction" | "deleteProjectAction" | "setPeopleFieldAction"> | null;
   error: string | null;
@@ -32,8 +37,9 @@ class DashboardData {
       rows: [],
       columns: ViewSettings.visibleColumns(settings.dashboard),
       latestReport: null,
+      completedFiscalYear: null,
       admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), championEmails: {} }
+        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [] }
         : null,
       error,
     };
@@ -71,7 +77,16 @@ class DashboardData {
       const latestUpdates = lastUpdates.flatMap((g) =>
         g._max.changedAt ? [{ projectId: g.projectId, changedAt: g._max.changedAt, field: "update" }] : [],
       );
+      // "Completed FY27 to date": same rule as the report (report candidates only, completedOn else the
+      // day the status became Complete). Only Complete projects need their status history.
+      const complete = projects.filter((p) => p.status === "Complete");
+      const completionHistory = await db.projectHistory.findMany({
+        where: { projectId: { in: complete.map((p) => p.id) }, field: { in: ["status", "created"] } },
+        select: { projectId: true, changedAt: true, field: true, newValue: true },
+      });
+      const completedFiscalYear = CompletedFiscalYear.count({ projects: complete, history: completionHistory, reportDate: today });
       return {
+        completedFiscalYear,
         rows: DashboardViewModel.rows(
           projects,
           settings.dashboard,
@@ -94,7 +109,7 @@ class DashboardData {
               pickerCounts: DashboardViewModel.adminPickerCounts(projects),
               hiddenFromReportIds: visible.filter((p) => p.hiddenFromReport).map((p) => p.id),
               ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner)),
-              championEmails: Object.fromEntries(visible.map((p) => [p.id, p.physicianChampionEmail])),
+              requesterSuggestions: Requester.suggestions(projects.map((p) => p.physicianChampion)),
             }
           : null,
         error: null,
@@ -112,7 +127,7 @@ export default async function DashboardPage() {
   if (!viewer) redirect(SIGN_IN_PATH);
 
   const today = DateOnly.today();
-  const { rows, columns, latestReport, admin, error } = await DashboardData.load(viewer, today);
+  const { rows, columns, latestReport, completedFiscalYear, admin, error } = await DashboardData.load(viewer, today);
 
   return (
     <ProjectDashboard
@@ -122,6 +137,7 @@ export default async function DashboardPage() {
       userEmail={viewer.email}
       userName={viewer.name}
       latestReport={latestReport}
+      completedFiscalYear={completedFiscalYear}
       loadError={error}
       // Spread so non-admins' payload does not even carry an "admin" key.
       {...(admin

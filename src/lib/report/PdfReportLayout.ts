@@ -13,7 +13,7 @@ export class PdfReportLayout {
   static readonly TITLE = "Cardiac Service Line: Project Status Report";
   static readonly PAGE = { size: "Letter", orientation: "landscape", widthIn: 11, heightIn: 8.5, theme: "light" } as const;
 
-  /** Column widths in inches, line 1 of each row. Owner cell shows the physician champion in small gray beneath. */
+  /** Column widths in inches, line 1 of each row. Owner cell shows the requester in small gray beneath. */
   static readonly COLUMNS_IN = {
     project: 2.2,
     owner: 1.0,
@@ -40,7 +40,7 @@ export class PdfReportLayout {
 
   /**
    * Line-1 columns for the frozen report view settings: visible columns in the saved order,
-   * widths scaled so they still fill the content width. The physician champion always renders
+   * widths scaled so they still fill the content width. The requester always renders
    * under Owner and the note always renders as line 2, so neither takes a line-1 column.
    */
   static lineOneColumns(settings: ViewSettingsValue): LayoutColumn[] {

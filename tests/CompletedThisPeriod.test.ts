@@ -205,7 +205,8 @@ describe("Completed this period: counts", () => {
       m,
     );
     expect(layout.header.projectsLine).toBe("1 across 1 service area");
-    expect(layout.header.completedCount).toBe(1);
+    // The frozen header carries the FY-to-date count (the completed project counts there too).
+    expect(layout.header.completedFy).toMatchObject({ label: expect.stringMatching(/^Completed FY\d\d to date$/), count: 1 });
     const total = layout.header.grid.rows.at(-1)!;
     expect(total.cells.at(-1)).toBe(1);
     const section = layout.pages[0].blocks.find((b) => b.kind === "section")!;
@@ -312,11 +313,11 @@ describe("Completed this period: PDF layout", () => {
     expect(r.req).toBeNull();
   });
 
-  it("shows the completed count on page 1 and no block or count for snapshots without the field", () => {
-    expect(layout.header.completedCount).toBe(3);
+  it("page 1 shows the FY-to-date count (not a period count); no block for snapshots without completedJson", () => {
+    expect(layout.header.completedFy).toEqual({ label: "Completed FY27 to date", count: SampleReportData.FY_COMPLETED });
     expect(layout.header.completedAt).not.toBeNull();
     const old = ReportLayout.layout(SampleReportData.docInput({ completed: undefined }), m);
-    expect(old.header.completedCount).toBeNull();
+    expect(old.header.completedFy).not.toBeNull(); // the FY count lives in the header, not in completedJson
     expect(old.pages.flatMap((p) => p.blocks).some((b) => b.kind === "completed")).toBe(false);
   });
 

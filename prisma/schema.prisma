@@ -54,6 +54,8 @@ model Project {
   owner                  String?
   physicianChampion      String?
   physicianChampionEmail String?
+  /// Requester (physicianChampion) marked Not applicable: renders blank. A name clears it.
+  requesterNotApplicable Boolean @default(false)
   status                 ProjectStatus
   /// Required unless status is Complete/Cancelled (enforced in app validation).
   nextMilestone          String?

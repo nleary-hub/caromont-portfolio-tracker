@@ -17,6 +17,8 @@ export class AppConfig {
   static readonly IMPORT_MAX_ROWS = 500;
   /** Calendar used for "today", report dates and overdue checks. */
   static readonly TIME_ZONE = "America/New_York";
+  /** First month (1 = January) of the fiscal year. FY is named by the calendar year it ends in (Jul 2026 to Jun 2027 = FY27). */
+  static readonly FISCAL_YEAR_START_MONTH = 7;
   /** A report row is "Stale" when its latest update is this many days or more before the report date. */
   static readonly STALE_AFTER_DAYS = 14;
 }

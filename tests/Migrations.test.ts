@@ -118,6 +118,25 @@ describe("migrations (PGlite)", () => {
     await db.close();
   }, 30_000);
 
+  it("requesterNotApplicable is boolean default false and cannot coexist with a requester name", async () => {
+    const db = await Migrations.applyAll();
+    const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
+      `select data_type, is_nullable, column_default from information_schema.columns where table_name = 'Project' and column_name = 'requesterNotApplicable'`,
+    );
+    expect(col.rows).toEqual([{ data_type: "boolean", is_nullable: "NO", column_default: "false" }]);
+    const insert = (name: string, champion: string | null, na: boolean) =>
+      db.query(
+        `insert into "Project" (id, name, "serviceArea", status, "physicianChampion", "requesterNotApplicable", "updatedAt", "updatedBy")
+         values (gen_random_uuid(), $1, 'EP', 'NotStarted', $2, $3, now(), 'test')`,
+        [name, champion, na],
+      );
+    await insert("named", "Dr. A", false);
+    await insert("na", null, true);
+    await insert("unset", null, false);
+    await expect(insert("both", "Dr. B", true)).rejects.toThrow(/Project_requester_na_blank/);
+    await db.close();
+  }, 30_000);
+
   it("infor_request_number is a nullable integer column limited to 1..99999", async () => {
     const db = await Migrations.applyAll();
     const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(

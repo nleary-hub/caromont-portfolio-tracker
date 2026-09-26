@@ -7,6 +7,9 @@ import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Assignee } from "@/lib/domain/Assignee";
+import { Requester } from "@/lib/domain/Requester";
+import type { FiscalYearCount } from "@/lib/domain/types";
+import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
@@ -40,8 +43,8 @@ export interface AdminDashboardProps {
   deleteProjectAction: (projectId: string) => Promise<string | null>;
   /** Owner datalist for the drawer edit panel (department leaders plus existing owners). */
   ownerSuggestions: string[];
-  /** Champion emails by project id (admin only; not on DashboardRow). */
-  championEmails: Record<string, string | null>;
+  /** Existing requester names for the drawer requester picker (admin only). */
+  requesterSuggestions: string[];
   setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
 }
 
@@ -54,6 +57,8 @@ interface Props {
   userEmail: string;
   userName: string | null;
   latestReport: LatestReport | null;
+  /** "Completed FY27 to date N" (same rule as report page 1). */
+  completedFiscalYear?: FiscalYearCount | null;
   loadError: string | null;
   admin?: AdminDashboardProps;
   signOutAction: () => Promise<void>;
@@ -89,11 +94,11 @@ class DashboardColumns {
     },
     owner: { header: "Owner", width: "w-[84px]", cell: (r, td) => <td className={td}><AssigneeText value={r.owner} /></td> },
     physicianChampion: {
-      header: "Physician champion",
+      header: Requester.LABEL,
       width: "w-[164px]",
       cell: (r, td) => (
         <td className={td}>
-          <AssigneeText value={r.physicianChampion} />
+          <RequesterText name={r.physicianChampion} notApplicable={r.requesterNotApplicable} />
         </td>
       ),
     },
@@ -151,6 +156,7 @@ export function ProjectDashboard({
   userEmail,
   userName,
   latestReport,
+  completedFiscalYear,
   loadError,
   columns: columnsProp,
   admin,
@@ -281,7 +287,10 @@ export function ProjectDashboard({
           </p>
         )}
 
-        <section className="grid grid-cols-[repeat(7,1fr)_1fr_1.5fr] gap-2" aria-label="Status summary">
+        <section
+          className={`grid ${completedFiscalYear ? "grid-cols-[repeat(7,1fr)_1fr_1.5fr_1.5fr]" : "grid-cols-[repeat(7,1fr)_1fr_1.5fr]"} gap-2`}
+          aria-label="Status summary"
+        >
           {ProjectStatusInfo.all().map((s) => (
             <div key={s} className="flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
               <div className="type-metric">{summary.byStatus[s]}</div>
@@ -296,6 +305,7 @@ export function ProjectDashboard({
             <div className="type-metric">{summary.changed}</div>
             <span className="flag fl-changed">◆ Changed since last report</span>
           </div>
+          {completedFiscalYear && <CompletedFiscalYearCard fy={completedFiscalYear} />}
         </section>
 
         <section className="flex items-center gap-1.5" aria-label="Service area filter">
@@ -391,7 +401,8 @@ export function ProjectDashboard({
                 projectId={selected.id}
                 owner={selected.owner}
                 physicianChampion={selected.physicianChampion}
-                physicianChampionEmail={admin.championEmails[selected.id] ?? null}
+                requesterNotApplicable={selected.requesterNotApplicable}
+                requesterSuggestions={admin.requesterSuggestions}
                 serviceArea={selected.serviceArea}
                 ownerSuggestions={admin.ownerSuggestions}
                 saveAction={admin.setPeopleFieldAction}
@@ -417,9 +428,26 @@ export function ProjectDashboard({
 }
 
 /**
- * Owner or champion name, or "To assign" when blank: regular weight, same size as a name, in the secondary
+ * Owner or requester name, or "To assign" when blank: regular weight, same size as a name, in the secondary
  * text color (--dark-text-secondary). Not a warning, so no amber, icon or chip.
  */
+/** Summary strip card: teal check and count, "Completed FY27 to date" under it. */
+export function CompletedFiscalYearCard({ fy }: { fy: FiscalYearCount }) {
+  return (
+    <div data-testid="completed-fy" className="flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
+      <div className="type-metric text-(--status-on-track-dark-fg)">{fy.count}</div>
+      <span className="type-caption text-(--status-on-track-dark-fg)">&#10003; {FiscalYear.completedLabel(fy.label)}</span>
+    </div>
+  );
+}
+
+/** Requester cell: the name, muted "To assign" when not yet addressed, nothing when Not applicable. */
+export function RequesterText({ name, notApplicable }: { name: string | null; notApplicable: boolean }) {
+  const d = Requester.display(name, notApplicable);
+  if (!d) return null;
+  return d.muted ? <span className="font-normal text-muted">{d.text}</span> : <>{d.text}</>;
+}
+
 export function AssigneeText({ value }: { value: string | null }) {
   return Assignee.isAssigned(value) ? <>{value}</> : <span className="font-normal text-muted">{Assignee.TO_ASSIGN}</span>;
 }
@@ -470,7 +498,7 @@ function ProjectDrawer({
   row: DashboardRow;
   today: string;
   onClose: () => void;
-  /** Admin-only edit panel (owner, champion, department), shown at the top. Null for non-admins. */
+  /** Admin-only edit panel (owner, requester, department), shown at the top. Null for non-admins. */
   peopleEditor: ReactNode;
   /** Rendered only for admins. */
   adminControls: ReactNode;
@@ -509,9 +537,10 @@ function ProjectDrawer({
             <dd>
               <AssigneeText value={row.owner} />
             </dd>
-            <dt className="text-muted">Physician champion</dt>
+            <dt className="text-muted">{Requester.LABEL}</dt>
             <dd>
-              <AssigneeText value={row.physicianChampion} />
+              {/* Detail view: say "Not applicable" (primary text) so it differs from a gray "To assign". */}
+              {row.requesterNotApplicable && !row.physicianChampion ? Requester.NOT_APPLICABLE : <AssigneeText value={row.physicianChampion} />}
             </dd>
           </>
         )}

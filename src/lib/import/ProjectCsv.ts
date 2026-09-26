@@ -4,6 +4,7 @@ import { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
+import { Requester } from "@/lib/domain/Requester";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectRecord } from "@/lib/domain/types";
 import { ProjectValidator, type FieldErrors, type ProjectInput } from "@/lib/validation/ProjectValidator";
@@ -16,8 +17,7 @@ export type CsvColumn =
   | "infor_request_number"
   | "service_area"
   | "owner"
-  | "physician_champion"
-  | "physician_champion_email"
+  | "requester"
   | "status"
   | "next_milestone"
   | "due_date"
@@ -66,8 +66,7 @@ export class ProjectCsv {
     "infor_request_number",
     "service_area",
     "owner",
-    "physician_champion",
-    "physician_champion_email",
+    "requester",
     "status",
     "next_milestone",
     "due_date",
@@ -94,8 +93,7 @@ export class ProjectCsv {
     infor_request_number: "inforRequestNumber",
     service_area: "serviceArea",
     owner: "owner",
-    physician_champion: "physicianChampion",
-    physician_champion_email: "physicianChampionEmail",
+    requester: "physicianChampion",
     status: "status",
     next_milestone: "nextMilestone",
     due_date: "dueDate",
@@ -116,8 +114,7 @@ export class ProjectCsv {
       infor_request_number: "4656",
       service_area: "Cath",
       owner: "Example Owner A",
-      physician_champion: "Dr. Example A",
-      physician_champion_email: "dr.example.a@example.org",
+      requester: "Dr. Example A",
       status: "On track",
       next_milestone: "Vendor kickoff call",
       due_date: "2026-10-15",
@@ -133,8 +130,7 @@ export class ProjectCsv {
       infor_request_number: "",
       service_area: "EP",
       owner: "Example Owner B",
-      physician_champion: "",
-      physician_champion_email: "",
+      requester: "Not applicable",
       status: "Not started",
       next_milestone: "Charter approval",
       due_date: "11/2/2026",
@@ -155,10 +151,15 @@ export class ProjectCsv {
       'Column "older_update" is not imported: the app has no place for older updates yet, so its values are ignored.',
     owner_suggested: 'Column "owner_suggested" is a reference column and is not imported. Owners are set in the app.',
     department_basis: 'Column "department_basis" is a reference column and is not imported.',
+    physician_champion_email: 'Column "physician_champion_email" is not imported: requester emails are no longer used.',
   };
 
   /** Other header names accepted for a column (normalized). */
-  static readonly COLUMN_ALIASES: Readonly<Record<string, CsvColumn>> = { department: "service_area" };
+  static readonly COLUMN_ALIASES: Readonly<Record<string, CsvColumn>> = {
+    department: "service_area",
+    physician_champion: "requester",
+    champion: "requester",
+  };
 
   private static readonly KNOWN_COLUMNS: ReadonlySet<string> = new Set(ProjectCsv.EXPORT_COLUMNS);
   private static readonly TRUE_WORDS: ReadonlySet<string> = new Set(["yes", "y", "true", "t", "1"]);
@@ -193,8 +194,7 @@ export class ProjectCsv {
       infor_request_number: p.inforRequestNumber === null ? "" : String(p.inforRequestNumber),
       service_area: p.serviceArea ? ServiceAreaInfo.label(p.serviceArea) : "",
       owner: p.owner ?? "",
-      physician_champion: p.physicianChampion ?? "",
-      physician_champion_email: p.physicianChampionEmail ?? "",
+      requester: Requester.cellText(p.physicianChampion, p.requesterNotApplicable),
       status: ProjectStatusInfo.label(p.status),
       next_milestone: p.nextMilestone ?? "",
       due_date: DateOnly.fromDbDate(p.dueDate) ?? "",
@@ -297,6 +297,17 @@ export class ProjectCsv {
               `"${value}" is not a service area. Use one of: ${ServiceAreaInfo.all().join(", ")}, or Unassigned (or leave blank)`,
             );
             input.serviceArea = value;
+          }
+          break;
+        }
+        case "requester": {
+          // Name; "Not applicable" / "N/A" / "NA" (any case) = Not applicable; blank = not yet addressed.
+          if (Requester.isNotApplicableText(value)) {
+            input.physicianChampion = null;
+            input.requesterNotApplicable = true;
+          } else {
+            input.physicianChampion = value === "" ? null : value;
+            input.requesterNotApplicable = false;
           }
           break;
         }

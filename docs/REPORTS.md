@@ -112,15 +112,37 @@ A Complete project is listed once, in the first FROZEN report after it became Co
   leaves Complete) clears `completionReportedAt`. `completionReportedAt` is new rather than reusing the
   retired `closedReportedAt`, which had different semantics and could hold stale values.
 - **PDF:** a tinted block at the end of each department group (style constants in `CompletedBlockStyle`):
-  name with the REQ slot, owner with champion, a check and the date (`completedOn`, else the in-app
+  name with the REQ slot, owner with requester, a check and the date (`completedOn`, else the in-app
   completion date), and the accomplishment (max 2 lines) from the Next milestone column. The block is never
-  split across pages. The section head reads "2 projects · 2 completed this period"; page 1 shows
-  "Completed this period N" beside the Projects line (or on its own line under it when it does not fit).
-  Nothing here feeds the status grid, totals or the projects line.
+  split across pages. The section head reads "2 projects · 2 completed this period". Page 1 no longer shows a
+  period count (see "Completed FY to date"). Nothing here feeds the status grid, totals or the projects line.
 - **Unassigned:** projects with no department form an "Unassigned" group after every department (section
   head and page 1 table row in secondary gray; the table row appears only when there is one). It is not
   counted in "N across M service areas". The Completed block works there like in any other group.
 - **handoff.json:** `completedThisPeriod: { count, projects: [{ name, serviceArea, completedOn, accomplishment }] }`.
+
+## Completed FY to date
+
+- Page 1: "[check] Completed FY27 to date N" beside the Projects line (or on its own line under it when it
+  does not fit), in the teal accent with the number bold. It replaced the old "Completed this period N".
+- Fiscal year starts on the first day of `AppConfig.FISCAL_YEAR_START_MONTH` (7 = July) and is named by the
+  calendar year it ends in (Jul 1 2026 to Jun 30 2027 = FY27). `FiscalYear`, `CompletedFiscalYear`.
+- Counts projects with status Complete whose completion date is between the FY start and the report date,
+  inclusive. Completion date = `completedOn` when entered, else the day the status became Complete in the
+  app (ProjectHistory, America/New_York). Report candidates only: deleted, hidden from the report and not
+  included in the report never count; Cancelled is not Complete. Not once-only: a project counts in every
+  report until the FY rolls over; reopening removes it.
+- Frozen in `ReportSnapshot.headerJson.completedFiscalYear` (`{ label, start, count }`), so a frozen report
+  never changes. Older snapshots have no field and show no count.
+- Also on the dashboard summary strip (same rule, as of today) and in handoff.json as
+  `completedFiscalYear: { label, fiscalYearStart, count }` (null for older snapshots).
+
+## Requester
+
+The person field shown as "Requester" (stored as `physicianChampion`) has three states: a name; Not
+applicable (`requesterNotApplicable`, prints blank on the dashboard and report, and its line is dropped from
+the report owner stack); not yet addressed (blank, gray "To assign"). A name clears Not applicable and Not
+applicable clears the name (validator plus a CHECK constraint). History records both fields.
 
 ## Draft PDF (admin "Generate PDF now")
 
@@ -135,7 +157,7 @@ no Drive call, no handoff.json, no archive entry, no audit row.
 (UTC) and frozenAtEt, `reportRecipient` (from `REPORT_RECIPIENT_EMAIL`; omitted with a logged warning
 when unset or not a single valid address), totals and per-area counts, flags (Changed, Overdue, Stale: counts
 and the flagged projects), pdf (file name, sha256, size), `archiveUrl` (`<APP_BASE_URL>/reports`).
-Visible rows only. No To/Cc and no missing-champion list.
+Visible rows only. No To/Cc and no missing-requester list.
 
 ## Delivery
 

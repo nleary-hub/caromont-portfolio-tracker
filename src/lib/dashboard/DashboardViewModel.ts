@@ -16,6 +16,7 @@ export interface DashboardRow {
   serviceArea: ServiceArea | null;
   owner: string | null;
   physicianChampion: string | null;
+  requesterNotApplicable: boolean;
   status: ProjectStatus;
   statusLabel: string;
   nextMilestone: string | null;
@@ -74,6 +75,7 @@ export class DashboardViewModel {
       serviceArea: p.serviceArea,
       owner: p.owner,
       physicianChampion: p.physicianChampion,
+      requesterNotApplicable: p.requesterNotApplicable,
       status: p.status,
       statusLabel: ProjectStatusInfo.label(p.status),
       nextMilestone: p.nextMilestone,
@@ -120,7 +122,7 @@ export class DashboardViewModel {
     return { dashboard: count("dashboard"), report: count("report") };
   }
 
-  /** Area filter + free-text search over name, Infor number, owner, champion, milestone, note. */
+  /** Area filter + free-text search over name, Infor number, owner, requester, milestone, note. */
   static filter(rows: readonly DashboardRow[], area: AreaGroup | "All", query: string): DashboardRow[] {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {

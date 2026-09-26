@@ -55,13 +55,15 @@ export interface Handoff {
   };
   /** Listed once in the report's "Completed this period" blocks; not part of totals or byArea. */
   completedThisPeriod: { count: number; projects: HandoffCompleted[] };
+  /** Page 1 "Completed FY27 to date N", as frozen. Null for snapshots frozen before it existed. */
+  completedFiscalYear: { label: string; fiscalYearStart: string; count: number } | null;
   pdf: { fileName: string; sha256: string; byteSize: number };
   archiveUrl: string;
 }
 
 /**
  * Builds handoff.json from the frozen snapshot. Counts and flags come only from the snapshot's
- * visible rows. No To/Cc and no missing-champion list: the app sends nothing, and the one
+ * visible rows. No To/Cc and no missing-requester list: the app sends nothing, and the one
  * recipient is an env setting (REPORT_RECIPIENT_EMAIL).
  */
 export class HandoffBuilder {
@@ -122,6 +124,9 @@ export class HandoffBuilder {
           accomplishment: c.accomplishment,
         })),
       },
+      completedFiscalYear: input.header?.completedFiscalYear
+        ? { label: input.header.completedFiscalYear.label, fiscalYearStart: input.header.completedFiscalYear.start, count: input.header.completedFiscalYear.count }
+        : null,
       pdf: input.pdf,
       archiveUrl: HandoffBuilder.archiveUrl(input.baseUrl),
     };

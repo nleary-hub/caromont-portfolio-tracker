@@ -151,8 +151,9 @@ to a PGlite Postgres instance and exercising the services and guards.
 - `ProjectHistoryService.forProject(id, viewer)`: the history read path (filtered for non-admins).
 - `AdminAuditService.load(viewer)`: hidden and deleted projects, view settings, and recent admin-only
   changes (who, when, old, new) for `/admin/audit`; `notFound()` for non-admins.
-- `ChampionCheck`: champions on active projects (not archived, not Complete/Cancelled) with no active
-  Recipient, matched by email when the champion has one, otherwise case-insensitive name. Stored on
+- `ChampionCheck`: requesters on active projects (not archived, not Complete/Cancelled) with no active
+  Recipient, matched by email when a stored email exists, otherwise case-insensitive name. Rows marked
+  Not applicable are never flagged. Stored on
   the snapshot (computed on visible rows only, since it names projects). Never adds recipients.
 - `SnapshotService.create`: serializable transaction that reads the report view settings, builds rows
   and header from visible rows, and stores them plus the (admin-only) settings in the immutable snapshot.
@@ -199,7 +200,7 @@ Functions and download routes all re-check server-side via `AdminGate`). There i
 the URL directly.
 
 - **Template:** `docs/project-import-template.csv` (also "Download template" on the page). Columns:
-  `name, description, infor_request_number, service_area, owner, physician_champion, physician_champion_email, status, next_milestone,
+  `name, description, infor_request_number, service_area, owner, requester, status, next_milestone,
   due_date, percent_complete, note, accomplishment, completed_on, include_in_report`. Required columns:
   `name, service_area, status` (a `department` header is read as `service_area`; a blank value or
   `Unassigned` means no department, shown as the Unassigned group, last). `owner` is optional
@@ -214,6 +215,10 @@ the URL directly.
     Export writes the plain number. `description` max 200, `note` max 200, `next_milestone` max 40 (`AppConfig`).
   - `accomplishment` (optional, max 200) and `completed_on` (optional date, same formats as `due_date`, display
     only) feed the report's "Completed this period" block; see docs/REPORTS.md.
+  - `requester` (headers `physician_champion` and `champion` are read as `requester`): a name; `Not applicable`,
+    `N/A` or `NA` (any case) marks it Not applicable (prints blank on the dashboard and report); blank = not yet
+    addressed ("To assign" in gray). Export writes the name, `Not applicable` or blank. `physician_champion_email`
+    is no longer imported (the preview notes it); stored emails are kept in the database but not shown.
   - `older_update` (added by Writing Bot) is recognized but not imported: the app has no place for older
     updates yet, so the preview shows a warning and the values are ignored. `owner_suggested` and `department_basis`
     are reference columns: never read, the preview notes that they are not imported.
@@ -251,11 +256,12 @@ See [docs/REPORTS.md](docs/REPORTS.md): renderer (`@react-pdf/renderer`, embedde
 - Title: **"Cardiac Service Line: Project Status Report"** (no em dashes in report copy).
 - Light theme, US Letter **landscape**, 0.5 in side margins (10.0 in content width).
 - Grouped by service area (report order), with a section header per area.
-- Two-line rows. Line 1 columns (inches): Project 2.2, Owner 1.0 (physician champion in small gray
-  under the owner), Status 0.85, Next milestone 2.0, Due 0.6, Flags 3.35.
+- Two-line rows. Line 1 columns (inches): Project 2.2, Owner 1.0 (requester in small gray
+  under the owner; the line is dropped when the requester is Not applicable), Status 0.85, Next milestone 2.0, Due 0.6, Flags 3.35.
 - Line 2: the note, starting under Next milestone and running to the right margin (5.95 in), clipped
   to two lines. A 200-char note fits in two lines at the report table size (see mockup `measurement.json`).
 - Rows never split across pages.
+- Page 1 shows "Completed FY27 to date N" (teal check and number) beside the Projects line; see docs/REPORTS.md.
 - Every page repeats the header: page 1 has the full meta block and per-area status grid; later pages
   have a running head (title, report date, period) and a one-line per-area status count strip.
 - Pages are numbered ("Page X of Y").

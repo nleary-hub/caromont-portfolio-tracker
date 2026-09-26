@@ -71,6 +71,7 @@ export class CompletedThisPeriod {
         completedInAppOn: inApp,
         inforRequestNumber: p.inforRequestNumber,
         physicianChampion: p.physicianChampion,
+        requesterNotApplicable: p.requesterNotApplicable,
         at: at.getTime(),
       });
     }

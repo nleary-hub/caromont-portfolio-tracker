@@ -90,7 +90,7 @@ describe("Unassigned department", () => {
     expect(ReportLayout.sectionCountText(last.count, last.completedCount)).toBe("2 projects \u00b7 1 completed this period");
     const done = blocks.filter((b): b is Extract<typeof b, { kind: "completed" }> => b.kind === "completed");
     expect(done.at(-1)!.area).toBe("Unassigned");
-    expect(layout.header.completedCount).toBe(4);
+    expect(layout.header.completedFy).toBeNull(); // header rebuilt without the FY count
   });
 
   it("old snapshots without an Unassigned count still lay out", () => {
@@ -133,7 +133,8 @@ describe("Unassigned department", () => {
         projectId: "p1",
         owner: null,
         physicianChampion: null,
-        physicianChampionEmail: null,
+        requesterNotApplicable: false,
+        requesterSuggestions: [],
         serviceArea: null,
         ownerSuggestions: [],
         saveAction: async () => null,

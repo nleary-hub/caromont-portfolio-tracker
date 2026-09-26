@@ -1,3 +1,4 @@
+import { Requester } from "@/lib/domain/Requester";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
@@ -274,8 +275,13 @@ export class ImportService {
           if (col === "id" || ImportService.WORDING_COLUMNS.includes(col as WordingChange["column"])) continue;
           if (conversionErrors[col]) continue;
           const field = ProjectCsv.FIELD_BY_COLUMN[col];
-          const fileValue = ImportService.comparable(field, fileInput[field]);
-          const dbValue = ImportService.comparable(field, dbInput[field]);
+          // The requester cell carries two fields (name and Not applicable): compare its canonical text.
+          const fileValue =
+            col === "requester"
+              ? Requester.cellText(fileInput.physicianChampion, fileInput.requesterNotApplicable)
+              : ImportService.comparable(field, fileInput[field]);
+          const dbValue =
+            col === "requester" ? Requester.cellText(dbInput.physicianChampion, dbInput.requesterNotApplicable) : ImportService.comparable(field, dbInput[field]);
           if (fileValue !== dbValue) {
             reject(
               col,

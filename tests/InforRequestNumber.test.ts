@@ -231,6 +231,7 @@ describe("Infor request number: dashboard", () => {
     serviceArea: "Cath",
     owner: "Owner A",
     physicianChampion: null,
+    requesterNotApplicable: false,
     status: "OnTrack",
     statusLabel: "On track",
     nextMilestone: "Kickoff",
