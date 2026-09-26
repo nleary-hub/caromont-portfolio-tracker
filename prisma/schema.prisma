@@ -45,6 +45,8 @@ enum RecipientLine {
 model Project {
   id                     String        @id @default(uuid()) @db.Uuid
   name                   String
+  /// What the project is. Optional. Length limit is AppConfig.DESCRIPTION_MAX_LENGTH (200), enforced in app validation.
+  description            String?
   serviceArea            ServiceArea
   owner                  String
   physicianChampion      String?
