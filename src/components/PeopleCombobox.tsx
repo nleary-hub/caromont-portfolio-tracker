@@ -47,7 +47,8 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
     setFiltering(false);
     setHighlight(PeopleComboboxModel.defaultHighlight(PeopleComboboxModel.rows(role, options, q, false, value), false));
     setOpen(true);
-    requestAnimationFrame(() => inputRef.current?.select());
+    // The field already shows the current name, so select it now: typing replaces it.
+    inputRef.current?.select();
   };
   const close = () => {
     setOpen(false);
