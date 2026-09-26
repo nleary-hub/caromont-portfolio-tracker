@@ -117,7 +117,8 @@ to a PGlite Postgres instance and exercising the services and guards.
   - Eligible (counted in the header): `includeInReport` and not archived.
   - Listed as rows: eligible and status not hidden by the report view settings.
   - Header: status counts overall and per area (hidden statuses included) plus
-    `hiddenLine`, e.g. "Hidden: Complete (3), Cancelled (1)" (null when no status is hidden).
+    `hiddenLine`, e.g. "Hidden: Complete (3), Cancelled (1)". Only hidden statuses with at least one
+    project are listed; null when no project is actually hidden.
   - Changed: any history row after the previous snapshot's `generatedAt` (first report: any history).
   - Overdue: due date before the report date (America/New_York calendar date) and not Complete/Cancelled.
   - Sort: service area order, then severity (Off track, At risk, On hold, On track, Not started,
@@ -151,6 +152,10 @@ utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes a
 ## Stubbed / not built yet
 
 - PDF generation (`PdfReportRenderer.render` returns no storage key). "Generate report" button is disabled.
+- handoff.json (not built yet). Rule for when it is: flags are computed only on rows visible in the
+  frozen report view (snapshot `rowsJson`); missing physician champions are counted across all rows,
+  including ones hidden by the view settings (`missingChampionsJson` already works this way: `ChampionCheck`
+  runs on every project and ignores the view settings).
 - History timeline in the drawer, project create/edit forms, recipient management, sending email.
 - Report period picker in the top bar (shows latest snapshot only).
 

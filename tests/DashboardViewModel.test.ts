@@ -61,6 +61,8 @@ describe("DashboardViewModel", () => {
     expect(DashboardViewModel.listed(all, hideAtRisk, "All", "").map((r) => r.id)).toEqual(["d", "e", "a"]);
     expect(DashboardViewModel.hiddenLine(summary, hideAtRisk)).toBe("Hidden: At risk (1)");
     expect(DashboardViewModel.hiddenLine(summary, ViewSettings.normalize("dashboard", { hiddenStatuses: [] }))).toBeNull();
+    // Hidden statuses with no projects: no line at all.
+    expect(DashboardViewModel.hiddenLine(DashboardViewModel.summarize(rows), defaults)).toBeNull();
 
     // Report counts only include projects that are in the report.
     expect(DashboardViewModel.reportStatusCounts(all)).toMatchObject({ Complete: 1, Cancelled: 0 });

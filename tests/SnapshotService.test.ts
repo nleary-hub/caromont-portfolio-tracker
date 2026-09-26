@@ -30,7 +30,7 @@ describe("SnapshotService.create", () => {
     const header1 = s1.headerJson as unknown as ReportHeader;
     expect(header1.totals).toMatchObject({ OnTrack: 1, Complete: 1 });
     expect(header1.byArea.Cath).toMatchObject({ OnTrack: 1, Complete: 1 });
-    expect(header1.hiddenLine).toBe("Hidden: Complete (1), Cancelled (0)");
+    expect(header1.hiddenLine).toBe("Hidden: Complete (1)");
     expect((s1.missingChampionsJson as unknown as MissingChampion[]).map((m) => m.name)).toEqual(["Dr. Missing"]);
     expect(fake.state.recipients).toHaveLength(1); // never auto-adds recipients
     expect(JSON.stringify(fake.state.projects)).toBe(projectsBefore); // no closedReportedAt bookkeeping
@@ -74,6 +74,21 @@ describe("SnapshotService.create", () => {
     const s2 = await SnapshotService.create(period2, db);
     expect(s2.viewSettingsJson).toEqual(ViewSettings.defaults("report"));
     expect((s2.rowsJson as unknown as ReportRow[]).map((r) => r.name)).toEqual(["Active"]);
+  });
+
+  it("counts missing champions across all rows, including rows hidden by the report view (handoff rule)", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    await ProjectService.create({ ...base, name: "Visible", physicianChampion: "Dr. Visible" }, actor, db);
+    await ProjectService.create({ ...base, name: "Paused", status: "OnHold", physicianChampion: "Dr. Hidden" }, actor, db);
+    await ViewSettingsService.update("report", ViewSettings.normalize("report", { hiddenStatuses: ["OnHold"] }), actor, db);
+
+    const s = await SnapshotService.create(period1, db);
+    expect((s.rowsJson as unknown as ReportRow[]).map((r) => r.name)).toEqual(["Visible"]);
+    expect((s.missingChampionsJson as unknown as MissingChampion[]).map((m) => m.name).sort()).toEqual([
+      "Dr. Hidden",
+      "Dr. Visible",
+    ]);
   });
 
   it("uses report defaults when no settings row exists", async () => {

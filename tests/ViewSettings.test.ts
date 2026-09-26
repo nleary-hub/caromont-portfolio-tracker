@@ -18,7 +18,7 @@ describe("ViewSettings defaults", () => {
     expect(ViewSettings.defaults("report").columnOrder).toEqual([
       "project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note",
     ]);
-    expect(ViewSettings.columnLabel("report", "note")).toBe("Note (wrapped line)");
+    expect(ViewSettings.columnLabel("report", "note")).toBe("Note");
   });
 
   it("defaults() returns fresh copies", () => {
@@ -82,6 +82,8 @@ describe("ViewSettings edits", () => {
     const counts = { NotStarted: 0, OnTrack: 4, AtRisk: 0, OffTrack: 0, OnHold: 0, Complete: 3, Cancelled: 1 };
     expect(ViewSettings.hiddenStatusLine(d, counts)).toBe("Hidden: Complete (3), Cancelled (1)");
     expect(ViewSettings.hiddenStatusLine(ViewSettings.normalize("report", { hiddenStatuses: [] }), counts)).toBeNull();
+    expect(ViewSettings.hiddenStatusLine(d, { ...counts, Cancelled: 0 })).toBe("Hidden: Complete (3)");
+    expect(ViewSettings.hiddenStatusLine(d, { ...counts, Complete: 0, Cancelled: 0 })).toBeNull();
   });
 });
 

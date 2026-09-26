@@ -136,9 +136,20 @@ describe("ReportBuilder.build", () => {
       { status: "Complete", label: "Complete", count: 2 },
       { status: "Cancelled", label: "Cancelled", count: 1 },
     ]);
-    const onHold = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings(["OnHold"]) });
-    expect(onHold.header.hiddenLine).toBe("Hidden: On hold (0)");
-    expect(onHold.header.hiddenLine).not.toContain("\u2014");
+    expect(result.header.hiddenLine).not.toContain("\u2014");
+  });
+
+  it("header lists only hidden statuses with at least one project, and omits the line when all are 0", () => {
+    const mixed = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings(["OnHold", "Complete"]) });
+    expect(mixed.header.hiddenLine).toBe("Hidden: Complete (2)");
+    expect(mixed.header.hiddenStatuses.map((h) => h.status)).toEqual(["Complete"]);
+
+    const onlyZero = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings(["OnHold", "NotStarted"]) });
+    expect(onlyZero.header.hiddenLine).toBeNull();
+    expect(onlyZero.header.hiddenStatuses).toEqual([]);
+
+    const onlyOpen = ReportBuilder.build({ ...input, projects: [a, b], viewSettings: ViewSettings.defaults("report") });
+    expect(onlyOpen.header.hiddenLine).toBeNull();
   });
 
   it("rejects an invalid report date", () => {

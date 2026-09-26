@@ -66,7 +66,7 @@ export class ViewSettings {
       status: "Status",
       nextMilestone: "Next milestone",
       due: "Due",
-      note: "Note (wrapped line)",
+      note: "Note",
       flags: "Flags",
     },
   };
@@ -181,14 +181,19 @@ export class ViewSettings {
     return ViewSettings.normalize(context, { ...value, columnOrder: order });
   }
 
-  /** Hidden statuses with their counts (from counts that include hidden rows), in canonical order. */
+  /**
+   * Hidden statuses that actually hide at least one project, with their counts (from counts
+   * that include hidden rows), in canonical order.
+   */
   static hiddenStatusCounts(value: ViewSettingsValue, counts: Readonly<Record<ProjectStatus, number>>): HiddenStatusCount[] {
-    return value.hiddenStatuses.map((s) => ({ status: s, label: ProjectStatusInfo.label(s), count: counts[s] ?? 0 }));
+    return value.hiddenStatuses
+      .map((s) => ({ status: s, label: ProjectStatusInfo.label(s), count: counts[s] ?? 0 }))
+      .filter((h) => h.count > 0);
   }
 
   /**
-   * "Hidden: Complete (3), Cancelled (1)", or null when no status is hidden.
-   * Every hidden status is listed, including zero counts, so readers know the filter is on.
+   * "Hidden: Complete (3), Cancelled (1)". Only hidden statuses with at least one project are
+   * listed; null when nothing is actually hidden (no hidden status, or all hidden counts are 0).
    */
   static hiddenStatusLine(value: ViewSettingsValue, counts: Readonly<Record<ProjectStatus, number>>): string | null {
     const parts = ViewSettings.hiddenStatusCounts(value, counts);

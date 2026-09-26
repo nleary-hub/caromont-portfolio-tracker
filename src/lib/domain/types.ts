@@ -70,8 +70,8 @@ export interface ReportHeader {
   totals: StatusCounts;
   /** Per service area status counts (repeated in the page header for each area). */
   byArea: Record<ServiceArea, StatusCounts>;
-  /** Hidden statuses with counts, canonical order. Empty when nothing is hidden. */
+  /** Hidden statuses with at least one project, with counts, canonical order. Empty when nothing is hidden. */
   hiddenStatuses: HiddenStatusCount[];
-  /** "Hidden: Complete (3), Cancelled (1)", or null when no status is hidden. */
+  /** "Hidden: Complete (3), Cancelled (1)" (only counts of 1 or more), or null when no project is hidden. */
   hiddenLine: string | null;
 }
