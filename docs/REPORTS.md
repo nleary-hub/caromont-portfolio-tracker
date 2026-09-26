@@ -81,7 +81,8 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
   arrow when the status moved since the last report (wraps under the pill, never truncated), "No
   change." for unchanged rows.
 - Flags: Changed, Overdue, Stale. Stale means the "Updated <date>" is `AppConfig.STALE_AFTER_DAYS`
-  (14) or more days before the report date; the date turns amber. Never on Complete or Cancelled, and
+  or more days before the report date; the date turns amber. The page 1 legend, key page and
+  handoff.json all read that one constant, so changing it updates them together. Never on Complete or Cancelled, and
   only on listed rows. Stale has its own grid column, legend line and key entry.
 - Optional last page: status and flag key (admin toggle on `/reports`, default on, audited in
   `report_options_history`, frozen per snapshot).

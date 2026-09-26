@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import type { ReportRow } from "@/lib/domain/types";
+import { AppConfig } from "@/lib/config/AppConfig";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
@@ -154,7 +155,7 @@ describe("ReportLayout pagination", () => {
     expect(withKey.key!.statuses).toHaveLength(5);
     expect(Many.layout(rows.slice(0, 5), { viewSettings: ALL }).key!.statuses).toHaveLength(7);
     expect(withKey.key!.flags.map((f) => f.flag.kind)).toEqual(["changed", "overdue", "stale"]);
-    expect(withKey.key!.flags[2].meaning).toContain("14 or more days");
+    expect(withKey.key!.flags[2].meaning).toContain(`${AppConfig.STALE_AFTER_DAYS} or more days`);
     const without = Many.layout(rows.slice(0, 5), { showKeyPage: false });
     expect(without.key).toBeNull();
     expect(without.pages.every((p) => p.kind === "report")).toBe(true);
@@ -276,6 +277,25 @@ describe("ReportLayout stale flag", () => {
     expect(ReportBuilder.isStale({ status: "OnHold", updatedOn: "2026-08-01" }, "2026-09-29")).toBe(true);
     expect(ReportBuilder.isStale({ status: "OnTrack", updatedOn: null }, "2026-09-29")).toBe(false);
     expect(ReportBuilder.isStale({ status: "Complete", updatedOn: "2026-08-01" }, "2026-09-29")).toBe(false);
+  });
+
+  it("builds the legend and key text from AppConfig.STALE_AFTER_DAYS, so changing it changes flag, legend and key together", () => {
+    const cfg = AppConfig as { STALE_AFTER_DAYS: number };
+    const original = cfg.STALE_AFTER_DAYS;
+    try {
+      cfg.STALE_AFTER_DAYS = 21;
+      expect(ReportLayout.legendText("stale")).toBe("no update in 21+ days");
+      const key = ReportLayout.layout(SampleReportData.docInput(), m).key!;
+      expect(key.flags.find((f) => f.flag.kind === "stale")!.meaning).toBe("No update in 21 or more days before the report date.");
+      expect(key.details.map((d) => d.meaning).join(" ")).toContain("21+ days");
+      expect(JSON.stringify(key)).not.toMatch(/\b14\b/);
+      // The flag itself moves with the threshold: 14 days is no longer stale, 21 is.
+      expect(ReportBuilder.isStale({ status: "OnTrack", updatedOn: "2026-09-15" }, "2026-09-29")).toBe(false);
+      expect(ReportBuilder.isStale({ status: "OnTrack", updatedOn: "2026-09-08" }, "2026-09-29")).toBe(true);
+    } finally {
+      cfg.STALE_AFTER_DAYS = original;
+    }
+    expect(ReportLayout.legendText("stale")).toBe(`no update in ${original}+ days`);
   });
 
   it("adds a Stale chip after Changed and Overdue, turns 'Updated' amber, and counts stale rows in the grid", () => {

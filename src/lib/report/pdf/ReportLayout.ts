@@ -295,6 +295,16 @@ export class ReportLayout {
     return { x: start, w, ownLine: false };
   }
 
+  /**
+   * Page 1 legend text beside each flag chip. Stale is built from AppConfig.STALE_AFTER_DAYS (read at
+   * call time), so the flag, legend and key page always agree on the threshold.
+   */
+  static legendText(kind: FlagKind): string {
+    if (kind === "changed") return "differs from last report";
+    if (kind === "overdue") return "due date has passed";
+    return `no update in ${AppConfig.STALE_AFTER_DAYS}+ days`;
+  }
+
   static statusChange(row: ReportRow): StatusChange | null {
     const from = row.statusFrom;
     if (!from || from === row.status) return null;

@@ -1,10 +1,10 @@
 import { Circle, Document, Page, Path, Rect, Svg, Text, View } from "@react-pdf/renderer";
 import type { ProjectStatus } from "@/generated/prisma/enums";
-import { AppConfig } from "@/lib/config/AppConfig";
 import { StatusShapes, type ShapePart } from "@/lib/domain/StatusShapes";
 import { ReportFonts } from "@/lib/report/pdf/ReportFonts";
 import {
   ReportGeometry as G,
+  ReportLayout,
   type BodyBlock,
   type DocumentLayout,
   type FlagBox,
@@ -247,7 +247,7 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
   els.push(<Line key="lg1" x={0} y={ly + 1} w={30} text="Flags:" size={S.small} weight={600} color={C.MUTED} lh={G.SMALL_LH} />);
   els.push(<Flag key="lgc" flag={changed} x={24} y={ly} />);
   els.push(
-    <Line key="lg2" x={24 + changed.width + 4} y={ly + 1} w={h.metaWidth} text="differs from last report" size={S.small} color={C.MUTED} lh={G.SMALL_LH} />,
+    <Line key="lg2" x={24 + changed.width + 4} y={ly + 1} w={h.metaWidth} text={ReportLayout.legendText("changed")} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />,
   );
   els.push(<Flag key="lgo" flag={overdue} x={24} y={ly + G.LEGEND_LINE_H} />);
   els.push(
@@ -256,7 +256,7 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
       x={24 + overdue.width + 4}
       y={ly + G.LEGEND_LINE_H + 1}
       w={h.metaWidth}
-      text="due date has passed"
+      text={ReportLayout.legendText("overdue")}
       size={S.small}
       color={C.MUTED}
       lh={G.SMALL_LH}
@@ -270,7 +270,7 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
       x={24 + stale.width + 4}
       y={ly + 2 * G.LEGEND_LINE_H + 1}
       w={h.metaWidth}
-      text={`no update in ${AppConfig.STALE_AFTER_DAYS}+ days`}
+      text={ReportLayout.legendText("stale")}
       size={S.small}
       color={C.MUTED}
       lh={G.SMALL_LH}
