@@ -100,7 +100,9 @@ export class DashboardColumnModel {
     people: { header: "People", width: 200, minWidth: 160, pinned: false, structural: false },
     status: { header: "Status", width: 112, minWidth: 104, pinned: false, structural: false },
     milestoneUpdate: { header: "Next milestone / Latest update", width: 280, minWidth: 280, pinned: false, structural: false },
-    dueFlags: { header: "Due / Flags", width: 150, minWidth: 120, pinned: false, structural: false },
+    // 180 = 24px cell padding + the fixed flag slot grid (DueFlags.gridWidthPx(), 154px). The grid never
+    // shrinks, so the minimum is the same.
+    dueFlags: { header: "Due / Flags", width: 180, minWidth: 180, pinned: false, structural: false },
   };
 
   /** Column spec with its default flex role (only Next milestone / Latest update). */

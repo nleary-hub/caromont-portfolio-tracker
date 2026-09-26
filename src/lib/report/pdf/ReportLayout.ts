@@ -1,6 +1,7 @@
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { Assignee } from "@/lib/domain/Assignee";
+import { FlagSlots, type FlagKind } from "@/lib/domain/FlagSlots";
 import { Requester } from "@/lib/domain/Requester";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { InforNumber } from "@/lib/domain/InforNumber";
@@ -181,7 +182,7 @@ export interface CompletedRowLayout {
   accomplishment: { x: number; w: number; lines: string[] } | null;
 }
 
-export type FlagKind = "changed" | "overdue" | "stale";
+export type { FlagKind };
 
 export interface StatusChange {
   arrow: "up" | "down" | null;
@@ -201,6 +202,12 @@ export interface FlagBox {
   kind: FlagKind;
   label: string;
   width: number;
+}
+
+/** A row flag placed in its fixed slot (FlagSlots order): `dx` is the slot's offset from the column start. */
+export interface PlacedFlag extends FlagBox {
+  slot: number;
+  dx: number;
 }
 
 export interface TextLine {
@@ -237,7 +244,7 @@ export type RowCell =
   | { kind: "status"; x: number; w: number; pill: PillBox; change: StatusChange | null }
   | { kind: "nextMilestone"; x: number; w: number; lines: string[]; muted: boolean }
   | { kind: "due"; x: number; w: number; text: string; overdue: boolean; muted: boolean }
-  | { kind: "flags"; x: number; w: number; flags: FlagBox[] };
+  | { kind: "flags"; x: number; w: number; flags: PlacedFlag[] };
 
 export interface RowLayout {
   projectId: string;
@@ -431,9 +438,30 @@ export class ReportLayout {
 
   static flag(m: Measurer, kind: FlagKind): FlagBox {
     const g = ReportGeometry;
-    const label = kind === "changed" ? "Changed" : kind === "stale" ? "Stale" : "! Overdue";
+    const label = FlagSlots.label(kind);
     const icon = kind === "overdue" ? 0 : g.DIAMOND + 2.5;
     return { kind, label, width: g.FLAG_PAD * 2 + icon + m.width(label, g.SIZE.pill, 700) };
+  }
+
+  /**
+   * Fixed flag slots for the Flags column, in FlagSlots order. Each slot is as wide as its own pill and
+   * slots are FLAG_GAP apart, so a flag's x never depends on which other flags apply (empty slots stay blank).
+   */
+  static flagSlots(m: Measurer): { kind: FlagKind; dx: number; width: number }[] {
+    let dx = 0;
+    return FlagSlots.ORDER.map((kind) => {
+      const width = ReportLayout.flag(m, kind).width;
+      const slot = { kind, dx, width };
+      dx += width + ReportGeometry.FLAG_GAP;
+      return slot;
+    });
+  }
+
+  /** Total width of all flag slots (must fit the Flags column). */
+  static flagSlotsWidth(m: Measurer): number {
+    const slots = ReportLayout.flagSlots(m);
+    const last = slots[slots.length - 1];
+    return last.dx + last.width;
   }
 
   /** Columns in points for the frozen report settings. */
@@ -577,10 +605,10 @@ export class ReportLayout {
           break;
         }
         case "flags": {
-          const flags: FlagBox[] = [];
-          if (row.changed) flags.push(ReportLayout.flag(m, "changed"));
-          if (row.overdue) flags.push(ReportLayout.flag(m, "overdue"));
-          if (row.stale) flags.push(ReportLayout.flag(m, "stale"));
+          const slots = ReportLayout.flagSlots(m);
+          const flags: PlacedFlag[] = FlagSlots.slots({ changed: row.changed, overdue: row.overdue, stale: Boolean(row.stale) }).flatMap((kind, slot) =>
+            kind ? [{ ...ReportLayout.flag(m, kind), slot, dx: slots[slot].dx }] : [],
+          );
           if (flags.length) lineOneH = Math.max(lineOneH, g.PILL_H);
           cells.push({ kind: "flags", x: col.x, w: inner, flags });
           break;

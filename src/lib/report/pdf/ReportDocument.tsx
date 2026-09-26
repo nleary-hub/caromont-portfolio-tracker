@@ -17,6 +17,7 @@ import {
   type MetaRun,
   type PageLayout,
   type PillBox,
+  type PlacedFlag,
   type RowCell,
   type RowLayout,
 } from "@/lib/report/pdf/ReportLayout";
@@ -219,12 +220,12 @@ function Flag({ flag, x, y }: { flag: FlagBox; x: number; y: number }) {
   );
 }
 
-function Flags({ flags, x, y }: { flags: FlagBox[]; x: number; y: number }) {
-  const offsets = flags.map((_, i) => flags.slice(0, i).reduce((sum, f) => sum + f.width + G.FLAG_GAP, 0));
+/** Row flags, each in its fixed slot (ReportLayout.flagSlots): empty slots stay blank. */
+function Flags({ flags, x, y }: { flags: PlacedFlag[]; x: number; y: number }) {
   return (
     <>
-      {flags.map((f, i) => (
-        <Flag key={f.kind} flag={f} x={x + offsets[i]} y={y} />
+      {flags.map((f) => (
+        <Flag key={f.kind} flag={f} x={x + f.dx} y={y} />
       ))}
     </>
   );

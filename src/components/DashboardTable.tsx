@@ -258,17 +258,14 @@ export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdate
 }
 
 /**
- * Due / Flags: the date, 6px, then the flag pills 4px apart. Pills never shrink or clip; when they do not fit they wrap to a line
- * under the date. Top-aligned with the row's first line.
+ * Due / Flags with fixed placement: the date alone on line 1 (muted en dash when blank), then the fixed
+ * flag slot grid (DueFlags / FlagSlots). Every slot keeps its cell when empty, so a flag is always in the
+ * same place; nothing is ever inline with the date. Top-aligned with the row's first line.
  */
 export function DueFlagsCellView({ cell }: { cell: DueFlagsCell }) {
-  if (!cell.due && cell.flags.length === 0) return null;
+  if (!cell.due && !cell.slots) return null;
   return (
-    <div
-      className="flex flex-wrap items-start text-[13px] leading-[18px]"
-      style={{ columnGap: DueFlags.DUE_GAP_PX, rowGap: DueFlags.FLAG_GAP_PX }}
-      data-testid="due-flags"
-    >
+    <div className="flex flex-col items-start text-[13px] leading-[18px]" style={{ rowGap: DueFlags.ROW_GAP_PX }} data-testid="due-flags">
       {cell.due && (
         <span
           data-part="due"
@@ -277,12 +274,23 @@ export function DueFlagsCellView({ cell }: { cell: DueFlagsCell }) {
           {cell.due.text}
         </span>
       )}
-      {cell.flags.length > 0 && (
-        <span data-part="flags" className="flex flex-wrap" style={{ gap: DueFlags.FLAG_GAP_PX }}>
-          {cell.flags.map((f) => (
-            <DueFlagPill key={f.kind} kind={f.kind} label={f.label} />
+      {cell.slots && (
+        <div
+          data-part="flag-slots"
+          className="grid"
+          style={{
+            gridTemplateColumns: DueFlags.COLUMN_WIDTHS_PX.map((w) => `${w}px`).join(" "),
+            gridTemplateRows: `repeat(${DueFlags.gridRows()}, ${DueFlags.SLOT_H_PX}px)`,
+            columnGap: DueFlags.COL_GAP_PX,
+            rowGap: DueFlags.ROW_GAP_PX,
+          }}
+        >
+          {cell.slots.map((s) => (
+            <span key={s.kind} data-slot={s.slot} data-slot-kind={s.kind} className="flex" style={{ gridRow: s.row + 1, gridColumn: s.col + 1 }}>
+              {s.flag && <DueFlagPill kind={s.flag.kind} label={s.flag.label} />}
+            </span>
           ))}
-        </span>
+        </div>
       )}
     </div>
   );

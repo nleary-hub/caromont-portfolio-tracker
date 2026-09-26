@@ -1,5 +1,6 @@
 import type { DueFlagsVisibility, MilestoneUpdateVisibility } from "@/lib/dashboard/DashboardColumnModel";
 import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
+import { FlagSlots, type FlagKind } from "@/lib/domain/FlagSlots";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 
 /** The fields a stacked Next milestone / Latest update cell reads. */
@@ -49,27 +50,77 @@ export interface DueFlagsSource {
   stale: boolean;
 }
 
-export type DueFlagKind = "changed" | "overdue" | "stale";
+export type DueFlagKind = FlagKind;
 
-/** What the Due / Flags cell renders. `due` is null when the due part is hidden. */
-export interface DueFlagsCell {
-  due: { text: string; overdue: boolean; muted: boolean } | null;
-  flags: { kind: DueFlagKind; label: string }[];
+/** One flag slot of the Due / Flags cell: its fixed grid position, and the flag when it applies. */
+export interface DueFlagSlot {
+  slot: number;
+  kind: DueFlagKind;
+  row: number;
+  col: number;
+  /** The pill to draw, or null when the flag does not apply (the slot stays reserved and blank). */
+  flag: { kind: DueFlagKind; label: string } | null;
 }
 
 /**
- * The Due / Flags cell, following the PDF: the due date in ReportFormat.shortDate (year added when it
- * differs from today's), overdue in weight 600 and the overdue color, a blank date as a muted en dash
- * ("\u2013", as the PDF prints it); then the flags in PDF order Changed, Overdue, Stale with PDF labels.
+ * What the Due / Flags cell renders. `due` is null when the due part is hidden; `slots` is null when the
+ * flags part is hidden, else always FlagSlots.COUNT entries in canonical order.
+ */
+export interface DueFlagsCell {
+  due: { text: string; overdue: boolean; muted: boolean } | null;
+  slots: DueFlagSlot[] | null;
+}
+
+/**
+ * The Due / Flags cell with standardized placement: the due date always alone on line 1
+ * (ReportFormat.shortDate, year added when it differs from today's; overdue in weight 600 and the
+ * overdue color; a blank date as a muted en dash "\u2013", as the PDF prints it), then a fixed grid of
+ * flag slots in FlagSlots order. Every slot keeps its cell even when empty, so a flag sits at the same
+ * place on every row and never beside the date.
+ *
+ * Grid: GRID_COLUMNS columns of fixed widths, filled row by row in canonical order, so Changed is row 1
+ * column 1, Overdue row 1 column 2, Stale row 2 column 1. A vertical stack of three reserved slots would
+ * make every row about 90px of content instead of 66px, so the compact grid is used.
  */
 export class DueFlags {
   static readonly BLANK_DUE = "\u2013";
 
-  /** Gap between the due date and the first flag, and between flags (px). */
-  static readonly DUE_GAP_PX = 6;
-  static readonly FLAG_GAP_PX = 4;
+  /** Gap between the date line and the slot grid, and between grid cells (px). */
+  static readonly ROW_GAP_PX = 4;
+  static readonly COL_GAP_PX = 4;
 
-  static readonly LABELS: Readonly<Record<DueFlagKind, string>> = { changed: "Changed", overdue: "! Overdue", stale: "Stale" };
+  static readonly GRID_COLUMNS = 2;
+
+  /** Pill height (the .flag style) = grid row height. */
+  static readonly SLOT_H_PX = 20;
+
+  /**
+   * Fixed column widths (px). Measured pill widths in Inter: Changed 76.1, Overdue 65.8, Stale 54.8;
+   * each column fits the widest pill that can land in it, with a little slack.
+   */
+  static readonly COLUMN_WIDTHS_PX: readonly number[] = [80, 70];
+
+  static readonly LABELS: Readonly<Record<DueFlagKind, string>> = FlagSlots.LABELS;
+
+  /** Fixed grid position of a flag (0-based row and column). */
+  static position(kind: DueFlagKind): { row: number; col: number } {
+    const i = FlagSlots.index(kind);
+    return { row: Math.floor(i / DueFlags.GRID_COLUMNS), col: i % DueFlags.GRID_COLUMNS };
+  }
+
+  static gridRows(): number {
+    return Math.ceil(FlagSlots.COUNT / DueFlags.GRID_COLUMNS);
+  }
+
+  /** Width the slot grid needs (the Due / Flags column content width must be at least this). */
+  static gridWidthPx(): number {
+    return DueFlags.COLUMN_WIDTHS_PX.reduce((sum, w) => sum + w, 0) + DueFlags.COL_GAP_PX * (DueFlags.GRID_COLUMNS - 1);
+  }
+
+  static gridHeightPx(): number {
+    const rows = DueFlags.gridRows();
+    return rows * DueFlags.SLOT_H_PX + (rows - 1) * DueFlags.ROW_GAP_PX;
+  }
 
   static cell(row: DueFlagsSource, visible: DueFlagsVisibility, today: string): DueFlagsCell {
     const due = visible.due
@@ -77,12 +128,12 @@ export class DueFlags {
         ? { text: ReportFormat.shortDate(row.dueDate, today), overdue: row.overdue, muted: false }
         : { text: DueFlags.BLANK_DUE, overdue: false, muted: true }
       : null;
-    const flags: DueFlagsCell["flags"] = [];
-    if (visible.flags) {
-      for (const kind of ["changed", "overdue", "stale"] as const) {
-        if (row[kind]) flags.push({ kind, label: DueFlags.LABELS[kind] });
-      }
-    }
-    return { due, flags };
+    const slots = visible.flags
+      ? FlagSlots.slots(row).map((present, slot) => {
+          const kind = FlagSlots.ORDER[slot];
+          return { slot, kind, ...DueFlags.position(kind), flag: present ? { kind, label: FlagSlots.label(kind) } : null };
+        })
+      : null;
+    return { due, slots };
   }
 }

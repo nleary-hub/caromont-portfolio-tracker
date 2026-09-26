@@ -6,6 +6,7 @@ import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
 import { ReportGeometry, ReportLayout, type DocumentLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
+import { FlagSlots } from "@/lib/domain/FlagSlots";
 
 const m = new TextMeasure();
 
@@ -121,6 +122,35 @@ describe("ReportLayout pagination", () => {
     const lineOne = Math.max(ReportGeometry.PILL_H, (cell.kind === "nextMilestone" ? cell.lines.length : 1) * ReportGeometry.TABLE_LH);
     expect(r.note!.y).toBeCloseTo(lineOne + ReportGeometry.NOTE_GAP, 9);
     expect(r.note!.y + r.note!.lines.length * ReportGeometry.TABLE_LH).toBeLessThanOrEqual(r.height);
+  });
+
+  it("fixed flag slots: each flag keeps its slot index and x whichever other flags apply (all 8 combinations)", () => {
+    const settings = ViewSettings.defaults("report");
+    const slots = ReportLayout.flagSlots(m);
+    expect(slots.map((s) => s.kind)).toEqual(FlagSlots.ORDER);
+    expect(slots[0].dx).toBe(0);
+    for (let i = 1; i < slots.length; i++) expect(slots[i].dx).toBeCloseTo(slots[i - 1].dx + slots[i - 1].width + ReportGeometry.FLAG_GAP, 9);
+    const expectedX: Record<string, number> = {};
+    for (let i = 0; i < 8; i++) {
+      const state = { changed: Boolean(i & 1), overdue: Boolean(i & 2), stale: Boolean(i & 4) };
+      const r = ReportLayout.rowLayout(m, { ...rows[0], ...state }, settings, SampleReportData.REPORT_DATE);
+      const cell = r.cells.find((c) => c.kind === "flags")!;
+      if (cell.kind !== "flags") throw new Error("no flags cell");
+      expect(cell.flags.map((f) => f.kind)).toEqual(FlagSlots.present(state));
+      for (const f of cell.flags) {
+        expect(f.slot).toBe(FlagSlots.index(f.kind));
+        expect(f.dx).toBe(slots[FlagSlots.index(f.kind)].dx);
+        expectedX[f.kind] ??= f.dx;
+        expect(f.dx).toBe(expectedX[f.kind]);
+      }
+    }
+    expect(Object.keys(expectedX).sort()).toEqual(["changed", "overdue", "stale"]);
+  });
+
+  it("all flag slots fit the Flags column at its current width", () => {
+    const flagsCol = ReportLayout.columns(ViewSettings.defaults("report")).find((c) => c.key === "flags")!;
+    expect(flagsCol.w / 72).toBeCloseTo(3.0, 9);
+    expect(ReportLayout.flagSlotsWidth(m)).toBeLessThanOrEqual(flagsCol.w - ReportGeometry.CELL_PAD_R);
   });
 
   it("uses the spec column widths in inches", () => {

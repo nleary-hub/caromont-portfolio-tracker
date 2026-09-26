@@ -8,6 +8,7 @@ import { DashboardViewModel, type DashboardCompletedRow, type DashboardRow } fro
 import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
 import { PeopleStack } from "@/lib/dashboard/PeopleStack";
 import { DueFlags, MilestoneUpdateStack } from "@/lib/dashboard/StackedCells";
+import { FlagSlots } from "@/lib/domain/FlagSlots";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
@@ -228,37 +229,69 @@ describe("Due / Flags cell", () => {
     expect(DueFlags.cell(row({ dueDate: null }), BOTH, TODAY).due).toEqual({ text: "\u2013", overdue: false, muted: true });
   });
 
-  it("flags in PDF order Changed, Overdue, Stale with PDF labels", () => {
+  const COMBOS = Array.from({ length: 8 }, (_, i) => ({ changed: Boolean(i & 1), overdue: Boolean(i & 2), stale: Boolean(i & 4) }));
+  const present = (c: ReturnType<typeof DueFlags.cell>) => (c.slots ?? []).filter((s) => s.flag).map((s) => s.flag!.kind);
+
+  it("one shared canonical order: Changed, Overdue, Stale with the PDF labels", () => {
+    expect(FlagSlots.ORDER).toEqual(["changed", "overdue", "stale"]);
+    expect(FlagSlots.ORDER.map((k) => FlagSlots.label(k))).toEqual(["Changed", "! Overdue", "Stale"]);
     const c = DueFlags.cell(row({ changed: true, overdue: true, stale: true }), BOTH, TODAY);
-    expect(c.flags).toEqual([
-      { kind: "changed", label: "Changed" },
-      { kind: "overdue", label: "! Overdue" },
-      { kind: "stale", label: "Stale" },
-    ]);
-    expect(c.flags.map((f) => f.label)).toEqual((["changed", "overdue", "stale"] as const).map((k) => ReportLayout.flag(new TextMeasure(), k).label));
+    expect(c.slots!.map((s) => s.flag?.label)).toEqual(FlagSlots.ORDER.map((k) => ReportLayout.flag(new TextMeasure(), k).label));
+  });
+
+  it("every flag keeps its slot index and grid cell whichever other flags apply (all 8 combinations)", () => {
+    const expected = { changed: { slot: 0, row: 0, col: 0 }, overdue: { slot: 1, row: 0, col: 1 }, stale: { slot: 2, row: 1, col: 0 } };
+    for (const combo of COMBOS) {
+      const c = DueFlags.cell(row(combo), BOTH, TODAY);
+      // All slots are always there (reserved), in canonical order, at fixed grid cells.
+      expect(c.slots!.map((s) => [s.kind, s.slot, s.row, s.col])).toEqual(FlagSlots.ORDER.map((k) => [k, expected[k].slot, expected[k].row, expected[k].col]));
+      for (const s of c.slots!) expect(s.flag?.kind ?? null).toBe(combo[s.kind] ? s.kind : null);
+      expect(present(c)).toEqual(FlagSlots.present(combo));
+      // Markup: each pill sits in its own slot element at its fixed grid cell.
+      const html = renderToStaticMarkup(createElement(DueFlagsCellView, { cell: c }));
+      expect(html.match(/data-slot="/g)).toHaveLength(3);
+      for (const k of FlagSlots.ORDER) {
+        const p = expected[k];
+        const slotHtml = html.match(new RegExp(`<span data-slot="${p.slot}" data-slot-kind="${k}" class="flex" style="grid-row:${p.row + 1};grid-column:${p.col + 1}">(.*?)</span>(?=<span data-slot|</div>)`));
+        expect(slotHtml).not.toBeNull();
+        expect(slotHtml![1].includes(`data-flag="${k}"`)).toBe(combo[k]);
+      }
+    }
   });
 
   it("each part hides on its own", () => {
     const r = row({ changed: true });
-    expect(DueFlags.cell(r, { due: false, flags: true }, TODAY)).toEqual({ due: null, flags: [{ kind: "changed", label: "Changed" }] });
-    expect(DueFlags.cell(r, { due: true, flags: false }, TODAY).flags).toEqual([]);
-    expect(DueFlags.cell(row(), { due: false, flags: true }, TODAY)).toEqual({ due: null, flags: [] });
-    expect(renderToStaticMarkup(createElement(DueFlagsCellView, { cell: { due: null, flags: [] } }))).toBe("");
+    const flagsOnly = DueFlags.cell(r, { due: false, flags: true }, TODAY);
+    expect(flagsOnly.due).toBeNull();
+    expect(present(flagsOnly)).toEqual(["changed"]);
+    expect(DueFlags.cell(r, { due: true, flags: false }, TODAY).slots).toBeNull();
+    expect(DueFlags.cell(row(), { due: false, flags: true }, TODAY).slots).toHaveLength(3);
+    expect(renderToStaticMarkup(createElement(DueFlagsCellView, { cell: { due: null, slots: null } }))).toBe("");
   });
 
-  it("renders the date, 6px then 4px gaps, wrapping pills that never shrink, overdue weight 600", () => {
-    const html = renderToStaticMarkup(createElement(DueFlagsCellView, { cell: DueFlags.cell(row({ overdue: true, changed: true, stale: true }), BOTH, TODAY) }));
-    expect(html).toContain("flex flex-wrap items-start");
-    expect(html).toContain("column-gap:6px;row-gap:4px");
-    expect(html).toContain('<span data-part="due" class="whitespace-nowrap font-semibold text-danger">Oct 2<');
-    expect(html).toContain('data-part="flags" class="flex flex-wrap" style="gap:4px"');
+  it("date alone on line 1, then the fixed 2-column slot grid with reserved rows; never inline with the date", () => {
+    const html = renderToStaticMarkup(createElement(DueFlagsCellView, { cell: DueFlags.cell(row({ overdue: true, changed: true }), BOTH, TODAY) }));
+    expect(html).toContain('class="flex flex-col items-start text-[13px] leading-[18px]" style="row-gap:4px"');
+    expect(html).toContain('<span data-part="due" class="whitespace-nowrap font-semibold text-danger">Oct 2</span><div data-part="flag-slots"');
+    expect(html).toContain("grid-template-columns:80px 70px;grid-template-rows:repeat(2, 20px);column-gap:4px;row-gap:4px");
     expect(html).toContain('class="flag fl-changed flex-none" data-flag="changed"');
     expect(html).toContain('class="flag fl-overdue flex-none" data-flag="overdue"');
-    expect(html).toContain('class="flag fl-stale flex-none" data-flag="stale"');
-    expect(html).not.toContain("truncate");
+    expect(html).not.toContain("flex-wrap");
     const blank = renderToStaticMarkup(createElement(DueFlagsCellView, { cell: DueFlags.cell(row({ dueDate: null }), BOTH, TODAY) }));
     expect(blank).toContain('class="whitespace-nowrap text-muted">\u2013<');
     expect(blank).not.toContain("data-flag");
+    expect(blank.match(/data-slot="/g)).toHaveLength(3);
+  });
+
+  it("the slot grid fits the Due / Flags column and fits each measured pill", () => {
+    const spec = DashboardColumnModel.spec("dueFlags");
+    expect(DueFlags.gridWidthPx()).toBe(154);
+    expect(spec.minWidth - 24).toBeGreaterThanOrEqual(DueFlags.gridWidthPx());
+    expect(spec.width).toBe(180);
+    // Measured .flag widths (px): Changed 76.1, Overdue 65.8, Stale 54.8.
+    const measured = { changed: 76.1, overdue: 65.8, stale: 54.8 };
+    for (const k of FlagSlots.ORDER) expect(DueFlags.COLUMN_WIDTHS_PX[DueFlags.position(k).col]).toBeGreaterThanOrEqual(measured[k]);
+    expect(DueFlags.gridHeightPx()).toBe(44);
   });
 });
 
@@ -297,7 +330,10 @@ describe("Stacked cells match the PDF row", () => {
         if (!due.muted) expect(cell.due?.overdue).toBe(due.overdue);
       }
       const flags = pdf.cells.find((c) => c.kind === "flags");
-      if (flags?.kind === "flags") expect(cell.flags.map((f) => [f.kind, f.label])).toEqual(flags.flags.map((f) => [f.kind, f.label]));
+      if (flags?.kind === "flags") {
+        const dash = (cell.slots ?? []).filter((x) => x.flag).map((x) => [x.flag!.kind, x.flag!.label, x.slot]);
+        expect(dash).toEqual(flags.flags.map((f) => [f.kind, f.label, f.slot]));
+      }
       checked += 1;
     }
     expect(checked).toBeGreaterThan(5);
@@ -313,10 +349,10 @@ describe("Column model and show/hide", () => {
     const cols = DashboardColumnModel.columns(dash());
     expect(flexKey(dash())).toEqual(["milestoneUpdate"]);
     expect(DashboardColumnModel.spec("milestoneUpdate")).toMatchObject({ header: "Next milestone / Latest update", width: 280, minWidth: 280, flex: true });
-    expect(DashboardColumnModel.spec("dueFlags")).toMatchObject({ header: "Due / Flags", width: 150, minWidth: 120, flex: false });
+    expect(DashboardColumnModel.spec("dueFlags")).toMatchObject({ header: "Due / Flags", width: 180, minWidth: 180, flex: false });
     expect(DashboardColumnModel.spec("people")).toMatchObject({ header: "People", width: 200, minWidth: 160 });
     expect(DashboardColumnModel.spec("gutter")).toMatchObject({ width: 24, structural: true });
-    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 200 + 112 + 280 + 150);
+    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 200 + 112 + 280 + 180);
     expect(ViewSettings.defaults("dashboard").columnOrder).not.toContain("serviceArea");
   });
 
@@ -371,7 +407,7 @@ describe("Flexible column fallback", () => {
   it("hiding both moves the flexible role to People", () => {
     const cols = DashboardColumnModel.columns(hide(...BOTH_MU));
     expect(flexKey(hide(...BOTH_MU))).toEqual(["people"]);
-    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 160 + 112 + 150);
+    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 160 + 112 + 180);
   });
 
   it("People keeps the role with any one person line shown", () => {
@@ -382,7 +418,7 @@ describe("Flexible column fallback", () => {
     const v = hide(...BOTH_MU, ...ALL_PEOPLE);
     expect(flexKey(v)).toEqual(["project"]);
     expect(keys(v)).toEqual(["gutter", "project", "status", "dueFlags"]);
-    expect(DashboardColumnModel.minTableWidth(DashboardColumnModel.columns(v))).toBe(24 + 200 + 112 + 150);
+    expect(DashboardColumnModel.minTableWidth(DashboardColumnModel.columns(v))).toBe(24 + 200 + 112 + 180);
   });
 
   it("with only Project left, Project is flexible; exactly one flex column in every combination", () => {
@@ -538,7 +574,7 @@ describe("Grouped table markup", () => {
     expect(html).toContain(">Due / Flags</th>");
     expect(html).not.toContain(">Service area</th>");
     expect(html).toContain('data-col="milestoneUpdate" style="min-width:280px"');
-    expect(html).toContain('data-col="dueFlags" style="width:150px"');
+    expect(html).toContain('data-col="dueFlags" style="width:180px"');
     expect(html).toContain('data-testid="milestone-update"');
     expect(html).toContain('data-testid="due-flags"');
     expect(html).toContain("py-[10px] align-top");
