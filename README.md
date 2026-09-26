@@ -158,6 +158,17 @@ Notes:
 - `ReportSnapshot.serviceLineJson`: the service line name and short name at freeze (immutable). The PDF
   header draws them (see Report below). Snapshots frozen before 0014 have no value (so no short name) and keep
   the old header exactly: one combined line "Cardiac Service Line: Project Status Report".
+- `project_milestones` (`ProjectMilestone`, migration `0015_milestone_checklist`): a project's milestone
+  checklist (name, optional `dueDate`, `done`, `doneAt` (America/New_York date), `position`, optional
+  `sourceTemplateId` with ON DELETE SET NULL). Names of new or renamed steps are capped at 40 (app rule);
+  migrated legacy text may be longer and is only checked when edited (DB backstop 1 to 2000). The migration
+  backfilled step 1 from every non-blank `Project.nextMilestone` with the project's `dueDate`.
+  `Project.nextMilestone` and `Project.dueDate` stay for one release and are kept in sync with the checklist
+  (the derived next step is mirrored on every checklist save), so rolling back 0015 loses nothing.
+- `milestone_templates` / `milestone_template_items` (`MilestoneTemplate`, `MilestoneTemplateItem(position)`):
+  starter checklists, seeded by 0015 with the six templates from `milestone-templates-draft.md`. Applying one
+  copies its steps into the project; editing a template never changes projects. `milestone_template_history`:
+  append-only audit of template edits.
 
 ### Guarantees and where they are enforced
 
@@ -192,6 +203,15 @@ to a PGlite Postgres instance and exercising the services and guards.
     Writes a `milestone_completed` history row (oldValue = `"<previous milestone> (due YYYY-MM-DD)"`),
     then sets the new milestone and due date (both required unless `markComplete`, which sets status
     Complete), plus normal field-level history rows, all in one transaction.
+- `MilestoneProgress` (pure): THE derivation of the next milestone from the checklist. Next = the first
+  step not done, by position; its due date drives Due and Overdue. No steps: the legacy fields. All steps
+  done: the last step with no due date (Overdue never fires). "X of Y" shows in the milestone cell only with
+  2 or more steps. The dashboard, report loader (PDF, handoff.json, Changed, Completed this period) and the
+  CSV export all call `applyAll` before building anything.
+- `MilestoneRules` (pure) and `MilestoneService`: checklist validation and the plan of writes, one history
+  row per action (`milestone_added`, `_renamed`, `_due`, `_done`, `_reopened`, `_deleted`,
+  `milestones_reordered`, `milestone_template_applied`). The drawer saves the checklist with the form Save,
+  in the same transaction and history group. `MilestoneTemplateService`: admin-only template edits, audited.
 - `ReportBuilder`: row selection, Changed/Overdue flags, sort order, `build()`.
   - Rows: `VisibilityPolicy.visibleProjects(projects, "report", settings)`.
   - Header: status counts overall and per area, overdue and changed, all computed from the rows, so they

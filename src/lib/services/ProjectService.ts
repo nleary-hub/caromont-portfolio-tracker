@@ -5,6 +5,10 @@ import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { HistoryDiff, type FieldChange } from "@/lib/history/HistoryDiff";
+import { DateOnly } from "@/lib/domain/DateOnly";
+import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
+import { MilestoneRules, MilestoneValidationError, type MilestoneEdit } from "@/lib/domain/MilestoneRules";
+import { MilestoneService } from "@/lib/services/MilestoneService";
 import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 import { ProjectValidationError, ProjectValidator, type ProjectData, type ProjectInput } from "@/lib/validation/ProjectValidator";
 
@@ -48,6 +52,15 @@ export class ProjectArchivedError extends Error {
 
 export type Tx = Prisma.TransactionClient;
 
+export type { MilestoneEdit };
+
+interface UpdateOptions {
+  /** Legacy column values from a checklist save: written with the update but not diffed into history. */
+  mirror?: { nextMilestone: string | null; dueDate: Date | null };
+  /** Timestamp for the history rows (a form save shares one with its checklist rows). */
+  at?: Date;
+}
+
 /**
  * The only write path for projects. Every mutation writes ProjectHistory rows in the
  * same transaction. There is intentionally no hard-delete method.
@@ -64,9 +77,9 @@ export class ProjectService {
    * Create inside a caller-owned transaction (e.g. an all-or-nothing CSV import).
    * Validates, inserts, and writes the "created" history row on the same transaction.
    */
-  static async createInTx(tx: Tx, input: ProjectInput, actor: Actor, parsed?: ProjectData): Promise<Project> {
+  static async createInTx(tx: Tx, input: ProjectInput, actor: Actor, parsed?: ProjectData, at: Date = new Date()): Promise<Project> {
     const data = parsed ?? ProjectValidator.parse(input);
-    const now = new Date();
+    const now = at;
     const project = await tx.project.create({ data: { ...data, updatedBy: actor.changedBy } });
     const snapshot: Record<string, string | null> = {};
     for (const field of HistoryDiff.TRACKED_FIELDS) {
@@ -107,11 +120,27 @@ export class ProjectService {
    * the People autosave, uses the default rules through ProjectValidator.parseUpdate, so an unchanged stored
    * over-cap value never blocks them either.
    */
-  static async updateInTx(tx: Tx, id: string, patch: Partial<ProjectInput>, actor: Actor, mode: "default" | "form" = "default"): Promise<Project> {
+  static async updateInTx(
+    tx: Tx,
+    id: string,
+    patch: Partial<ProjectInput>,
+    actor: Actor,
+    mode: "default" | "form" = "default",
+    options: UpdateOptions = {},
+  ): Promise<Project> {
     const existing = await ProjectService.loadMutable(tx, id);
     // Requester: a new name clears Not applicable and Not applicable clears the name.
     const stored = ProjectValidator.toInput(existing);
-    const merged: ProjectInput = { ...stored, ...Requester.normalizePatch(ProjectService.pickEditable(patch)) };
+    const editable = ProjectService.pickEditable(patch);
+    // A checklist save owns the legacy milestone fields: its mirror replaces anything the patch says.
+    if (options.mirror) {
+      delete editable.nextMilestone;
+      delete editable.dueDate;
+    }
+    const mirrorInput = options.mirror
+      ? { nextMilestone: options.mirror.nextMilestone, dueDate: HistoryDiff.serialize("dueDate", options.mirror.dueDate) }
+      : {};
+    const merged: ProjectInput = { ...stored, ...Requester.normalizePatch(editable), ...mirrorInput };
     const data: Record<string, unknown> = {
       ...(mode === "form" ? ProjectValidator.parseForm(merged, { existing: stored }) : ProjectValidator.parseUpdate(merged, stored)),
     };
@@ -122,14 +151,21 @@ export class ProjectService {
       data.completionReportedAt = null;
     }
 
-    const changes = HistoryDiff.diff(existing, data);
-    if (changes.length === 0) return existing;
+    // Mirrored legacy fields are bookkeeping for a checklist save (its own history rows record the change).
+    const diffed = options.mirror ? Object.fromEntries(Object.entries(data).filter(([k]) => k !== "nextMilestone" && k !== "dueDate")) : data;
+    const changes = HistoryDiff.diff(existing, diffed);
+    const mirrorChanged = options.mirror ? HistoryDiff.diff(existing, { nextMilestone: data.nextMilestone, dueDate: data.dueDate }).length > 0 : false;
+    if (changes.length === 0 && !mirrorChanged) return existing;
 
     const updated = await tx.project.update({
       where: { id },
       data: { ...(data as Prisma.ProjectUpdateInput), updatedBy: actor.changedBy },
     });
-    await ProjectService.writeHistory(tx, id, changes, actor, new Date());
+    await ProjectService.writeHistory(tx, id, changes, actor, options.at ?? new Date());
+    // Outside the drawer (CSV wording update, Milestone met) the legacy fields lead: keep the checklist in step.
+    if (!options.mirror && changes.some((c) => c.field === "nextMilestone" || c.field === "dueDate")) {
+      await MilestoneService.syncLegacyEditInTx(tx, id, { nextMilestone: updated.nextMilestone, dueDate: updated.dueDate });
+    }
     return updated;
   }
 
@@ -189,6 +225,9 @@ export class ProjectService {
         data: { ...data, updatedBy: actor.changedBy },
       });
       await ProjectService.writeHistory(tx, id, changes, actor, now);
+      if (changes.some((c) => c.field === "nextMilestone" || c.field === "dueDate")) {
+        await MilestoneService.syncLegacyEditInTx(tx, id, { nextMilestone: updated.nextMilestone, dueDate: updated.dueDate });
+      }
       return updated;
     });
   }
@@ -214,21 +253,70 @@ export class ProjectService {
    * Admin drawer form save: every changed form field in one transaction, so the save is one history
    * entry (one timestamp, one author; HistoryEntries groups its field rows). No-op when nothing changed.
    */
-  static async saveForm(id: string, values: Partial<ProjectInput>, admin: Viewer, db: PrismaClient = Db.client): Promise<Project> {
+  static async saveForm(
+    id: string,
+    values: Partial<ProjectInput>,
+    admin: Viewer,
+    db: PrismaClient = Db.client,
+    milestones?: MilestoneEdit | null,
+  ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const patch = ProjectService.pickFormFields(values);
-    return db.$transaction((tx) => ProjectService.updateInTx(tx, id, patch, ProjectService.actorOf(admin), "form"));
+    const actor = ProjectService.actorOf(admin);
+    return db.$transaction(async (tx) => {
+      const at = new Date();
+      await ProjectService.loadMutable(tx, id);
+      let mirror: UpdateOptions["mirror"];
+      if (milestones) {
+        const saved = await ProjectService.withMilestoneErrors(() =>
+          MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null),
+        );
+        if (saved.changed) mirror = saved.mirror;
+      }
+      return ProjectService.updateInTx(tx, id, patch, actor, "form", { mirror, at });
+    });
+  }
+
+  /** Checklist validation errors come back to the form under "milestones". */
+  private static async withMilestoneErrors<T>(fn: () => Promise<T>): Promise<T> {
+    try {
+      return await fn();
+    } catch (e) {
+      if (e instanceof MilestoneValidationError) throw new ProjectValidationError({ milestones: e.messages });
+      throw e;
+    }
   }
 
   /**
    * Admin "New project" from the drawer: form rules (name and department required, status defaults to
    * Not started), then the usual create with its "created" history row. People are set afterwards.
    */
-  static async createFromForm(values: Partial<ProjectInput>, admin: Viewer, db: PrismaClient = Db.client): Promise<Project> {
+  static async createFromForm(
+    values: Partial<ProjectInput>,
+    admin: Viewer,
+    db: PrismaClient = Db.client,
+    milestones?: MilestoneEdit | null,
+  ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const input: ProjectInput = { name: "", ...ProjectService.pickFormFields(values), status: values.status || "NotStarted" };
+    const drafts = milestones?.drafts ?? [];
+    if (drafts.length > 0) {
+      // Checklist first (validated on its own), then the project with the derived next milestone.
+      const plan = await ProjectService.withMilestoneErrors(async () => MilestoneRules.plan([], drafts, DateOnly.today(), milestones?.applied ?? null));
+      const mirror = MilestoneProgress.mirror(plan.result);
+      input.nextMilestone = mirror.nextMilestone;
+      input.dueDate = HistoryDiff.serialize("dueDate", mirror.dueDate);
+    }
     const data = ProjectValidator.parseForm(input, { existing: null });
-    return db.$transaction((tx) => ProjectService.createInTx(tx, input, ProjectService.actorOf(admin), data));
+    const actor = ProjectService.actorOf(admin);
+    return db.$transaction(async (tx) => {
+      const at = new Date();
+      const project = await ProjectService.createInTx(tx, input, actor, data, at);
+      if (drafts.length > 0) {
+        await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, project.id, drafts, actor, at, milestones?.applied ?? null));
+      }
+      return project;
+    });
   }
 
   private static pickFormFields(values: Partial<ProjectInput>): Partial<ProjectInput> {

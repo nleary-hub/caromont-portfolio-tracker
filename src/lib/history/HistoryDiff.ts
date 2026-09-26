@@ -1,3 +1,4 @@
+import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { DateOnly } from "@/lib/domain/DateOnly";
 
 export interface FieldChange {
@@ -56,7 +57,7 @@ export class HistoryDiff {
   };
 
   static label(field: string): string {
-    return HistoryDiff.FIELD_LABELS[field] ?? field;
+    return HistoryDiff.FIELD_LABELS[field] ?? MilestoneRules.FIELD_LABELS[field] ?? field;
   }
 
   /** Fields stored as DATE (serialize as YYYY-MM-DD) vs timestamps (full ISO). */

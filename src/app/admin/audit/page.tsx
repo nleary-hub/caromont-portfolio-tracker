@@ -8,6 +8,7 @@ import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { AdminAuditService, type AuditEvent, type AuditProject } from "@/lib/services/AdminAuditService";
+import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 
 
 class AuditFormat {
@@ -27,6 +28,7 @@ class AuditFormat {
     hiddenFromDashboard: "Hidden from dashboard",
     hiddenFromReport: "Hidden from report",
     viewSettings: "View settings",
+    ...MilestoneRules.FIELD_LABELS,
   };
 
   static field(e: AuditEvent): string {

@@ -19,6 +19,10 @@ import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSet
 import type { AdminMenuItem } from "@/lib/admin/AdminMenu";
 import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
 import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
+import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
+import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
+import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
+import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { ProjectFormSubmit } from "./ProjectEditForm";
 import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
@@ -59,10 +63,14 @@ export interface AdminDashboardProps {
   menuItems: AdminMenuItem[];
   /** Drawer edit form values per listed project (stored values, as form strings). */
   formValues: Record<string, ProjectFormValues>;
-  /** Edit form Save: the changed non-People fields, saved together (one history entry). */
-  saveProjectFormAction: (projectId: string, changes: Partial<ProjectFormValues>) => ReturnType<ProjectFormSubmit>;
-  /** New project drawer: create (name and department required). */
-  createProjectAction: (values: Partial<ProjectFormValues>) => ReturnType<ProjectFormSubmit>;
+  /** Stored checklist steps per listed project (drawer Milestones section). */
+  milestoneSteps: Record<string, MilestoneStepDto[]>;
+  /** Milestone templates for "Apply a template". */
+  templates: TemplateDto[];
+  /** Edit form Save: the changed non-People fields and the checklist, saved together (one history entry). */
+  saveProjectFormAction: (projectId: string, changes: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
+  /** New project drawer: create (name and department required), with its checklist. */
+  createProjectAction: (values: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
 }
 
 /** Admin drawer mode: detail view, edit form, or the empty New project form. */
@@ -408,6 +416,8 @@ export function ProjectDashboard({
               key="new"
               mode="new"
               original={ProjectFormModel.empty()}
+              milestones={[]}
+              templates={admin.templates}
               today={today}
               people={null}
               adminDelete={null}
@@ -462,6 +472,8 @@ export function ProjectDashboard({
                   key={`edit-${selected.id}`}
                   mode="edit"
                   original={admin.formValues[selected.id]}
+                  milestones={admin.milestoneSteps[selected.id] ?? []}
+                  templates={admin.templates}
                   today={today}
                   people={
                     <ProjectPeopleEditor
@@ -489,7 +501,7 @@ export function ProjectDashboard({
                       onGone={closeDrawer}
                     />
                   }
-                  onSubmit={(changes) => admin.saveProjectFormAction(selected.id, changes)}
+                  onSubmit={(changes, milestones) => admin.saveProjectFormAction(selected.id, changes, milestones)}
                   onSaved={onSaved}
                   onCancel={() =>
                     guard(() => {
@@ -684,7 +696,14 @@ function ProjectDrawer({
         <dt className="text-muted">Infor request #</dt>
         <dd className="font-mono">{InforNumber.format(row.inforRequestNumber) ?? "–"}</dd>
         <dt className="text-muted">Next milestone</dt>
-        <dd>{row.nextMilestone ?? ""}</dd>
+        <dd>
+          {row.nextMilestone ?? ""}
+          {MilestoneProgress.progressLabel(row.milestoneProgress) && (
+            <span className="ml-1.5 whitespace-nowrap text-muted" data-testid="milestone-progress">
+              {MilestoneProgress.progressLabel(row.milestoneProgress)}
+            </span>
+          )}
+        </dd>
         <dt className="text-muted">Due date</dt>
         <dd className={row.overdue ? "font-semibold text-danger" : ""}>
           {DateFormat.long(row.dueDate) ?? "–"}

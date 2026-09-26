@@ -19,8 +19,16 @@ class Migrations {
   }
 
   static async applyAll(): Promise<PGlite> {
+    return Migrations.applyUpTo(null);
+  }
+
+  /** Every migration before `stop` (all of them when null). */
+  static async applyUpTo(stop: string | null): Promise<PGlite> {
     const db = await PGlite.create();
-    for (const folder of Migrations.folders()) await db.exec(Migrations.sql(folder));
+    for (const folder of Migrations.folders()) {
+      if (folder === stop) break;
+      await db.exec(Migrations.sql(folder));
+    }
     return db;
   }
 }
@@ -180,9 +188,8 @@ describe("migrations (PGlite)", () => {
     await db.close();
   }, 30_000);
 
-  it("0014_service_line_settings is the latest migration: seeds the names, audits append-only, freezes the name", async () => {
+  it("0014_service_line_settings: seeds the names, audits append-only, freezes the name", async () => {
     const folders = Migrations.folders();
-    expect(folders.at(-1)).toBe("0014_service_line_settings");
     expect(folders.indexOf("0014_service_line_settings")).toBeGreaterThan(folders.indexOf("0013_project_contracts_lead"));
     const code = Migrations.sql("0014_service_line_settings")
       .split("\n")
@@ -223,4 +230,169 @@ describe("migrations (PGlite)", () => {
     ).rejects.toThrow(/immutable/);
     await db.close();
   }, 30_000);
+
+  describe("0015_milestone_checklist", () => {
+    const M = "0015_milestone_checklist";
+    /** The backfill and seed part of the migration (everything after the DDL), run again to prove idempotency. */
+    const dataPart = () => {
+      const sql = Migrations.sql(M);
+      return sql.slice(sql.indexOf("-- Backfill:"));
+    };
+    /** The documented down steps, from the migration header. */
+    const downSteps = () =>
+      Migrations.sql(M)
+        .split("\n")
+        .filter((l) => /^--\s+(DROP TABLE|DELETE FROM)/.test(l))
+        .map((l) => l.replace(/^--\s+/, ""));
+    const insertProject = (db: PGlite, name: string, milestone: string | null, due: string | null, extra = "") =>
+      db.query(
+        `insert into "Project" (id, name, "serviceArea", status, "nextMilestone", "dueDate", "updatedAt", "updatedBy"${extra ? ', "archivedAt"' : ""})
+         values (gen_random_uuid(), $1, 'Cath', $4, $2, $3, now(), 'test'${extra ? ", now()" : ""})`,
+        [name, milestone, due, milestone?.trim() ? "OnTrack" : "NotStarted"],
+      );
+
+    it("is the latest migration and additive only (no drops or changes to existing tables outside the documented rollback)", () => {
+      const folders = Migrations.folders();
+      expect(folders.at(-1)).toBe(M);
+      const code = Migrations.sql(M)
+        .split("\n")
+        .filter((l) => !l.trim().startsWith("--"))
+        .join("\n");
+      expect(code).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE FROM\b|ALTER TABLE "Project"/);
+      expect(downSteps()).toEqual([
+        'DROP TABLE "project_milestones";',
+        'DROP TABLE "milestone_template_items";',
+        'DROP TABLE "milestone_template_history";',
+        'DROP TABLE "milestone_templates";',
+        `DELETE FROM "_prisma_migrations" WHERE "migration_name" = '${M}';`,
+      ]);
+    });
+
+    it("backfills step 1 from each non-blank next milestone with the project's due date, idempotently", async () => {
+      const db = await Migrations.applyUpTo(M);
+      await insertProject(db, "With milestone", "Vendor contract signed", "2026-10-01");
+      await insertProject(db, "No due date", "  Kickoff meeting  ", null);
+      await insertProject(db, "Blank", "   ", "2026-10-02");
+      await insertProject(db, "Null", null, null);
+      await insertProject(db, "Archived", "Old step", "2026-08-01", "archived");
+      const long = "A legacy milestone written before the forty character rule existed";
+      await insertProject(db, "Long legacy", long, "2026-11-01");
+      await db.exec(Migrations.sql(M));
+
+      const steps = async () =>
+        (
+          await db.query<{ project: string; name: string; due: string | null; done: boolean; doneAt: string | null; position: number; src: string | null }>(
+            `select p.name as project, m.name, to_char(m."dueDate", 'YYYY-MM-DD') as due, m.done, m."doneAt" as "doneAt", m.position, m."sourceTemplateId" as src
+             from project_milestones m join "Project" p on p.id = m."projectId" order by p.name`,
+          )
+        ).rows;
+      const expected = [
+        { project: "Archived", name: "Old step", due: "2026-08-01", done: false, doneAt: null, position: 1, src: null },
+        { project: "Long legacy", name: long, due: "2026-11-01", done: false, doneAt: null, position: 1, src: null },
+        // Copied verbatim (not trimmed), so the derived text is byte-for-byte the legacy text.
+        { project: "No due date", name: "  Kickoff meeting  ", due: null, done: false, doneAt: null, position: 1, src: null },
+        { project: "With milestone", name: "Vendor contract signed", due: "2026-10-01", done: false, doneAt: null, position: 1, src: null },
+      ];
+      expect(await steps()).toEqual(expected);
+
+      // Running the backfill and seed again changes nothing.
+      await db.exec(dataPart());
+      await db.exec(dataPart());
+      expect(await steps()).toEqual(expected);
+      const counts = await db.query<{ t: number; i: number }>(
+        `select (select count(*)::int from milestone_templates) as t, (select count(*)::int from milestone_template_items) as i`,
+      );
+      expect(counts.rows).toEqual([{ t: 6, i: 46 }]);
+
+      // Legacy columns are untouched.
+      const legacy = await db.query<{ nextMilestone: string | null }>(`select "nextMilestone" from "Project" where name = 'No due date'`);
+      expect(legacy.rows).toEqual([{ nextMilestone: "  Kickoff meeting  " }]);
+      await db.close();
+    }, 30_000);
+
+    it("seeds the six templates verbatim from milestone-templates-draft.md, in order", async () => {
+      const db = await Migrations.applyAll();
+      const rows = await db.query<{ template: string; tpos: number; item: string; ipos: number }>(
+        `select t.name as template, t.position as tpos, i.name as item, i.position as ipos
+         from milestone_templates t join milestone_template_items i on i."templateId" = t.id order by t.position, i.position`,
+      );
+      const seeded = new Map<string, string[]>();
+      for (const r of rows.rows) seeded.set(r.template, [...(seeded.get(r.template) ?? []), r.item]);
+      expect([...seeded.keys()]).toEqual(["New supply item", "Service agreement", "Product trial", "Capital purchase", "Rebate or consignment agreement", "Software or vendor service"]);
+      expect([...seeded.values()].map((s) => s.length)).toEqual([10, 6, 8, 6, 6, 10]);
+      expect(seeded.get("Product trial")).toEqual([
+        "Trial request entered in Infor",
+        "Trial agreement approved",
+        "Trial supplies ordered",
+        "Staff education complete",
+        "Trial go-live",
+        "Trial complete, supplies returned",
+        "Physician decision made",
+        "Purchase request entered or closed",
+      ]);
+      expect(seeded).toEqual(MilestoneTemplateFile.parse());
+      await db.close();
+    }, 30_000);
+
+    it("enforces non-blank names, the 40 cap on template steps, doneAt with done, and an append-only template audit", async () => {
+      const db = await Migrations.applyAll();
+      await insertProject(db, "P", "Step", null);
+      const [{ id }] = (await db.query<{ id: string }>(`select id from "Project" where name = 'P'`)).rows;
+      await db.query(`insert into project_milestones (id, "projectId", name, position) values (gen_random_uuid(), $1, 'Step', 1)`, [id]);
+      const [{ tid }] = (await db.query<{ tid: string }>(`select id as tid from milestone_templates order by position limit 1`)).rows;
+      await expect(db.query(`insert into project_milestones (id, "projectId", name, position) values (gen_random_uuid(), $1, '  ', 2)`, [id])).rejects.toThrow(
+        /project_milestones_name_length/,
+      );
+      await expect(
+        db.query(`insert into project_milestones (id, "projectId", name, done, position) values (gen_random_uuid(), $1, 'Done without date', true, 2)`, [id]),
+      ).rejects.toThrow(/project_milestones_done_at/);
+      await expect(
+        db.query(`insert into milestone_template_items (id, "templateId", name, position) values (gen_random_uuid(), $1, $2, 99)`, [tid, "x".repeat(41)]),
+      ).rejects.toThrow(/milestone_template_items_name_length/);
+      await db.query(`insert into milestone_template_history (id, action, "changedBy") values (gen_random_uuid(), 'template_renamed', 'a@x.org')`);
+      await expect(db.query(`update milestone_template_history set "changedBy" = 'b@x.org'`)).rejects.toThrow();
+      await expect(db.query(`delete from milestone_template_history`)).rejects.toThrow();
+
+      // Deleting a template keeps the project steps copied from it (sourceTemplateId SET NULL).
+      await db.query(`update project_milestones set "sourceTemplateId" = $1 where "projectId" = $2`, [tid, id]);
+      await db.query(`delete from milestone_templates where id = $1`, [tid]);
+      const kept = await db.query<{ name: string; src: string | null }>(`select name, "sourceTemplateId" as src from project_milestones where "projectId" = $1`, [id]);
+      expect(kept.rows).toEqual([{ name: "Step", src: null }]);
+      await db.close();
+    }, 30_000);
+
+    it("rolls back with the documented down steps, leaving the legacy columns intact, and re-applies cleanly", async () => {
+      const db = await Migrations.applyUpTo(M);
+      await insertProject(db, "P", "Vendor contract signed", "2026-10-01");
+      await db.exec(`create table "_prisma_migrations" (migration_name text)`);
+      await db.exec(Migrations.sql(M));
+      for (const stmt of downSteps()) await db.exec(stmt);
+      const tables = await db.query<{ n: number }>(
+        `select count(*)::int as n from information_schema.tables where table_name in ('project_milestones', 'milestone_templates', 'milestone_template_items', 'milestone_template_history')`,
+      );
+      expect(tables.rows).toEqual([{ n: 0 }]);
+      const legacy = await db.query<{ nextMilestone: string; due: string }>(`select "nextMilestone", to_char("dueDate", 'YYYY-MM-DD') as due from "Project"`);
+      expect(legacy.rows).toEqual([{ nextMilestone: "Vendor contract signed", due: "2026-10-01" }]);
+      await db.exec(Migrations.sql(M));
+      const steps = await db.query<{ n: number }>(`select count(*)::int as n from project_milestones`);
+      expect(steps.rows).toEqual([{ n: 1 }]);
+      await db.close();
+    }, 30_000);
+  });
 });
+
+/** Reads the approved template draft (the source of truth for the seed). */
+class MilestoneTemplateFile {
+  static readonly PATH = path.resolve(__dirname, "fixtures/milestone-templates-draft.md");
+
+  static parse(): Map<string, string[]> {
+    const out = new Map<string, string[]>();
+    for (const block of readFileSync(MilestoneTemplateFile.PATH, "utf8").split("\n## ").slice(1)) {
+      const [head, ...rest] = block.split("\n");
+      const m = /^\d+\. (.+)$/.exec(head);
+      if (!m) continue;
+      out.set(m[1].trim(), rest.flatMap((l) => /^\d+\. (.+)$/.exec(l)?.[1].trim() ?? []));
+    }
+    return out;
+  }
+}

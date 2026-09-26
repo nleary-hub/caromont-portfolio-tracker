@@ -14,6 +14,9 @@ import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext } from "@/lib/domain/ViewSettings";
+import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
+import { MilestoneService } from "@/lib/services/MilestoneService";
+import { MilestoneTemplateService } from "@/lib/services/MilestoneTemplateService";
 import { ServiceLineService } from "@/lib/services/ServiceLineService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
@@ -48,7 +51,7 @@ class DashboardData {
       latestReport: null,
       completedFiscalYear: null,
       admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {} }
+        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
         : null,
       error,
     };
@@ -69,7 +72,7 @@ class DashboardData {
     if (!Db.isConfigured()) return DashboardData.empty(viewer, "DATABASE_URL is not configured.");
     try {
       const db = Db.client;
-      const [projects, latest, settings] = await Promise.all([
+      const [stored, latest, settings] = await Promise.all([
         db.project.findMany({ where: { archivedAt: null } }),
         db.reportSnapshot.findFirst({
           orderBy: { generatedAt: "desc" },
@@ -77,6 +80,9 @@ class DashboardData {
         }),
         ViewSettingsService.getAll(db),
       ]);
+      // Derived next milestone and due date (first step not done); projects without steps keep their legacy fields.
+      const steps = await MilestoneService.loadSteps(db, stored.map((p) => p.id));
+      const projects = MilestoneProgress.applyAll(stored, steps);
       const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings.dashboard);
       // "Completed FY27 to date": same rule as the report (report candidates only, completedOn else the
       // day the status became Complete). Only Complete projects need their status history. The same
@@ -140,7 +146,10 @@ class DashboardData {
               ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner)),
               requesterSuggestions: Requester.suggestions(projects.map((p) => p.physicianChampion)),
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
-              formValues: DashboardData.formValues(projects, listedIds),
+              // The form reads the stored legacy fields; the checklist comes separately.
+              formValues: DashboardData.formValues(stored, listedIds),
+              milestoneSteps: MilestoneService.byProject(steps.filter((s) => listedIds.includes(s.projectId))),
+              templates: await MilestoneTemplateService.listOrEmpty(db),
             }
           : null,
         error: null,
@@ -195,13 +204,13 @@ export default async function DashboardPage() {
                 const r = await setProjectPeopleField(projectId, field, value);
                 return r.ok ? null : r.error;
               },
-              saveProjectFormAction: async (projectId, changes) => {
+              saveProjectFormAction: async (projectId, changes, milestones) => {
                 "use server";
-                return saveProjectForm(projectId, changes);
+                return saveProjectForm(projectId, changes, milestones);
               },
-              createProjectAction: async (values) => {
+              createProjectAction: async (values, milestones) => {
                 "use server";
-                return createProjectFromForm(values);
+                return createProjectFromForm(values, milestones);
               },
               deleteProjectAction: async (projectId) => {
                 "use server";

@@ -87,7 +87,10 @@ export class ReportBuilder {
     );
   }
 
-  /** "Overdue": due date strictly before the report date and not Complete/Cancelled. */
+  /**
+   * "Overdue": due date strictly before the report date and not Complete/Cancelled. The due date is the
+   * derived one (MilestoneProgress: the next step's), which is null once every step is done.
+   */
   static isOverdue(project: Pick<ProjectRecord, "dueDate" | "status">, reportDate: string): boolean {
     if (ProjectStatusInfo.isClosed(project.status)) return false;
     const due = DateOnly.fromDbDate(project.dueDate);
@@ -188,6 +191,8 @@ export class ReportBuilder {
       note: project.note,
       inforRequestNumber: project.inforRequestNumber ?? null,
       contractsLead: project.contractsLead ?? null,
+      // Only with a checklist, so rows of projects without steps are exactly as before.
+      ...(project.milestoneProgress ? { milestoneProgress: project.milestoneProgress } : {}),
       changed: flags.changed,
       overdue: flags.overdue,
       updatedOn: details.updatedOn ?? null,

@@ -504,6 +504,18 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
           {cell.lines.map((l, i) => (
             <Line key={i} x={cell.x} y={i * G.TABLE_LH} w={cell.w} text={l} size={S.table} weight={G.MILESTONE_WEIGHT} color={cell.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
           ))}
+          {cell.progress && (
+            <Line
+              key="progress"
+              x={cell.x + cell.progress.x}
+              y={cell.progress.line * G.TABLE_LH + 0.5}
+              w={cell.w - cell.progress.x}
+              text={cell.progress.text}
+              size={S.small}
+              color={C.MUTED}
+              lh={G.TABLE_LH}
+            />
+          )}
         </>
       );
     case "due":

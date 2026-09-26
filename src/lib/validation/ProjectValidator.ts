@@ -59,7 +59,8 @@ export interface ProjectData {
   includeInReport: boolean;
 }
 
-export type FieldErrors = Partial<Record<keyof ProjectInput | "_form", string[]>>;
+/** Per-field messages; "milestones" carries checklist errors from the drawer ("Step 3: At most 40 characters"). */
+export type FieldErrors = Partial<Record<keyof ProjectInput | "_form" | "milestones", string[]>>;
 
 export type ValidationResult =
   | { ok: true; data: ProjectData }

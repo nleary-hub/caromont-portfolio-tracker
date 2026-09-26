@@ -1,5 +1,6 @@
 import type { ProjectStatus, ServiceArea, ViewContext } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
+import type { MilestoneCount } from "@/lib/domain/MilestoneProgress";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
@@ -22,9 +23,12 @@ export interface DashboardRow {
   contractsLead: string | null;
   status: ProjectStatus;
   statusLabel: string;
+  /** Derived next milestone (MilestoneProgress), else the legacy text. */
   nextMilestone: string | null;
-  /** YYYY-MM-DD */
+  /** YYYY-MM-DD: the next step's due date, else the legacy due date. */
   dueDate: string | null;
+  /** Checklist done/total; null without steps. "X of Y" shows per MilestoneProgress.progressLabel. */
+  milestoneProgress?: MilestoneCount | null;
   targetCompletion: string | null;
   percentComplete: number | null;
   note: string | null;
@@ -142,6 +146,7 @@ export class DashboardViewModel {
       statusLabel: ProjectStatusInfo.label(p.status),
       nextMilestone: p.nextMilestone,
       dueDate: DateOnly.fromDbDate(p.dueDate),
+      milestoneProgress: p.milestoneProgress ?? null,
       targetCompletion: DateOnly.fromDbDate(p.targetCompletion),
       percentComplete: p.percentComplete,
       note: p.note,
