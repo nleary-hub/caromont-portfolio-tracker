@@ -4,7 +4,7 @@ Internal app for Cardiac Procedure Services (CaroMont Health). Tracks every proj
 cardiac service line and produces a biweekly PDF status report (one project per row, not SBAR).
 Sign-in is required for every page.
 
-**Status:** local scaffold. Not yet pushed to GitHub or deployed to Vercel.
+**Status:** scaffold on GitHub; hosted on Vercel (project `caromont-portfolio-tracker`). See "Deploying on Vercel".
 
 ## Stack
 
@@ -36,10 +36,11 @@ or Docker `postgres:16`.
 | --- | --- |
 | `npm run dev` | Next dev server |
 | `npm run build` | `prisma generate && next build` |
+| `npm run build:vercel` | Vercel build (`scripts/vercel-build.sh`): generate, `migrate deploy` when safe, build |
 | `npm run lint` | ESLint (next/core-web-vitals + TypeScript) |
 | `npm run typecheck` | `prisma generate && tsc --noEmit` |
 | `npm test` | Vitest unit tests |
-| `npm run db:migrate` | `prisma migrate deploy` (use in CI / Vercel build) |
+| `npm run db:migrate` | `prisma migrate deploy` (run automatically by the Vercel build; see below) |
 | `npm run db:migrate:dev` | `prisma migrate dev` (create new migrations locally) |
 | `npm run db:seed` | Sample data (refuses in production or if projects exist) |
 
@@ -49,7 +50,8 @@ See `.env.example` for the full annotated list.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | Postgres connection string (pooled URL on Vercel/Neon) |
+| `DATABASE_URL` | yes | Postgres connection string used by the app at runtime (pooled URL on Vercel/Neon) |
+| `DATABASE_URL_UNPOOLED` | recommended on Neon | Direct (non-pooled) URL used by the Prisma CLI (`migrate deploy`/`dev`). Falls back to `DATABASE_URL` if unset. Set automatically by the Vercel Neon integration |
 | `AUTH_SECRET` | yes | `npx auth secret` or `openssl rand -base64 32` |
 | `ALLOWED_EMAILS` | yes | Comma/space separated emails or `@domain` entries. Empty = nobody (fails closed) |
 | `ADMIN_EMAILS` | no | Same format. Admins (must also be allowlisted) change view settings, hide/delete projects, open `/admin/audit`. Empty = no admins (fails closed) |
@@ -60,6 +62,20 @@ See `.env.example` for the full annotated list.
 
 OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 `https://<domain>/api/auth/callback/google`.
+
+## Deploying on Vercel
+
+- `main` deploys to Production; every PR gets a Preview deployment (Git integration).
+- `vercel.json` sets the build command to `sh scripts/vercel-build.sh`, which runs
+  `prisma generate`, then `prisma migrate deploy`, then `next build`.
+- Migrations run only when `DATABASE_URL_UNPOOLED` or `DATABASE_URL` is set and the deployment is Production, or when
+  `PRISMA_MIGRATE_ON_PREVIEW=true` is set for Preview. Only set that when Preview has its own
+  database (for example a Neon branch per preview); otherwise PR migrations would hit the production DB.
+- `prisma migrate deploy` uses the direct connection `DATABASE_URL_UNPOOLED` when present
+  (`prisma.config.ts`), because migrations over Neon's PgBouncer pooler can fail (advisory locks,
+  prepared statements). The running app keeps using the pooled `DATABASE_URL` via `@prisma/adapter-pg`;
+  no `pgbouncer=true` flag is needed with driver adapters.
+- All secrets live in Vercel Project Settings > Environment Variables, never in the repo.
 
 ## Auth model
 
