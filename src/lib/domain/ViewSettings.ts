@@ -9,6 +9,7 @@ export type ViewColumn =
   | "serviceArea"
   | "owner"
   | "physicianChampion"
+  | "contractsLead"
   | "status"
   | "nextMilestone"
   | "due"
@@ -37,16 +38,17 @@ export class ViewSettings {
   /**
    * Inline columns render inside another cell instead of taking a table column of their own:
    * the Infor request number sits in a fixed slot on the small meta line under the project name ("REQ-5081  Updated Sep 24").
+   * the Contracts lead is a small line under owner and requester ("Contracts Shea Waldron").
    * Hiding one removes only that piece; its position in the order has no effect.
    */
-  static readonly INLINE_COLUMNS: ReadonlySet<ViewColumn> = new Set<ViewColumn>(["inforNumber"]);
+  static readonly INLINE_COLUMNS: ReadonlySet<ViewColumn> = new Set<ViewColumn>(["inforNumber", "contractsLead"]);
 
   /** Default order per context. The report groups by service area, so it has no area column. */
   private static readonly DEFAULT_ORDER: Record<ViewContext, readonly ViewColumn[]> = {
     // inforNumber is inline (meta line under Project), so its place in the order does not matter. It is
     // last so saved settings from before it existed (normalize appends missing columns) match the defaults.
-    dashboard: ["project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags", "inforNumber"],
-    report: ["project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber"],
+    dashboard: ["project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags", "inforNumber", "contractsLead"],
+    report: ["project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber", "contractsLead"],
   };
 
   private static readonly LABELS: Record<ViewContext, Record<ViewColumn, string>> = {
@@ -55,7 +57,8 @@ export class ViewSettings {
       inforNumber: "Infor request # (REQ-, under Project)",
       serviceArea: "Service area",
       owner: "Owner",
-      physicianChampion: "Physician champion",
+      physicianChampion: "Requester",
+      contractsLead: "Contracts lead (under Requester)",
       status: "Status",
       nextMilestone: "Next milestone",
       due: "Due date",
@@ -67,7 +70,8 @@ export class ViewSettings {
       inforNumber: "Infor request # (REQ-, under Project)",
       serviceArea: "Service area",
       owner: "Owner",
-      physicianChampion: "Physician champion (under Owner)",
+      physicianChampion: "Requester (under Owner)",
+      contractsLead: "Contracts lead (under Owner and Requester)",
       status: "Status",
       nextMilestone: "Next milestone",
       due: "Due",

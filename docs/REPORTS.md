@@ -69,7 +69,7 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
 - `ReportLayout` measures text with the same font files, wraps and clips it, sizes rows and paginates.
   The renderer draws the precomputed lines, so layout is unit-tested without rendering.
 - US Letter landscape, 0.5 in margins, grouped by service area, two-line rows, spec column widths,
-  note clipped at 2 lines, rows never split, section head kept with its first row and repeated with
+  note never cut off (wraps, the row grows), rows never split, section head kept with its first row and repeated with
   "(continued)", header on every page, "Page X of Y".
 - Respects the frozen report view settings: column order, hidden columns (widths rescale to fill),
   hidden statuses (no grid column, no rows), per-project hide and soft delete (via `VisibilityPolicy`).
@@ -95,6 +95,55 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
 - Sample: `npx vite-node --config vitest.config.ts scripts/render-sample-report.mts out.pdf [--draft]`
   (fictional data from `SampleReportData`).
 
+## Completed this period
+
+A Complete project is listed once, in the first FROZEN report after it became Complete, then drops off.
+
+- **Clock:** when the status became Complete in the app: the latest `ProjectHistory` status change to
+  Complete, or the `created` entry (creation or CSV import) if it was created as Complete. `completedOn`
+  (as entered) is display only and never decides the period.
+- **Listed when:** status Complete, a report candidate (not deleted, not hidden from the report, included in
+  the report), Complete at or before the freeze time, and `completionReportedAt` is null. Only while
+  Complete is hidden in the report view settings (the default); if an admin shows Complete, those projects
+  are regular rows and no block is drawn.
+- **Once only:** the freeze sets `Project.completionReportedAt` on the listed projects in the same
+  transaction that writes the snapshot (`ReportSnapshot.completedJson`). Drafts never mark. Re-running a
+  freeze for a frozen period re-renders from `completedJson`, so the block is never lost. Reopening (status
+  leaves Complete) clears `completionReportedAt`. `completionReportedAt` is new rather than reusing the
+  retired `closedReportedAt`, which had different semantics and could hold stale values.
+- **PDF:** a tinted block at the end of each department group (style constants in `CompletedBlockStyle`):
+  name with the REQ slot, owner with requester, a check and the date (`completedOn`, else the in-app
+  completion date), and the accomplishment (max 2 lines) from the Next milestone column. The block is never
+  split across pages. The section head reads "2 projects · 2 completed this period". Page 1 no longer shows a
+  period count (see "Completed FY to date"). Nothing here feeds the status grid, totals or the projects line.
+- **Unassigned:** projects with no department form an "Unassigned" group after every department (section
+  head and page 1 table row in secondary gray; the table row appears only when there is one). It is not
+  counted in "N across M service areas". The Completed block works there like in any other group.
+- **handoff.json:** `completedThisPeriod: { count, projects: [{ name, serviceArea, completedOn, accomplishment }] }`.
+
+## Completed FY to date
+
+- Page 1: "[check] Completed FY27 to date N" beside the Projects line (or on its own line under it when it
+  does not fit), in the teal accent with the number bold. It replaced the old "Completed this period N".
+- Fiscal year starts on the first day of `AppConfig.FISCAL_YEAR_START_MONTH` (7 = July) and is named by the
+  calendar year it ends in (Jul 1 2026 to Jun 30 2027 = FY27). `FiscalYear`, `CompletedFiscalYear`.
+- Counts projects with status Complete whose completion date is between the FY start and the report date,
+  inclusive. Completion date = `completedOn` when entered, else the day the status became Complete in the
+  app (ProjectHistory, America/New_York). Report candidates only: deleted, hidden from the report and not
+  included in the report never count; Cancelled is not Complete. Not once-only: a project counts in every
+  report until the FY rolls over; reopening removes it.
+- Frozen in `ReportSnapshot.headerJson.completedFiscalYear` (`{ label, start, count }`), so a frozen report
+  never changes. Older snapshots have no field and show no count.
+- Also on the dashboard summary strip (same rule, as of today) and in handoff.json as
+  `completedFiscalYear: { label, fiscalYearStart, count }` (null for older snapshots).
+
+## Requester
+
+The person field shown as "Requester" (stored as `physicianChampion`) has three states: a name; Not
+applicable (`requesterNotApplicable`, prints blank on the dashboard and report, and its line is dropped from
+the report owner stack); not yet addressed (blank, gray "To assign"). A name clears Not applicable and Not
+applicable clears the name (validator plus a CHECK constraint). History records both fields.
+
 ## Draft PDF (admin "Generate PDF now")
 
 `GET /api/reports/preview`, admin only (404 for everyone else). Same loader, builder, visibility gate,
@@ -108,7 +157,7 @@ no Drive call, no handoff.json, no archive entry, no audit row.
 (UTC) and frozenAtEt, `reportRecipient` (from `REPORT_RECIPIENT_EMAIL`; omitted with a logged warning
 when unset or not a single valid address), totals and per-area counts, flags (Changed, Overdue, Stale: counts
 and the flagged projects), pdf (file name, sha256, size), `archiveUrl` (`<APP_BASE_URL>/reports`).
-Visible rows only. No To/Cc and no missing-champion list.
+Visible rows only. No To/Cc and no missing-requester list.
 
 ## Delivery
 

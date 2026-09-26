@@ -1,7 +1,12 @@
 import { ServiceArea } from "@/generated/prisma/enums";
 
-/** Service-area metadata. Declaration order == report order. */
+/** Grouping key: a department, or "Unassigned" for projects with no department (null). */
+export type AreaGroup = ServiceArea | "Unassigned";
+
+/** Service-area metadata. Declaration order == report order; Unassigned always sorts last. */
 export class ServiceAreaInfo {
+  static readonly UNASSIGNED = "Unassigned" as const;
+
   static readonly ORDER: readonly ServiceArea[] = [
     ServiceArea.Cath,
     ServiceArea.EP,
@@ -22,18 +27,43 @@ export class ServiceAreaInfo {
     IR: "IR",
   };
 
+  /**
+   * Other names accepted for a department on import (display names used in the tracker spreadsheet), in
+   * addition to the enum values and labels. Matched ignoring case, spaces and punctuation.
+   */
+  static readonly ALIASES: Readonly<Record<string, ServiceArea>> = {
+    "Cath Lab": "Cath",
+    "EP Lab": "EP",
+  };
+
   static all(): readonly ServiceArea[] {
     return ServiceAreaInfo.ORDER;
   }
 
-  static label(area: ServiceArea): string {
-    return ServiceAreaInfo.LABELS[area];
+  /** Every group in display order: the departments, then Unassigned. */
+  static groups(): readonly AreaGroup[] {
+    return [...ServiceAreaInfo.ORDER, ServiceAreaInfo.UNASSIGNED];
   }
 
-  /** Position in report order (0-based). Unknown values sort last. */
-  static rank(area: ServiceArea): number {
+  /** Group of a project's department (null = Unassigned). */
+  static groupOf(area: ServiceArea | null | undefined): AreaGroup {
+    return area ?? ServiceAreaInfo.UNASSIGNED;
+  }
+
+  static label(area: AreaGroup | null | undefined): string {
+    return area && area !== ServiceAreaInfo.UNASSIGNED ? ServiceAreaInfo.LABELS[area] : ServiceAreaInfo.UNASSIGNED;
+  }
+
+  /** Position in report order (0-based). Unassigned (null) sorts after every department; unknown values last. */
+  static rank(area: AreaGroup | null | undefined): number {
+    if (!area || area === ServiceAreaInfo.UNASSIGNED) return ServiceAreaInfo.ORDER.length;
     const i = ServiceAreaInfo.ORDER.indexOf(area);
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
+  }
+
+  /** "Unassigned" (any case, spaces ignored) as typed in a CSV cell. */
+  static isUnassignedText(value: string): boolean {
+    return value.trim().toLowerCase() === "unassigned";
   }
 
   static isValid(value: unknown): value is ServiceArea {

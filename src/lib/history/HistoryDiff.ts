@@ -17,12 +17,16 @@ export class HistoryDiff {
     "owner",
     "physicianChampion",
     "physicianChampionEmail",
+    "requesterNotApplicable",
+    "contractsLead",
     "status",
     "nextMilestone",
     "dueDate",
     "targetCompletion",
     "percentComplete",
     "note",
+    "accomplishment",
+    "completedOn",
     "includeInReport",
     "archivedAt",
     "deletedBy",
@@ -30,8 +34,33 @@ export class HistoryDiff {
     "hiddenFromReport",
   ] as const;
 
+  /** Human labels for history fields (field names stay internal). Unlisted fields show their name. */
+  static readonly FIELD_LABELS: Readonly<Record<string, string>> = {
+    name: "Project",
+    description: "Description",
+    inforRequestNumber: "Infor request number",
+    serviceArea: "Department",
+    owner: "Owner",
+    physicianChampion: "Requester",
+    physicianChampionEmail: "Requester email",
+    requesterNotApplicable: "Requester not applicable",
+    status: "Status",
+    nextMilestone: "Next milestone",
+    dueDate: "Due date",
+    targetCompletion: "Target completion",
+    percentComplete: "Percent complete",
+    note: "Note",
+    accomplishment: "Accomplishment",
+    completedOn: "Completed on",
+    includeInReport: "Include in report",
+  };
+
+  static label(field: string): string {
+    return HistoryDiff.FIELD_LABELS[field] ?? field;
+  }
+
   /** Fields stored as DATE (serialize as YYYY-MM-DD) vs timestamps (full ISO). */
-  private static readonly DATE_ONLY_FIELDS: ReadonlySet<string> = new Set(["dueDate", "targetCompletion"]);
+  private static readonly DATE_ONLY_FIELDS: ReadonlySet<string> = new Set(["dueDate", "targetCompletion", "completedOn"]);
 
   static serialize(field: string, value: unknown): string | null {
     if (value === null || value === undefined) return null;

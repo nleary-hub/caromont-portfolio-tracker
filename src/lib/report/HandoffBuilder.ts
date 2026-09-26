@@ -1,7 +1,7 @@
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
-import type { ReportHeader, ReportRow } from "@/lib/domain/types";
+import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
@@ -14,6 +14,8 @@ export interface HandoffInput {
   frozenAt: Date;
   rows: readonly ReportRow[];
   header: ReportHeader | null;
+  /** "Completed this period" rows (undefined for snapshots before 0012). */
+  completed?: readonly CompletedRow[];
   pdf: { fileName: string; sha256: string; byteSize: number };
   baseUrl: string | null;
   reportRecipient: string | null;
@@ -21,9 +23,17 @@ export interface HandoffInput {
 
 export interface HandoffFlagged {
   name: string;
-  serviceArea: ServiceArea;
+  serviceArea: ServiceArea | null;
   status: string;
   dueDate: string | null;
+}
+
+export interface HandoffCompleted {
+  name: string;
+  serviceArea: ServiceArea | null;
+  /** YYYY-MM-DD shown in the report (completedOn when set, else the in-app completion date). */
+  completedOn: string;
+  accomplishment: string | null;
 }
 
 /** handoff.json: what the person sending the report email needs. Visible rows only. */
@@ -37,19 +47,23 @@ export interface Handoff {
   frozenAtEt: string;
   reportRecipient?: string;
   totals: { projects: number; byStatus: Partial<Record<ProjectStatus, number>> };
-  byArea: { area: ServiceArea; label: string; projects: number; byStatus: Partial<Record<ProjectStatus, number>> }[];
+  byArea: { area: AreaGroup; label: string; projects: number; byStatus: Partial<Record<ProjectStatus, number>> }[];
   flags: {
     changed: { count: number; projects: HandoffFlagged[] };
     overdue: { count: number; projects: HandoffFlagged[] };
     stale: { count: number; projects: HandoffFlagged[] };
   };
+  /** Listed once in the report's "Completed this period" blocks; not part of totals or byArea. */
+  completedThisPeriod: { count: number; projects: HandoffCompleted[] };
+  /** Page 1 "Completed FY27 to date N", as frozen. Null for snapshots frozen before it existed. */
+  completedFiscalYear: { label: string; fiscalYearStart: string; count: number } | null;
   pdf: { fileName: string; sha256: string; byteSize: number };
   archiveUrl: string;
 }
 
 /**
  * Builds handoff.json from the frozen snapshot. Counts and flags come only from the snapshot's
- * visible rows. No To/Cc and no missing-champion list: the app sends nothing, and the one
+ * visible rows. No To/Cc and no missing-requester list: the app sends nothing, and the one
  * recipient is an env setting (REPORT_RECIPIENT_EMAIL).
  */
 export class HandoffBuilder {
@@ -86,8 +100,9 @@ export class HandoffBuilder {
       frozenAtEt: ReportFormat.dateTimeEt(input.frozenAt),
       ...(input.reportRecipient ? { reportRecipient: input.reportRecipient } : {}),
       totals: { projects: input.rows.length, byStatus: HandoffBuilder.nonZero(header.totals) },
-      byArea: ServiceAreaInfo.all().map((a) => {
-        const counts = header.byArea[a];
+      // Every department, then Unassigned only when it has projects.
+      byArea: HandoffBuilder.areas(input.rows).map((a) => {
+        const counts = ReportBuilder.areaCounts(header, a);
         return {
           area: a,
           label: ServiceAreaInfo.label(a),
@@ -100,6 +115,18 @@ export class HandoffBuilder {
         overdue: { count: overdue.length, projects: HandoffBuilder.flagged(overdue) },
         stale: { count: stale.length, projects: HandoffBuilder.flagged(stale) },
       },
+      completedThisPeriod: {
+        count: input.completed?.length ?? 0,
+        projects: (input.completed ?? []).map((c) => ({
+          name: c.name,
+          serviceArea: c.serviceArea,
+          completedOn: c.completedOn,
+          accomplishment: c.accomplishment,
+        })),
+      },
+      completedFiscalYear: input.header?.completedFiscalYear
+        ? { label: input.header.completedFiscalYear.label, fiscalYearStart: input.header.completedFiscalYear.start, count: input.header.completedFiscalYear.count }
+        : null,
       pdf: input.pdf,
       archiveUrl: HandoffBuilder.archiveUrl(input.baseUrl),
     };
@@ -107,5 +134,11 @@ export class HandoffBuilder {
 
   static toBytes(handoff: Handoff): Buffer {
     return Buffer.from(`${JSON.stringify(handoff, null, 2)}\n`, "utf8");
+  }
+
+  /** Departments in order, then "Unassigned" only when some listed row has no department. */
+  private static areas(rows: readonly ReportRow[]): AreaGroup[] {
+    const unassigned = rows.some((r) => r.serviceArea === null);
+    return ServiceAreaInfo.groups().filter((a) => a !== ServiceAreaInfo.UNASSIGNED || unassigned);
   }
 }

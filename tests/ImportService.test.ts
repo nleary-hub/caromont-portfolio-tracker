@@ -16,8 +16,7 @@ class Csv {
       description: "",
       service_area: "Cath",
       owner: "Owner A",
-      physician_champion: "Dr. A",
-      physician_champion_email: "dr.a@example.org",
+      requester: "Dr. A",
       status: "On track",
       next_milestone: "Equipment install",
       due_date: "2026-10-21",
@@ -91,7 +90,7 @@ describe("ImportService: new projects", () => {
     );
     expect(preview.rows.map((r) => r.status)).toEqual(["error", "error"]);
     expect(preview.rows[0].errors.service_area?.[0]).toBe(
-      '"Cardiology" is not a service area. Use one of: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR',
+      '"Cardiology" is not a service area. Use one of: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR, or Unassigned (or leave blank)',
     );
     expect(preview.rows[1].errors.status?.[0]).toMatch(/^"Done" is not a status\. Use one of: Not started, On track/);
     expect(preview.canCommit).toBe(false);
@@ -153,17 +152,18 @@ describe("ImportService: new projects", () => {
       Csv.file(
         Csv.row({ next_milestone: "" }),
         Csv.row({ name: "B", percent_complete: "140" }),
-        Csv.row({ name: "C", physician_champion_email: "not-an-email" }),
+        Csv.row({ name: "C", requester: "N/A" }),
         Csv.row({ name: "", owner: "" }),
         Csv.row({ name: "E", include_in_report: "maybe", percent_complete: "abc" }),
       ),
       fake.asClient(),
     );
     const [a, b, c, d, e] = preview.rows;
-    expect(a.errors.next_milestone).toEqual(["Next milestone is required unless the project is Complete or Cancelled"]);
+    expect(a.errors.next_milestone).toEqual(["Next milestone is required unless the project is Not started, On hold, Complete or Cancelled"]);
     expect(b.errors.percent_complete).toEqual(["Percent complete must be between 0 and 100"]);
-    expect(c.errors.physician_champion_email).toEqual(["Physician champion email is not a valid email"]);
-    expect(d.errors).toMatchObject({ name: ["Name is required"], owner: ["Owner is required"] });
+    expect(c.input).toMatchObject({ physicianChampion: null, requesterNotApplicable: true });
+    expect(d.errors).toMatchObject({ name: ["Name is required"] });
+    expect(d.errors).not.toHaveProperty("owner"); // owner is optional ("To assign")
     expect(e.errors).toMatchObject({ include_in_report: ['"maybe" is not yes or no'], percent_complete: ['"abc" is not a number'] });
     expect(preview.rows.map((r) => r.line)).toEqual([2, 3, 4, 5, 6]);
   });

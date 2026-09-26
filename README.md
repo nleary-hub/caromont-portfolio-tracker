@@ -160,7 +160,7 @@ Notes:
 | Next milestone max 40 chars | `ProjectValidator` using `AppConfig.MILESTONE_MAX_LENGTH` | (none, by design: single constant) |
 | Description (optional) max 200 chars | `ProjectValidator` using `AppConfig.DESCRIPTION_MAX_LENGTH` | (none, by design: single constant) |
 | Infor request number (optional) whole number 1 to 99999, blank = null | `ProjectValidator` using `AppConfig.INFOR_REQUEST_NUMBER_MIN/MAX` | CHECK constraint (migration 0011) |
-| Next milestone required unless Complete/Cancelled | `ProjectValidator` | CHECK constraint |
+| Next milestone required unless Not started/On hold/Complete/Cancelled (`ProjectStatusInfo.MILESTONE_OPTIONAL`, migration 0012) | `ProjectValidator` | CHECK constraint |
 | Percent complete 0 to 100 | `ProjectValidator` | CHECK constraint |
 | History written in the same transaction | `ProjectService` (only write path) | n/a |
 | History append-only | no update/delete code paths | trigger blocks UPDATE/DELETE |
@@ -203,8 +203,9 @@ to a PGlite Postgres instance and exercising the services and guards.
 - `ProjectHistoryService.forProject(id, viewer)`: the history read path (filtered for non-admins).
 - `AdminAuditService.load(viewer)`: hidden and deleted projects, view settings, and recent admin-only
   changes (who, when, old, new) for `/admin/audit`; `notFound()` for non-admins.
-- `ChampionCheck`: champions on active projects (not archived, not Complete/Cancelled) with no active
-  Recipient, matched by email when the champion has one, otherwise case-insensitive name. Stored on
+- `ChampionCheck`: requesters on active projects (not archived, not Complete/Cancelled) with no active
+  Recipient, matched by email when a stored email exists, otherwise case-insensitive name. Rows marked
+  Not applicable are never flagged. Stored on
   the snapshot (computed on visible rows only, since it names projects). Never adds recipients.
 - `SnapshotService.create`: serializable transaction that reads the report view settings, builds rows
   and header from visible rows, and stores them plus the (admin-only) settings in the immutable snapshot.
@@ -252,9 +253,12 @@ Functions and download routes all re-check server-side via `AdminGate`). There i
 the URL directly.
 
 - **Template:** `docs/project-import-template.csv` (also "Download template" on the page). Columns:
-  `name, description, infor_request_number, service_area, owner, physician_champion, physician_champion_email, status, next_milestone,
-  due_date, percent_complete, note, include_in_report`. The two `Example:` rows are fake and are skipped.
-  - `service_area`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR. `status`: Not started, On track, At risk,
+  `name, description, infor_request_number, service_area, owner, requester, status, next_milestone,
+  due_date, percent_complete, note, accomplishment, completed_on, include_in_report`. Required columns:
+  `name, service_area, status` (a `department` header is read as `service_area`; a blank value or
+  `Unassigned` means no department, shown as the Unassigned group, last). `owner` is optional
+  (blank or missing = "To assign"); a blank `status` on a new project means On track. The two `Example:` rows are fake and are skipped.
+  - `service_area`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR (also `Cath Lab` and `EP Lab`, `ServiceAreaInfo.ALIASES`). `status`: Not started, On track, At risk,
     Off track, On hold, Complete, Cancelled. Case and spaces do not matter (`on track`, `OnTrack`).
   - `due_date`: YYYY-MM-DD or M/D/YYYY. `percent_complete`: 0 to 100 (a trailing % is fine).
     `include_in_report`: yes/no (blank = yes). `description` is optional (blank is fine; the column
@@ -262,20 +266,27 @@ the URL directly.
     fine; decimals, letters, signs, lists like "4656 / 5081", 0 and over 99999 are row errors). Blank = no
     number; the column may be left out, so older files still import and their new projects get no number.
     Export writes the plain number. `description` max 200, `note` max 200, `next_milestone` max 40 (`AppConfig`).
+  - `accomplishment` (optional, max 200) and `completed_on` (optional date, same formats as `due_date`, display
+    only) feed the report's "Completed this period" block; see docs/REPORTS.md.
+  - `requester` (headers `physician_champion` and `champion` are read as `requester`): a name; `Not applicable`,
+    `N/A` or `NA` (any case) marks it Not applicable (prints blank on the dashboard and report); blank = not yet
+    addressed ("To assign" in gray). Export writes the name, `Not applicable` or blank. `physician_champion_email`
+    is no longer imported (the preview notes it); stored emails are kept in the database but not shown.
   - `older_update` (added by Writing Bot) is recognized but not imported: the app has no place for older
-    updates yet, so the preview shows a warning and the values are ignored.
+    updates yet, so the preview shows a warning and the values are ignored. `owner_suggested` and `department_basis`
+    are reference columns: never read, the preview notes that they are not imported.
 - **New projects mode:** every row is validated with `ProjectValidator`; the preview shows per-row errors.
   Rows matching a non-archived project by (name, service area), ignoring case and extra spaces, are
   skipped with a warning and never overwritten. "Import N projects" is all-or-nothing in one
   transaction, through `ProjectService`, so each project gets its `created` history row
   (`changedBy` = the admin, `comment` = `csv_import`). Any row error blocks the whole import.
 - **Wording update mode** (the Writing Bot round-trip): "Export CSV" (or `npm run export:csv`) writes
-  `id` + the template columns for non-archived projects. Edit `description` / `note` / `next_milestone`,
+  `id` + the template columns for non-archived projects. Edit `description` / `note` / `next_milestone` / `accomplishment`,
   then upload with the wording option (or `--update-wording`). Rows match by `id` only. If any other
   column differs from the database, the row is rejected. `description` may be left out of a wording
-  file (it is then unchanged); `id`, `note` and `next_milestone` are required. `infor_request_number` is a
+  file (it is then unchanged); `id`, `note` and `next_milestone` columns are required (the value may be blank for Not started, On hold, Complete, Cancelled). `infor_request_number` is a
   data field, not wording: a wording file may leave the column out (unchanged) or carry the exported value,
-  but changing it rejects the row. The preview shows old versus new per row; commit is all-or-nothing
+  but changing it rejects the row (same for `completed_on`). The preview shows old versus new per row; commit is all-or-nothing
   through `ProjectService.updateInTx`, writing field history rows with `comment` = `csv_wording_update`.
 - **CLI:** `npm run import:csv -- file.csv` is a dry run; add `--commit --as admin@...` (or set
   `IMPORT_ACTOR_EMAIL`) to save. The actor must be an admin (`ADMIN_EMAILS`, and also on `ALLOWED_EMAILS`). Loads `.env.local`, then `.env`.
@@ -298,11 +309,14 @@ See [docs/REPORTS.md](docs/REPORTS.md): renderer (`@react-pdf/renderer`, embedde
 - Title: **"Cardiac Service Line: Project Status Report"** (no em dashes in report copy).
 - Light theme, US Letter **landscape**, 0.5 in side margins (10.0 in content width).
 - Grouped by service area (report order), with a section header per area.
-- Two-line rows. Line 1 columns (inches): Project 2.2, Owner 1.0 (physician champion in small gray
-  under the owner), Status 0.85, Next milestone 2.0, Due 0.6, Flags 3.35.
-- Line 2: the note, starting under Next milestone and running to the right margin (5.95 in), clipped
-  to two lines. A 200-char note fits in two lines at the report table size (see mockup `measurement.json`).
+- Two-line rows. Line 1 columns (inches): Project 2.2, Owner 1.35 (requester and "Contracts <name>" in small gray
+  under the owner; the requester line is dropped when it is Not applicable), Status 0.85, Next milestone 2.0, Due 0.6,
+  Flags 3.0. The owner column is 1.0 plus 0.35 for the contracts line, taken from Flags (`PdfReportLayout`).
+- Line 2: the note, starting under Next milestone and running to the right margin (5.6 in),
+  wrapping to as many lines as needed (never cut off; the row grows). A 200-char note fits in two lines; with the
+  "No change." prefix it takes three.
 - Rows never split across pages.
+- Page 1 shows "Completed FY27 to date N" (teal check and number) beside the Projects line; see docs/REPORTS.md.
 - Every page repeats the header: page 1 has the full meta block and per-area status grid; later pages
   have a running head (title, report date, period) and a one-line per-area status count strip.
 - Pages are numbered ("Page X of Y").

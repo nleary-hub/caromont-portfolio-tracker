@@ -158,6 +158,7 @@ export class FreezeService {
         frozenAt: snapshot.generatedAt,
         rows: input.rows,
         header: input.header,
+        completed: input.completed,
         pdf: { fileName: pdf.fileName, sha256: pdf.sha256, byteSize: pdf.byteSize },
         baseUrl,
         reportRecipient,

@@ -1,3 +1,4 @@
+import { Requester } from "@/lib/domain/Requester";
 import type { Prisma, PrismaClient, Project } from "@/generated/prisma/client";
 import type { ViewContext } from "@/generated/prisma/enums";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
@@ -50,6 +51,8 @@ export type Tx = Prisma.TransactionClient;
  * The only write path for projects. Every mutation writes ProjectHistory rows in the
  * same transaction. There is intentionally no hard-delete method.
  */
+export type PeopleField = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "serviceArea";
+
 export class ProjectService {
   static async create(input: ProjectInput, actor: Actor, db: PrismaClient = Db.client): Promise<Project> {
     ProjectValidator.parse(input); // fail fast, before opening a transaction
@@ -99,8 +102,15 @@ export class ProjectService {
   /** update() inside a caller-owned transaction (e.g. an all-or-nothing CSV wording update). */
   static async updateInTx(tx: Tx, id: string, patch: Partial<ProjectInput>, actor: Actor): Promise<Project> {
     const existing = await ProjectService.loadMutable(tx, id);
-    const merged: ProjectInput = { ...ProjectValidator.toInput(existing), ...ProjectService.pickEditable(patch) };
+    // Requester: a new name clears Not applicable and Not applicable clears the name.
+    const merged: ProjectInput = { ...ProjectValidator.toInput(existing), ...Requester.normalizePatch(ProjectService.pickEditable(patch)) };
     const data: Record<string, unknown> = { ...ProjectValidator.parse(merged) };
+
+    // Reopening (status leaves Complete) clears completionReportedAt, so a later completion is listed
+    // in "Completed this period" again. Bookkeeping only: not a tracked history field.
+    if (existing.status === "Complete" && data.status !== "Complete" && existing.completionReportedAt) {
+      data.completionReportedAt = null;
+    }
 
     const changes = HistoryDiff.diff(existing, data);
     if (changes.length === 0) return existing;
@@ -212,6 +222,26 @@ export class ProjectService {
   }
 
   /** Admin per-project hide/unhide for one context. No-op when unchanged; otherwise audited. */
+  /** Fields the admin drawer panel edits, one at a time (saved on change). */
+  static readonly PEOPLE_FIELDS = ["owner", "physicianChampion", "requesterNotApplicable", "contractsLead", "serviceArea"] as const;
+
+  static isPeopleField(field: string): field is PeopleField {
+    return (ProjectService.PEOPLE_FIELDS as readonly string[]).includes(field);
+  }
+
+  /**
+   * Admin drawer panel: set owner, requester (physicianChampion), requester Not applicable ("true"/"false"), contracts lead (pick-list)
+   * or service area. A blank owner or requester goes back to "To assign". Goes through update(), so
+   * validation applies and ProjectHistory records the change (no-op when unchanged).
+   */
+  static async setPeopleField(id: string, field: PeopleField, value: string, admin: Viewer, db: PrismaClient = Db.client): Promise<Project> {
+    AdminPolicy.assertAdmin(admin);
+    const patch: Partial<ProjectInput> =
+      field === "requesterNotApplicable" ? { requesterNotApplicable: value === "true" } : { [field]: value };
+    // Clearing Not applicable leaves the requester "not yet addressed" (no name).
+    return ProjectService.update(id, patch, ProjectService.actorOf(admin), db);
+  }
+
   static async setHidden(
     id: string,
     context: ViewContext,
@@ -229,6 +259,23 @@ export class ProjectService {
       await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin), new Date());
       return updated;
     });
+  }
+
+  /**
+   * Freeze bookkeeping: mark projects listed in a frozen report's "Completed this period" block so they
+   * are listed only once. Runs inside the snapshot transaction. Writes no history row on purpose: a
+   * history row would set the Changed flag and the "Updated" date, and nothing about the project changed.
+   * Only rows still unmarked are touched, so re-running is harmless.
+   */
+  static async markCompletionReported(tx: Tx, projectIds: readonly string[], at: Date): Promise<number> {
+    let count = 0;
+    for (const id of projectIds) {
+      const p = await tx.project.findUnique({ where: { id } });
+      if (!p || p.completionReportedAt || p.status !== "Complete") continue;
+      await tx.project.update({ where: { id }, data: { completionReportedAt: at } });
+      count += 1;
+    }
+    return count;
   }
 
   private static actorOf(admin: Viewer, comment?: string): Actor {
@@ -250,12 +297,16 @@ export class ProjectService {
     "owner",
     "physicianChampion",
     "physicianChampionEmail",
+    "requesterNotApplicable",
+    "contractsLead",
     "status",
     "nextMilestone",
     "dueDate",
     "targetCompletion",
     "percentComplete",
     "note",
+    "accomplishment",
+    "completedOn",
     "includeInReport",
   ];
 

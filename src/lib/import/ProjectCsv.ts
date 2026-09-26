@@ -2,8 +2,10 @@ import { CsvError, parse } from "csv-parse/sync";
 import { stringify } from "csv-stringify/sync";
 import { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
+import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
+import { Requester } from "@/lib/domain/Requester";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectRecord } from "@/lib/domain/types";
 import { ProjectValidator, type FieldErrors, type ProjectInput } from "@/lib/validation/ProjectValidator";
@@ -16,13 +18,15 @@ export type CsvColumn =
   | "infor_request_number"
   | "service_area"
   | "owner"
-  | "physician_champion"
-  | "physician_champion_email"
+  | "requester"
+  | "contracts_lead"
   | "status"
   | "next_milestone"
   | "due_date"
   | "percent_complete"
   | "note"
+  | "accomplishment"
+  | "completed_on"
   | "include_in_report";
 
 /** Editable ProjectInput fields that have a template column. */
@@ -64,13 +68,15 @@ export class ProjectCsv {
     "infor_request_number",
     "service_area",
     "owner",
-    "physician_champion",
-    "physician_champion_email",
+    "requester",
+    "contracts_lead",
     "status",
     "next_milestone",
     "due_date",
     "percent_complete",
     "note",
+    "accomplishment",
+    "completed_on",
     "include_in_report",
   ];
 
@@ -78,7 +84,7 @@ export class ProjectCsv {
   static readonly EXPORT_COLUMNS: readonly CsvColumn[] = ["id", ...ProjectCsv.TEMPLATE_COLUMNS];
 
   /** Columns a new-project import file must have. */
-  static readonly REQUIRED_FOR_CREATE: readonly CsvColumn[] = ["name", "service_area", "owner", "status"];
+  static readonly REQUIRED_FOR_CREATE: readonly CsvColumn[] = ["name", "service_area", "status"];
 
   /** Columns a wording-update file must have (description is optional; absent means unchanged). */
   static readonly REQUIRED_FOR_WORDING: readonly CsvColumn[] = ["id", "note", "next_milestone"];
@@ -90,13 +96,15 @@ export class ProjectCsv {
     infor_request_number: "inforRequestNumber",
     service_area: "serviceArea",
     owner: "owner",
-    physician_champion: "physicianChampion",
-    physician_champion_email: "physicianChampionEmail",
+    requester: "physicianChampion",
+    contracts_lead: "contractsLead",
     status: "status",
     next_milestone: "nextMilestone",
     due_date: "dueDate",
     percent_complete: "percentComplete",
     note: "note",
+    accomplishment: "accomplishment",
+    completed_on: "completedOn",
     include_in_report: "includeInReport",
   };
 
@@ -110,13 +118,15 @@ export class ProjectCsv {
       infor_request_number: "4656",
       service_area: "Cath",
       owner: "Example Owner A",
-      physician_champion: "Dr. Example A",
-      physician_champion_email: "dr.example.a@example.org",
+      requester: "Dr. Example A",
+      contracts_lead: "Shea Waldron",
       status: "On track",
       next_milestone: "Vendor kickoff call",
       due_date: "2026-10-15",
       percent_complete: "25",
       note: "Fake example row. Delete it before importing. Notes can be up to 200 characters.",
+      accomplishment: "",
+      completed_on: "",
       include_in_report: "yes",
     },
     {
@@ -125,13 +135,15 @@ export class ProjectCsv {
       infor_request_number: "",
       service_area: "EP",
       owner: "Example Owner B",
-      physician_champion: "",
-      physician_champion_email: "",
+      requester: "Not applicable",
+      contracts_lead: "",
       status: "Not started",
       next_milestone: "Charter approval",
       due_date: "11/2/2026",
       percent_complete: "",
       note: "Fake example row showing an M/D/YYYY date and blank optional fields.",
+      accomplishment: "",
+      completed_on: "",
       include_in_report: "no",
     },
   ];
@@ -143,6 +155,18 @@ export class ProjectCsv {
   static readonly RECOGNIZED_IGNORED_COLUMNS: Readonly<Record<string, string>> = {
     older_update:
       'Column "older_update" is not imported: the app has no place for older updates yet, so its values are ignored.',
+    owner_suggested: 'Column "owner_suggested" is a reference column and is not imported. Owners are set in the app.',
+    department_basis: 'Column "department_basis" is a reference column and is not imported.',
+    physician_champion_email: 'Column "physician_champion_email" is not imported: requester emails are no longer used.',
+    contracts_lead_suggested:
+      'Column "contracts_lead_suggested" is a reference column and is not imported. Use "contracts_lead" or set it in the app.',
+  };
+
+  /** Other header names accepted for a column (normalized). */
+  static readonly COLUMN_ALIASES: Readonly<Record<string, CsvColumn>> = {
+    department: "service_area",
+    physician_champion: "requester",
+    champion: "requester",
   };
 
   private static readonly KNOWN_COLUMNS: ReadonlySet<string> = new Set(ProjectCsv.EXPORT_COLUMNS);
@@ -176,15 +200,17 @@ export class ProjectCsv {
       name: p.name,
       description: p.description ?? "",
       infor_request_number: p.inforRequestNumber === null ? "" : String(p.inforRequestNumber),
-      service_area: ServiceAreaInfo.label(p.serviceArea),
-      owner: p.owner,
-      physician_champion: p.physicianChampion ?? "",
-      physician_champion_email: p.physicianChampionEmail ?? "",
+      service_area: p.serviceArea ? ServiceAreaInfo.label(p.serviceArea) : "",
+      owner: p.owner ?? "",
+      requester: Requester.cellText(p.physicianChampion, p.requesterNotApplicable),
+      contracts_lead: p.contractsLead ?? "",
       status: ProjectStatusInfo.label(p.status),
       next_milestone: p.nextMilestone ?? "",
       due_date: DateOnly.fromDbDate(p.dueDate) ?? "",
       percent_complete: p.percentComplete === null ? "" : String(p.percentComplete),
       note: p.note ?? "",
+      accomplishment: p.accomplishment ?? "",
+      completed_on: DateOnly.fromDbDate(p.completedOn) ?? "",
       include_in_report: p.includeInReport ? "yes" : "no",
     };
   }
@@ -214,7 +240,7 @@ export class ProjectCsv {
       return result;
     }
 
-    const header = records[0].record.map(ProjectCsv.normalizeHeader);
+    const header = records[0].record.map(ProjectCsv.normalizeHeader).map((h) => ProjectCsv.COLUMN_ALIASES[h] ?? h);
     const indexByColumn = new Map<CsvColumn, number>();
     header.forEach((h, i) => {
       if (!h) return;
@@ -256,7 +282,7 @@ export class ProjectCsv {
   }
 
   /** Convert the present cells of a row to ProjectInput values. Validation proper is ProjectValidator's job. */
-  static toInput(row: CsvRow): RowConversion {
+  static toInput(row: CsvRow, opts: { blankStatus?: ProjectStatus } = {}): RowConversion {
     const input: Partial<ProjectInput> = {};
     const errors: RowConversion["errors"] = {};
     const fail = (col: CsvColumn, msg: string) => (errors[col] ??= []).push(msg);
@@ -267,15 +293,39 @@ export class ProjectCsv {
       const value = raw.trim();
       switch (col) {
         case "service_area": {
+          // Blank or "Unassigned" (any case) = no department (grouped as Unassigned).
+          if (value === "" || ServiceAreaInfo.isUnassignedText(value)) {
+            input.serviceArea = null;
+            break;
+          }
           const area = ProjectCsv.resolveServiceArea(value);
           if (area) input.serviceArea = area;
           else {
-            fail(col, `"${value}" is not a service area. Use one of: ${ServiceAreaInfo.all().join(", ")}`);
+            fail(
+              col,
+              `"${value}" is not a service area. Use one of: ${ServiceAreaInfo.all().join(", ")}, or Unassigned (or leave blank)`,
+            );
             input.serviceArea = value;
           }
           break;
         }
+        case "requester": {
+          // Name; "Not applicable" / "N/A" / "NA" (any case) = Not applicable; blank = not yet addressed.
+          if (Requester.isNotApplicableText(value)) {
+            input.physicianChampion = null;
+            input.requesterNotApplicable = true;
+          } else {
+            input.physicianChampion = value === "" ? null : value;
+            input.requesterNotApplicable = false;
+          }
+          break;
+        }
         case "status": {
+          if (value === "" && opts.blankStatus) {
+            // New projects: a blank status means On track.
+            input.status = opts.blankStatus;
+            break;
+          }
           const status = ProjectCsv.resolveStatus(value);
           if (status) input.status = status;
           else {
@@ -290,6 +340,22 @@ export class ProjectCsv {
             fail(col, `"${value}" is not a valid date. Use YYYY-MM-DD or M/D/YYYY`);
             input.dueDate = value;
           } else input.dueDate = iso;
+          break;
+        }
+        case "contracts_lead": {
+          const lead = ContractsLead.resolve(value);
+          if (lead === undefined) {
+            fail(col, ContractsLead.invalidMessage(value));
+            input.contractsLead = value;
+          } else input.contractsLead = lead;
+          break;
+        }
+        case "completed_on": {
+          const iso = ProjectCsv.resolveDate(value);
+          if (iso === undefined) {
+            fail(col, `"${value}" is not a valid date. Use YYYY-MM-DD or M/D/YYYY`);
+            input.completedOn = value;
+          } else input.completedOn = iso;
           break;
         }
         case "percent_complete": {
@@ -352,7 +418,12 @@ export class ProjectCsv {
   /** Case- and whitespace-insensitive match against enum keys and display labels. */
   static resolveServiceArea(value: string): ServiceArea | null {
     const key = ProjectCsv.enumKey(value);
-    return (Object.values(ServiceArea) as ServiceArea[]).find((a) => ProjectCsv.enumKey(a) === key) ?? null;
+    const direct = (Object.values(ServiceArea) as ServiceArea[]).find(
+      (a) => ProjectCsv.enumKey(a) === key || ProjectCsv.enumKey(ServiceAreaInfo.label(a)) === key,
+    );
+    if (direct) return direct;
+    const alias = Object.entries(ServiceAreaInfo.ALIASES).find(([name]) => ProjectCsv.enumKey(name) === key);
+    return alias ? alias[1] : null;
   }
 
   static resolveStatus(value: string): ProjectStatus | null {

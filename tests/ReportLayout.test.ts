@@ -25,7 +25,7 @@ class Many {
   }
 
   static layout(rows: ReportRow[], overrides = {}): DocumentLayout {
-    return ReportLayout.layout(SampleReportData.docInput({ rows, header: ReportBuilder.header(rows), ...overrides }), m);
+    return ReportLayout.layout(SampleReportData.docInput({ rows, header: ReportBuilder.header(rows), completed: [], ...overrides }), m);
   }
 
   static rowIds(l: DocumentLayout): string[] {
@@ -78,27 +78,40 @@ describe("ReportLayout pagination", () => {
     expect(continued.some((b) => b.kind === "section" && b.continued)).toBe(true);
   });
 
-  it("clips the note to 2 lines with an ellipsis and runs it from Next milestone to the right margin", () => {
+  it("never cuts the note off (wraps, no ellipsis) and runs it from Next milestone to the right margin", () => {
     const long = { ...rows[0], note: `${SampleReportData.LONG_NOTE} ${SampleReportData.LONG_NOTE}`, changed: true };
     const r = ReportLayout.rowLayout(m, long, ViewSettings.defaults("report"), SampleReportData.REPORT_DATE);
-    expect(r.note!.lines).toHaveLength(2);
-    expect(r.note!.lines[1].text.endsWith("\u2026")).toBe(true);
-    expect(r.note!.w).toBeCloseTo(5.95 * 72, 5);
+    expect(r.note!.lines.length).toBeGreaterThan(2);
+    expect(r.note!.lines.map((l) => l.text).join(" ")).toBe(long.note);
+    expect(r.note!.lines.some((l) => l.text.includes("\u2026"))).toBe(false);
+    expect(r.note!.w).toBeCloseTo(5.6 * 72, 5);
     const milestone = r.cells.find((c) => c.kind === "nextMilestone")!;
     expect(r.note!.x).toBe(milestone.x);
     for (const l of r.note!.lines) expect(m.width(l.text, 8, 400)).toBeLessThanOrEqual(r.note!.w);
   });
 
+  it("a 200-character note with the No change. prefix wraps to a third line and the row grows", () => {
+    const note = `${SampleReportData.LONG_NOTE} Next check-in 10/1.`.slice(0, 200).trimEnd().padEnd(200, ".");
+    expect(note).toHaveLength(200);
+    const settings = ViewSettings.defaults("report");
+    const changed = ReportLayout.rowLayout(m, { ...rows[0], note, changed: true }, settings, SampleReportData.REPORT_DATE);
+    const unchanged = ReportLayout.rowLayout(m, { ...rows[0], note, changed: false }, settings, SampleReportData.REPORT_DATE);
+    expect(changed.note!.lines).toHaveLength(2);
+    expect(unchanged.note!.lines).toHaveLength(3);
+    expect(unchanged.note!.lines.map((l) => l.text).join(" ")).toBe(`No change. ${note}`);
+    expect(unchanged.note!.lines.some((l) => l.text.includes("\u2026"))).toBe(false);
+    // The row grows so all three lines sit inside it (the owner stack already used part of the space).
+    expect(unchanged.height).toBeGreaterThan(changed.height);
+    expect(unchanged.lineTwoY + unchanged.note!.lines.length * ReportGeometry.TABLE_LH).toBeLessThanOrEqual(unchanged.height);
+  });
+
   it("uses the spec column widths in inches", () => {
     const cols = ReportLayout.columns(ViewSettings.defaults("report"));
-    expect(cols.map((c) => [c.key, c.w / 72])).toEqual([
-      ["project", 2.2],
-      ["owner", 1.0],
-      ["status", 0.85],
-      ["nextMilestone", 2.0],
-      ["due", 0.6],
-      ["flags", 3.35],
-    ]);
+    expect(cols.map((c) => [c.key, c.w / 72])).toEqual(
+      ([["project", 2.2], ["owner", 1.35], ["status", 0.85], ["nextMilestone", 2.0], ["due", 0.6], ["flags", 3.0]] as const).map(([k, w]) => [k, expect.closeTo(w, 9)]),
+    );
+    // The owner widening comes out of Flags only: the total table width is unchanged (10.0 in).
+    expect(cols.reduce((s, c) => s + c.w, 0) / 72).toBeCloseTo(10.0, 9);
   });
 
   it("respects column order and hidden columns from the report view settings", () => {
@@ -182,12 +195,16 @@ describe("ReportLayout visibility", () => {
       owner: "Owner A",
       physicianChampion: null,
       physicianChampionEmail: null,
+      requesterNotApplicable: false,
+      contractsLead: null,
       status: "OnTrack" as const,
       nextMilestone: "M",
       dueDate: null,
       targetCompletion: null,
       percentComplete: null,
       note: null,
+      accomplishment: null,
+      completedOn: null,
       includeInReport: true,
       archivedAt: null,
       deletedBy: null,

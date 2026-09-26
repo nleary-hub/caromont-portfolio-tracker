@@ -1,8 +1,10 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { DateOnly } from "@/lib/domain/DateOnly";
-import type { MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
+import type { CompletedRow, MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { ChampionCheck } from "@/lib/report/ChampionCheck";
+import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
+import { CompletedThisPeriod } from "@/lib/report/CompletedThisPeriod";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
@@ -14,6 +16,8 @@ export interface LiveReportData {
   rows: ReportRow[];
   header: ReportHeader;
   missingChampions: MissingChampion[];
+  /** "Completed this period" rows (read-only here; only a freeze marks them reported). */
+  completed: CompletedRow[];
   viewSettings: ViewSettingsValue;
   options: ReportOptionsValue;
   reportDate: string;
@@ -55,6 +59,9 @@ export class ReportDataLoader {
       VisibilityPolicy.visibleProjects(projects, "report", viewSettings),
       recipients,
     );
-    return { rows, header, missingChampions, viewSettings, options, reportDate, previousSnapshotGeneratedAt };
+    const completed = CompletedThisPeriod.select({ projects, history, viewSettings, cutoff: now });
+    // Frozen with the header (headerJson), so a frozen report keeps its count.
+    header.completedFiscalYear = CompletedFiscalYear.count({ projects, history, reportDate });
+    return { rows, header, missingChampions, completed, viewSettings, options, reportDate, previousSnapshotGeneratedAt };
   }
 }

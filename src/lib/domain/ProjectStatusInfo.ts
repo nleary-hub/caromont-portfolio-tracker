@@ -41,6 +41,13 @@ export class ProjectStatusInfo {
     return i === -1 ? Number.MAX_SAFE_INTEGER : i;
   }
 
+  /** Statuses where Next milestone may be blank: Not started, On hold, Complete, Cancelled. */
+  static readonly MILESTONE_OPTIONAL: ReadonlySet<ProjectStatus> = new Set<ProjectStatus>(["NotStarted", "OnHold", "Complete", "Cancelled"]);
+
+  static milestoneOptional(status: ProjectStatus): boolean {
+    return ProjectStatusInfo.MILESTONE_OPTIONAL.has(status);
+  }
+
   /** Complete or Cancelled. */
   static isClosed(status: ProjectStatus): boolean {
     return ProjectStatusInfo.CLOSED.has(status);

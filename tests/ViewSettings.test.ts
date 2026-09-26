@@ -13,10 +13,10 @@ describe("ViewSettings defaults", () => {
 
   it("offers per-context columns in the agreed default order", () => {
     expect(ViewSettings.defaults("dashboard").columnOrder).toEqual([
-      "project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags", "inforNumber",
+      "project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags", "inforNumber", "contractsLead",
     ]);
     expect(ViewSettings.defaults("report").columnOrder).toEqual([
-      "project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber",
+      "project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber", "contractsLead",
     ]);
     expect(ViewSettings.columnLabel("report", "note")).toBe("Note");
   });
@@ -35,7 +35,7 @@ describe("ViewSettings.normalize", () => {
       hiddenColumns: ["project", "status", "note", "serviceArea", "nope"],
       hiddenStatuses: ["Cancelled", "Complete", "Nope", "OnHold"],
     });
-    expect(v.columnOrder).toEqual(["due", "project", "owner", "physicianChampion", "status", "nextMilestone", "flags", "note", "inforNumber"]);
+    expect(v.columnOrder).toEqual(["due", "project", "owner", "physicianChampion", "status", "nextMilestone", "flags", "note", "inforNumber", "contractsLead"]);
     expect(v.hiddenColumns).toEqual(["note"]);
     expect(v.hiddenStatuses).toEqual(["OnHold", "Complete", "Cancelled"]);
   });
@@ -82,7 +82,7 @@ describe("ViewSettings edits", () => {
 
 describe("migration 0002 seed rows", () => {
   /** Columns added after 0002 seeded the rows. normalize() appends them, so seeded rows still equal the defaults. */
-  const ADDED_AFTER_0002 = ["inforNumber"];
+  const ADDED_AFTER_0002 = ["inforNumber", "contractsLead"];
 
   it("match ViewSettings.defaults() for both contexts (after normalize adds later columns)", async () => {
     const { readFileSync } = await import("node:fs");

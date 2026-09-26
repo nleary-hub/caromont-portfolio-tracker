@@ -24,6 +24,7 @@ export class DraftReportService {
     const bytes = await PdfReportRenderer.renderDocument({
       rows: data.rows,
       header: data.header,
+      completed: data.completed,
       viewSettings: data.viewSettings,
       showKeyPage: data.options.showKeyPage,
       reportDate: data.reportDate,

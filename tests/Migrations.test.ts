@@ -64,9 +64,8 @@ describe("migrations (PGlite)", () => {
     await db.close();
   }, 30_000);
 
-  it("0011_project_infor_request_number is additive only and is the latest migration", () => {
+  it("0011_project_infor_request_number is additive only", () => {
     const folders = Migrations.folders();
-    expect(folders.at(-1)).toBe("0011_project_infor_request_number");
     expect(folders.indexOf("0011_project_infor_request_number")).toBeGreaterThan(folders.indexOf("0010_project_description"));
     const statements = Migrations.sql("0011_project_infor_request_number")
       .split("\n")
@@ -76,6 +75,80 @@ describe("migrations (PGlite)", () => {
       'ALTER TABLE "Project" ADD CONSTRAINT "Project_infor_request_number_range" CHECK ("infor_request_number" IS NULL OR "infor_request_number" BETWEEN 1 AND 99999);',
     ]);
   });
+
+  it("0013_project_contracts_lead is the latest migration: one nullable text column, additive only", async () => {
+    expect(Migrations.folders().at(-1)).toBe("0013_project_contracts_lead");
+    const statements = Migrations.sql("0013_project_contracts_lead")
+      .split("\n")
+      .filter((l) => l.trim() && !l.trim().startsWith("--"));
+    expect(statements).toEqual(['ALTER TABLE "Project" ADD COLUMN     "contractsLead" TEXT;']);
+    const db = await Migrations.applyAll();
+    const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
+      `select data_type, is_nullable, column_default from information_schema.columns
+       where table_name = 'Project' and column_name = 'contractsLead'`,
+    );
+    expect(col.rows).toEqual([{ data_type: "text", is_nullable: "YES", column_default: null }]);
+    await db.close();
+  }, 30_000);
+
+  it("0012_completed_this_period adds nullable columns only", async () => {
+    const db = await Migrations.applyAll();
+    const cols = await db.query<{ table_name: string; column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(
+      `select table_name, column_name, data_type, is_nullable, column_default from information_schema.columns
+       where (table_name = 'Project' and column_name in ('accomplishment', 'completedOn', 'completionReportedAt'))
+          or (table_name = 'ReportSnapshot' and column_name = 'completedJson')
+       order by table_name, column_name`,
+    );
+    expect(cols.rows).toEqual([
+      { table_name: "Project", column_name: "accomplishment", data_type: "text", is_nullable: "YES", column_default: null },
+      { table_name: "Project", column_name: "completedOn", data_type: "date", is_nullable: "YES", column_default: null },
+      { table_name: "Project", column_name: "completionReportedAt", data_type: "timestamp without time zone", is_nullable: "YES", column_default: null },
+      { table_name: "ReportSnapshot", column_name: "completedJson", data_type: "jsonb", is_nullable: "YES", column_default: null },
+    ]);
+    const sql = Migrations.sql("0012_completed_this_period");
+    const code = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+    // The only DROPs relax constraints (owner optional; milestone optional for more statuses); no data changes.
+    expect(code.replace('ALTER COLUMN "owner" DROP NOT NULL', "").replace('DROP CONSTRAINT "Project_nextMilestone_required"', "").replace('ALTER COLUMN "serviceArea" DROP NOT NULL', "")).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE\b/);
+    expect(code).toContain('ALTER TABLE "Project" ALTER COLUMN "owner" DROP NOT NULL;');
+    expect(code).toContain('ALTER TABLE "Project" ALTER COLUMN "serviceArea" DROP NOT NULL;');
+    expect(sql).toContain('OR NEW."completedJson" IS DISTINCT FROM OLD."completedJson"');
+    await db.close();
+  }, 30_000);
+
+  it("next milestone may be blank for Not started, On hold, Complete and Cancelled only", async () => {
+    const db = await Migrations.applyAll();
+    const insert = (name: string, status: string, milestone: string | null) =>
+      db.query(
+        `insert into "Project" (id, name, "serviceArea", owner, status, "nextMilestone", "updatedAt", "updatedBy")
+         values (gen_random_uuid(), $1, 'EP', 'Owner B', $2, $3, now(), 'test')`,
+        [name, status, milestone],
+      );
+    await insert("ns", "NotStarted", null);
+    await insert("oh", "OnHold", " ");
+    await insert("done", "Complete", null);
+    await expect(insert("ot", "OnTrack", null)).rejects.toThrow(/Project_nextMilestone_required/);
+    await expect(insert("ar", "AtRisk", "")).rejects.toThrow(/Project_nextMilestone_required/);
+    await db.close();
+  }, 30_000);
+
+  it("requesterNotApplicable is boolean default false and cannot coexist with a requester name", async () => {
+    const db = await Migrations.applyAll();
+    const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
+      `select data_type, is_nullable, column_default from information_schema.columns where table_name = 'Project' and column_name = 'requesterNotApplicable'`,
+    );
+    expect(col.rows).toEqual([{ data_type: "boolean", is_nullable: "NO", column_default: "false" }]);
+    const insert = (name: string, champion: string | null, na: boolean) =>
+      db.query(
+        `insert into "Project" (id, name, "serviceArea", status, "physicianChampion", "requesterNotApplicable", "updatedAt", "updatedBy")
+         values (gen_random_uuid(), $1, 'EP', 'NotStarted', $2, $3, now(), 'test')`,
+        [name, champion, na],
+      );
+    await insert("named", "Dr. A", false);
+    await insert("na", null, true);
+    await insert("unset", null, false);
+    await expect(insert("both", "Dr. B", true)).rejects.toThrow(/Project_requester_na_blank/);
+    await db.close();
+  }, 30_000);
 
   it("infor_request_number is a nullable integer column limited to 1..99999", async () => {
     const db = await Migrations.applyAll();

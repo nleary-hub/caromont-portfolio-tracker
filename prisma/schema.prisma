@@ -50,10 +50,14 @@ model Project {
   /// Infor request number: optional whole number 1 to 99999 (shown as "REQ-5081"). Range enforced in app
   /// validation (AppConfig.INFOR_REQUEST_NUMBER_MIN/MAX); DB check constraint as backstop.
   inforRequestNumber     Int?          @map("infor_request_number")
-  serviceArea            ServiceArea
-  owner                  String
+  serviceArea            ServiceArea?
+  owner                  String?
   physicianChampion      String?
   physicianChampionEmail String?
+  /// Requester (physicianChampion) marked Not applicable: renders blank. A name clears it.
+  requesterNotApplicable Boolean @default(false)
+  /// Contracts lead, one of AppConfig.CONTRACTS_LEADS (null = "To assign").
+  contractsLead          String?
   status                 ProjectStatus
   /// Required unless status is Complete/Cancelled (enforced in app validation).
   nextMilestone          String?
@@ -63,6 +67,15 @@ model Project {
   percentComplete        Int?
   /// Length limit is AppConfig.NOTE_MAX_LENGTH (200), enforced on save in app validation.
   note                   String?
+  /// What the finished project accomplished (optional; shown in the report's "Completed this period" block).
+  /// Length limit is AppConfig.ACCOMPLISHMENT_MAX_LENGTH (200), enforced in app validation.
+  accomplishment         String?
+  /// Completion date as entered (optional; display only). The "Completed this period" clock is the time the
+  /// status became Complete in the app (ProjectHistory), never this date.
+  completedOn            DateTime?     @db.Date
+  /// Set when the project was listed in a frozen report's "Completed this period" block, so it is listed
+  /// only once. Cleared when the status leaves Complete. Bookkeeping only (no history row).
+  completionReportedAt   DateTime?
   includeInReport        Boolean       @default(true)
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
@@ -129,6 +142,9 @@ model ReportSnapshot {
   deliveryJson         Json?
   /// ReportOptionsValue (e.g. key page on/off) in effect at freeze. Immutable. Null before migration 0004.
   optionsJson          Json?
+  /// CompletedRow[]: the "Completed this period" blocks at freeze (visible Complete projects not yet reported).
+  /// Immutable. Null before migration 0012.
+  completedJson        Json?
 
   artifacts  ReportArtifact[]
   deliveries ReportDelivery[]
