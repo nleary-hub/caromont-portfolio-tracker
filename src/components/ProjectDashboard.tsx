@@ -337,7 +337,7 @@ export function ProjectDashboard({
         )}
 
         <section
-          className={`grid ${completedFiscalYear ? "grid-cols-[repeat(7,1fr)_1fr_1.5fr_1.5fr]" : "grid-cols-[repeat(7,1fr)_1fr_1.5fr]"} gap-2`}
+          className={`grid ${completedFiscalYear ? "grid-cols-[repeat(7,1fr)_1.5fr]" : "grid-cols-7"} gap-2`}
           aria-label="Status summary"
         >
           {ProjectStatusInfo.all().map((s) => (
@@ -346,14 +346,6 @@ export function ProjectDashboard({
               <StatusPill status={s} />
             </div>
           ))}
-          <div className="flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
-            <div className="type-metric">{summary.overdue}</div>
-            <span className="flag fl-overdue">! Overdue</span>
-          </div>
-          <div className="flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
-            <div className="type-metric">{summary.changed}</div>
-            <span className="flag fl-changed">◆ Changed since last report</span>
-          </div>
           {completedFiscalYear && <CompletedFiscalYearCard fy={completedFiscalYear} />}
         </section>
 

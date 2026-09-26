@@ -78,6 +78,11 @@ export class ReportGeometry {
   static readonly GRID_ROW_H = 12;
   static readonly GRID_AREA_W = 58;
   static readonly GRID_MIN_COL_W = 28;
+  /**
+   * Page 1 summary grid footprint (area column plus the count columns). The status and Total columns share
+   * it evenly; it grows only when the pills need more room (for example with every status shown).
+   */
+  static readonly GRID_W = 464;
   static readonly META_KEY_W = 61; // 0.85 in
   static readonly HEADER_GAP = 18;
   static readonly STRIP_PAD = 5;
@@ -285,10 +290,9 @@ export type BodyBlock =
   | { kind: "empty"; y: number; height: number; text: string };
 
 export interface GridColumn {
-  key: ProjectStatus | FlagKind | "total";
+  key: ProjectStatus | "total";
   width: number;
   pill?: PillBox;
-  flag?: FlagBox;
   label?: string;
 }
 
@@ -342,7 +346,10 @@ export interface HeaderModel {
   preparedBy: string;
   badge: "DRAFT" | "EXAMPLE DATA" | null;
   draftLine: string | null;
+  /** Page 1 summary grid: status counts and Total only (flags are per row, explained by the legend). */
   grid: { columns: GridColumn[]; rows: GridRow[]; width: number };
+  /** Page 1 legend chips beside "Flags:" (they explain the row flags). */
+  legend: Record<FlagKind, FlagBox>;
   /** Width of the meta block left of the grid on page 1. */
   metaWidth: number;
   /** Page 1 meta: key/value pairs, font size (9 pt, or 8 pt when the grid leaves little room) and key column width. */
@@ -797,38 +804,22 @@ export class ReportLayout {
     const g = ReportGeometry;
     const settings = input.viewSettings;
     const statuses = ProjectStatusInfo.all().filter((s) => ViewSettings.isStatusVisible(settings, s));
-    const columns: GridColumn[] = [
-      ...statuses.map((s) => {
-        const pill = ReportLayout.statusPill(m, s);
-        return { key: s, width: Math.max(g.GRID_MIN_COL_W, pill.width + 2), pill };
-      }),
-      ...(["overdue", "changed", "stale"] as const).map((k) => {
-        const flag = ReportLayout.flag(m, k);
-        return { key: k, width: Math.max(g.GRID_MIN_COL_W, flag.width + 2), flag };
-      }),
-      { key: "total" as const, width: g.GRID_MIN_COL_W, label: "Total" },
-    ];
+    const columns = ReportLayout.gridColumns(m, statuses);
     // Departments, then an Unassigned row (gray) only when some listed project has no department.
+    // Every cell adds into Total: no flag counts here (a flagged project would read as an extra project).
     const areaRows: GridRow[] = ReportLayout.gridAreas(input.rows).map((a) => {
       const counts = ReportBuilder.areaCounts(header, a);
-      const areaRows = input.rows.filter((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a);
       const total = statuses.reduce((sum, s) => sum + counts[s], 0);
       return {
         label: ServiceAreaInfo.label(a),
-        cells: [
-          ...statuses.map((s) => counts[s]),
-          areaRows.filter((r) => r.overdue).length,
-          areaRows.filter((r) => r.changed).length,
-          areaRows.filter((r) => r.stale).length,
-          total,
-        ],
+        cells: [...statuses.map((s) => counts[s]), total],
         total: false,
         muted: a === ServiceAreaInfo.UNASSIGNED,
       };
     });
     const totalRow: GridRow = {
       label: "All areas",
-      cells: [...statuses.map((s) => header.totals[s]), header.overdue, header.changed, header.stale ?? 0, header.totalProjects],
+      cells: [...statuses.map((s) => header.totals[s]), header.totalProjects],
       total: true,
     };
     const gridWidth = g.GRID_AREA_W + columns.reduce((s, c) => s + c.width, 0);
@@ -888,6 +879,7 @@ export class ReportLayout {
       badge,
       draftLine: input.draft ? `Draft, generated ${generated}. Not an official snapshot.` : null,
       grid: { columns, rows: [...areaRows, totalRow], width: gridWidth },
+      legend: { changed: ReportLayout.flag(m, "changed"), overdue: ReportLayout.flag(m, "overdue"), stale: ReportLayout.flag(m, "stale") },
       metaWidth,
       meta,
       strip,
@@ -896,6 +888,19 @@ export class ReportLayout {
         input.exampleData ? " \u00b7 Example data (fictional sample projects)" : ""
       }`,
     };
+  }
+
+  /**
+   * Page 1 grid columns: one per visible status, then Total, all the same width. They fill
+   * ReportGeometry.GRID_W evenly, or are as wide as the widest pill when that needs more.
+   */
+  static gridColumns(m: Measurer, statuses: readonly ProjectStatus[]): GridColumn[] {
+    const g = ReportGeometry;
+    const pills = statuses.map((s) => ({ key: s, pill: ReportLayout.statusPill(m, s) }));
+    const n = pills.length + 1;
+    const needed = Math.max(g.GRID_MIN_COL_W, ...pills.map((p) => p.pill.width + 2));
+    const width = Math.max(needed, (g.GRID_W - g.GRID_AREA_W) / n);
+    return [...pills.map((p) => ({ ...p, width })), { key: "total" as const, width, label: "Total" }];
   }
 
   /** Where "[check] Completed FY27 to date N" starts after the Projects value, or null if it would not fit. */

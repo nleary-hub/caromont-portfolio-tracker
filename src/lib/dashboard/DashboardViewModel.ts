@@ -55,8 +55,6 @@ export interface DashboardSummary {
   byStatus: Record<ProjectStatus, number>;
   /** Departments plus "Unassigned". */
   byArea: Record<AreaGroup, number>;
-  overdue: number;
-  changed: number;
 }
 
 /**
@@ -159,19 +157,18 @@ export class DashboardViewModel {
     };
   }
 
-  /** Tiles and chip counts. Pass only rows() output (visible rows). */
+  /**
+   * Status tiles and area chip counts. Pass only rows() output (visible rows). No flag totals: flags
+   * are shown per row, and a flag tile would read as extra projects that do not add into the total.
+   */
   static summarize(rows: readonly DashboardRow[]): DashboardSummary {
     const byStatus = Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as Record<ProjectStatus, number>;
     const byArea = Object.fromEntries(ServiceAreaInfo.groups().map((a) => [a, 0])) as Record<AreaGroup, number>;
-    let overdue = 0;
-    let changed = 0;
     for (const r of rows) {
       byStatus[r.status] += 1;
       byArea[ServiceAreaInfo.groupOf(r.serviceArea)] += 1;
-      if (r.overdue) overdue += 1;
-      if (r.changed) changed += 1;
     }
-    return { total: rows.length, byStatus, byArea, overdue, changed };
+    return { total: rows.length, byStatus, byArea };
   }
 
   /**
