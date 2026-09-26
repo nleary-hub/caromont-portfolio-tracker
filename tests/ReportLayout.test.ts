@@ -105,7 +105,22 @@ describe("ReportLayout pagination", () => {
     expect(unchanged.note!.lines.some((l) => l.text.includes("\u2026"))).toBe(false);
     // The row grows so all three lines sit inside it (the owner stack already used part of the space).
     expect(unchanged.height).toBeGreaterThan(changed.height);
-    expect(unchanged.lineTwoY + unchanged.note!.lines.length * ReportGeometry.TABLE_LH).toBeLessThanOrEqual(unchanged.height);
+    expect(unchanged.note!.y + unchanged.note!.lines.length * ReportGeometry.TABLE_LH).toBeLessThanOrEqual(unchanged.height);
+  });
+
+  it("milestone emphasis: semibold milestone wrapped at weight 600, note 3pt below line 1, point sizes unchanged", () => {
+    expect(ReportGeometry.MILESTONE_WEIGHT).toBe(600);
+    expect(ReportGeometry.NOTE_GAP).toBe(3);
+    expect(ReportGeometry.SIZE.table).toBe(8);
+    const settings = ViewSettings.defaults("report");
+    const milestoneText = "Vendor contract signed and returned to legal for final countersignature review";
+    const r = ReportLayout.rowLayout(m, { ...rows[0], nextMilestone: milestoneText, note: "Short note.", changed: true }, settings, SampleReportData.REPORT_DATE);
+    const cell = r.cells.find((c) => c.kind === "nextMilestone")!;
+    expect(cell.kind === "nextMilestone" && cell.lines).toEqual(TextMeasure.wrap(m, milestoneText, cell.w, 8, 600, 2));
+    for (const l of cell.kind === "nextMilestone" ? cell.lines : []) expect(m.width(l, 8, 600)).toBeLessThanOrEqual(cell.w);
+    const lineOne = Math.max(ReportGeometry.PILL_H, (cell.kind === "nextMilestone" ? cell.lines.length : 1) * ReportGeometry.TABLE_LH);
+    expect(r.note!.y).toBeCloseTo(lineOne + ReportGeometry.NOTE_GAP, 9);
+    expect(r.note!.y + r.note!.lines.length * ReportGeometry.TABLE_LH).toBeLessThanOrEqual(r.height);
   });
 
   it("uses the spec column widths in inches", () => {

@@ -16,16 +16,20 @@ export type MilestoneUpdateLine =
 
 /**
  * Lines of the Next milestone / Latest update cell, following the PDF row: the next milestone (primary,
- * regular weight, at most MILESTONE_MAX_LINES) then, after LINE_GAP_PX, the latest update line
- * (LatestUpdate.line: "No change." prefix and secondary color on unchanged rows, never clamped). A blank
- * milestone prints nothing (as in the PDF), and so does an empty update. A hidden line and its gap drop.
+ * weight MILESTONE_WEIGHT so it stands out, at most MILESTONE_MAX_LINES) then, after LINE_GAP_PX, the
+ * latest update line (LatestUpdate.line: regular weight, secondary color, "No change." prefix on unchanged
+ * rows, never clamped). A blank milestone prints nothing (as in the PDF), and so does an empty update. A
+ * hidden line and its gap drop.
  */
 export class MilestoneUpdateStack {
   /** The PDF wraps the next milestone to at most two lines. */
   static readonly MILESTONE_MAX_LINES = 2;
 
-  /** Gap between the milestone and the update: the PDF LINE_GAP (1pt on a 10pt line) scaled to the 18px line. */
-  static readonly LINE_GAP_PX = 2;
+  /** Milestone emphasis: semibold milestone over a regular, secondary note (same as the PDF). */
+  static readonly MILESTONE_WEIGHT = 600;
+
+  /** Gap between the milestone and the update (the PDF uses ReportGeometry.NOTE_GAP, 3pt). */
+  static readonly LINE_GAP_PX = 4;
 
   static lines(row: MilestoneUpdateSource, visible: MilestoneUpdateVisibility): MilestoneUpdateLine[] {
     const out: MilestoneUpdateLine[] = [];

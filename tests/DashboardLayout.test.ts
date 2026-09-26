@@ -13,7 +13,7 @@ import type { HistoryEntryRecord, ProjectRecord } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import type { CompletableProject } from "@/lib/report/CompletedThisPeriod";
 import { SampleReportData } from "@/lib/report/SampleReportData";
-import { CompletedBlockStyle, ReportLayout } from "@/lib/report/pdf/ReportLayout";
+import { CompletedBlockStyle, ReportGeometry, ReportLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { Factory } from "./helpers/factories";
 
@@ -201,12 +201,17 @@ describe("Next milestone / Latest update cell", () => {
     expect(one).not.toContain('data-line="update"');
   });
 
-  it("renders 13/18, milestone regular weight primary 2-line clamp with a tooltip, update unclamped with a 2px gap", () => {
+  it("renders 13/18, milestone semibold primary 2-line clamp with a tooltip, update regular secondary unclamped with a 4px gap", () => {
     const html = renderToStaticMarkup(createElement(MilestoneUpdateCell, { lines: lines({ nextMilestone: "Go live", note: SampleReportData.LONG_NOTE, changed: false }) }));
     expect(html).toContain("text-[13px] leading-[18px]");
-    expect(html).toContain("gap:2px");
-    expect(html).toContain('data-line="milestone" title="Go live" class="line-clamp-2 break-words font-normal text-fg"');
-    expect(html).toContain('data-line="update" data-muted="true"');
+    expect(html).toContain("gap:4px");
+    expect(html).toContain('data-line="milestone" title="Go live" class="line-clamp-2 break-words font-semibold text-fg"');
+    expect(html).toContain('data-line="update" data-muted="true" class="break-words font-normal text-muted"');
+    // A changed row's note is secondary too (milestone emphasis); only the prefix differs.
+    const changed = renderToStaticMarkup(createElement(MilestoneUpdateCell, { lines: lines({ nextMilestone: "Go live", note: "Booked.", changed: true }) }));
+    expect(changed).toContain('data-line="update" class="break-words font-normal text-muted">Booked.<');
+    expect(MilestoneUpdateStack.MILESTONE_WEIGHT).toBe(600);
+    expect(MilestoneUpdateStack.MILESTONE_WEIGHT).toBe(ReportGeometry.MILESTONE_WEIGHT);
     expect(html).toContain('<span data-part="no-change">No change.</span>');
     expect(html).not.toMatch(/data-line="update"[^>]*line-clamp/);
   });

@@ -89,6 +89,10 @@ export class ReportGeometry {
   static readonly ROW_PAD = 4;
   static readonly ROW_BORDER = 0.5;
   static readonly LINE_GAP = 1;
+  /** Gap between the next milestone and the note under it (milestone emphasis). */
+  static readonly NOTE_GAP = 3;
+  /** The next milestone prints semibold so it stands out from the note below (primary vs secondary). */
+  static readonly MILESTONE_WEIGHT = 600;
   static readonly CELL_PAD_R = 6;
   static readonly TABLE_LH = 10;
   static readonly SMALL_LH = 9;
@@ -239,7 +243,10 @@ export interface RowLayout {
   projectId: string;
   height: number;
   cells: RowCell[];
-  /** Line 2 note (or its own line when there is no room beside the row-2 cells). */
+  /**
+   * Line 2 note (or its own line when there is no room beside the row-2 cells), NOTE_GAP below line 1.
+   * Always printed regular in the secondary color; `muted` = unchanged since the last report ("No change.").
+   */
   note: { x: number; y: number; w: number; lines: TextLine[]; muted: boolean } | null;
   /** y of line 2 relative to the content top. */
   lineTwoY: number;
@@ -408,7 +415,7 @@ export class ReportLayout {
         { sample: "Updated Sep 22", meaning: "Date of the latest update to the project." },
         { sample: "Updated Sep 1", meaning: `In amber when the project is stale (${AppConfig.STALE_AFTER_DAYS}+ days without an update).` },
         { sample: "\u2193 from On track", meaning: "Status moved since the last report (\u2193 worse, \u2191 better)." },
-        { sample: "No change.", meaning: "Nothing changed since the last report; the note is repeated in gray." },
+        { sample: "No change.", meaning: "Nothing changed since the last report; the note is repeated." },
         { sample: "Due in red", meaning: "Overdue due date." },
         { sample: "Completed this period", meaning: "Completed since the last report. Listed once, not in the status counts." },
       ],
@@ -559,7 +566,7 @@ export class ReportLayout {
         case "nextMilestone": {
           const text = row.nextMilestone?.trim();
           // Blank (allowed for Not started, On hold, Complete, Cancelled) renders as nothing.
-          const lines = text ? TextMeasure.wrap(m, text, inner, S.table, 400, 2) : [];
+          const lines = text ? TextMeasure.wrap(m, text, inner, S.table, g.MILESTONE_WEIGHT, 2) : [];
           lineOneH = Math.max(lineOneH, Math.max(1, lines.length) * g.TABLE_LH);
           cells.push({ kind: "nextMilestone", x: col.x, w: inner, lines, muted: !text });
           break;
@@ -582,6 +589,7 @@ export class ReportLayout {
     }
 
     let note: RowLayout["note"] = null;
+    let noteH = 0;
     const placement = ReportLayout.notePlacement(settings);
     if (PdfReportLayout.showsNote(settings)) {
       const text = row.note?.replace(/\s+/g, " ").trim() ?? "";
@@ -593,19 +601,19 @@ export class ReportLayout {
           i === 0 && prefix && t.startsWith(prefix) ? { text: t, mutedPrefix: prefix.length } : { text: t },
         );
         note = { x: placement.x, y: 0, w: placement.w, lines, muted: !row.changed };
-        if (!placement.ownLine) lineTwoH = Math.max(lineTwoH, lines.length * g.TABLE_LH);
+        if (!placement.ownLine) noteH = lines.length * g.TABLE_LH;
       }
     }
 
     const lineTwoY = lineOneH + g.LINE_GAP;
-    const right = lineOneH + (lineTwoH > 0 ? g.LINE_GAP + lineTwoH : 0);
+    const right = Math.max(lineOneH + (lineTwoH > 0 ? g.LINE_GAP + lineTwoH : 0), lineOneH + (noteH > 0 ? g.NOTE_GAP + noteH : 0));
     let content = Math.max(projectH, right);
     if (note) {
       if (placement.ownLine) {
-        note.y = content + g.LINE_GAP;
+        note.y = content + g.NOTE_GAP;
         content = note.y + note.lines.length * g.TABLE_LH;
       } else {
-        note.y = lineTwoY;
+        note.y = lineOneH + g.NOTE_GAP;
       }
     }
     return { projectId: row.projectId, height: g.ROW_PAD * 2 + content + g.ROW_BORDER, cells, note, lineTwoY };

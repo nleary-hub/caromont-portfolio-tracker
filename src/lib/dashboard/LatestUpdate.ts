@@ -2,8 +2,8 @@
  * The dashboard "Latest update" line: the project's current note (the latest update), composed the way the
  * PDF prints it under the next milestone. Like the PDF there is no date before it (the "Updated <date>"
  * sits on the meta line under the project name) and whitespace is collapsed. When nothing changed since
- * the last report the PDF prefixes "No change." and prints the whole line in the secondary color, even
- * when the note is blank; a changed row with a blank note prints nothing.
+ * the last report the PDF prefixes "No change.", even when the note is blank; a changed row with a blank
+ * note prints nothing. Both print the line regular in the secondary color, under a semibold milestone.
  */
 export class LatestUpdate {
   /** Empty-cell glyph. A UI glyph, not prose, so it is the one place an em dash is rendered. */
@@ -20,7 +20,7 @@ export class LatestUpdate {
 
   /**
    * The composed line as the PDF prints it: prefix (unchanged rows only) plus note, or null when there is
-   * nothing to print. `muted` = the whole line is secondary (unchanged rows).
+   * nothing to print. `muted` = unchanged since the last report (the line is secondary either way).
    */
   static line(row: { note: string | null | undefined; changed: boolean }): { prefix: string | null; text: string | null; full: string; muted: boolean } | null {
     const text = LatestUpdate.text(row);

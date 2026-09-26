@@ -232,9 +232,9 @@ export function PeopleCell({ lines }: { lines: readonly PeopleLine[] }) {
 }
 
 /**
- * Next milestone / Latest update, stacked like the PDF row: the milestone (13/18 primary, regular weight,
- * at most two lines, full text as a tooltip), then after a 2px gap the latest update (13/18, not clamped;
- * unchanged rows read "No change." and the whole line is secondary). Blank lines render nothing.
+ * Next milestone / Latest update, stacked like the PDF row: the milestone (13/18 primary, semibold, at most
+ * two lines, full text as a tooltip), then after a 4px gap the latest update (13/18 regular, secondary, not
+ * clamped; unchanged rows read "No change." in the same style). Blank lines render nothing.
  */
 export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdateLine[] }) {
   if (lines.length === 0) return null;
@@ -242,11 +242,11 @@ export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdate
     <div className="flex flex-col text-[13px] leading-[18px]" style={{ gap: MilestoneUpdateStack.LINE_GAP_PX }} data-testid="milestone-update">
       {lines.map((l) =>
         l.kind === "milestone" ? (
-          <div key="milestone" data-line="milestone" title={l.text} className="line-clamp-2 break-words font-normal text-fg">
+          <div key="milestone" data-line="milestone" title={l.text} className="line-clamp-2 break-words font-semibold text-fg">
             {l.text}
           </div>
         ) : (
-          <div key="update" data-line="update" data-muted={l.muted || undefined} className={`break-words font-normal ${l.muted ? "text-muted" : "text-fg"}`}>
+          <div key="update" data-line="update" data-muted={l.muted || undefined} className="break-words font-normal text-muted">
             {l.prefix && <span data-part="no-change">{l.prefix}</span>}
             {l.prefix && l.text ? " " : null}
             {l.text}
