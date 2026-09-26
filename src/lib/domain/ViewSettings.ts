@@ -36,7 +36,7 @@ export class ViewSettings {
 
   /**
    * Inline columns render inside another cell instead of taking a table column of their own:
-   * the Infor request number sits on the small meta line under the project name ("Infor 4656 · Updated Sep 24").
+   * the Infor request number sits in a fixed slot on the small meta line under the project name ("REQ-5081  Updated Sep 24").
    * Hiding one removes only that piece; its position in the order has no effect.
    */
   static readonly INLINE_COLUMNS: ReadonlySet<ViewColumn> = new Set<ViewColumn>(["inforNumber"]);
@@ -52,7 +52,7 @@ export class ViewSettings {
   private static readonly LABELS: Record<ViewContext, Record<ViewColumn, string>> = {
     dashboard: {
       project: "Project",
-      inforNumber: "Infor request # (under Project)",
+      inforNumber: "Infor request # (REQ-, under Project)",
       serviceArea: "Service area",
       owner: "Owner",
       physicianChampion: "Physician champion",
@@ -64,7 +64,7 @@ export class ViewSettings {
     },
     report: {
       project: "Project",
-      inforNumber: "Infor request # (under Project)",
+      inforNumber: "Infor request # (REQ-, under Project)",
       serviceArea: "Service area",
       owner: "Owner",
       physicianChampion: "Physician champion (under Owner)",

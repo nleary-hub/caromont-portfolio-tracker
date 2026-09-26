@@ -6,7 +6,7 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectRecord } from "@/lib/domain/types";
-import type { FieldErrors, ProjectInput } from "@/lib/validation/ProjectValidator";
+import { ProjectValidator, type FieldErrors, type ProjectInput } from "@/lib/validation/ProjectValidator";
 
 /** A CSV column in the project import/export template. */
 export type CsvColumn =
@@ -107,7 +107,7 @@ export class ProjectCsv {
     {
       name: "Example: Sample cath lab project (delete this row)",
       description: "Fake example: replace the cath lab 3 imaging system. Optional, up to 200 characters.",
-      infor_request_number: "4656 / 5081",
+      infor_request_number: "4656",
       service_area: "Cath",
       owner: "Example Owner A",
       physician_champion: "Dr. Example A",
@@ -135,6 +135,15 @@ export class ProjectCsv {
       include_in_report: "no",
     },
   ];
+
+  /**
+   * Columns other tools add that the app recognizes but does not store (yet). They are ignored with a
+   * specific warning instead of the generic "unknown column" one.
+   */
+  static readonly RECOGNIZED_IGNORED_COLUMNS: Readonly<Record<string, string>> = {
+    older_update:
+      'Column "older_update" is not imported: the app has no place for older updates yet, so its values are ignored.',
+  };
 
   private static readonly KNOWN_COLUMNS: ReadonlySet<string> = new Set(ProjectCsv.EXPORT_COLUMNS);
   private static readonly TRUE_WORDS: ReadonlySet<string> = new Set(["yes", "y", "true", "t", "1"]);
@@ -166,7 +175,7 @@ export class ProjectCsv {
       id: p.id,
       name: p.name,
       description: p.description ?? "",
-      infor_request_number: p.inforRequestNumber ?? "",
+      infor_request_number: p.inforRequestNumber === null ? "" : String(p.inforRequestNumber),
       service_area: ServiceAreaInfo.label(p.serviceArea),
       owner: p.owner,
       physician_champion: p.physicianChampion ?? "",
@@ -209,6 +218,11 @@ export class ProjectCsv {
     const indexByColumn = new Map<CsvColumn, number>();
     header.forEach((h, i) => {
       if (!h) return;
+      const ignored = ProjectCsv.RECOGNIZED_IGNORED_COLUMNS[h];
+      if (ignored) {
+        result.fileWarnings.push(ignored);
+        return;
+      }
       if (!ProjectCsv.KNOWN_COLUMNS.has(h)) {
         result.fileWarnings.push(`Unknown column "${records[0].record[i].trim()}" will be ignored.`);
         return;
@@ -288,6 +302,17 @@ export class ProjectCsv {
               input.percentComplete = null;
             }
           }
+          break;
+        }
+        case "infor_request_number": {
+          const n = ProjectValidator.parseInforNumber(value);
+          if (n === undefined || (n !== null && (n < ProjectValidator.INFOR_MIN || n > ProjectValidator.INFOR_MAX))) {
+            fail(
+              col,
+              `"${value}" is not a valid Infor request number. Use a whole number from ${ProjectValidator.INFOR_MIN} to ${ProjectValidator.INFOR_MAX} (blank = none)`,
+            );
+            input.inforRequestNumber = null;
+          } else input.inforRequestNumber = n;
           break;
         }
         case "include_in_report": {

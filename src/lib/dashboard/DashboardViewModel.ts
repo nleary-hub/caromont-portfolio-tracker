@@ -1,5 +1,6 @@
 import type { ProjectStatus, ServiceArea, ViewContext } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
+import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord, StatusCounts } from "@/lib/domain/types";
@@ -22,8 +23,8 @@ export interface DashboardRow {
   targetCompletion: string | null;
   percentComplete: number | null;
   note: string | null;
-  /** Optional free-text Infor request number (null = none; the meta line then shows only "Updated"). */
-  inforRequestNumber: string | null;
+  /** Optional Infor request number 1 to 99999 (null = none; the meta line then shows a blank slot). */
+  inforRequestNumber: number | null;
   includeInReport: boolean;
   changed: boolean;
   overdue: boolean;
@@ -123,7 +124,7 @@ export class DashboardViewModel {
     return rows.filter((r) => {
       if (area !== "All" && r.serviceArea !== area) return false;
       if (!q) return true;
-      return [r.name, r.inforRequestNumber, r.owner, r.physicianChampion, r.nextMilestone, r.note]
+      return [r.name, InforNumber.format(r.inforRequestNumber), r.owner, r.physicianChampion, r.nextMilestone, r.note]
         .some((v) => v?.toLowerCase().includes(q));
     });
   }

@@ -1,7 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
-import { ProjectMetaLine } from "@/components/ProjectDashboard";
+import { DashboardMetaLine, ProjectMetaLine } from "@/components/ProjectDashboard";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
@@ -51,41 +51,44 @@ class Sheet {
 }
 
 describe("Infor request number: validation", () => {
-  it("is optional, trimmed, and blank stores null", () => {
+  const msg = "Infor request number must be a whole number from 1 to 99999";
+  const parse = (v: unknown) => ProjectValidator.validate({ ...base, inforRequestNumber: v });
+
+  it("is optional; blank or missing stores null", () => {
     expect(ProjectValidator.parse(base).inforRequestNumber).toBeNull();
-    expect(ProjectValidator.parse({ ...base, inforRequestNumber: "  4656  " }).inforRequestNumber).toBe("4656");
-    expect(ProjectValidator.parse({ ...base, inforRequestNumber: "   " }).inforRequestNumber).toBeNull();
-    expect(ProjectValidator.parse({ ...base, inforRequestNumber: "" }).inforRequestNumber).toBeNull();
-    expect(ProjectValidator.parse({ ...base, inforRequestNumber: null }).inforRequestNumber).toBeNull();
+    for (const v of [null, undefined, "", "   "]) expect(ProjectValidator.parse({ ...base, inforRequestNumber: v as never }).inforRequestNumber).toBeNull();
   });
 
-  it("keeps free text as entered (no format rules)", () => {
-    expect(ProjectValidator.parse({ ...base, inforRequestNumber: "4656 / 5081" }).inforRequestNumber).toBe("4656 / 5081");
-    expect(ProjectValidator.parse({ ...base, inforRequestNumber: "REQ-000123 (pending)" }).inforRequestNumber).toBe("REQ-000123 (pending)");
+  it("accepts whole numbers 1 to 99999, as numbers or digit strings with surrounding whitespace", () => {
+    expect(ProjectValidator.parse({ ...base, inforRequestNumber: 5081 }).inforRequestNumber).toBe(5081);
+    expect(ProjectValidator.parse({ ...base, inforRequestNumber: " 4656 " }).inforRequestNumber).toBe(4656);
+    expect(ProjectValidator.parse({ ...base, inforRequestNumber: "1" }).inforRequestNumber).toBe(1);
+    expect(ProjectValidator.parse({ ...base, inforRequestNumber: "99999" }).inforRequestNumber).toBe(99999);
   });
 
-  it(`allows up to ${AppConfig.INFOR_REQUEST_NUMBER_MAX_LENGTH} characters after trimming`, () => {
-    const max = AppConfig.INFOR_REQUEST_NUMBER_MAX_LENGTH;
-    expect(max).toBe(40);
-    expect(ProjectValidator.validate({ ...base, inforRequestNumber: ` ${"9".repeat(max)} ` }).ok).toBe(true);
-    const r = ProjectValidator.validate({ ...base, inforRequestNumber: "9".repeat(max + 1) });
-    expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.inforRequestNumber).toEqual(["Infor request number must be at most 40 characters"]);
+  it("rejects decimals, letters, lists, signs, 0 and values over 99999", () => {
+    for (const v of ["4656.5", 4656.5, "REQ-4656", "abc", "4656 / 5081", "+4656", "-4656", "0", 0, "100000", 100000, "1e3"]) {
+      const r = parse(v);
+      expect(r.ok, String(v)).toBe(false);
+      if (!r.ok) expect(r.errors.inforRequestNumber).toEqual([msg]);
+    }
+    expect(AppConfig.INFOR_REQUEST_NUMBER_MIN).toBe(1);
+    expect(AppConfig.INFOR_REQUEST_NUMBER_MAX).toBe(99999);
   });
 
   it("ProjectService saves it and records history on change", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const p = await ProjectService.create({ ...base, inforRequestNumber: " 4656 " }, actor, db);
-    expect(p.inforRequestNumber).toBe("4656");
+    expect(p.inforRequestNumber).toBe(4656);
     const created = JSON.parse(fake.state.history[0].newValue as string);
     expect(created.inforRequestNumber).toBe("4656");
-    await ProjectService.update(p.id, { inforRequestNumber: "4656 / 5081" }, actor, db);
+    await ProjectService.update(p.id, { inforRequestNumber: 5081 }, actor, db);
     await ProjectService.update(p.id, { inforRequestNumber: "" }, actor, db);
     const changes = fake.state.history.filter((h) => h.field === "inforRequestNumber");
     expect(changes.map((h) => [h.oldValue, h.newValue])).toEqual([
-      ["4656", "4656 / 5081"],
-      ["4656 / 5081", null],
+      ["4656", "5081"],
+      ["5081", null],
     ]);
   });
 });
@@ -106,24 +109,42 @@ describe("Infor request number: CSV", () => {
     expect(ProjectCsv.REQUIRED_FOR_WORDING).not.toContain("infor_request_number");
   });
 
-  it("imports with preview: value trimmed, blank = no number, too long = row error", async () => {
+  it("imports with preview: whitespace ok, blank = no number, anything else is a clear row error", async () => {
+    const bad = ["4656.5", "REQ-4656", "4656 / 5081", "+4656", "-4656", "0", "100000"];
     const file = Sheet.create([
-      { name: "A", infor_request_number: " 4656 / 5081 " },
+      { name: "A", infor_request_number: " 4656 " },
       { name: "B", infor_request_number: "" },
-      { name: "C", infor_request_number: "x".repeat(41) },
+      ...bad.map((v, i) => ({ name: `Bad ${i}`, infor_request_number: v })),
     ]);
     const preview = await ImportService.previewCreate(file, db);
-    expect(preview.rows.map((r) => r.status)).toEqual(["ready", "ready", "error"]);
-    expect(preview.rows[0].cells.infor_request_number).toBe(" 4656 / 5081 ");
-    expect(preview.rows[2].errors.infor_request_number).toEqual(["Infor request number must be at most 40 characters"]);
+    expect(preview.rows.map((r) => r.status)).toEqual(["ready", "ready", ...bad.map(() => "error")]);
+    bad.forEach((v, i) => {
+      expect(preview.rows[i + 2].errors.infor_request_number).toEqual([
+        `"${v}" is not a valid Infor request number. Use a whole number from 1 to 99999 (blank = none)`,
+      ]);
+    });
+    expect(preview.canCommit).toBe(false);
 
     const ok = Sheet.create([
-      { name: "A", infor_request_number: " 4656 / 5081 " },
+      { name: "A", infor_request_number: " 4656 " },
       { name: "B", infor_request_number: "" },
     ]);
     await ImportService.commitCreate(ok, ADMIN, db);
     const byName = Object.fromEntries(fake.state.projects.map((p) => [p.name, p.inforRequestNumber]));
-    expect(byName).toEqual({ A: "4656 / 5081", B: null });
+    expect(byName).toEqual({ A: 4656, B: null });
+  });
+
+  it('recognizes Writing Bot\'s "older_update" column but does not import it (specific warning, rows still import)', async () => {
+    const cols = [...ProjectCsv.TEMPLATE_COLUMNS, "older_update"];
+    const file = Sheet.write(
+      [{ name: "Affera Mapping Trial", service_area: "EP", owner: "Owner A", status: "On track", next_milestone: "Install", older_update: "Earlier Infor request 4656" }],
+      cols,
+    );
+    const preview = await ImportService.previewCreate(file, db);
+    expect(preview.fileWarnings).toEqual([ProjectCsv.RECOGNIZED_IGNORED_COLUMNS.older_update]);
+    expect(preview.rows[0].status).toBe("ready");
+    await ImportService.commitCreate(file, ADMIN, db);
+    expect(fake.state.history.filter((h) => h.field !== "created")).toHaveLength(0);
   });
 
   it("an older CSV without the column still imports; new projects get no number", async () => {
@@ -135,12 +156,12 @@ describe("Infor request number: CSV", () => {
   });
 
   it("round-trips through export and re-import", async () => {
-    await ProjectService.create({ ...base, name: "With number", inforRequestNumber: "4656 / 5081" }, actor, db);
+    await ProjectService.create({ ...base, name: "With number", inforRequestNumber: 5081 }, actor, db);
     await ProjectService.create({ ...base, name: "Without number" }, actor, db);
     const { csv } = await ExportService.exportCsv(db);
     const rows = Sheet.rows(csv);
     expect(Object.fromEntries(rows.map((r) => [r.name, r.infor_request_number]))).toEqual({
-      "With number": "4656 / 5081",
+      "With number": "5081",
       "Without number": "",
     });
     // Re-import the export as new projects into an empty database: same values come back.
@@ -148,13 +169,13 @@ describe("Infor request number: CSV", () => {
     const recreate = Sheet.write(rows, ProjectCsv.TEMPLATE_COLUMNS);
     await ImportService.commitCreate(recreate, ADMIN, target.asClient());
     expect(Object.fromEntries(target.state.projects.map((p) => [p.name, p.inforRequestNumber]))).toEqual({
-      "With number": "4656 / 5081",
+      "With number": 5081,
       "Without number": null,
     });
   });
 
   it("wording update does not change it: unchanged value passes, a changed value is rejected, a missing column leaves it alone", async () => {
-    const p = await ProjectService.create({ ...base, inforRequestNumber: "4656", note: "Old note" }, actor, db);
+    const p = await ProjectService.create({ ...base, inforRequestNumber: 4656, note: "Old note" }, actor, db);
     const [row] = Sheet.rows((await ExportService.exportCsv(db)).csv);
 
     row.note = "New note";
@@ -172,7 +193,7 @@ describe("Infor request number: CSV", () => {
     const withoutColumn = ProjectCsv.EXPORT_COLUMNS.filter((c) => c !== "infor_request_number");
     await ImportService.commitWording(Sheet.write([row], withoutColumn), ADMIN, db);
     const after = fake.state.projects.find((x) => x.id === p.id)!;
-    expect(after).toMatchObject({ note: "New note", inforRequestNumber: "4656" });
+    expect(after).toMatchObject({ note: "New note", inforRequestNumber: 4656 });
   });
 });
 
@@ -184,7 +205,7 @@ describe("Infor request number: view settings", () => {
       expect(ViewSettings.isColumnVisible(d, "inforNumber")).toBe(true);
       expect(ViewSettings.isLocked("inforNumber")).toBe(false);
       expect(ViewSettings.isInline("inforNumber")).toBe(true);
-      expect(ViewSettings.columnLabel(c, "inforNumber")).toBe("Infor request # (under Project)");
+      expect(ViewSettings.columnLabel(c, "inforNumber")).toBe("Infor request # (REQ-, under Project)");
       expect(ViewSettings.tableColumns(d)).not.toContain("inforNumber");
       const off = ViewSettings.withColumnHidden(c, d, "inforNumber", true);
       expect(ViewSettings.isColumnVisible(off, "inforNumber")).toBe(false);
@@ -217,7 +238,7 @@ describe("Infor request number: dashboard", () => {
     targetCompletion: null,
     percentComplete: null,
     note: null,
-    inforRequestNumber: "4656",
+    inforRequestNumber: 5081,
     includeInReport: true,
     changed: false,
     overdue: false,
@@ -227,10 +248,11 @@ describe("Infor request number: dashboard", () => {
   });
   const html = (r: DashboardRow, showInfor = true) => renderToStaticMarkup(createElement(ProjectMetaLine, { row: r, showInfor }));
   const text = (s: string) => s.replace(/<[^>]+>/g, "");
+  const slot = (s: string) => /<span data-testid="infor-slot"[^>]*>([^<]*)<\/span>/.exec(s);
 
   it("rows carry the number, the latest public update date and the stale flag", () => {
     const projects = [
-      Factory.project({ id: "a", name: "Alpha", inforRequestNumber: "4656 / 5081" }),
+      Factory.project({ id: "a", name: "Alpha", inforRequestNumber: 5081 }),
       Factory.project({ id: "b", name: "Bravo" }),
     ];
     const latest = [
@@ -239,36 +261,43 @@ describe("Infor request number: dashboard", () => {
     ];
     const rows = DashboardViewModel.rows(projects, ViewSettings.defaults("dashboard"), [], null, "2026-09-26", latest);
     expect(rows.map((r) => [r.id, r.inforRequestNumber, r.updatedOn, r.stale])).toEqual([
-      ["a", "4656 / 5081", "2026-09-24", false],
+      ["a", 5081, "2026-09-24", false],
       ["b", null, "2026-09-01", true],
     ]);
-    expect(DashboardViewModel.filter(rows, "All", "5081").map((r) => r.id)).toEqual(["a"]);
+    expect(DashboardViewModel.filter(rows, "All", "req-5081").map((r) => r.id)).toEqual(["a"]);
   });
 
-  it('meta line reads "Infor 4656 · Updated Sep 24" with only the number in monospace', () => {
+  it('shows "REQ-5081" left-aligned in a fixed 9ch monospace slot, then an 8px gap, then Updated (no separator)', () => {
+    expect(DashboardMetaLine.INFOR_SLOT_WIDTH).toBe("9ch");
+    expect(DashboardMetaLine.INFOR_GAP).toBe("8px");
     const out = html(row());
-    expect(text(out)).toBe("Infor 4656 · Updated Sep 24");
-    expect(out).toMatch(/<span class="font-mono text-\[9px\][^"]*">4656<\/span>/);
-    expect(out).toContain('title="4656"');
+    expect(slot(out)?.[1]).toBe("REQ-5081");
+    expect(out).toMatch(/data-testid="infor-slot" class="font-mono text-\[9px\][^"]*" style="display:inline-block;width:9ch;margin-right:8px;text-align:left"/);
+    expect(text(out)).toBe("REQ-5081Updated Sep 24");
+    expect(out).not.toContain("\u00b7");
   });
 
-  it("omits the whole Infor prefix and separator when null or when the column is hidden", () => {
-    expect(text(html(row({ inforRequestNumber: null })))).toBe("Updated Sep 24");
-    expect(text(html(row(), false))).toBe("Updated Sep 24");
-    expect(html(row(), false)).not.toContain("font-mono");
-    expect(text(html(row({ updatedOn: null })))).toBe("Infor 4656");
+  it("no number: the slot and gap stay, blank (no dash), so Updated lines up with numbered rows", () => {
+    const out = html(row({ inforRequestNumber: null }));
+    expect(slot(out)?.[1]).toBe("");
+    expect(out).toContain("width:9ch;margin-right:8px");
+    expect(text(out)).toBe("Updated Sep 24");
+    expect(text(out)).not.toMatch(/[\u2013\u2014-]/);
+    // Same markup before "Updated" apart from the slot text, so the start of "Updated" is identical.
+    expect(html(row()).replace("REQ-5081", "")).toBe(out);
+  });
+
+  it("hidden by show/hide: no slot and no gap, Updated starts at the left edge", () => {
+    const out = html(row(), false);
+    expect(slot(out)).toBeNull();
+    expect(out).not.toContain("9ch");
+    expect(text(out)).toBe("Updated Sep 24");
+  });
+
+  it("no meta line when there is neither an update date nor a shown number; a number alone still shows", () => {
     expect(html(row({ inforRequestNumber: null, updatedOn: null }))).toBe("");
-  });
-
-  it(`truncates at ${AppConfig.INFOR_DISPLAY_MAX_CHARS} characters with an ellipsis and keeps the full value on hover`, () => {
-    const full = "4702 / 4703 / 4719 / 4720";
-    const out = html(row({ inforRequestNumber: full }));
-    const shown = InforNumber.display(full)!;
-    expect(Array.from(shown.text)).toHaveLength(AppConfig.INFOR_DISPLAY_MAX_CHARS);
-    expect(shown.text.endsWith("\u2026")).toBe(true);
-    expect(out).toContain(`title="${full}"`);
-    expect(text(out)).toBe(`Infor ${shown.text} · Updated Sep 24`);
-    expect(InforNumber.display("12345678901234")).toEqual({ text: "12345678901234", full: "12345678901234", truncated: false });
+    expect(html(row({ updatedOn: null }), false)).toBe("");
+    expect(text(html(row({ updatedOn: null })))).toBe("REQ-5081");
   });
 
   it("stale amber applies to the Updated date only", () => {
@@ -276,12 +305,19 @@ describe("Infor request number: dashboard", () => {
     expect(out).toMatch(/<span class="[^"]*status-at-risk[^"]*">Updated Sep 24<\/span>/);
     expect(out.match(/status-at-risk/g)).toHaveLength(1);
   });
+
+  it("formats as REQ- plus the number; the slot is sized for REQ-99999", () => {
+    expect(InforNumber.format(4656)).toBe("REQ-4656");
+    expect(InforNumber.format(null)).toBeNull();
+    expect(InforNumber.format(99999)).toHaveLength(InforNumber.SLOT_CHARS);
+  });
 });
 
 describe("Infor request number: report PDF", () => {
   const m = new TextMeasure();
+  const g = ReportGeometry;
   const settings = ViewSettings.defaults("report");
-  const reportRow = (inforRequestNumber: string | null, over = {}) => ({
+  const reportRow = (inforRequestNumber: number | null, over = {}) => ({
     ...SampleReportData.rows().find((r) => r.status === "OnTrack")!,
     name: "Short name",
     note: null,
@@ -291,71 +327,70 @@ describe("Infor request number: report PDF", () => {
     ...over,
   });
   const project = (cells: RowCell[]) => cells.find((c) => c.kind === "project") as Extract<RowCell, { kind: "project" }>;
-  const lineText = (runs: { text: string }[]) => runs.map((r) => r.text).join("");
+  const layout = (n: number | null, s = settings, over = {}) => ReportLayout.rowLayout(m, reportRow(n, over), s, "2026-09-29");
+  const hidden = ViewSettings.withColumnHidden("report", settings, "inforNumber", true);
+
+  it("slot width is 9 Courier characters at 6.5 pt (35.1 pt) and the gap is 5 pt", () => {
+    expect(g.INFOR_SLOT_W).toBeCloseTo(InforNumber.SLOT_CHARS * g.MONO_ADVANCE_EM * g.SIZE.mono, 6);
+    expect(g.INFOR_SLOT_W).toBe(35.1);
+    expect(g.INFOR_GAP).toBe(5);
+    expect(InforNumber.SLOT_CHARS * g.MONO_ADVANCE_EM * g.SIZE.mono).toBeLessThanOrEqual(g.INFOR_SLOT_W + 1e-9);
+  });
 
   it("ReportBuilder copies the number into report rows (frozen into snapshots)", () => {
-    const p = Factory.project({ inforRequestNumber: "4656" });
-    expect(ReportBuilder.toRow(p, { changed: false, overdue: false }).inforRequestNumber).toBe("4656");
+    const p = Factory.project({ inforRequestNumber: 4656 });
+    expect(ReportBuilder.toRow(p, { changed: false, overdue: false }).inforRequestNumber).toBe(4656);
   });
 
-  it('prints "Infor 4656 · Updated Sep 24" on one meta line, the number in Courier', () => {
-    const cell = project(ReportLayout.rowLayout(m, reportRow("4656"), settings, "2026-09-29").cells);
-    expect(cell.meta.map(lineText)).toEqual(["Infor 4656\u00b7Updated Sep 24"]);
-    const [label, num, dot, updated] = cell.meta[0];
-    const space = m.width(" ", ReportGeometry.SIZE.small, 400);
-    expect(dot.x).toBeCloseTo(num.x + ReportLayout.monoWidth(m, "4656") + space);
-    expect(updated.x).toBeCloseTo(dot.x + m.width("\u00b7 ", ReportGeometry.SIZE.small, 400));
-    expect(label.text).toBe("Infor ");
-    expect(cell.meta[0].map((r) => r.font)).toEqual(["sans", "mono", "sans", "sans"]);
-    expect(cell.meta[0][1].x).toBeCloseTo(m.width("Infor ", ReportGeometry.SIZE.small, 400));
+  it("prints REQ-5081 in Courier at x=0 and Updated at slot + gap", () => {
+    const meta = project(layout(5081).cells).meta;
+    expect(meta).toEqual([
+      { text: "REQ-5081", x: 0, font: "mono", weight: 400, tone: "muted" },
+      { text: "Updated Sep 24", x: g.INFOR_SLOT_W + g.INFOR_GAP, font: "sans", weight: 400, tone: "muted" },
+    ]);
   });
 
-  it("with no number or with the column hidden the line is just Updated, and the row height does not change", () => {
-    const withNumber = ReportLayout.rowLayout(m, reportRow("4656"), settings, "2026-09-29");
-    const none = ReportLayout.rowLayout(m, reportRow(null), settings, "2026-09-29");
-    const hidden = ReportLayout.rowLayout(m, reportRow("4656"), ViewSettings.withColumnHidden("report", settings, "inforNumber", true), "2026-09-29");
-    expect(project(none.cells).meta.map(lineText)).toEqual(["Updated Sep 24"]);
-    expect(project(hidden.cells).meta.map(lineText)).toEqual(["Updated Sep 24"]);
+  it("Updated lines up whether or not the project has a number (blank slot, no dash); row height unchanged", () => {
+    const withNumber = layout(99999);
+    const none = layout(null);
+    const noneMeta = project(none.cells).meta;
+    expect(noneMeta.map((r) => r.text)).toEqual(["Updated Sep 24"]);
+    expect(noneMeta[0].x).toBe(project(withNumber.cells).meta[1].x);
     expect(withNumber.height).toBe(none.height);
-    expect(hidden.height).toBe(none.height);
   });
 
-  it("prints the full number (no cap); when it does not fit, Updated moves to the next line", () => {
-    const full = "4702 / 4703 / 4719 / 4720 / 4788"; // fits the cell, but not together with Updated
-    const r = ReportLayout.rowLayout(m, reportRow(full), settings, "2026-09-29");
-    const lines = project(r.cells).meta.map(lineText);
-    expect(lines).toEqual([`Infor ${full}`, "Updated Sep 24"]);
-    const none = ReportLayout.rowLayout(m, reportRow(null), settings, "2026-09-29");
-    // The extra meta line may grow the row (only if the project cell becomes the tallest cell); it never shrinks it.
-    expect(r.height).toBeGreaterThanOrEqual(none.height);
-    const bare = { ...settings, hiddenColumns: [...settings.hiddenColumns, "physicianChampion" as const, "note" as const] };
-    const tall = ReportLayout.rowLayout(m, reportRow(full), bare, "2026-09-29");
-    const short = ReportLayout.rowLayout(m, reportRow(null), bare, "2026-09-29");
-    expect(tall.height).toBe(short.height + ReportGeometry.SMALL_LH);
+  it("hidden by show/hide: no slot and no gap, Updated at x = 0", () => {
+    const meta = project(layout(5081, hidden).cells).meta;
+    expect(meta.map((r) => [r.text, r.x])).toEqual([["Updated Sep 24", 0]]);
+    expect(layout(5081, hidden).height).toBe(layout(null).height);
   });
 
-  it("a number wider than the cell breaks by character and nothing is dropped", () => {
-    const lines = ReportLayout.metaLines(m, "9".repeat(40), "Updated Sep 24", false, 100);
-    expect(lines.map(lineText).join("").replace("Updated Sep 24", "")).toBe(`Infor ${"9".repeat(40)}`);
-    for (const l of lines) expect(l.at(-1)!.x + ReportLayout.monoWidth(m, l.at(-1)!.text)).toBeLessThanOrEqual(100 + 0.01);
+  it("no meta line without an update date unless a number is shown", () => {
+    expect(ReportLayout.metaLine(m, true, null, null, false)).toEqual([]);
+    expect(ReportLayout.metaLine(m, false, 4656, null, false)).toEqual([]);
+    expect(ReportLayout.metaLine(m, true, 4656, null, false).map((r) => r.text)).toEqual(["REQ-4656"]);
   });
 
   it("stale amber applies to the Updated run only", () => {
-    const cell = project(ReportLayout.rowLayout(m, reportRow("4656", { stale: true }), settings, "2026-09-29").cells);
-    expect(cell.meta[0].map((r) => r.tone)).toEqual(["muted", "muted", "muted", "stale"]);
+    const meta = project(layout(4656, settings, { stale: true }).cells).meta;
+    expect(meta.map((r) => r.tone)).toEqual(["muted", "stale"]);
+  });
+
+  it("the widest number fits its slot and the line fits the project column", () => {
+    const col = ReportLayout.columns(settings).find((c) => c.key === "project")!;
+    const meta = ReportLayout.metaLine(m, true, 99999, "Updated Sep 24", true);
+    expect(meta[1].x + m.width(meta[1].text, g.SIZE.small, 500)).toBeLessThan(col.w - g.CELL_PAD_R);
   });
 
   it("the key page explains it only when the column is shown", () => {
-    expect(ReportLayout.key(m, settings).details.map((d) => d.sample)).toContain("Infor 4656");
-    const off = ViewSettings.withColumnHidden("report", settings, "inforNumber", true);
-    expect(ReportLayout.key(m, off).details.map((d) => d.sample)).not.toContain("Infor 4656");
+    expect(ReportLayout.key(m, settings).details.map((d) => d.sample)).toContain("REQ-4656");
+    expect(ReportLayout.key(m, hidden).details.map((d) => d.sample)).not.toContain("REQ-4656");
   });
 
   it("renders the PDF with Courier for the number, and without it when the column is hidden", async () => {
     const on = await PdfReportRenderer.renderDocument(SampleReportData.docInput());
     expect(on.toString("latin1")).toMatch(/\/BaseFont \/Courier/);
-    const offSettings = ViewSettings.withColumnHidden("report", ViewSettings.defaults("report"), "inforNumber", true);
-    const doc = SampleReportData.docInput({ viewSettings: offSettings });
+    const doc = SampleReportData.docInput({ viewSettings: hidden });
     const off = await PdfReportRenderer.renderDocument(doc);
     expect(off.toString("latin1")).not.toMatch(/\/BaseFont \/Courier/);
     expect((off.toString("latin1").match(/\/Type\s*\/Page(?!s)/g) ?? []).length).toBe(PdfReportRenderer.layout(doc).pages.length);

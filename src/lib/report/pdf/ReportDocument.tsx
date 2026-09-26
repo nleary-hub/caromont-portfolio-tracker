@@ -418,11 +418,9 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
           {cell.lines.map((l, i) => (
             <Line key={i} x={cell.x} y={i * G.TABLE_LH} w={cell.w} text={l} size={S.table} weight={600} lh={G.TABLE_LH} />
           ))}
-          {cell.meta.map((runs, li) =>
-            runs.map((run, ri) => (
-              <MetaText key={`m${li}-${ri}`} run={run} x={cell.x} y={cell.lines.length * G.TABLE_LH + li * G.SMALL_LH} w={cell.w} />
-            )),
-          )}
+          {cell.meta.map((run, ri) => (
+            <MetaText key={`m${ri}`} run={run} x={cell.x} y={cell.lines.length * G.TABLE_LH} w={cell.w} />
+          ))}
         </>
       );
     case "owner":

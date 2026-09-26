@@ -384,24 +384,35 @@ export function ProjectDashboard({
   );
 }
 
+/** Dashboard meta line geometry. The designer tunes these two values. */
+export class DashboardMetaLine {
+  /** Fixed slot for "REQ-99999": 9 characters of the 9px monospace font. */
+  static readonly INFOR_SLOT_WIDTH = "9ch";
+  /** Gap between the slot and "Updated". */
+  static readonly INFOR_GAP = "8px";
+}
+
 /**
- * Small gray line under the project name: "Infor 4656 · Updated Sep 24". The number is monospace,
- * 9px (one step under the 10px meta text) and slightly brighter; long values are cut at
- * AppConfig.INFOR_DISPLAY_MAX_CHARS with the full value on hover. With no number (or the Infor
- * column hidden) the whole "Infor N · " prefix is omitted. Stale amber applies to the Updated date only.
+ * Small gray line under the project name: "REQ-5081  Updated Sep 24". The number sits left-aligned in a
+ * fixed-width monospace slot (9px, slightly brighter) followed by a fixed gap, so "Updated" lines up on
+ * every row. No number: the slot and gap stay, blank (no dash). Column hidden in the view settings: no
+ * slot and no gap, so "Updated" starts at the left edge. Stale amber applies to the Updated date only.
  */
 export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInfor: boolean }) {
-  const infor = showInfor ? InforNumber.display(row.inforRequestNumber) : null;
   const updated = DateFormat.short(row.updatedOn);
-  if (!infor && !updated) return null;
+  const req = InforNumber.format(row.inforRequestNumber);
+  if (!updated && !(showInfor && req)) return null;
   return (
     <div className="truncate text-[10px] leading-3 font-normal text-muted">
-      {infor && (
-        <span title={infor.full} data-testid="infor-number">
-          {InforNumber.LABEL} <span className="font-mono text-[9px] text-[#B8BEC8]">{infor.text}</span>
+      {showInfor && (
+        <span
+          data-testid="infor-slot"
+          className="font-mono text-[9px] text-[#B8BEC8]"
+          style={{ display: "inline-block", width: DashboardMetaLine.INFOR_SLOT_WIDTH, marginRight: DashboardMetaLine.INFOR_GAP, textAlign: "left" }}
+        >
+          {req ?? ""}
         </span>
       )}
-      {infor && updated && " · "}
       {updated && (
         <span className={row.stale ? "font-medium text-(--status-at-risk-dark-fg)" : undefined}>Updated {updated}</span>
       )}
@@ -449,7 +460,7 @@ function ProjectDrawer({
         <dt className="text-muted">Service area</dt>
         <dd>{ServiceAreaInfo.label(row.serviceArea)}</dd>
         <dt className="text-muted">Infor request #</dt>
-        <dd className="break-words">{row.inforRequestNumber ?? "–"}</dd>
+        <dd className="font-mono">{InforNumber.format(row.inforRequestNumber) ?? "–"}</dd>
         <dt className="text-muted">Owner</dt>
         <dd>{row.owner}</dd>
         <dt className="text-muted">Physician champion</dt>

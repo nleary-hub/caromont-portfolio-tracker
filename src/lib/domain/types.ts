@@ -5,8 +5,8 @@ export interface ProjectRecord {
   id: string;
   name: string;
   description: string | null;
-  /** Optional free-text Infor request number (trimmed; null when blank). */
-  inforRequestNumber: string | null;
+  /** Optional Infor request number, whole number 1 to 99999 (null = none). Displayed as "REQ-5081". */
+  inforRequestNumber: number | null;
   serviceArea: ServiceArea;
   owner: string;
   physicianChampion: string | null;
@@ -61,7 +61,7 @@ export interface ReportRow {
   percentComplete: number | null;
   note: string | null;
   /** Infor request number. Absent on snapshots frozen before 0011. */
-  inforRequestNumber?: string | null;
+  inforRequestNumber?: number | null;
   changed: boolean;
   overdue: boolean;
   /** YYYY-MM-DD (America/New_York) of the latest public change. Absent on snapshots before 0004. */

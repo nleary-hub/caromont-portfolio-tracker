@@ -10,8 +10,8 @@ export interface ProjectInput {
   name: string;
   /** Optional "what the project is" text, max AppConfig.DESCRIPTION_MAX_LENGTH. */
   description?: string | null;
-  /** Optional free-text Infor request number, max AppConfig.INFOR_REQUEST_NUMBER_MAX_LENGTH. Blank = null. */
-  inforRequestNumber?: string | null;
+  /** Optional Infor request number: whole number 1 to 99999 (a digits-only string is accepted). Blank = null. */
+  inforRequestNumber?: number | string | null;
   serviceArea: ServiceArea | string;
   owner: string;
   physicianChampion?: string | null;
@@ -29,7 +29,7 @@ export interface ProjectInput {
 export interface ProjectData {
   name: string;
   description: string | null;
-  inforRequestNumber: string | null;
+  inforRequestNumber: number | null;
   serviceArea: ServiceArea;
   owner: string;
   physicianChampion: string | null;
@@ -66,7 +66,23 @@ export class ProjectValidator {
   static readonly NAME_MAX = AppConfig.SHORT_TEXT_MAX_LENGTH;
   static readonly MILESTONE_MAX = AppConfig.MILESTONE_MAX_LENGTH;
   static readonly DESCRIPTION_MAX = AppConfig.DESCRIPTION_MAX_LENGTH;
-  static readonly INFOR_MAX = AppConfig.INFOR_REQUEST_NUMBER_MAX_LENGTH;
+  static readonly INFOR_MIN = AppConfig.INFOR_REQUEST_NUMBER_MIN;
+  static readonly INFOR_MAX = AppConfig.INFOR_REQUEST_NUMBER_MAX;
+  static readonly INFOR_MESSAGE = `Infor request number must be a whole number from ${AppConfig.INFOR_REQUEST_NUMBER_MIN} to ${AppConfig.INFOR_REQUEST_NUMBER_MAX}`;
+
+  /**
+   * Infor request number from form/CSV input: null/undefined/blank = null; a number or a digits-only
+   * string (surrounding whitespace allowed) = that number; anything else (decimals, letters, signs,
+   * "4656 / 5081") = undefined. Range is checked separately.
+   */
+  static parseInforNumber(value: unknown): number | null | undefined {
+    if (value === null || value === undefined) return null;
+    if (typeof value === "number") return Number.isInteger(value) ? value : undefined;
+    if (typeof value !== "string") return undefined;
+    const t = value.trim();
+    if (t === "") return null;
+    return /^[0-9]+$/.test(t) ? Number(t) : undefined;
+  }
 
   private static readonly schema = ProjectValidator.buildSchema();
 
@@ -150,10 +166,18 @@ export class ProjectValidator {
           label: "Description",
           length: ProjectValidator.DESCRIPTION_MAX,
         }),
-        inforRequestNumber: ProjectValidator.optionalText({
-          label: "Infor request number",
-          length: ProjectValidator.INFOR_MAX,
-        }),
+        inforRequestNumber: z.preprocess(
+          (v) => {
+            const n = ProjectValidator.parseInforNumber(v);
+            return n === undefined ? Number.NaN : n;
+          },
+          z
+            .number({ error: ProjectValidator.INFOR_MESSAGE })
+            .int(ProjectValidator.INFOR_MESSAGE)
+            .min(ProjectValidator.INFOR_MIN, ProjectValidator.INFOR_MESSAGE)
+            .max(ProjectValidator.INFOR_MAX, ProjectValidator.INFOR_MESSAGE)
+            .nullable(),
+        ),
         serviceArea: z.enum(ServiceArea, { error: "Service area must be one of the defined areas" }),
         owner: ProjectValidator.requiredText("Owner", ProjectValidator.NAME_MAX),
         physicianChampion: ProjectValidator.optionalText(),
