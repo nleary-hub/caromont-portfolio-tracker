@@ -13,12 +13,13 @@ describe("ViewSettings defaults", () => {
 
   it("offers per-context columns in the agreed default order", () => {
     expect(ViewSettings.defaults("dashboard").columnOrder).toEqual([
-      "project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "note", "flags", "inforNumber", "contractsLead",
+      "project", "serviceArea", "owner", "physicianChampion", "status", "nextMilestone", "due", "latestUpdate", "flags", "inforNumber", "contractsLead",
     ]);
     expect(ViewSettings.defaults("report").columnOrder).toEqual([
       "project", "owner", "physicianChampion", "status", "nextMilestone", "due", "flags", "note", "inforNumber", "contractsLead",
     ]);
     expect(ViewSettings.columnLabel("report", "note")).toBe("Note");
+    expect(ViewSettings.columnLabel("dashboard", "latestUpdate")).toBe("Latest update");
   });
 
   it("defaults() returns fresh copies", () => {
@@ -89,7 +90,8 @@ describe("migration 0002 seed rows", () => {
     const sql = readFileSync("prisma/migrations/0002_view_settings/migration.sql", "utf8");
     for (const c of ViewSettings.CONTEXTS) {
       const d = ViewSettings.defaults(c);
-      const seeded = d.columnOrder.filter((k) => !ADDED_AFTER_0002.includes(k));
+      // The seeded dashboard row still says "note"; normalize reads it as latestUpdate (renamed, no migration).
+      const seeded = d.columnOrder.filter((k) => !ADDED_AFTER_0002.includes(k)).map((k) => (c === "dashboard" && k === "latestUpdate" ? "note" : k));
       expect(ViewSettings.normalize(c, { columnOrder: seeded, hiddenColumns: [], hiddenStatuses: d.hiddenStatuses })).toEqual(d);
       const order = seeded.map((k) => `'${k}'`).join(", ");
       const statuses = d.hiddenStatuses.map((s) => `'${s}'`).join(", ");
