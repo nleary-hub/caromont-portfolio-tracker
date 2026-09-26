@@ -1,7 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth, signOut, SIGN_IN_PATH } from "@/auth";
 import { ProjectDashboard, type LatestReport } from "@/components/ProjectDashboard";
-import { EmailAllowlist } from "@/lib/auth/EmailAllowlist";
+import { SignInPolicy } from "@/lib/auth/SignInPolicy";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
@@ -48,7 +48,7 @@ export default async function DashboardPage() {
   // Defense in depth: the proxy already gates this route.
   const session = await auth();
   const email = session?.user?.email;
-  if (!email || !EmailAllowlist.isAllowed(email)) redirect(SIGN_IN_PATH);
+  if (!email || !SignInPolicy.canAccess(email)) redirect(SIGN_IN_PATH);
 
   const today = DateOnly.today();
   const { rows, latestReport, error } = await DashboardData.load(today);

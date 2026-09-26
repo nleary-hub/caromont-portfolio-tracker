@@ -33,19 +33,16 @@ describe("EmailAllowlist", () => {
 });
 
 describe("AuthProviders", () => {
-  it("enables providers only when their env vars exist", () => {
-    expect(AuthProviders.summaries({})).toEqual([]);
-    expect(
-      AuthProviders.summaries({ AUTH_MICROSOFT_ENTRA_ID_ID: "id", AUTH_MICROSOFT_ENTRA_ID_SECRET: "s" }).map((p) => p.id),
-    ).toEqual(["microsoft-entra-id"]);
-    expect(AuthProviders.summaries({ AUTH_GOOGLE_ID: "id", AUTH_GOOGLE_SECRET: "s" }).map((p) => p.id)).toEqual(["google"]);
-    expect(AuthProviders.summaries({ AUTH_GOOGLE_ID: "id" })).toEqual([]);
+  it("registers Google as the only provider", () => {
+    const providers = AuthProviders.fromEnv({ AUTH_GOOGLE_ID: "id", AUTH_GOOGLE_SECRET: "s" });
+    expect(providers).toHaveLength(1);
+    expect((providers[0] as { id: string }).id).toBe("google");
   });
 
-  it("never enables dev login in production", () => {
-    expect(AuthProviders.summaries({ AUTH_DEV_LOGIN: "true", NODE_ENV: "production" })).toEqual([]);
-    expect(AuthProviders.summaries({ AUTH_DEV_LOGIN: "true", NODE_ENV: "development" }).map((p) => p.id)).toEqual([
-      "dev-login",
-    ]);
+  it("reports Google as configured only when both env vars are set", () => {
+    expect(AuthProviders.isGoogleConfigured({})).toBe(false);
+    expect(AuthProviders.isGoogleConfigured({ AUTH_GOOGLE_ID: "id" })).toBe(false);
+    expect(AuthProviders.isGoogleConfigured({ AUTH_GOOGLE_ID: " ", AUTH_GOOGLE_SECRET: "s" })).toBe(false);
+    expect(AuthProviders.isGoogleConfigured({ AUTH_GOOGLE_ID: "id", AUTH_GOOGLE_SECRET: "s" })).toBe(true);
   });
 });

@@ -2,13 +2,18 @@ import { redirect } from "next/navigation";
 import { AuthError } from "next-auth";
 import { auth, signIn, SIGN_IN_PATH } from "@/auth";
 import { AuthProviders } from "@/lib/auth/AuthProviders";
-import { EmailAllowlist } from "@/lib/auth/EmailAllowlist";
+import { SignInPolicy } from "@/lib/auth/SignInPolicy";
 
-const ERROR_MESSAGES: Record<string, string> = {
-  AccessDenied: "That account is not authorized for this app. Contact the app owner to be added.",
-  Configuration: "Sign-in is misconfigured on the server.",
-  CredentialsSignin: "Sign-in failed.",
-};
+/** Deliberately generic: never reveal which check failed or what the lists contain. */
+class SignInMessages {
+  static readonly ACCESS_DENIED = "This account is not on the access list.";
+  static readonly GENERIC = "Sign-in failed. Please try again.";
+
+  static forCode(code: string | undefined): string | null {
+    if (!code) return null;
+    return code === "AccessDenied" ? SignInMessages.ACCESS_DENIED : SignInMessages.GENERIC;
+  }
+}
 
 class SafeRedirect {
   /** Reduce any callback URL to a same-site path (drops scheme/host, so it can never leave the app). */
@@ -45,11 +50,11 @@ export default async function SignInPage({
   const params = await searchParams;
   const redirectTo = SafeRedirect.target(params.callbackUrl);
   const session = await auth();
-  if (session?.user && EmailAllowlist.isAllowed(session.user.email)) redirect(redirectTo);
+  if (session?.user && SignInPolicy.canAccess(session.user.email)) redirect(redirectTo);
 
-  const providers = AuthProviders.summaries();
   const errorCode = Array.isArray(params.error) ? params.error[0] : params.error;
-  const error = errorCode ? (ERROR_MESSAGES[errorCode] ?? "Sign-in failed.") : null;
+  const error = SignInMessages.forCode(errorCode);
+  const configured = AuthProviders.isGoogleConfigured();
 
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
@@ -64,49 +69,24 @@ export default async function SignInPage({
         )}
 
         <div className="mt-6 space-y-3">
-          {providers.length === 0 && (
+          {!configured && (
             <p className="type-body text-(--status-at-risk-dark-fg)">
-              No sign-in providers are configured. Set the Microsoft Entra ID or Google env vars (see README).
+              Google sign-in is not configured. Set AUTH_GOOGLE_ID and AUTH_GOOGLE_SECRET (see README).
             </p>
           )}
-          {providers.map((p) =>
-            p.id === "dev-login" ? (
-              <form
-                key={p.id}
-                className="space-y-2 border-t border-line pt-3"
-                action={async (formData: FormData) => {
-                  "use server";
-                  await SignInActions.run("dev-login", { email: String(formData.get("email") ?? ""), redirectTo });
-                }}
-              >
-                <label className="block type-caption text-muted" htmlFor="dev-email">
-                  Dev login (local only)
-                </label>
-                <input
-                  id="dev-email"
-                  name="email"
-                  type="email"
-                  required
-                  className="w-full rounded-control border border-line bg-input px-2 py-1.5 type-table"
-                />
-                <button className="w-full rounded-control border border-line bg-input px-3 py-2 type-table-strong">
-                  Continue
-                </button>
-              </form>
-            ) : (
-              <form
-                key={p.id}
-                action={async () => {
-                  "use server";
-                  await SignInActions.run(p.id, { redirectTo });
-                }}
-              >
-                <button className="w-full rounded-control bg-accent px-3 py-2 text-white type-table-strong hover:opacity-90">
-                  Sign in with {p.name}
-                </button>
-              </form>
-            ),
-          )}
+          <form
+            action={async () => {
+              "use server";
+              await SignInActions.run(SignInPolicy.PROVIDER_ID, { redirectTo });
+            }}
+          >
+            <button
+              disabled={!configured}
+              className="w-full rounded-control bg-accent px-3 py-2 text-white type-table-strong hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-50"
+            >
+              Sign in with Google
+            </button>
+          </form>
         </div>
       </div>
     </main>

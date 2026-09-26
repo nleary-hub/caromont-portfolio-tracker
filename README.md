@@ -10,7 +10,7 @@ Sign-in is required for every page.
 
 - Next.js 16 (App Router, TypeScript), Tailwind CSS v4, dark theme by default
 - Prisma 7 + PostgreSQL via `@prisma/adapter-pg` (works with Vercel Postgres / Neon using `DATABASE_URL`)
-- Auth.js (`next-auth@5` beta), JWT sessions, email allowlist, pluggable providers
+- Auth.js (`next-auth@5` beta), Google sign-in, JWT sessions, email allowlist, admin role
 - Vitest for unit tests
 - Node 20.19+ (Prisma 7 requirement)
 
@@ -18,14 +18,15 @@ Sign-in is required for every page.
 
 ```bash
 npm install                 # also runs `prisma generate`
-cp .env.example .env.local  # fill in DATABASE_URL, AUTH_SECRET, ALLOWED_EMAILS, a provider
+cp .env.example .env.local  # fill in DATABASE_URL, AUTH_SECRET, AUTH_GOOGLE_*, ALLOWED_EMAILS
 npx prisma migrate deploy   # apply prisma/migrations to the database
 npm run db:seed             # OPTIONAL, local only: 10 fictional "Sample:" projects
 npm run dev
 ```
 
-For local sign-in without SSO, set `AUTH_DEV_LOGIN=true` (only works when `NODE_ENV` is not
-`production`; still limited to `ALLOWED_EMAILS`).
+Local sign-in uses Google too: add `http://localhost:3000/api/auth/callback/google` to the OAuth
+client (see [Google OAuth setup](#google-oauth-setup)) and put your address in `ALLOWED_EMAILS` or
+`ADMIN_EMAILS`.
 
 No local Postgres? Any of these work: a free Neon branch, `npx prisma dev` (local Prisma Postgres),
 or Docker `postgres:16`.
@@ -50,24 +51,69 @@ See `.env.example` for the full annotated list.
 | Variable | Required | Notes |
 | --- | --- | --- |
 | `DATABASE_URL` | yes | Postgres connection string (pooled URL on Vercel/Neon) |
-| `AUTH_SECRET` | yes | `npx auth secret` or `openssl rand -base64 32` |
-| `ALLOWED_EMAILS` | yes | Comma/space separated emails or `@domain` entries. Empty = nobody (fails closed) |
-| `AUTH_MICROSOFT_ENTRA_ID_ID` / `_SECRET` / `_ISSUER` | optional | Enables Microsoft sign-in. Use the tenant-specific issuer |
-| `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | Enables Google sign-in |
-| `AUTH_DEV_LOGIN` | optional | `true` enables the email-only dev form (never in production) |
-| `AUTH_TRUST_HOST` / `AUTH_URL` | optional | Only needed off Vercel |
+| `AUTH_SECRET` | yes | `npx auth secret` or `openssl rand -base64 32`. Use a different value per environment |
+| `AUTH_GOOGLE_ID` | yes | Google OAuth client ID (`...apps.googleusercontent.com`) |
+| `AUTH_GOOGLE_SECRET` | yes | Google OAuth client secret. Server only, never commit it |
+| `ALLOWED_EMAILS` | yes | Comma/space/semicolon separated emails or `@domain` entries. Trimmed, case-insensitive |
+| `ADMIN_EMAILS` | no | Same format. These people may sign in (even if not on `ALLOWED_EMAILS`) and are admins. Empty = no admins |
+| `AUTH_TRUST_HOST` / `AUTH_URL` | no | Not needed on Vercel (see below). Set `AUTH_TRUST_HOST=true` for self-hosted `next start` behind a proxy |
 
-OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
-`https://<domain>/api/auth/callback/google`.
+If `ALLOWED_EMAILS` and `ADMIN_EMAILS` are both empty, nobody can sign in (fails closed).
+
+**trustHost on Vercel:** Auth.js v5 trusts the request host automatically when the `VERCEL` system
+env var is present (it is on every Vercel deployment), so do not set `AUTH_URL` or `AUTH_TRUST_HOST`
+there. Setting `AUTH_URL` would pin every deployment (including previews) to one origin. Off Vercel
+in production, set `AUTH_TRUST_HOST=true` (or `AUTH_URL`) or Auth.js rejects the host.
+
+## Google OAuth setup
+
+The Auth.js route lives at `src/app/api/auth/[...nextauth]/route.ts` and uses the default `basePath`
+`/api/auth` (no `AUTH_URL` path override), so Google's callback path is `/api/auth/callback/google`.
+
+1. Open https://console.cloud.google.com/ and sign in with the Google account that will own the app.
+2. **Create a project:** project picker (top bar) > **New project** > name it (for example
+   `caromont-portfolio-tracker`) > **Create**, then select it.
+3. **OAuth consent screen:** **APIs & Services** > **OAuth consent screen** (in newer consoles:
+   **Google Auth Platform** > **Branding / Audience**) > **Get started**.
+   - App name `Service Line Portfolio Tracker`, user support email and developer contact email: your address.
+   - User type / Audience: **External**.
+   - Scopes: the defaults are enough (`openid`, `email`, `profile`); no sensitive scopes are needed.
+   - While the publishing status is **Testing**, go to **Audience** > **Test users** > **Add users**
+     and add your own address (and anyone else who needs to sign in). Only test users can sign in
+     while in Testing. Alternatively click **Publish app**; basic scopes need no verification.
+4. **OAuth client ID:** **APIs & Services** > **Credentials** (or **Google Auth Platform** >
+   **Clients**) > **Create credentials** > **OAuth client ID**.
+   - Application type: **Web application**. Name: `portfolio-tracker web`.
+   - **Authorized JavaScript origins:**
+     - `https://caromont-portfolio-tracker-nleary-2832.vercel.app`
+     - `http://localhost:3000` (optional, local dev)
+   - **Authorized redirect URIs:**
+     - `https://caromont-portfolio-tracker-nleary-2832.vercel.app/api/auth/callback/google`
+     - `http://localhost:3000/api/auth/callback/google`
+   - **Create.**
+5. Copy the **Client ID** into `AUTH_GOOGLE_ID` and the **Client secret** into `AUTH_GOOGLE_SECRET`
+   (`.env.local` locally; Vercel > Project > Settings > Environment Variables in production), together
+   with `AUTH_SECRET`, `ALLOWED_EMAILS` and `ADMIN_EMAILS`. Redeploy after changing Vercel env vars.
+6. Sign in at `/signin` with **Sign in with Google**. An address on neither list, or one Google has
+   not verified, sees "This account is not on the access list." and nothing else.
+
+Google can take a few minutes to apply redirect URI changes. A `redirect_uri_mismatch` error means the
+URI above does not exactly match what is registered (scheme, host, path, no trailing slash).
+Preview deployments have their own hostnames and are not registered, so Google sign-in only works on
+the production domain and localhost.
 
 ## Auth model
 
 - `src/proxy.ts` (Next 16 renamed `middleware.ts` to `proxy.ts`) runs Auth.js on every route except
   `/signin`, `/api/auth/*` and static assets. The `authorized` callback re-checks the allowlist on each
-  request, so removing someone from `ALLOWED_EMAILS` locks them out without waiting for session expiry.
-- `signIn` callback enforces `ALLOWED_EMAILS` for every provider (`EmailAllowlist`).
+  request, so removing someone from `ALLOWED_EMAILS` / `ADMIN_EMAILS` locks them out without waiting for session expiry.
+- Google is the only provider (`src/lib/auth/AuthProviders.ts`).
+- `signIn` callback (`SignInPolicy.allowSignIn`) requires Google, `email_verified === true`, and an
+  email on `ALLOWED_EMAILS` or `ADMIN_EMAILS` (trimmed, case-insensitive). Denied users only see
+  "This account is not on the access list."
+- Admin: `SignInPolicy.isAdmin` (email on `ADMIN_EMAILS`), recomputed on every request and exposed as
+  `session.user.isAdmin`. It is never stored in the JWT.
 - Pages also call `auth()` themselves (defense in depth; do not rely on the proxy alone).
-- Providers are registered in `src/lib/auth/AuthProviders.ts`; add a descriptor there to plug in another.
 - Sessions: JWT, 8 hour max age. No user table.
 
 ## Data model (prisma/schema.prisma)
@@ -131,7 +177,7 @@ and is exposed to Tailwind as theme colors (`bg-card`, `text-muted`, `border-lin
 utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes are ported from
 `dashboard.css`.
 
-- `/signin`: provider buttons, access-denied message.
+- `/signin`: a single "Sign in with Google" button and the generic access-denied message.
 - `/`: status and flag tiles, service-area filter chips, search (`/` shortcut), one row per project,
   detail drawer. Copy avoids em dashes.
 
@@ -160,4 +206,4 @@ utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes a
 
 1. Create the GitHub repo and push. 2. Import into Vercel, add a Postgres (Neon) integration.
 3. Set env vars above. 4. Run `prisma migrate deploy` (build step or one-off). 5. Register the
-Entra ID redirect URI for the production domain.
+Google redirect URIs (see [Google OAuth setup](#google-oauth-setup)).
