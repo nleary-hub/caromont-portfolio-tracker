@@ -14,6 +14,8 @@ export interface ProjectRecord {
   owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
+  /** One of AppConfig.CONTRACTS_LEADS, or null ("To assign"). */
+  contractsLead: string | null;
   status: ProjectStatus;
   nextMilestone: string | null;
   dueDate: Date | null;
@@ -71,6 +73,8 @@ export interface ReportRow {
   note: string | null;
   /** Infor request number. Absent on snapshots frozen before 0011. */
   inforRequestNumber?: number | null;
+  /** Contracts lead. Absent on snapshots frozen before 0013. */
+  contractsLead?: string | null;
   changed: boolean;
   overdue: boolean;
   /** YYYY-MM-DD (America/New_York) of the latest public change. Absent on snapshots before 0004. */
@@ -96,6 +100,8 @@ export interface CompletedRow {
   completedInAppOn: string;
   inforRequestNumber: number | null;
   physicianChampion: string | null;
+  /** Absent on snapshots frozen before 0013. */
+  contractsLead?: string | null;
 }
 
 /** Stored in ReportSnapshot.missingChampionsJson. */

@@ -7,6 +7,7 @@ import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Assignee } from "@/lib/domain/Assignee";
+import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
@@ -59,15 +60,21 @@ interface Props {
   signOutAction: () => Promise<void>;
 }
 
+/** Per-render facts some cells need. */
+interface CellContext {
+  /** Which column carries the "Contracts <name>" line (champion, else owner), or null when hidden. */
+  contractsIn: "owner" | "physicianChampion" | null;
+}
+
 interface ColumnSpec {
   header: string;
   /** Tailwind width class for the <col>; empty = flexible. */
   width: string;
-  cell: (r: DashboardRow, td: string) => ReactNode;
+  cell: (r: DashboardRow, td: string, ctx: CellContext) => ReactNode;
 }
 
 /** Columns that take a table column of their own (inline ones such as the Infor number render in the Project cell). */
-type TableColumn = Exclude<ViewColumn, "inforNumber">;
+type TableColumn = Exclude<ViewColumn, "inforNumber" | "contractsLead">;
 
 /** Dashboard table columns, rendered in the order and visibility from the dashboard view settings. */
 class DashboardColumns {
@@ -87,13 +94,23 @@ class DashboardColumns {
         </td>
       ),
     },
-    owner: { header: "Owner", width: "w-[84px]", cell: (r, td) => <td className={td}><AssigneeText value={r.owner} /></td> },
+    owner: {
+      header: "Owner",
+      width: "w-[84px]",
+      cell: (r, td, ctx) => (
+        <td className={td}>
+          <AssigneeText value={r.owner} />
+          {ctx.contractsIn === "owner" && <ContractsLeadLine value={r.contractsLead} />}
+        </td>
+      ),
+    },
     physicianChampion: {
       header: "Physician champion",
       width: "w-[164px]",
-      cell: (r, td) => (
+      cell: (r, td, ctx) => (
         <td className={td}>
           <AssigneeText value={r.physicianChampion} />
+          {ctx.contractsIn === "physicianChampion" && <ContractsLeadLine value={r.contractsLead} />}
         </td>
       ),
     },
@@ -168,6 +185,15 @@ export function ProjectDashboard({
   const visibleColumns = settings ? ViewSettings.visibleColumns(settings.dashboard) : columnsProp;
   const columns = visibleColumns.filter((c): c is TableColumn => !ViewSettings.isInline(c));
   const showInfor = visibleColumns.includes("inforNumber");
+  const cellContext: CellContext = {
+    contractsIn: !visibleColumns.includes("contractsLead")
+      ? null
+      : visibleColumns.includes("physicianChampion")
+        ? "physicianChampion"
+        : visibleColumns.includes("owner")
+          ? "owner"
+          : null,
+  };
   const selected = rows.find((r) => r.id === selectedId) ?? null;
 
   /** Optimistic: apply locally, persist, roll back on failure. */
@@ -361,7 +387,7 @@ export function ProjectDashboard({
                             <ProjectMetaLine row={r} showInfor={showInfor} />
                           </td>
                         ) : (
-                          <Fragment key={c}>{DashboardColumns.SPECS[c].cell(r, td)}</Fragment>
+                          <Fragment key={c}>{DashboardColumns.SPECS[c].cell(r, td, cellContext)}</Fragment>
                         ),
                       )}
                     </tr>
@@ -392,6 +418,7 @@ export function ProjectDashboard({
                 owner={selected.owner}
                 physicianChampion={selected.physicianChampion}
                 physicianChampionEmail={admin.championEmails[selected.id] ?? null}
+                contractsLead={selected.contractsLead}
                 serviceArea={selected.serviceArea}
                 ownerSuggestions={admin.ownerSuggestions}
                 saveAction={admin.setPeopleFieldAction}
@@ -422,6 +449,18 @@ export function ProjectDashboard({
  */
 export function AssigneeText({ value }: { value: string | null }) {
   return Assignee.isAssigned(value) ? <>{value}</> : <span className="font-normal text-muted">{Assignee.TO_ASSIGN}</span>;
+}
+
+/**
+ * "Contracts Shea Waldron" under the champion (or the owner when the champion column is hidden): small gray
+ * like the champion, "Contracts" at weight 500. Blank reads "Contracts To assign".
+ */
+export function ContractsLeadLine({ value }: { value: string | null }) {
+  return (
+    <div data-testid="contracts-line" className="truncate text-[10px] leading-3 font-normal text-muted">
+      <span className="font-medium">{ContractsLead.PREFIX}</span> {Assignee.label(value)}
+    </div>
+  );
 }
 
 /** Dashboard meta line geometry. The designer tunes these two values. */
@@ -512,6 +551,10 @@ function ProjectDrawer({
             <dt className="text-muted">Physician champion</dt>
             <dd>
               <AssigneeText value={row.physicianChampion} />
+            </dd>
+            <dt className="text-muted">Contracts lead</dt>
+            <dd>
+              <AssigneeText value={row.contractsLead} />
             </dd>
           </>
         )}

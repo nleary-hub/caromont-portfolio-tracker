@@ -15,6 +15,7 @@ export class Factory {
       owner: "Owner A",
       physicianChampion: null,
       physicianChampionEmail: null,
+      contractsLead: null,
       status: "OnTrack",
       nextMilestone: "Kickoff",
       dueDate: null,

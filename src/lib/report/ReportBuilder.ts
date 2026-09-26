@@ -186,6 +186,7 @@ export class ReportBuilder {
       percentComplete: project.percentComplete,
       note: project.note,
       inforRequestNumber: project.inforRequestNumber ?? null,
+      contractsLead: project.contractsLead ?? null,
       changed: flags.changed,
       overdue: flags.overdue,
       updatedOn: details.updatedOn ?? null,

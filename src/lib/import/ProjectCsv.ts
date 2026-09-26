@@ -2,6 +2,7 @@ import { CsvError, parse } from "csv-parse/sync";
 import { stringify } from "csv-stringify/sync";
 import { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
+import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
@@ -18,6 +19,7 @@ export type CsvColumn =
   | "owner"
   | "physician_champion"
   | "physician_champion_email"
+  | "contracts_lead"
   | "status"
   | "next_milestone"
   | "due_date"
@@ -68,6 +70,7 @@ export class ProjectCsv {
     "owner",
     "physician_champion",
     "physician_champion_email",
+    "contracts_lead",
     "status",
     "next_milestone",
     "due_date",
@@ -96,6 +99,7 @@ export class ProjectCsv {
     owner: "owner",
     physician_champion: "physicianChampion",
     physician_champion_email: "physicianChampionEmail",
+    contracts_lead: "contractsLead",
     status: "status",
     next_milestone: "nextMilestone",
     due_date: "dueDate",
@@ -118,6 +122,7 @@ export class ProjectCsv {
       owner: "Example Owner A",
       physician_champion: "Dr. Example A",
       physician_champion_email: "dr.example.a@example.org",
+      contracts_lead: "Shea Waldron",
       status: "On track",
       next_milestone: "Vendor kickoff call",
       due_date: "2026-10-15",
@@ -135,6 +140,7 @@ export class ProjectCsv {
       owner: "Example Owner B",
       physician_champion: "",
       physician_champion_email: "",
+      contracts_lead: "",
       status: "Not started",
       next_milestone: "Charter approval",
       due_date: "11/2/2026",
@@ -155,6 +161,8 @@ export class ProjectCsv {
       'Column "older_update" is not imported: the app has no place for older updates yet, so its values are ignored.',
     owner_suggested: 'Column "owner_suggested" is a reference column and is not imported. Owners are set in the app.',
     department_basis: 'Column "department_basis" is a reference column and is not imported.',
+    contracts_lead_suggested:
+      'Column "contracts_lead_suggested" is a reference column and is not imported. Use "contracts_lead" or set it in the app.',
   };
 
   /** Other header names accepted for a column (normalized). */
@@ -195,6 +203,7 @@ export class ProjectCsv {
       owner: p.owner ?? "",
       physician_champion: p.physicianChampion ?? "",
       physician_champion_email: p.physicianChampionEmail ?? "",
+      contracts_lead: p.contractsLead ?? "",
       status: ProjectStatusInfo.label(p.status),
       next_milestone: p.nextMilestone ?? "",
       due_date: DateOnly.fromDbDate(p.dueDate) ?? "",
@@ -320,6 +329,14 @@ export class ProjectCsv {
             fail(col, `"${value}" is not a valid date. Use YYYY-MM-DD or M/D/YYYY`);
             input.dueDate = value;
           } else input.dueDate = iso;
+          break;
+        }
+        case "contracts_lead": {
+          const lead = ContractsLead.resolve(value);
+          if (lead === undefined) {
+            fail(col, ContractsLead.invalidMessage(value));
+            input.contractsLead = value;
+          } else input.contractsLead = lead;
           break;
         }
         case "completed_on": {

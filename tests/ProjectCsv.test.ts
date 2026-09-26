@@ -20,6 +20,7 @@ describe("ProjectCsv", () => {
       "owner",
       "physician_champion",
       "physician_champion_email",
+      "contracts_lead",
       "status",
       "next_milestone",
       "due_date",

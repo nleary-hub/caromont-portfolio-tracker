@@ -114,6 +114,7 @@ export class FakeDb {
             inforRequestNumber: null,
             physicianChampion: null,
             physicianChampionEmail: null,
+            contractsLead: null,
             nextMilestone: null,
             dueDate: null,
             targetCompletion: null,

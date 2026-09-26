@@ -134,6 +134,7 @@ describe("Unassigned department", () => {
         owner: null,
         physicianChampion: null,
         physicianChampionEmail: null,
+        contractsLead: null,
         serviceArea: null,
         ownerSuggestions: [],
         saveAction: async () => null,

@@ -1,3 +1,4 @@
+import { AppConfig } from "@/lib/config/AppConfig";
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import type { CompletedRow, ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
@@ -82,6 +83,8 @@ export class SampleReportData {
         percentComplete: null,
         note: note === "LONG" ? SampleReportData.LONG_NOTE : note,
         inforRequestNumber: SampleReportData.INFOR[i] ?? null,
+        // Cycles the pick-list (Mellisa Gonzales included, the longest name); every fifth row is "To assign".
+        contractsLead: i % 5 === 4 ? null : AppConfig.CONTRACTS_LEADS[(i + 2) % AppConfig.CONTRACTS_LEADS.length],
         changed,
         overdue,
         updatedOn,
@@ -106,6 +109,7 @@ export class SampleReportData {
         completedInAppOn: "2026-09-23",
         inforRequestNumber: 4871,
         physicianChampion: "Dr. Sample K",
+        contractsLead: "Mellisa Gonzales",
       },
       {
         projectId: "sample-done-2",
@@ -117,6 +121,7 @@ export class SampleReportData {
         completedInAppOn: "2026-09-17",
         inforRequestNumber: null,
         physicianChampion: null,
+        contractsLead: null,
       },
       {
         projectId: "sample-done-3",
@@ -128,6 +133,7 @@ export class SampleReportData {
         completedInAppOn: "2026-09-24",
         inforRequestNumber: 5120,
         physicianChampion: "Dr. Sample F",
+        contractsLead: "Dave Dermady",
       },
     ];
   }

@@ -55,6 +55,11 @@ export class PdfReportLayout {
     return ViewSettings.isColumnVisible(settings, "owner") && ViewSettings.isColumnVisible(settings, "physicianChampion");
   }
 
+  /** The Contracts lead line sits in the owner stack, so it needs the owner column. */
+  static showsContracts(settings: ViewSettingsValue): boolean {
+    return ViewSettings.isColumnVisible(settings, "owner") && ViewSettings.isColumnVisible(settings, "contractsLead");
+  }
+
   static showsNote(settings: ViewSettingsValue): boolean {
     return ViewSettings.isColumnVisible(settings, "note");
   }

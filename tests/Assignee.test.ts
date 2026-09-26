@@ -91,6 +91,7 @@ describe("Admin edit panel", () => {
         owner: null,
         physicianChampion: null,
         physicianChampionEmail: null,
+        contractsLead: null,
         serviceArea: "Cath",
         ownerSuggestions: Assignee.ownerSuggestions([]),
         saveAction: async () => null,

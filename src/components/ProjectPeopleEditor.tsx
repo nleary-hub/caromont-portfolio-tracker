@@ -3,15 +3,17 @@
 import { useEffect, useRef, useState } from "react";
 import type { ServiceArea } from "@/generated/prisma/enums";
 import { Assignee } from "@/lib/domain/Assignee";
+import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 
-export type PeopleFieldName = "owner" | "physicianChampion" | "physicianChampionEmail" | "serviceArea";
+export type PeopleFieldName = "owner" | "physicianChampion" | "physicianChampionEmail" | "contractsLead" | "serviceArea";
 
 export interface ProjectPeopleEditorProps {
   projectId: string;
   owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
+  contractsLead: string | null;
   serviceArea: ServiceArea | null;
   /** Owner datalist (department leaders plus existing owners). The champion field has no suggestions. */
   ownerSuggestions: readonly string[];
@@ -25,8 +27,8 @@ type FieldState = { kind: "idle" } | { kind: "saving" } | { kind: "saved" } | { 
 const SAVED_MS = 1800;
 
 /**
- * Admin-only panel at the top of the project drawer: owner, physician champion (and email) and
- * department. Always editable (no edit mode); each field saves on change (blur or Enter for text,
+ * Admin-only panel at the top of the project drawer: owner, physician champion (and email), contracts
+ * lead and department. Always editable (no edit mode); each field saves on change (blur or Enter for text,
  * selection for department) and shows a small "Saved" next to it. Blank owner or champion clears the
  * value back to "To assign". The server action re-checks admin; ProjectService records history.
  */
@@ -49,6 +51,7 @@ export function ProjectPeopleEditor(props: ProjectPeopleEditorProps) {
       </datalist>
       <PeopleText {...props} field="physicianChampion" label="Physician champion" initial={props.physicianChampion} placeholder={Assignee.TO_ASSIGN} />
       <PeopleText {...props} field="physicianChampionEmail" label="Champion email" initial={props.physicianChampionEmail} placeholder="Optional" type="email" />
+      <ContractsLeadSelect {...props} />
       <DepartmentSelect {...props} />
     </section>
   );
@@ -100,7 +103,7 @@ function PeopleText({
   listId,
   type = "text",
 }: ProjectPeopleEditorProps & {
-  field: Exclude<PeopleFieldName, "serviceArea">;
+  field: Exclude<PeopleFieldName, "serviceArea" | "contractsLead">;
   label: string;
   initial: string | null;
   placeholder: string;
@@ -143,6 +146,40 @@ function PeopleText({
         }}
         className="h-[28px] min-w-0 flex-1 rounded-control border border-line bg-input px-2 placeholder:text-muted"
       />
+    </Row>
+  );
+}
+
+/** Contracts lead: the fixed pick-list (AppConfig.CONTRACTS_LEADS) plus a blank "To assign" option. */
+function ContractsLeadSelect({ projectId, contractsLead, saveAction }: ProjectPeopleEditorProps) {
+  const [value, setValue] = useState<string>(contractsLead ?? "");
+  const [state, save] = useFieldState();
+  const id = `contractsLead-${projectId}`;
+  return (
+    <Row label="Contracts lead" htmlFor={id} state={state}>
+      <select
+        id={id}
+        name="contractsLead"
+        value={value}
+        onChange={(e) => {
+          const next = e.target.value;
+          const prev = value;
+          setValue(next);
+          void save(async () => {
+            const err = await saveAction(projectId, "contractsLead", next);
+            if (err) setValue(prev);
+            return err;
+          });
+        }}
+        className="h-[28px] min-w-0 flex-1 rounded-control border border-line bg-input px-2"
+      >
+        <option value="">{Assignee.TO_ASSIGN}</option>
+        {ContractsLead.options().map((n) => (
+          <option key={n} value={n}>
+            {n}
+          </option>
+        ))}
+      </select>
     </Row>
   );
 }

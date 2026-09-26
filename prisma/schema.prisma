@@ -54,6 +54,8 @@ model Project {
   owner                  String?
   physicianChampion      String?
   physicianChampionEmail String?
+  /// Contracts lead, one of AppConfig.CONTRACTS_LEADS (null = "To assign").
+  contractsLead          String?
   status                 ProjectStatus
   /// Required unless status is Complete/Cancelled (enforced in app validation).
   nextMilestone          String?
