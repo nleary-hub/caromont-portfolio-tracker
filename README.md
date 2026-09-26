@@ -108,7 +108,7 @@ OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 | Next milestone max 40 chars | `ProjectValidator` using `AppConfig.MILESTONE_MAX_LENGTH` | (none, by design: single constant) |
 | Description (optional) max 200 chars | `ProjectValidator` using `AppConfig.DESCRIPTION_MAX_LENGTH` | (none, by design: single constant) |
 | Infor request number (optional) whole number 1 to 99999, blank = null | `ProjectValidator` using `AppConfig.INFOR_REQUEST_NUMBER_MIN/MAX` | CHECK constraint (migration 0011) |
-| Next milestone required unless Complete/Cancelled | `ProjectValidator` | CHECK constraint |
+| Next milestone required unless Not started/On hold/Complete/Cancelled (`ProjectStatusInfo.MILESTONE_OPTIONAL`, migration 0012) | `ProjectValidator` | CHECK constraint |
 | Percent complete 0 to 100 | `ProjectValidator` | CHECK constraint |
 | History written in the same transaction | `ProjectService` (only write path) | n/a |
 | History append-only | no update/delete code paths | trigger blocks UPDATE/DELETE |
@@ -225,7 +225,7 @@ the URL directly.
   `id` + the template columns for non-archived projects. Edit `description` / `note` / `next_milestone` / `accomplishment`,
   then upload with the wording option (or `--update-wording`). Rows match by `id` only. If any other
   column differs from the database, the row is rejected. `description` may be left out of a wording
-  file (it is then unchanged); `id`, `note` and `next_milestone` are required. `infor_request_number` is a
+  file (it is then unchanged); `id`, `note` and `next_milestone` columns are required (the value may be blank for Not started, On hold, Complete, Cancelled). `infor_request_number` is a
   data field, not wording: a wording file may leave the column out (unchanged) or carry the exported value,
   but changing it rejects the row (same for `completed_on`). The preview shows old versus new per row; commit is all-or-nothing
   through `ProjectService.updateInTx`, writing field history rows with `comment` = `csv_wording_update`.

@@ -42,13 +42,13 @@ describe("ProjectValidator", () => {
     if (!r.ok) expect(r.errors.note?.[0]).toMatch(/200/);
   });
 
-  it("requires nextMilestone unless Complete or Cancelled", () => {
-    for (const status of ["NotStarted", "OnTrack", "AtRisk", "OffTrack", "OnHold"]) {
+  it("requires nextMilestone unless Not started, On hold, Complete or Cancelled", () => {
+    for (const status of ["OnTrack", "AtRisk", "OffTrack"]) {
       const r = ProjectValidator.validate({ ...base, status, nextMilestone: "   " });
       expect(r.ok, status).toBe(false);
       if (!r.ok) expect(r.errors.nextMilestone).toBeDefined();
     }
-    for (const status of ["Complete", "Cancelled"]) {
+    for (const status of ["NotStarted", "OnHold", "Complete", "Cancelled"]) {
       expect(ProjectValidator.validate({ ...base, status, nextMilestone: null }).ok, status).toBe(true);
     }
   });

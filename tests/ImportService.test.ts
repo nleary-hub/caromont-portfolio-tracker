@@ -159,7 +159,7 @@ describe("ImportService: new projects", () => {
       fake.asClient(),
     );
     const [a, b, c, d, e] = preview.rows;
-    expect(a.errors.next_milestone).toEqual(["Next milestone is required unless the project is Complete or Cancelled"]);
+    expect(a.errors.next_milestone).toEqual(["Next milestone is required unless the project is Not started, On hold, Complete or Cancelled"]);
     expect(b.errors.percent_complete).toEqual(["Percent complete must be between 0 and 100"]);
     expect(c.errors.physician_champion_email).toEqual(["Physician champion email is not a valid email"]);
     expect(d.errors).toMatchObject({ name: ["Name is required"] });

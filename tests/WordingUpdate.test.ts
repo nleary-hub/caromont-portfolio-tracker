@@ -205,7 +205,7 @@ describe("CSV export and wording update", () => {
     expect(ok.rows[0].status).toBe("change");
     const blank = await ImportService.previewWording(Sheet.write([{ ...cath, next_milestone: "" }]), db);
     expect(blank.rows[0].errors.next_milestone).toEqual([
-      "Next milestone is required unless the project is Complete or Cancelled",
+      "Next milestone is required unless the project is Not started, On hold, Complete or Cancelled",
     ]);
   });
 

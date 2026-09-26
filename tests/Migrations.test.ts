@@ -94,10 +94,26 @@ describe("migrations (PGlite)", () => {
     ]);
     const sql = Migrations.sql("0012_completed_this_period");
     const code = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
-    // The only DROP relaxes a constraint (owner becomes optional); no data changes.
-    expect(code.replace('ALTER COLUMN "owner" DROP NOT NULL', "")).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE\b/);
+    // The only DROPs relax constraints (owner optional; milestone optional for more statuses); no data changes.
+    expect(code.replace('ALTER COLUMN "owner" DROP NOT NULL', "").replace('DROP CONSTRAINT "Project_nextMilestone_required"', "")).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE\b/);
     expect(code).toContain('ALTER TABLE "Project" ALTER COLUMN "owner" DROP NOT NULL;');
     expect(sql).toContain('OR NEW."completedJson" IS DISTINCT FROM OLD."completedJson"');
+    await db.close();
+  }, 30_000);
+
+  it("next milestone may be blank for Not started, On hold, Complete and Cancelled only", async () => {
+    const db = await Migrations.applyAll();
+    const insert = (name: string, status: string, milestone: string | null) =>
+      db.query(
+        `insert into "Project" (id, name, "serviceArea", owner, status, "nextMilestone", "updatedAt", "updatedBy")
+         values (gen_random_uuid(), $1, 'EP', 'Owner B', $2, $3, now(), 'test')`,
+        [name, status, milestone],
+      );
+    await insert("ns", "NotStarted", null);
+    await insert("oh", "OnHold", " ");
+    await insert("done", "Complete", null);
+    await expect(insert("ot", "OnTrack", null)).rejects.toThrow(/Project_nextMilestone_required/);
+    await expect(insert("ar", "AtRisk", "")).rejects.toThrow(/Project_nextMilestone_required/);
     await db.close();
   }, 30_000);
 

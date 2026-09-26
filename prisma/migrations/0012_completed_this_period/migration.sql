@@ -41,3 +41,9 @@ $$ LANGUAGE plpgsql;
 
 -- Owner is optional: blank owners show as "To assign". Relaxes a constraint only (no data change).
 ALTER TABLE "Project" ALTER COLUMN "owner" DROP NOT NULL;
+
+-- Next milestone may be blank for Not started and On hold too (plus Complete and Cancelled, as before).
+-- Same rule as ProjectStatusInfo.MILESTONE_OPTIONAL. Relaxes a constraint only.
+ALTER TABLE "Project" DROP CONSTRAINT "Project_nextMilestone_required";
+ALTER TABLE "Project" ADD CONSTRAINT "Project_nextMilestone_required"
+    CHECK ("status" IN ('NotStarted', 'OnHold', 'Complete', 'Cancelled') OR ("nextMilestone" IS NOT NULL AND btrim("nextMilestone") <> ''));

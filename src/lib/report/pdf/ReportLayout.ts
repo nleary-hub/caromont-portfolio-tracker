@@ -499,8 +499,9 @@ export class ReportLayout {
         }
         case "nextMilestone": {
           const text = row.nextMilestone?.trim();
-          const lines = text ? TextMeasure.wrap(m, text, inner, S.table, 400, 2) : ["\u2013"];
-          lineOneH = Math.max(lineOneH, lines.length * g.TABLE_LH);
+          // Blank (allowed for Not started, On hold, Complete, Cancelled) renders as nothing.
+          const lines = text ? TextMeasure.wrap(m, text, inner, S.table, 400, 2) : [];
+          lineOneH = Math.max(lineOneH, Math.max(1, lines.length) * g.TABLE_LH);
           cells.push({ kind: "nextMilestone", x: col.x, w: inner, lines, muted: !text });
           break;
         }

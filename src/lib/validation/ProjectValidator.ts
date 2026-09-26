@@ -69,6 +69,9 @@ export class ProjectValidationError extends Error {
 }
 
 export class ProjectValidator {
+  static readonly MILESTONE_REQUIRED_MESSAGE =
+    "Next milestone is required unless the project is Not started, On hold, Complete or Cancelled";
+
   static readonly NOTE_MAX = AppConfig.NOTE_MAX_LENGTH;
   static readonly NAME_MAX = AppConfig.SHORT_TEXT_MAX_LENGTH;
   static readonly MILESTONE_MAX = AppConfig.MILESTONE_MAX_LENGTH;
@@ -225,11 +228,11 @@ export class ProjectValidator {
         includeInReport: z.boolean().default(true),
       })
       .superRefine((p, ctx) => {
-        if (!ProjectStatusInfo.isClosed(p.status) && !p.nextMilestone) {
+        if (!ProjectStatusInfo.milestoneOptional(p.status) && !p.nextMilestone) {
           ctx.addIssue({
             code: "custom",
             path: ["nextMilestone"],
-            message: "Next milestone is required unless the project is Complete or Cancelled",
+            message: ProjectValidator.MILESTONE_REQUIRED_MESSAGE,
           });
         }
       });

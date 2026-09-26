@@ -102,7 +102,7 @@ class DashboardColumns {
         </td>
       ),
     },
-    nextMilestone: { header: "Next milestone", width: "w-[170px]", cell: (r, td) => <td className={td}>{r.nextMilestone ?? "–"}</td> },
+    nextMilestone: { header: "Next milestone", width: "w-[170px]", cell: (r, td) => <td className={td}>{r.nextMilestone ?? ""}</td> },
     due: {
       header: "Due date",
       width: "w-[84px]",
@@ -512,7 +512,7 @@ function ProjectDrawer({
         <dt className="text-muted">Infor request #</dt>
         <dd className="font-mono">{InforNumber.format(row.inforRequestNumber) ?? "–"}</dd>
         <dt className="text-muted">Next milestone</dt>
-        <dd>{row.nextMilestone ?? "–"}</dd>
+        <dd>{row.nextMilestone ?? ""}</dd>
         <dt className="text-muted">Due date</dt>
         <dd className={row.overdue ? "font-semibold text-danger" : ""}>
           {DateFormat.long(row.dueDate) ?? "–"}
