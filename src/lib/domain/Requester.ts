@@ -1,4 +1,5 @@
 import { Assignee } from "@/lib/domain/Assignee";
+import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 
 /** How a requester cell renders: the name, blank (Not applicable), or muted "To assign" (not yet addressed). */
 export interface RequesterDisplay {
@@ -32,14 +33,9 @@ export class Requester {
     return { text: Assignee.TO_ASSIGN, muted: true };
   }
 
-  /** Distinct existing requester names, sorted (the drawer picker's list). */
+  /** Distinct existing requester names, sorted (the drawer combobox options; see PeopleDirectory.requesters). */
   static suggestions(existing: readonly (string | null | undefined)[]): string[] {
-    const seen = new Map<string, string>();
-    for (const raw of existing) {
-      const n = raw?.trim().replace(/\s+/g, " ");
-      if (n && !Requester.isNotApplicableText(n) && !seen.has(n.toLowerCase())) seen.set(n.toLowerCase(), n);
-    }
-    return [...seen.values()].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+    return PeopleDirectory.requesters(existing);
   }
 
   /** CSV cell text: the name, "Not applicable", or blank. */

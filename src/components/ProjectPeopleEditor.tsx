@@ -6,6 +6,9 @@ import { Assignee } from "@/lib/domain/Assignee";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { Requester } from "@/lib/domain/Requester";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { PeopleComboboxModel, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
+import { PeopleDirectory, type PeopleRole } from "@/lib/people/PeopleDirectory";
+import { PeopleCombobox } from "./PeopleCombobox";
 
 export type PeopleFieldName = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "serviceArea";
 
@@ -17,9 +20,9 @@ export interface ProjectPeopleEditorProps {
   requesterNotApplicable: boolean;
   contractsLead: string | null;
   serviceArea: ServiceArea | null;
-  /** Owner datalist (department leaders plus existing owners). */
+  /** Owner combobox options (PeopleDirectory.owners: built-in owners plus owners in use). */
   ownerSuggestions: readonly string[];
-  /** Existing requester names for the requester picker. */
+  /** Requester combobox options (PeopleDirectory.requesters: requesters in use). */
   requesterSuggestions: readonly string[];
   /** Resolves to an error message, or null on success. */
   saveAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
@@ -32,27 +35,14 @@ const SAVED_MS = 1800;
 
 /**
  * Admin-only panel at the top of the project drawer: owner, requester, contracts lead and department. Always editable
- * (no edit mode); each field saves on change (blur or Enter for text, a pick for requester and
- * department) and shows a small "Saved" next to it. Blank owner or requester reads "To assign". The
+ * (no edit mode); each field saves on a pick (owner and requester comboboxes, contracts lead and
+ * department selects) and shows a small "Saved" next to it. Blank owner or requester reads "To assign". The
  * server action re-checks admin; ProjectService records history.
  */
 export function ProjectPeopleEditor(props: ProjectPeopleEditorProps) {
-  const listId = `owner-suggestions-${props.projectId}`;
   return (
     <section aria-label="Edit project" className="flex flex-col gap-2 border-b border-line pb-3">
-      <PeopleText
-        {...props}
-        field="owner"
-        label="Owner"
-        initial={props.owner}
-        placeholder={Assignee.TO_ASSIGN}
-        listId={listId}
-      />
-      <datalist id={listId} data-testid="owner-suggestions">
-        {props.ownerSuggestions.map((n) => (
-          <option key={n} value={n} />
-        ))}
-      </datalist>
+      <OwnerPicker {...props} />
       <RequesterPicker {...props} />
       <ContractsLeadSelect {...props} />
       <DepartmentSelect {...props} />
@@ -93,63 +83,6 @@ function Row({ label, htmlFor, state, children }: { label: string; htmlFor: stri
         <Status state={state} />
       </div>
     </div>
-  );
-}
-
-function PeopleText({
-  projectId,
-  saveAction,
-  field,
-  label,
-  initial,
-  placeholder,
-  listId,
-  type = "text",
-}: ProjectPeopleEditorProps & {
-  field: "owner";
-  label: string;
-  initial: string | null;
-  placeholder: string;
-  listId?: string;
-  type?: "text";
-}) {
-  const [value, setValue] = useState(initial ?? "");
-  const [saved, setSaved] = useState(initial ?? "");
-  const [state, save] = useFieldState();
-  const id = `${field}-${projectId}`;
-  const commit = () => {
-    const next = value.trim();
-    if (next === saved.trim()) return;
-    void save(async () => {
-      const err = await saveAction(projectId, field, next);
-      if (!err) {
-        setSaved(next);
-        setValue(next);
-      }
-      return err;
-    });
-  };
-  return (
-    <Row label={label} htmlFor={id} state={state}>
-      <input
-        id={id}
-        name={field}
-        type={type}
-        value={value}
-        placeholder={placeholder}
-        list={listId}
-        autoComplete="off"
-        onChange={(e) => setValue(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-            commit();
-          }
-        }}
-        className="h-[28px] min-w-0 flex-1 rounded-control border border-line bg-input px-2 placeholder:text-muted"
-      />
-    </Row>
   );
 }
 
@@ -221,106 +154,54 @@ function DepartmentSelect({ projectId, serviceArea, saveAction }: ProjectPeopleE
   );
 }
 
-/** The requester's three states as the picker holds them. */
-type RequesterValue = { kind: "name"; name: string } | { kind: "na" } | { kind: "unset" };
-
 /**
- * Requester picker (Figma): closed, it shows the name, "Not applicable" in primary text, or a gray
- * "To assign". Open: a search box, the matching names (typing a new name offers "Use ..."), then below a
- * divider "Not applicable" (prints blank on the dashboard and report) and a gray "Clear (To assign)".
+ * Shared owner and requester combobox wiring: holds the value, saves a pick through the admin server
+ * action (reverting on error) and adds a newly added name to the local list right away. The server
+ * list catches up on revalidate because options are derived from the names in use.
  */
-export function RequesterPicker({ projectId, physicianChampion, requesterNotApplicable, requesterSuggestions, saveAction }: ProjectPeopleEditorProps) {
-  const initial: RequesterValue = physicianChampion?.trim()
-    ? { kind: "name", name: physicianChampion.trim() }
-    : requesterNotApplicable
-      ? { kind: "na" }
-      : { kind: "unset" };
-  const [value, setValue] = useState<RequesterValue>(initial);
-  const [open, setOpen] = useState(false);
-  const [query, setQuery] = useState("");
+function usePeoplePicker(role: PeopleRole, props: ProjectPeopleEditorProps, initial: PeopleValue, suggestions: readonly string[]) {
+  const [value, setValue] = useState<PeopleValue>(initial);
+  const [added, setAdded] = useState<string[]>([]);
   const [state, save] = useFieldState();
-  const id = `requester-${projectId}`;
-  const q = query.trim().toLowerCase();
-  const names = requesterSuggestions.filter((n) => n.toLowerCase().includes(q));
-  const typed = query.trim();
-  const offerTyped = typed !== "" && !Requester.isNotApplicableText(typed) && !requesterSuggestions.some((n) => n.toLowerCase() === typed.toLowerCase());
-
-  const pick = (next: RequesterValue) => {
+  const options = PeopleDirectory.merge([...suggestions, ...added]);
+  const onPick = (next: PeopleValue) => {
+    const call = PeopleComboboxModel.saveFor(role, next, value);
+    if (!call) return;
     const prev = value;
-    setValue(next);
-    setOpen(false);
-    setQuery("");
+    const shown: PeopleValue = next.kind === "name" ? { kind: "name", name: call.value } : next;
+    setValue(shown);
     void save(async () => {
-      const err =
-        next.kind === "na"
-          ? await saveAction(projectId, "requesterNotApplicable", "true")
-          : await saveAction(projectId, "physicianChampion", next.kind === "name" ? next.name : "");
+      const err = await props.saveAction(props.projectId, call.field, call.value);
       if (err) setValue(prev);
+      else if (shown.kind === "name") setAdded((a) => [...a, shown.name]);
       return err;
     });
   };
+  return { value, options, state, onPick };
+}
 
-  const closedText = value.kind === "name" ? value.name : value.kind === "na" ? Requester.NOT_APPLICABLE : Assignee.TO_ASSIGN;
-  const closedClass = value.kind === "unset" ? "text-muted" : "text-fg";
-  const item = "block w-full px-2 py-1 text-left hover:bg-row-selected";
+/** Owner: combobox of the built-in owners plus owners in use, "Clear (To assign)" pinned, "Add 'X'" for a new name. */
+export function OwnerPicker(props: ProjectPeopleEditorProps) {
+  const { value, options, state, onPick } = usePeoplePicker("owner", props, PeopleComboboxModel.valueOf(props.owner), props.ownerSuggestions);
+  const id = `owner-${props.projectId}`;
+  return (
+    <Row label="Owner" htmlFor={id} state={state}>
+      <PeopleCombobox role="owner" id={id} label="Owner" options={options} value={value} onPick={onPick} />
+    </Row>
+  );
+}
+
+/**
+ * Requester (stored as physicianChampion): combobox of the requesters in use with "Not applicable"
+ * (prints blank on the dashboard and report) and "Clear (To assign)" pinned, "Add 'X'" for a new name.
+ */
+export function RequesterPicker(props: ProjectPeopleEditorProps) {
+  const initial = PeopleComboboxModel.valueOf(props.physicianChampion, props.requesterNotApplicable);
+  const { value, options, state, onPick } = usePeoplePicker("requester", props, initial, props.requesterSuggestions);
+  const id = `requester-${props.projectId}`;
   return (
     <Row label={Requester.LABEL} htmlFor={id} state={state}>
-      <div className="relative min-w-0 flex-1">
-        <button
-          id={id}
-          type="button"
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          data-testid="requester-value"
-          onClick={() => setOpen((o) => !o)}
-          className={`h-[28px] w-full truncate rounded-control border border-line bg-input px-2 text-left ${closedClass}`}
-        >
-          {closedText}
-        </button>
-        {open && (
-          <div role="listbox" aria-label="Requester" className="absolute z-20 mt-1 w-full rounded-control border border-line bg-card py-1 shadow-md">
-            <div className="px-2 pb-1">
-              <input
-                autoFocus
-                type="search"
-                aria-label="Search requesters"
-                placeholder="Search or type a name"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-                onKeyDown={(e) => {
-                  if (e.key === "Escape") setOpen(false);
-                  if (e.key === "Enter") {
-                    e.preventDefault();
-                    if (names.length === 1 && !offerTyped) pick({ kind: "name", name: names[0] });
-                    else if (offerTyped) pick({ kind: "name", name: typed });
-                  }
-                }}
-                className="h-[26px] w-full rounded-control border border-line bg-input px-2 placeholder:text-muted"
-              />
-            </div>
-            <div className="max-h-48 overflow-y-auto">
-              {names.map((n) => (
-                <button key={n} type="button" role="option" aria-selected={value.kind === "name" && value.name === n} className={item} onClick={() => pick({ kind: "name", name: n })}>
-                  {n}
-                </button>
-              ))}
-              {offerTyped && (
-                <button type="button" role="option" aria-selected={false} className={item} onClick={() => pick({ kind: "name", name: typed })}>
-                  Use &ldquo;{typed}&rdquo;
-                </button>
-              )}
-            </div>
-            <div role="separator" className="my-1 border-t border-line" />
-            <button type="button" role="option" aria-selected={value.kind === "na"} className={item} onClick={() => pick({ kind: "na" })}>
-              <span className="block">{Requester.NOT_APPLICABLE}</span>
-              <span className="block text-muted type-caption">Prints blank on the dashboard and report</span>
-            </button>
-            <button type="button" role="option" aria-selected={value.kind === "unset"} className={`${item} text-muted`} onClick={() => pick({ kind: "unset" })}>
-              Clear ({Assignee.TO_ASSIGN})
-            </button>
-          </div>
-        )}
-      </div>
+      <PeopleCombobox role="requester" id={id} label={Requester.LABEL} options={options} value={value} onPick={onPick} />
     </Row>
   );
 }
