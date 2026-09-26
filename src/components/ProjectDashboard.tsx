@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import Link from "next/link";
-import { Fragment, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardCompletedRow, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
@@ -18,6 +18,8 @@ import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import type { AdminMenuItem } from "@/lib/admin/AdminMenu";
 import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
+import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
+import type { ProjectFormSubmit } from "./ProjectEditForm";
 import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { DashboardTable } from "./DashboardTable";
@@ -28,6 +30,7 @@ const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m)
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
 const ProjectPeopleEditor = dynamic(() => import("./ProjectPeopleEditor").then((m) => m.ProjectPeopleEditor));
 const AdminMenuButton = dynamic(() => import("./AdminMenuButton").then((m) => m.AdminMenuButton));
+const ProjectEditForm = dynamic(() => import("./ProjectEditForm").then((m) => m.ProjectEditForm));
 
 export interface LatestReport {
   /** YYYY-MM-DD */
@@ -54,6 +57,20 @@ export interface AdminDashboardProps {
   setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
   /** Top bar admin menu items (`AdminMenu.itemsFor`, computed on the server). */
   menuItems: AdminMenuItem[];
+  /** Drawer edit form values per listed project (stored values, as form strings). */
+  formValues: Record<string, ProjectFormValues>;
+  /** Edit form Save: the changed non-People fields, saved together (one history entry). */
+  saveProjectFormAction: (projectId: string, changes: Partial<ProjectFormValues>) => ReturnType<ProjectFormSubmit>;
+  /** New project drawer: create (name and department required). */
+  createProjectAction: (values: Partial<ProjectFormValues>) => ReturnType<ProjectFormSubmit>;
+}
+
+/** Admin drawer mode: detail view, edit form, or the empty New project form. */
+export type DrawerMode = "view" | "edit" | "new";
+
+/** How long a newly created project's row stays highlighted after it scrolls into view. */
+export class NewRowFlash {
+  static readonly MS = 1500;
 }
 
 interface Props {
@@ -102,6 +119,13 @@ export function ProjectDashboard({
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
+  // Admin edit mode. Non-admins stay in "view" (there is no way to switch).
+  const [mode, setMode] = useState<DrawerMode>("view");
+  const [confirmDiscard, setConfirmDiscard] = useState(false);
+  const dirtyRef = useRef(false);
+  const pendingRef = useRef<(() => void) | null>(null);
+  const [flashId, setFlashId] = useState<string | null>(null);
+  const scrollToRef = useRef<string | null>(null);
   // Admin only: optimistic copy of the settings (rows refresh from the server after each save).
   const [settings, setSettings] = useState<ViewSettingsByContext | null>(admin?.viewSettings ?? null);
 
@@ -128,6 +152,85 @@ export function ProjectDashboard({
     }
   };
 
+  const onDirtyChange = useCallback((dirty: boolean) => {
+    dirtyRef.current = dirty;
+  }, []);
+
+  /** Run `action` now, or first ask "Discard changes?" when the edit form has unsaved changes. */
+  const guard = (action: () => void) => {
+    if (mode !== "view" && dirtyRef.current) {
+      pendingRef.current = action;
+      setConfirmDiscard(true);
+      return;
+    }
+    action();
+  };
+  const leaveForm = () => {
+    dirtyRef.current = false;
+    setConfirmDiscard(false);
+    pendingRef.current = null;
+  };
+  const closeDrawer = () => {
+    leaveForm();
+    setMode("view");
+    setSelectedId(null);
+  };
+  const requestClose = () => guard(closeDrawer);
+  const selectRow = (id: string | null) =>
+    guard(() => {
+      leaveForm();
+      setMode("view");
+      setSelectedId(id);
+    });
+  const openNew = () =>
+    guard(() => {
+      leaveForm();
+      setSelectedId(null);
+      setMode("new");
+    });
+  const discard = () => {
+    const pending = pendingRef.current;
+    leaveForm();
+    pending?.();
+  };
+  const onSaved = (id: string) => {
+    const created = mode === "new";
+    leaveForm();
+    setMode("view");
+    if (created && id) {
+      // Show the new project whatever the current filter, then scroll its row into view.
+      setArea("All");
+      setQuery("");
+      setSelectedId(id);
+      scrollToRef.current = id;
+      setFlashId(id);
+    }
+  };
+
+  // After a create, the row arrives with the refreshed rows: scroll to it and flash it.
+  useEffect(() => {
+    const id = scrollToRef.current;
+    if (!id) return;
+    const el = document.querySelector<HTMLElement>(`[data-row-key="${CSS.escape(id)}"]`);
+    if (!el) return;
+    el.scrollIntoView({ block: "center", behavior: "smooth" });
+    scrollToRef.current = null;
+  }, [flashId, rows, visible]);
+  useEffect(() => {
+    if (!flashId) return;
+    const t = setTimeout(() => setFlashId(null), NewRowFlash.MS);
+    return () => clearTimeout(t);
+  }, [flashId]);
+
+  // The key handler is registered once; it calls the latest close logic through a ref.
+  const escRef = useRef<() => void>(() => {});
+  useEffect(() => {
+    escRef.current = () => {
+      if (confirmDiscard) setConfirmDiscard(false);
+      else requestClose();
+    };
+  });
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
@@ -135,7 +238,7 @@ export function ProjectDashboard({
         e.preventDefault();
         searchRef.current?.focus();
       } else if (e.key === "Escape") {
-        setSelectedId(null);
+        escRef.current();
       }
     };
     window.addEventListener("keydown", onKey);
@@ -259,6 +362,15 @@ export function ProjectDashboard({
             ))}
           <div className="flex-1" />
           <span className="type-caption text-muted">Showing {visible.length} projects</span>
+          {admin && (
+            <button
+              type="button"
+              onClick={openNew}
+              className="ml-2 flex h-7 shrink-0 items-center rounded-control bg-accent px-3 whitespace-nowrap text-white type-table-strong"
+            >
+              + New project
+            </button>
+          )}
         </section>
 
         <section className="overflow-hidden rounded-card border border-line bg-card">
@@ -268,7 +380,8 @@ export function ProjectDashboard({
               completed={visibleCompleted}
               settings={dashboardView}
               selectedId={selectedId}
-              onSelect={setSelectedId}
+              flashId={flashId}
+              onSelect={selectRow}
               today={today}
               emptyText={rows.length === 0 && completed.length === 0 ? "No projects yet." : "No projects match the current filter."}
               renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
@@ -283,40 +396,116 @@ export function ProjectDashboard({
         </section>
       </main>
 
-      {selected && (
+      {mode === "new" && admin ? (
         <ProjectDrawer
-          row={selected}
+          row={null}
           today={today}
-          onClose={() => setSelectedId(null)}
-          peopleEditor={
-            admin ? (
-              <ProjectPeopleEditor
-                key={selected.id}
-                projectId={selected.id}
-                owner={selected.owner}
-                physicianChampion={selected.physicianChampion}
-                requesterNotApplicable={selected.requesterNotApplicable}
-                requesterSuggestions={admin.requesterSuggestions}
-                contractsLead={selected.contractsLead}
-                serviceArea={selected.serviceArea}
-                ownerSuggestions={admin.ownerSuggestions}
-                saveAction={admin.setPeopleFieldAction}
-              />
-            ) : null
-          }
-          adminControls={
-            admin ? (
-              <ProjectAdminControls
-                projectId={selected.id}
-                projectName={selected.name}
-                hiddenFromReport={admin.hiddenFromReportIds.includes(selected.id)}
-                setHiddenAction={admin.setProjectHiddenAction}
-                deleteAction={admin.deleteProjectAction}
-                onGone={() => setSelectedId(null)}
-              />
-            ) : null
+          onClose={requestClose}
+          peopleEditor={null}
+          adminControls={null}
+          form={
+            <ProjectEditForm
+              key="new"
+              mode="new"
+              original={ProjectFormModel.empty()}
+              today={today}
+              people={null}
+              adminDelete={null}
+              onSubmit={admin.createProjectAction}
+              onSaved={onSaved}
+              onCancel={requestClose}
+              onDirtyChange={onDirtyChange}
+              confirmDiscard={confirmDiscard}
+              onKeepEditing={() => setConfirmDiscard(false)}
+              onDiscard={discard}
+            />
           }
         />
+      ) : (
+        selected && (
+          <ProjectDrawer
+            row={selected}
+            today={today}
+            onClose={requestClose}
+            onEdit={admin && mode === "view" && admin.formValues[selected.id] ? () => setMode("edit") : undefined}
+            peopleEditor={
+              admin ? (
+                <ProjectPeopleEditor
+                  key={selected.id}
+                  projectId={selected.id}
+                  owner={selected.owner}
+                  physicianChampion={selected.physicianChampion}
+                  requesterNotApplicable={selected.requesterNotApplicable}
+                  requesterSuggestions={admin.requesterSuggestions}
+                  contractsLead={selected.contractsLead}
+                  serviceArea={selected.serviceArea}
+                  ownerSuggestions={admin.ownerSuggestions}
+                  saveAction={admin.setPeopleFieldAction}
+                />
+              ) : null
+            }
+            adminControls={
+              admin ? (
+                <ProjectAdminControls
+                  projectId={selected.id}
+                  projectName={selected.name}
+                  hiddenFromReport={admin.hiddenFromReportIds.includes(selected.id)}
+                  setHiddenAction={admin.setProjectHiddenAction}
+                  deleteAction={admin.deleteProjectAction}
+                  onGone={closeDrawer}
+                />
+              ) : null
+            }
+            form={
+              admin && mode === "edit" && admin.formValues[selected.id] ? (
+                <ProjectEditForm
+                  key={`edit-${selected.id}`}
+                  mode="edit"
+                  original={admin.formValues[selected.id]}
+                  today={today}
+                  people={
+                    <ProjectPeopleEditor
+                      key={`form-${selected.id}`}
+                      inForm
+                      projectId={selected.id}
+                      owner={selected.owner}
+                      physicianChampion={selected.physicianChampion}
+                      requesterNotApplicable={selected.requesterNotApplicable}
+                      requesterSuggestions={admin.requesterSuggestions}
+                      contractsLead={selected.contractsLead}
+                      serviceArea={selected.serviceArea}
+                      ownerSuggestions={admin.ownerSuggestions}
+                      saveAction={admin.setPeopleFieldAction}
+                    />
+                  }
+                  adminDelete={
+                    <ProjectAdminControls
+                      part="delete"
+                      projectId={selected.id}
+                      projectName={selected.name}
+                      hiddenFromReport={admin.hiddenFromReportIds.includes(selected.id)}
+                      setHiddenAction={admin.setProjectHiddenAction}
+                      deleteAction={admin.deleteProjectAction}
+                      onGone={closeDrawer}
+                    />
+                  }
+                  onSubmit={(changes) => admin.saveProjectFormAction(selected.id, changes)}
+                  onSaved={onSaved}
+                  onCancel={() =>
+                    guard(() => {
+                      leaveForm();
+                      setMode("view");
+                    })
+                  }
+                  onDirtyChange={onDirtyChange}
+                  confirmDiscard={confirmDiscard}
+                  onKeepEditing={() => setConfirmDiscard(false)}
+                  onDiscard={discard}
+                />
+              ) : null
+            }
+          />
+        )
       )}
     </div>
   );
@@ -399,17 +588,52 @@ function ProjectDrawer({
   row,
   today,
   onClose,
+  onEdit,
   peopleEditor,
   adminControls,
+  form,
 }: {
-  row: DashboardRow;
+  /** Null for the New project form. */
+  row: DashboardRow | null;
   today: string;
   onClose: () => void;
+  /** Admins only: shows the Edit button left of close. */
+  onEdit?: () => void;
+  /** Admin edit form (edit or New project). When set, the drawer shows it with a pinned footer. */
+  form?: ReactNode;
   /** Admin-only edit panel (owner, requester, department), shown at the top. Null for non-admins. */
   peopleEditor: ReactNode;
   /** Rendered only for admins. */
   adminControls: ReactNode;
 }) {
+  const closeButton = (
+    <button
+      type="button"
+      onClick={onClose}
+      aria-label="Close"
+      className="size-7 rounded-[6px] border border-line text-xs text-muted hover:text-fg"
+    >
+      ✕
+    </button>
+  );
+  if (form || !row) {
+    // Edit form: header, scrolling fields, footer pinned to the drawer bottom.
+    return (
+      <aside
+        aria-label={row ? "Edit project" : "New project"}
+        className="fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col overflow-hidden rounded-card border border-line bg-card shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
+      >
+        <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
+          <div className="min-w-0">
+            {row && <div className="text-muted type-caption">{ServiceAreaInfo.label(row.serviceArea)} · Edit project</div>}
+            <h2 className="mt-1 type-heading text-base">{row ? row.name : "New project"}</h2>
+          </div>
+          {closeButton}
+        </div>
+        {form}
+      </aside>
+    );
+  }
   const daysOverdue = row.overdue && row.dueDate ? DateFormat.daysBetween(row.dueDate, today) : 0;
   return (
     <aside
@@ -421,14 +645,16 @@ function ProjectDrawer({
           <div className="text-muted type-caption">{ServiceAreaInfo.label(row.serviceArea)} · Project detail</div>
           <h2 className="mt-1 type-heading text-base">{row.name}</h2>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          aria-label="Close"
-          className="size-7 rounded-[6px] border border-line text-xs text-muted hover:text-fg"
-        >
-          ✕
-        </button>
+        {onEdit ? (
+          <div className="flex shrink-0 items-center gap-1.5">
+            <button type="button" onClick={onEdit} className="h-7 rounded-[6px] px-2.5 text-muted type-table-strong hover:bg-input hover:text-fg">
+              Edit
+            </button>
+            {closeButton}
+          </div>
+        ) : (
+          closeButton
+        )}
       </div>
       <div className="flex gap-1.5">
         <StatusPill status={row.status} />

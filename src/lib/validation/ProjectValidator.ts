@@ -77,6 +77,19 @@ export class ProjectValidationError extends Error {
   }
 }
 
+/**
+ * How the drawer edit form validates (ProjectValidator.validateForm). The CSV import and wording
+ * update keep the default rules (hard 40-character milestone).
+ */
+export interface FormValidationOptions {
+  /**
+   * The stored project for an edit (null for a new project). A capped text field whose value equals
+   * the stored value is not length-checked, so an existing over-cap value never blocks a save of other
+   * fields; it must be shortened only when that field is edited.
+   */
+  existing: ProjectInput | null;
+}
+
 export class ProjectValidator {
   static readonly MILESTONE_REQUIRED_MESSAGE =
     "Next milestone is required unless the project is Not started, On hold, Complete or Cancelled";
@@ -103,7 +116,101 @@ export class ProjectValidator {
     return /^[0-9]+$/.test(t) ? Number(t) : undefined;
   }
 
-  private static readonly schema = ProjectValidator.buildSchema();
+  /** Fields with a hard character cap (the edit form counter stops at the cap). */
+  static readonly HARD_LIMITS = {
+    note: AppConfig.NOTE_MAX_LENGTH,
+    accomplishment: AppConfig.ACCOMPLISHMENT_MAX_LENGTH,
+    description: AppConfig.DESCRIPTION_MAX_LENGTH,
+    name: AppConfig.SHORT_TEXT_MAX_LENGTH,
+    owner: AppConfig.SHORT_TEXT_MAX_LENGTH,
+  } as const satisfies Partial<Record<keyof ProjectInput, number>>;
+
+  /** Fields with a soft limit in the edit form: past it the counter warns, but saving is allowed. */
+  static readonly SOFT_LIMITS = { nextMilestone: AppConfig.MILESTONE_MAX_LENGTH } as const satisfies Partial<Record<keyof ProjectInput, number>>;
+
+  /** Backstop for a soft-limited field in the edit form (it is still text in a table cell). */
+  static readonly SOFT_BACKSTOP = AppConfig.SHORT_TEXT_MAX_LENGTH;
+
+  static readonly DEPARTMENT_REQUIRED_MESSAGE = "Department is required";
+
+  private static readonly schema = ProjectValidator.buildSchema(ProjectValidator.MILESTONE_MAX);
+  private static readonly formSchema = ProjectValidator.buildSchema(ProjectValidator.SOFT_BACKSTOP);
+
+  /**
+   * Validation for the drawer edit form (and New project): the same rules as validate(), except the
+   * next milestone limit is soft (up to SOFT_BACKSTOP characters; softWarnings() reports past 40), a new
+   * project needs a department, and unchanged stored values over a cap are accepted (see
+   * FormValidationOptions.existing).
+   */
+  static validateForm(input: ProjectInput, options: FormValidationOptions): ValidationResult {
+    const { checked, restore } = ProjectValidator.grandfather(input, options.existing, ProjectValidator.SOFT_BACKSTOP);
+    const parsed = ProjectValidator.formSchema.safeParse(checked);
+    const errors: FieldErrors = {};
+    if (!parsed.success) {
+      for (const issue of parsed.error.issues) {
+        const key = (issue.path[0] as keyof FieldErrors | undefined) ?? "_form";
+        (errors[key] ??= []).push(issue.message);
+      }
+    }
+    if (!options.existing && (input.serviceArea === null || input.serviceArea === undefined || String(input.serviceArea).trim() === "")) {
+      (errors.serviceArea ??= []).push(ProjectValidator.DEPARTMENT_REQUIRED_MESSAGE);
+    }
+    if (!parsed.success || Object.keys(errors).length > 0) return { ok: false, errors };
+    return { ok: true, data: { ...parsed.data, ...restore } };
+  }
+
+  /**
+   * Default rules for an update of a stored project (People autosave, CSV wording update): like parse(),
+   * but a capped field left at its stored value is not length-checked, so an existing over-cap value
+   * (for example a milestone over 40 saved from the edit form) never blocks an unrelated save.
+   */
+  static parseUpdate(input: ProjectInput, existing: ProjectInput): ProjectData {
+    const { checked, restore } = ProjectValidator.grandfather(input, existing, ProjectValidator.MILESTONE_MAX);
+    return { ...ProjectValidator.parse(checked), ...restore };
+  }
+
+  /** Like validateForm() but throws ProjectValidationError. */
+  static parseForm(input: ProjectInput, options: FormValidationOptions): ProjectData {
+    const result = ProjectValidator.validateForm(input, options);
+    if (!result.ok) throw new ProjectValidationError(result.errors);
+    return result.data;
+  }
+
+  /** Non-blocking warnings for the edit form (soft limits exceeded), keyed like FieldErrors. */
+  static softWarnings(input: Partial<ProjectInput>): FieldErrors {
+    const out: FieldErrors = {};
+    for (const [field, limit] of Object.entries(ProjectValidator.SOFT_LIMITS) as [keyof ProjectInput, number][]) {
+      const v = input[field];
+      if (typeof v === "string" && v.trim().length > limit) out[field] = [`Over ${limit} characters; it may be cut off in the report`];
+    }
+    return out;
+  }
+
+  /**
+   * Swap capped fields whose value equals the stored value (and is over the cap) for a within-cap
+   * stand-in before schema checks, and remember the original (trimmed) text to put back afterwards.
+   */
+  private static grandfather(
+    input: ProjectInput,
+    existing: ProjectInput | null,
+    milestoneCap: number,
+  ): { checked: ProjectInput; restore: Record<string, string> } {
+    const checked: Record<string, unknown> = { ...input };
+    const restore: Record<string, string> = {};
+    if (!existing) return { checked: checked as unknown as ProjectInput, restore };
+    const caps: Record<string, number> = { ...ProjectValidator.HARD_LIMITS, nextMilestone: milestoneCap };
+    for (const [field, cap] of Object.entries(caps)) {
+      const value = checked[field];
+      const stored = (existing as unknown as Record<string, unknown>)[field];
+      if (typeof value !== "string" || typeof stored !== "string") continue;
+      const t = value.trim();
+      if (t.length > cap && t === stored.trim()) {
+        checked[field] = t.slice(0, cap);
+        restore[field] = t;
+      }
+    }
+    return { checked: checked as unknown as ProjectInput, restore };
+  }
 
   /** Validate and normalize a full set of editable fields. */
   static validate(input: unknown): ValidationResult {
@@ -181,7 +288,7 @@ export class ProjectValidator {
     );
   }
 
-  private static buildSchema() {
+  private static buildSchema(milestoneMax: number) {
     return z
       .object({
         name: ProjectValidator.requiredText("Name", ProjectValidator.NAME_MAX),
@@ -221,7 +328,7 @@ export class ProjectValidator {
         status: z.enum(ProjectStatus, { error: "Status must be one of the defined statuses" }),
         nextMilestone: ProjectValidator.optionalText({
           label: "Next milestone",
-          length: ProjectValidator.MILESTONE_MAX,
+          length: milestoneMax,
         }),
         dueDate: ProjectValidator.optionalDate("Due date"),
         targetCompletion: ProjectValidator.optionalDate("Target completion"),

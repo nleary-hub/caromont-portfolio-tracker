@@ -4,9 +4,10 @@ import { revalidatePath } from "next/cache";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
-import { ProjectService } from "@/lib/services/ProjectService";
+import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
+import { ProjectArchivedError, ProjectNotFoundError, ProjectService } from "@/lib/services/ProjectService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
-import { ProjectValidationError } from "@/lib/validation/ProjectValidator";
+import { ProjectValidationError, type FieldErrors } from "@/lib/validation/ProjectValidator";
 
 export type AdminActionResult = { ok: true } | { ok: false; error: string };
 
@@ -29,6 +30,56 @@ class AdminAction {
       return { ok: false, error: "Could not save the change." };
     }
   }
+}
+
+/** Result of an edit form save or create: the project id, or a message plus per-field errors. */
+export type ProjectFormResult = { ok: true; id: string } | { ok: false; error: string; fieldErrors?: FieldErrors };
+
+/**
+ * Drawer edit form and New project. Admin is re-checked here and again in ProjectService; every value
+ * goes through ProjectValidator (form rules) on the server, and its field errors go back to the form.
+ */
+class ProjectFormAction {
+  static async run(label: string, fn: (admin: Viewer) => Promise<{ id: string }>): Promise<ProjectFormResult> {
+    const viewer = await CurrentViewer.get();
+    if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
+    try {
+      const project = await fn(viewer);
+      revalidatePath("/");
+      revalidatePath("/admin/audit");
+      return { ok: true, id: project.id };
+    } catch (e) {
+      if (e instanceof ProjectValidationError) return { ok: false, error: "Fix the highlighted fields.", fieldErrors: e.errors };
+      if (e instanceof ProjectNotFoundError || e instanceof ProjectArchivedError) return { ok: false, error: "This project was deleted or no longer exists." };
+      console.error(`Admin action failed: ${label}`, e);
+      return { ok: false, error: "Could not save the change." };
+    }
+  }
+
+  /** Only form fields, as strings (anything else in the payload is dropped). */
+  static values(raw: unknown): Partial<ProjectFormValues> {
+    const out: Partial<ProjectFormValues> = {};
+    if (!raw || typeof raw !== "object") return out;
+    for (const key of Object.keys(ProjectFormModel.empty()) as (keyof ProjectFormValues)[]) {
+      const v = (raw as Record<string, unknown>)[key];
+      if (v !== undefined && v !== null) out[key] = String(v);
+    }
+    return out;
+  }
+}
+
+/** Save the changed non-People fields of a project together (one history entry). */
+export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>): Promise<ProjectFormResult> {
+  return ProjectFormAction.run("saveProjectForm", (admin) =>
+    ProjectService.saveForm(String(projectId), ProjectFormModel.toInput(ProjectFormAction.values(changes)), admin),
+  );
+}
+
+/** Create a project from the New project drawer (name and department required). */
+export async function createProjectFromForm(values: Partial<ProjectFormValues>): Promise<ProjectFormResult> {
+  return ProjectFormAction.run("createProjectFromForm", (admin) =>
+    ProjectService.createFromForm(ProjectFormModel.toInput(ProjectFormAction.values(values)), admin),
+  );
 }
 
 export async function saveViewSettings(context: string, value: unknown): Promise<AdminActionResult> {
