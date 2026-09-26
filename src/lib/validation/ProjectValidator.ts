@@ -2,6 +2,7 @@ import { Requester } from "@/lib/domain/Requester";
 import { z } from "zod";
 import { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
+import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
@@ -21,6 +22,8 @@ export interface ProjectInput {
   physicianChampion?: string | null;
   physicianChampionEmail?: string | null;
   requesterNotApplicable?: boolean;
+  /** One of AppConfig.CONTRACTS_LEADS (case/space tolerant) or blank. */
+  contractsLead?: string | null;
   status: ProjectStatus | string;
   nextMilestone?: string | null;
   dueDate?: string | null;
@@ -44,6 +47,7 @@ export interface ProjectData {
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
   requesterNotApplicable: boolean;
+  contractsLead: string | null;
   status: ProjectStatus;
   nextMilestone: string | null;
   dueDate: Date | null;
@@ -131,6 +135,7 @@ export class ProjectValidator {
       physicianChampion: project.physicianChampion,
       physicianChampionEmail: project.physicianChampionEmail,
       requesterNotApplicable: project.requesterNotApplicable,
+      contractsLead: project.contractsLead,
       status: project.status,
       nextMilestone: project.nextMilestone,
       dueDate: DateOnly.fromDbDate(project.dueDate),
@@ -202,6 +207,12 @@ export class ProjectValidator {
         ),
         owner: ProjectValidator.optionalText({ label: "Owner", length: ProjectValidator.NAME_MAX }),
         physicianChampion: ProjectValidator.optionalText(),
+        contractsLead: z
+          .preprocess((v) => (v === undefined ? null : v), z.string().nullable())
+          .superRefine((v, ctx) => {
+            if (ContractsLead.resolve(v) === undefined) ctx.addIssue({ code: "custom", message: ContractsLead.invalidMessage(String(v)) });
+          })
+          .transform((v) => ContractsLead.resolve(v) ?? null),
         physicianChampionEmail: z.preprocess(
           (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim().toLowerCase()) : v ?? null),
           z.email("Requester email is not a valid email").nullable(),

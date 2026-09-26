@@ -72,6 +72,7 @@ export class CompletedThisPeriod {
         inforRequestNumber: p.inforRequestNumber,
         physicianChampion: p.physicianChampion,
         requesterNotApplicable: p.requesterNotApplicable,
+        contractsLead: p.contractsLead ?? null,
         at: at.getTime(),
       });
     }

@@ -19,6 +19,7 @@ describe("ProjectCsv", () => {
       "service_area",
       "owner",
       "requester",
+      "contracts_lead",
       "status",
       "next_milestone",
       "due_date",

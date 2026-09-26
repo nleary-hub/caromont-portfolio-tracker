@@ -16,6 +16,7 @@ export class Factory {
       physicianChampion: null,
       physicianChampionEmail: null,
       requesterNotApplicable: false,
+      contractsLead: null,
       status: "OnTrack",
       nextMilestone: "Kickoff",
       dueDate: null,

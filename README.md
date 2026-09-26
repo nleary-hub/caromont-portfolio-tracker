@@ -256,9 +256,10 @@ See [docs/REPORTS.md](docs/REPORTS.md): renderer (`@react-pdf/renderer`, embedde
 - Title: **"Cardiac Service Line: Project Status Report"** (no em dashes in report copy).
 - Light theme, US Letter **landscape**, 0.5 in side margins (10.0 in content width).
 - Grouped by service area (report order), with a section header per area.
-- Two-line rows. Line 1 columns (inches): Project 2.2, Owner 1.0 (requester in small gray
-  under the owner; the line is dropped when the requester is Not applicable), Status 0.85, Next milestone 2.0, Due 0.6, Flags 3.35.
-- Line 2: the note, starting under Next milestone and running to the right margin (5.95 in), clipped
+- Two-line rows. Line 1 columns (inches): Project 2.2, Owner 1.35 (requester and "Contracts <name>" in small gray
+  under the owner; the requester line is dropped when it is Not applicable), Status 0.85, Next milestone 2.0, Due 0.6,
+  Flags 3.0. The owner column is 1.0 plus 0.35 for the contracts line, taken from Flags (`PdfReportLayout`).
+- Line 2: the note, starting under Next milestone and running to the right margin (5.6 in), clipped
   to two lines. A 200-char note fits in two lines at the report table size (see mockup `measurement.json`).
 - Rows never split across pages.
 - Page 1 shows "Completed FY27 to date N" (teal check and number) beside the Projects line; see docs/REPORTS.md.

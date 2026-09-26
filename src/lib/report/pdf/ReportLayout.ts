@@ -2,6 +2,7 @@ import type { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
+import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
@@ -132,6 +133,19 @@ export class CompletedBlockStyle {
   static readonly NAME_MAX_LINES = 3;
 }
 
+/**
+ * "Contracts Shea Waldron" under owner and requester, in the requester small gray style with the prefix at
+ * weight 500. Blank reads "Contracts To assign". If the line is wider than the owner column it wraps the
+ * name (no shrinking, no clipping); line 1 always starts with the prefix.
+ */
+export interface ContractsLine {
+  /** First line: prefix + text; later lines: text only (prefix null). */
+  lines: { prefix: string | null; text: string }[];
+  /** Width of the prefix (the name starts after it on line 1). */
+  prefixW: number;
+  missing: boolean;
+}
+
 /** One laid-out row of a "Completed this period" block. x values are relative to the content left. */
 export interface CompletedRowLayout {
   projectId: string;
@@ -141,7 +155,7 @@ export interface CompletedRowLayout {
   name: { x: number; w: number; lines: string[] };
   /** REQ number in the Infor slot under the name (null when none or hidden). */
   req: MetaRun | null;
-  owner: { x: number; w: number; owner: string; ownerMissing: boolean; champion: string | null } | null;
+  owner: { x: number; w: number; owner: string; ownerMissing: boolean; champion: string | null; contracts: ContractsLine | null } | null;
   /** Check and completion date ("Sep 22"), in the status column. */
   date: { x: number; w: number; text: string } | null;
   accomplishment: { x: number; w: number; lines: string[] } | null;
@@ -197,6 +211,8 @@ export type RowCell =
       /** Requester line. Null when the column is hidden or the requester is Not applicable. */
       champion: string | null;
       championMissing: boolean;
+      /** "Contracts <name>" line(s) under the requester; null when the column is hidden. */
+      contracts: ContractsLine | null;
     }
   | { kind: "status"; x: number; w: number; pill: PillBox; change: StatusChange | null }
   | { kind: "nextMilestone"; x: number; w: number; lines: string[]; muted: boolean }
@@ -396,12 +412,14 @@ export class ReportLayout {
   /**
    * Where the note goes: from the first column after the last column that has line-2 content
    * (project spans both lines, requester sits under owner, the status change under status) to the
-   * right margin. With the default order that is Next milestone to the margin (5.95 in).
+   * right margin. With the default order that is Next milestone to the margin (5.6 in).
    */
   static notePlacement(settings: ViewSettingsValue): { x: number; w: number; ownLine: boolean } {
     const cols = ReportLayout.columns(settings);
     const hasLineTwo = (k: LayoutColumn["key"]) =>
-      k === "project" || k === "status" || (k === "owner" && PdfReportLayout.showsChampion(settings));
+      k === "project" ||
+      k === "status" ||
+      (k === "owner" && (PdfReportLayout.showsChampion(settings) || PdfReportLayout.showsContracts(settings)));
     let last = -1;
     cols.forEach((c, i) => {
       if (hasLineTwo(c.key)) last = i;
@@ -484,7 +502,9 @@ export class ReportLayout {
           // Blank owner or requester reads "To assign" (muted). A requester marked Not applicable drops its line.
           const requester = showsChampion ? Requester.display(row.physicianChampion, row.requesterNotApplicable) : null;
           const champion = requester ? TextMeasure.fitLine(m, requester.text, inner, S.small, 400) : null;
-          if (champion) lineTwoH = Math.max(lineTwoH, g.SMALL_LH);
+          const contracts = PdfReportLayout.showsContracts(settings) ? ReportLayout.contractsLine(m, row.contractsLead ?? null, inner) : null;
+          const stackH = (champion ? g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
+          if (stackH) lineTwoH = Math.max(lineTwoH, stackH);
           cells.push({
             kind: "owner",
             x: col.x,
@@ -493,6 +513,7 @@ export class ReportLayout {
             ownerMissing: !Assignee.isAssigned(row.owner),
             champion,
             championMissing: requester?.muted ?? false,
+            contracts,
           });
           break;
         }
@@ -560,6 +581,32 @@ export class ReportLayout {
     return { projectId: row.projectId, height: g.ROW_PAD * 2 + content + g.ROW_BORDER, cells, note, lineTwoY };
   }
 
+  /** Weight of the "Contracts" prefix (the name is regular). */
+  static readonly CONTRACTS_PREFIX_WEIGHT = 500;
+
+  /** Lay out "Contracts <name or To assign>" at the requester size within `w`; wraps the name if needed. */
+  static contractsLine(m: Measurer, lead: string | null, w: number): ContractsLine {
+    const S = ReportGeometry.SIZE;
+    const prefix = `${ContractsLead.PREFIX} `;
+    const name = Assignee.label(lead);
+    const prefixW = m.width(prefix, S.small, ReportLayout.CONTRACTS_PREFIX_WEIGHT);
+    const lines: ContractsLine["lines"] = [];
+    let current = "";
+    let avail = w - prefixW;
+    for (const word of name.split(/\s+/)) {
+      const next = current ? `${current} ${word}` : word;
+      if (m.width(next, S.small, 400) <= avail || !current) {
+        current = next;
+        continue;
+      }
+      lines.push({ prefix: lines.length === 0 ? prefix : null, text: current });
+      current = word;
+      avail = w;
+    }
+    lines.push({ prefix: lines.length === 0 ? prefix : null, text: TextMeasure.fitLine(m, current, avail, S.small, 400) });
+    return { lines, prefixW, missing: !Assignee.isAssigned(lead) };
+  }
+
   /** Section head count text: "2 projects · 2 completed this period" (second part only when non-zero). */
   static sectionCountText(count: number, completedCount: number): string {
     const projects = `${count} ${count === 1 ? "project" : "projects"}`;
@@ -596,14 +643,17 @@ export class ReportLayout {
       const champion = requester
         ? TextMeasure.fitLine(m, requester.text, w, S.small, 400)
         : null;
+      const contracts = PdfReportLayout.showsContracts(settings) ? ReportLayout.contractsLine(m, row.contractsLead ?? null, w) : null;
       owner = {
         x: ownerCol.x,
         w,
         owner: TextMeasure.fitLine(m, Assignee.label(row.owner), w, S.table, 400),
         ownerMissing: !Assignee.isAssigned(row.owner),
         champion,
+        contracts,
       };
-      h = Math.max(h, g.TABLE_LH + (champion ? g.LINE_GAP + g.SMALL_LH : 0));
+      const stackH = (champion ? g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
+      h = Math.max(h, g.TABLE_LH + (stackH ? g.LINE_GAP + stackH : 0));
     }
 
     const statusCol = col("status");
