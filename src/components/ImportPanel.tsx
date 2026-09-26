@@ -105,7 +105,7 @@ export function ImportPanel({ adminEmail, templateColumns, limits, adminMenu, se
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-topbar px-6 backdrop-blur-[20px]">
-        <Link href="/" className="flex min-w-0 shrink items-center gap-2.5">
+        <Link href="/" className="flex shrink-0 items-center gap-2.5">
           <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
           <ServiceLineLabel value={serviceLine} />
         </Link>

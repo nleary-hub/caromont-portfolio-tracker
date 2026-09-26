@@ -244,7 +244,7 @@ export function ProjectDashboard({
   return (
     <div className="relative min-h-screen">
       <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-topbar px-6 backdrop-blur-[20px]">
-        <div className="flex min-w-0 shrink items-center gap-2.5">
+        <div className="flex shrink-0 items-center gap-2.5">
           <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
           <ServiceLineLabel value={serviceLine} />
         </div>
@@ -253,7 +253,7 @@ export function ProjectDashboard({
           type="button"
           disabled
           title="Report history coming soon"
-          className="flex h-8 items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 text-muted"
+          className="flex h-8 shrink-0 items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 whitespace-nowrap text-muted"
         >
           {latestReport ? (
             <>
@@ -267,7 +267,7 @@ export function ProjectDashboard({
           )}
         </button>
         <div className="flex-1" />
-        <label className="flex h-8 w-80 shrink-0 items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 text-muted type-table">
+        <label className="flex h-8 w-80 min-w-40 shrink items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 text-muted type-table">
           <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
             <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
             <path d="M9.5 9.5L13 13" stroke="currentColor" strokeWidth="1.5" />
@@ -285,7 +285,7 @@ export function ProjectDashboard({
         {admin && settings && (
           <ViewSettingsPicker settings={settings} counts={admin.pickerCounts} onSave={saveSettings} />
         )}
-        <Link href="/reports" className="type-table-strong text-muted hover:text-fg">
+        <Link href="/reports" className="shrink-0 whitespace-nowrap type-table-strong text-muted hover:text-fg">
           Reports
         </Link>
         {admin && (
@@ -293,7 +293,7 @@ export function ProjectDashboard({
             href="/api/reports/preview"
             download
             title="Download a draft PDF from live data. Not an official snapshot; nothing is saved or sent."
-            className="flex h-8 items-center rounded-control bg-accent px-3.5 text-white type-table-strong"
+            className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"
           >
             Generate PDF now
           </a>

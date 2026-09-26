@@ -187,7 +187,7 @@ describe("ServiceLineLabel (responsive top bar name)", () => {
   const html = renderToStaticMarkup(createElement(ServiceLineLabel, { value: SEED }));
 
   it("renders the full name (visible from the topbar breakpoint up, screen-reader text below it)", () => {
-    expect(html).toContain('class="sr-only topbar:not-sr-only topbar:block topbar:truncate" data-service-line-full="">Cardiovascular &amp; Pulmonary Service Line</span>');
+    expect(html).toContain('class="sr-only topbar:not-sr-only topbar:block topbar:whitespace-nowrap" data-service-line-full="">Cardiovascular &amp; Pulmonary Service Line</span>');
   });
 
   it("renders the short name below the breakpoint with the full name as its tooltip", () => {

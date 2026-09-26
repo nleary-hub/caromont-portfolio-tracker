@@ -9,7 +9,7 @@ import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
 export function ServiceLineLabel({ value, className = "" }: { value: ServiceLineValue; className?: string }) {
   return (
     <span className={`min-w-0 type-title ${className}`} data-service-line="">
-      <span className="sr-only topbar:not-sr-only topbar:block topbar:truncate" data-service-line-full="">
+      <span className="sr-only topbar:not-sr-only topbar:block topbar:whitespace-nowrap" data-service-line-full="">
         {value.name}
       </span>
       <span aria-hidden="true" title={value.name} className="topbar:hidden" data-service-line-short="">
