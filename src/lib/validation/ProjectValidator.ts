@@ -8,6 +8,8 @@ import type { ProjectRecord } from "@/lib/domain/types";
 /** Editable project fields as received from a form/API. Dates are "YYYY-MM-DD". */
 export interface ProjectInput {
   name: string;
+  /** Optional "what the project is" text, max AppConfig.DESCRIPTION_MAX_LENGTH. */
+  description?: string | null;
   serviceArea: ServiceArea | string;
   owner: string;
   physicianChampion?: string | null;
@@ -24,6 +26,7 @@ export interface ProjectInput {
 /** Normalized, validated, Prisma-ready project fields. */
 export interface ProjectData {
   name: string;
+  description: string | null;
   serviceArea: ServiceArea;
   owner: string;
   physicianChampion: string | null;
@@ -58,6 +61,8 @@ export class ProjectValidationError extends Error {
 export class ProjectValidator {
   static readonly NOTE_MAX = AppConfig.NOTE_MAX_LENGTH;
   static readonly NAME_MAX = AppConfig.SHORT_TEXT_MAX_LENGTH;
+  static readonly MILESTONE_MAX = AppConfig.MILESTONE_MAX_LENGTH;
+  static readonly DESCRIPTION_MAX = AppConfig.DESCRIPTION_MAX_LENGTH;
 
   private static readonly schema = ProjectValidator.buildSchema();
 
@@ -84,6 +89,7 @@ export class ProjectValidator {
   static toInput(project: ProjectRecord): ProjectInput {
     return {
       name: project.name,
+      description: project.description,
       serviceArea: project.serviceArea,
       owner: project.owner,
       physicianChampion: project.physicianChampion,
@@ -98,10 +104,11 @@ export class ProjectValidator {
     };
   }
 
-  private static optionalText() {
+  private static optionalText(max?: { label: string; length: number }) {
+    const base = max ? z.string().max(max.length, `${max.label} must be at most ${max.length} characters`) : z.string();
     return z.preprocess(
       (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim()) : v ?? null),
-      z.string().nullable(),
+      base.nullable(),
     );
   }
 
@@ -134,6 +141,10 @@ export class ProjectValidator {
     return z
       .object({
         name: ProjectValidator.requiredText("Name", ProjectValidator.NAME_MAX),
+        description: ProjectValidator.optionalText({
+          label: "Description",
+          length: ProjectValidator.DESCRIPTION_MAX,
+        }),
         serviceArea: z.enum(ServiceArea, { error: "Service area must be one of the defined areas" }),
         owner: ProjectValidator.requiredText("Owner", ProjectValidator.NAME_MAX),
         physicianChampion: ProjectValidator.optionalText(),
@@ -142,7 +153,10 @@ export class ProjectValidator {
           z.email("Physician champion email is not a valid email").nullable(),
         ),
         status: z.enum(ProjectStatus, { error: "Status must be one of the defined statuses" }),
-        nextMilestone: ProjectValidator.optionalText(),
+        nextMilestone: ProjectValidator.optionalText({
+          label: "Next milestone",
+          length: ProjectValidator.MILESTONE_MAX,
+        }),
         dueDate: ProjectValidator.optionalDate("Due date"),
         targetCompletion: ProjectValidator.optionalDate("Target completion"),
         percentComplete: z.preprocess(

@@ -42,6 +42,8 @@ or Docker `postgres:16`.
 | `npm run db:migrate` | `prisma migrate deploy` (use in CI / Vercel build) |
 | `npm run db:migrate:dev` | `prisma migrate dev` (create new migrations locally) |
 | `npm run db:seed` | Sample data (refuses in production or if projects exist) |
+| `npm run import:csv -- file.csv [--update-wording] [--commit] [--as admin@...]` | CSV import via `DATABASE_URL` (dry run unless `--commit`) |
+| `npm run export:csv -- out.csv` | CSV export (id + template columns) of non-archived projects |
 
 ## Environment variables
 
@@ -52,7 +54,7 @@ See `.env.example` for the full annotated list.
 | `DATABASE_URL` | yes | Postgres connection string (pooled URL on Vercel/Neon) |
 | `AUTH_SECRET` | yes | `npx auth secret` or `openssl rand -base64 32` |
 | `ALLOWED_EMAILS` | yes | Comma/space separated emails or `@domain` entries. Empty = nobody (fails closed) |
-| `ADMIN_EMAILS` | no | Same format. Admins (must also be allowlisted) change view settings, hide/delete projects, open `/admin/audit`. Empty = no admins (fails closed) |
+| `ADMIN_EMAILS` | no | Same format. Admins (must also be allowlisted) change view settings, hide/delete projects, open `/admin/audit` and `/admin/import`. Empty = no admins (fails closed) |
 | `AUTH_MICROSOFT_ENTRA_ID_ID` / `_SECRET` / `_ISSUER` | optional | Enables Microsoft sign-in. Use the tenant-specific issuer |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | Enables Google sign-in |
 | `AUTH_DEV_LOGIN` | optional | `true` enables the email-only dev form (never in production) |
@@ -81,7 +83,8 @@ OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 - `ServiceArea`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR (this is the report order).
 - `ProjectStatus`: NotStarted, OnTrack, AtRisk, OffTrack, OnHold, Complete, Cancelled
   (labels in `ProjectStatusInfo`).
-- `Project`: soft delete only (admin "Delete" sets `archivedAt` + `deletedBy`; the DB blocks hard deletes;
+- `Project`: optional `description` (what the project is; migration `0010_project_description`; not shown
+  in the UI or report yet); soft delete only (admin "Delete" sets `archivedAt` + `deletedBy`; the DB blocks hard deletes;
   record and history are kept). Admin per-project hide: `hiddenFromDashboard`, `hiddenFromReport`
   (migration 0003). `closedReportedAt` is deprecated and unused (kept so no data is dropped).
 - `ProjectHistory`: append-only audit trail. Hide/unhide/delete/restore changes are recorded here too
@@ -101,6 +104,8 @@ OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 | Rule | App | Database (migration 0001) |
 | --- | --- | --- |
 | Note max 200 chars | `ProjectValidator` using `AppConfig.NOTE_MAX_LENGTH` | (none, by design: single constant) |
+| Next milestone max 40 chars | `ProjectValidator` using `AppConfig.MILESTONE_MAX_LENGTH` | (none, by design: single constant) |
+| Description (optional) max 200 chars | `ProjectValidator` using `AppConfig.DESCRIPTION_MAX_LENGTH` | (none, by design: single constant) |
 | Next milestone required unless Complete/Cancelled | `ProjectValidator` | CHECK constraint |
 | Percent complete 0 to 100 | `ProjectValidator` | CHECK constraint |
 | History written in the same transaction | `ProjectService` (only write path) | n/a |
@@ -153,6 +158,8 @@ to a PGlite Postgres instance and exercising the services and guards.
 - `DashboardViewModel`: dashboard rows (through `VisibilityPolicy`), tile counts from those rows,
   filters, admin-only picker counts.
 - `AppConfig`: single constants (note limit 200, time zone).
+- `ProjectCsv`, `ImportService`, `ExportService` (src/lib/import): CSV template, parsing, dry run,
+  all-or-nothing commit, export. Admin checks use `AdminPolicy` (via `AdminGate` for pages and routes).
 
 ## UI
 
@@ -175,6 +182,34 @@ utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes a
 - `/admin/audit` (ADMIN ONLY, 404 for everyone else): hidden and deleted projects with Unhide/Restore
   (which write audit rows), view settings in effect, and recent admin changes.
 - All admin mutations are Server Actions in `src/app/actions/admin.ts`, which re-check admin per call.
+
+## CSV import and export (admin)
+
+Admins (`ADMIN_EMAILS`, see `AdminPolicy`) get `/admin/import`; everyone else gets a 404 (page, Server
+Functions and download routes all re-check server-side via `AdminGate`). There is no nav link yet; go to
+the URL directly.
+
+- **Template:** `docs/project-import-template.csv` (also "Download template" on the page). Columns:
+  `name, description, service_area, owner, physician_champion, physician_champion_email, status, next_milestone,
+  due_date, percent_complete, note, include_in_report`. The two `Example:` rows are fake and are skipped.
+  - `service_area`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR. `status`: Not started, On track, At risk,
+    Off track, On hold, Complete, Cancelled. Case and spaces do not matter (`on track`, `OnTrack`).
+  - `due_date`: YYYY-MM-DD or M/D/YYYY. `percent_complete`: 0 to 100 (a trailing % is fine).
+    `include_in_report`: yes/no (blank = yes). `description` is optional (blank is fine; the column
+    may be left out). `description` max 200, `note` max 200, `next_milestone` max 40 (`AppConfig`).
+- **New projects mode:** every row is validated with `ProjectValidator`; the preview shows per-row errors.
+  Rows matching a non-archived project by (name, service area), ignoring case and extra spaces, are
+  skipped with a warning and never overwritten. "Import N projects" is all-or-nothing in one
+  transaction, through `ProjectService`, so each project gets its `created` history row
+  (`changedBy` = the admin, `comment` = `csv_import`). Any row error blocks the whole import.
+- **Wording update mode** (the Writing Bot round-trip): "Export CSV" (or `npm run export:csv`) writes
+  `id` + the template columns for non-archived projects. Edit `description` / `note` / `next_milestone`,
+  then upload with the wording option (or `--update-wording`). Rows match by `id` only. If any other
+  column differs from the database, the row is rejected. `description` may be left out of a wording
+  file (it is then unchanged); `id`, `note` and `next_milestone` are required. The preview shows old versus new per row; commit is all-or-nothing
+  through `ProjectService.updateInTx`, writing field history rows with `comment` = `csv_wording_update`.
+- **CLI:** `npm run import:csv -- file.csv` is a dry run; add `--commit --as admin@...` (or set
+  `IMPORT_ACTOR_EMAIL`) to save. The actor must be in `ADMIN_EMAILS`. Loads `.env.local`, then `.env`.
 
 ## Report PDF, freeze and delivery
 
