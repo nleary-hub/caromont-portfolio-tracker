@@ -4,7 +4,7 @@ Internal app for Cardiac Procedure Services (CaroMont Health). Tracks every proj
 cardiac service line and produces a biweekly PDF status report (one project per row, not SBAR).
 Sign-in is required for every page.
 
-**Status:** local scaffold. Not yet pushed to GitHub or deployed to Vercel.
+**Status:** scaffold on GitHub; hosted on Vercel (project `caromont-portfolio-tracker`). See "Deploying on Vercel".
 
 ## Stack
 
@@ -36,10 +36,11 @@ or Docker `postgres:16`.
 | --- | --- |
 | `npm run dev` | Next dev server |
 | `npm run build` | `prisma generate && next build` |
+| `npm run build:vercel` | Vercel build (`scripts/vercel-build.sh`): generate, `migrate deploy` when safe, build |
 | `npm run lint` | ESLint (next/core-web-vitals + TypeScript) |
 | `npm run typecheck` | `prisma generate && tsc --noEmit` |
 | `npm test` | Vitest unit tests |
-| `npm run db:migrate` | `prisma migrate deploy` (use in CI / Vercel build) |
+| `npm run db:migrate` | `prisma migrate deploy` (run automatically by the Vercel build; see below) |
 | `npm run db:migrate:dev` | `prisma migrate dev` (create new migrations locally) |
 | `npm run db:seed` | Sample data (refuses in production or if projects exist) |
 | `npm run import:csv -- file.csv [--update-wording] [--commit] [--as admin@...]` | CSV import via `DATABASE_URL` (dry run unless `--commit`) |
@@ -51,10 +52,11 @@ See `.env.example` for the full annotated list.
 
 | Variable | Required | Notes |
 | --- | --- | --- |
-| `DATABASE_URL` | yes | Postgres connection string (pooled URL on Vercel/Neon) |
+| `DATABASE_URL` | yes | Postgres connection string used by the app at runtime (pooled URL on Vercel/Neon) |
+| `DATABASE_URL_UNPOOLED` | recommended on Neon | Direct (non-pooled) URL used by the Prisma CLI (`migrate deploy`/`dev`). Falls back to `DATABASE_URL` if unset. Set automatically by the Vercel Neon integration |
 | `AUTH_SECRET` | yes | `npx auth secret` or `openssl rand -base64 32` |
 | `ALLOWED_EMAILS` | yes | Comma/space separated emails or `@domain` entries. Empty = nobody (fails closed) |
-| `ADMIN_EMAILS` | no | Same format. Admins (must also be allowlisted) change view settings, hide/delete projects, open `/admin/audit` and `/admin/import`. Empty = no admins (fails closed) |
+| `ADMIN_EMAILS` | no | Same format. Admins (must also be allowlisted) change view settings, hide/delete projects, open `/admin/audit`, use `/admin/import`. Empty = no admins (fails closed) |
 | `AUTH_MICROSOFT_ENTRA_ID_ID` / `_SECRET` / `_ISSUER` | optional | Enables Microsoft sign-in. Use the tenant-specific issuer |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | Enables Google sign-in |
 | `AUTH_DEV_LOGIN` | optional | `true` enables the email-only dev form (never in production) |
@@ -62,6 +64,20 @@ See `.env.example` for the full annotated list.
 
 OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
 `https://<domain>/api/auth/callback/google`.
+
+## Deploying on Vercel
+
+- `main` deploys to Production; every PR gets a Preview deployment (Git integration).
+- `vercel.json` sets the build command to `sh scripts/vercel-build.sh`, which runs
+  `prisma generate`, then `prisma migrate deploy`, then `next build`.
+- Migrations run only when `DATABASE_URL_UNPOOLED` or `DATABASE_URL` is set and the deployment is Production, or when
+  `PRISMA_MIGRATE_ON_PREVIEW=true` is set for Preview. Only set that when Preview has its own
+  database (for example a Neon branch per preview); otherwise PR migrations would hit the production DB.
+- `prisma migrate deploy` uses the direct connection `DATABASE_URL_UNPOOLED` when present
+  (`prisma.config.ts`), because migrations over Neon's PgBouncer pooler can fail (advisory locks,
+  prepared statements). The running app keeps using the pooled `DATABASE_URL` via `@prisma/adapter-pg`;
+  no `pgbouncer=true` flag is needed with driver adapters.
+- All secrets live in Vercel Project Settings > Environment Variables, never in the repo.
 
 ## Auth model
 
@@ -159,9 +175,10 @@ to a PGlite Postgres instance and exercising the services and guards.
 - `ViewSettings` (pure): defaults, normalization, locked columns (Project, Status), toggles, reorder. `ViewSettingsService`: `get`, `getAll`, `update`, `reset`; writes history per change.
 - `DashboardViewModel`: dashboard rows (through `VisibilityPolicy`), tile counts from those rows,
   filters, admin-only picker counts.
-- `AppConfig`: single constants (note limit 200, time zone).
+- `AppConfig`: single constants (note limit 200, description limit 200, next milestone limit 40, import row limit 500, time zone).
 - `ProjectCsv`, `ImportService`, `ExportService` (src/lib/import): CSV template, parsing, dry run,
-  all-or-nothing commit, export. Admin checks use `AdminPolicy` (via `AdminGate` for pages and routes).
+  all-or-nothing commit, export (admin-only, so it lists every non-archived project including hidden ones).
+  `AdminGate` (src/lib/auth): 404 gate for `/admin/import`, built on `AdminPolicy`.
 
 ## UI
 
@@ -225,7 +242,7 @@ the URL directly.
   but changing it rejects the row. The preview shows old versus new per row; commit is all-or-nothing
   through `ProjectService.updateInTx`, writing field history rows with `comment` = `csv_wording_update`.
 - **CLI:** `npm run import:csv -- file.csv` is a dry run; add `--commit --as admin@...` (or set
-  `IMPORT_ACTOR_EMAIL`) to save. The actor must be in `ADMIN_EMAILS`. Loads `.env.local`, then `.env`.
+  `IMPORT_ACTOR_EMAIL`) to save. The actor must be an admin (`ADMIN_EMAILS`, and also on `ALLOWED_EMAILS`). Loads `.env.local`, then `.env`.
 
 ## Report PDF, freeze and delivery
 
