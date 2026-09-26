@@ -14,6 +14,8 @@ interface State {
   deliveries: Row[];
   reportOptions: Row[];
   reportOptionsHistory: Row[];
+  serviceLineSettings: Row[];
+  serviceLineSettingsHistory: Row[];
 }
 
 /**
@@ -33,6 +35,8 @@ export class FakeDb {
     deliveries: [],
     reportOptions: [],
     reportOptionsHistory: [],
+    serviceLineSettings: [],
+    serviceLineSettingsHistory: [],
   };
   writes: { model: string; op: string; inTx: boolean; txId: number | null }[] = [];
   transactions = 0;
@@ -52,6 +56,8 @@ export class FakeDb {
       deliveries: c(state.deliveries),
       reportOptions: c(state.reportOptions),
       reportOptionsHistory: c(state.reportOptionsHistory),
+      serviceLineSettings: c(state.serviceLineSettings),
+      serviceLineSettingsHistory: c(state.serviceLineSettingsHistory),
     };
   }
 
@@ -245,6 +251,36 @@ export class FakeDb {
           this.state.reportOptionsHistory.push(row);
           return { ...row };
         },
+      },
+      serviceLineSettings: {
+        findUnique: async ({ where }: { where: { id: string } }) => {
+          const r = this.state.serviceLineSettings.find((o) => o.id === where.id);
+          return r ? { ...r } : null;
+        },
+        upsert: async ({ where, create, update }: { where: { id: string }; create: Row; update: Row }) => {
+          rec("serviceLineSettings", "upsert");
+          const r = this.state.serviceLineSettings.find((o) => o.id === where.id);
+          if (r) {
+            Object.assign(r, update, { updatedAt: new Date() });
+            return { ...r };
+          }
+          const row = { ...create, updatedAt: new Date() };
+          this.state.serviceLineSettings.push(row);
+          return { ...row };
+        },
+      },
+      serviceLineSettingsHistory: {
+        create: async ({ data }: { data: Row }) => {
+          rec("serviceLineSettingsHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), ...data };
+          this.state.serviceLineSettingsHistory.push(row);
+          return { ...row };
+        },
+        findMany: async ({ take }: { orderBy?: unknown; take?: number } = {}) =>
+          [...this.state.serviceLineSettingsHistory]
+            .sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime())
+            .slice(0, take ?? undefined)
+            .map((r) => ({ ...r })),
       },
       reportDelivery: {
         create: async ({ data }: { data: Row }) => {

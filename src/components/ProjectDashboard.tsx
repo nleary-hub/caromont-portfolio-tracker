@@ -17,6 +17,8 @@ import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import type { AdminMenuItem } from "@/lib/admin/AdminMenu";
+import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
+import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { Flags, StatusPill } from "./StatusPill";
 
@@ -65,6 +67,8 @@ interface Props {
   /** "Completed FY27 to date N" (same rule as report page 1). */
   completedFiscalYear?: FiscalYearCount | null;
   loadError: string | null;
+  /** Service line name setting (top bar lockup). */
+  serviceLine: ServiceLineValue;
   admin?: AdminDashboardProps;
   signOutAction: () => Promise<void>;
 }
@@ -180,6 +184,7 @@ export function ProjectDashboard({
   latestReport,
   completedFiscalYear,
   loadError,
+  serviceLine,
   columns: columnsProp,
   admin,
   signOutAction,
@@ -239,9 +244,9 @@ export function ProjectDashboard({
   return (
     <div className="relative min-h-screen">
       <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-topbar px-6 backdrop-blur-[20px]">
-        <div className="flex items-center gap-2.5">
-          <div className="grid size-[26px] place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
-          <span className="type-title">Service Line Portfolio</span>
+        <div className="flex min-w-0 shrink items-center gap-2.5">
+          <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
+          <ServiceLineLabel value={serviceLine} />
         </div>
         <div className="h-6 w-px bg-line" />
         <button

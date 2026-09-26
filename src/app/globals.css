@@ -27,6 +27,14 @@
   --font-sans: var(--font-family);
 }
 
+/*
+ * Top bar breakpoint (the one place to adjust it): at 40rem (640px) and wider the top bar shows the full
+ * service line name; below it, the short name (ServiceLineLabel). Creates the `topbar:` variant.
+ */
+@theme {
+  --breakpoint-topbar: 40rem;
+}
+
 /* Type scale utilities (font shorthand tokens). */
 @utility type-title { font: var(--app-title); }
 @utility type-heading { font: var(--app-heading); }

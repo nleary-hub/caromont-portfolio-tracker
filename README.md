@@ -151,6 +151,13 @@ Notes:
 - `view_settings` (`ViewSettings`): one global row per context (`dashboard`, `report`) with `columnOrder`,
   `hiddenColumns`, `hiddenStatuses`. Seeded by migration 0002 (Complete and Cancelled hidden). Never deleted.
 - `view_settings_history` (`ViewSettingsHistory`): append-only audit of every change (who, when, old, new).
+- `service_line_settings` (`ServiceLineSettings`): one row with `service_line_name` and `service_line_short`
+  (seeded by migration 0014 with "Cardiovascular & Pulmonary Service Line" / "CVPSL"; name up to 80, short up to
+  12, DB check constraints as backstop). Read and written only through `ServiceLineService`; reads fall back to
+  the seed. `service_line_settings_history`: append-only audit of every change (old, new, who, when).
+- `ReportSnapshot.serviceLineJson`: the service line name at freeze (immutable). The report title is
+  "<name>: Project Status Report". Snapshots frozen before 0014 have no value and keep the old title
+  "Cardiac Service Line: Project Status Report".
 
 ### Guarantees and where they are enforced
 
@@ -242,6 +249,11 @@ utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes a
   that others see."
 - Drawer admin controls (ADMIN ONLY, `ProjectAdminControls`): Hide from dashboard, Hide from report,
   Delete project (soft, with confirm).
+- Top bar lockup: the service line name (`ServiceLineLabel`). Full name from the `topbar` breakpoint (640px,
+  defined once as `--breakpoint-topbar` in `globals.css`) up; below it the short name with the full name as a
+  tooltip and accessible name.
+- Admin menu (gear "Admin", ADMIN ONLY, `AdminMenu` / `AdminMenuButton`): every admin route and action.
+- `/admin/settings` (ADMIN ONLY, 404 for everyone else): service line name and short name form, with recent changes.
 - `/admin/audit` (ADMIN ONLY, 404 for everyone else): hidden and deleted projects with Unhide/Restore
   (which write audit rows), view settings in effect, and recent admin changes.
 - All admin mutations are Server Actions in `src/app/actions/admin.ts`, which re-check admin per call.

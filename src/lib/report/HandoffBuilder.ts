@@ -19,6 +19,8 @@ export interface HandoffInput {
   pdf: { fileName: string; sha256: string; byteSize: number };
   baseUrl: string | null;
   reportRecipient: string | null;
+  /** Service line name frozen with the snapshot (absent before 0014: legacy title). */
+  serviceLineName?: string;
 }
 
 export interface HandoffFlagged {
@@ -92,7 +94,7 @@ export class HandoffBuilder {
     const stale = input.rows.filter((r) => r.stale);
     return {
       schemaVersion: 1,
-      title: PdfReportLayout.TITLE,
+      title: PdfReportLayout.title(input.serviceLineName),
       snapshotId: input.snapshotId,
       reportDate: input.reportDate,
       period: { start: input.periodStart, end: input.periodEnd, label: ReportFormat.period(input.periodStart, input.periodEnd) },

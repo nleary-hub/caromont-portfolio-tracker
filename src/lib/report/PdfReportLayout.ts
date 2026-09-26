@@ -1,3 +1,4 @@
+import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { ViewSettings, type ViewColumn, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 
 export interface LayoutColumn {
@@ -10,7 +11,16 @@ export interface LayoutColumn {
  * ReportLayout (src/lib/report/pdf) renders from these constants, so the spec lives in one place.
  */
 export class PdfReportLayout {
-  static readonly TITLE = "Cardiac Service Line: Project Status Report";
+  /**
+   * Title used when no service line name is given: snapshots frozen before migration 0014 (no
+   * serviceLineJson) and design samples. Live reports use ServiceLine.reportTitle(setting).
+   */
+  static readonly TITLE = ServiceLine.reportTitle({ name: ServiceLine.LEGACY_REPORT_NAME });
+
+  /** Report title for a service line name (legacy title when absent). */
+  static title(serviceLineName: string | null | undefined): string {
+    return serviceLineName ? ServiceLine.reportTitle({ name: serviceLineName }) : PdfReportLayout.TITLE;
+  }
   static readonly PAGE = { size: "Letter", orientation: "landscape", widthIn: 11, heightIn: 8.5, theme: "light" } as const;
 
   /** Owner column before the Contracts lead line (Figma spec). */

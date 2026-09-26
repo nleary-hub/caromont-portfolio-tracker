@@ -37,6 +37,12 @@ export interface ReportDocInput {
    * snapshots frozen before migration 0012: no blocks and no count on page 1.
    */
   completed?: readonly CompletedRow[];
+  /**
+   * Service line name for the title ("<name>: Project Status Report"): the admin setting for drafts, the
+   * frozen name for snapshots. Absent for snapshots frozen before migration 0014 and for samples, which
+   * keep the legacy title (PdfReportLayout.TITLE).
+   */
+  serviceLineName?: string;
 }
 
 /** Geometry in PDF points (1 in = 72 pt). Mirrors portfolio-tracker-mockups/report.css. */
@@ -777,7 +783,7 @@ export class ReportLayout {
       }
     }
     return {
-      title: PdfReportLayout.TITLE,
+      title: PdfReportLayout.title(input.serviceLineName),
       reportDateLong: ReportFormat.longDate(input.reportDate),
       reportDateMedium: ReportFormat.mediumDate(input.reportDate),
       period,
@@ -792,7 +798,7 @@ export class ReportLayout {
       meta,
       strip,
       columns: cols,
-      footerLeft: `${input.draft ? "Draft" : "Generated"} ${generated} \u00b7 ${PdfReportLayout.TITLE}${
+      footerLeft: `${input.draft ? "Draft" : "Generated"} ${generated} \u00b7 ${PdfReportLayout.title(input.serviceLineName)}${
         input.exampleData ? " \u00b7 Example data (fictional sample projects)" : ""
       }`,
     };

@@ -6,6 +6,8 @@ import { ChampionCheck } from "@/lib/report/ChampionCheck";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import { CompletedThisPeriod } from "@/lib/report/CompletedThisPeriod";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
+import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
+import { ServiceLineService } from "@/lib/services/ServiceLineService";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
@@ -20,6 +22,8 @@ export interface LiveReportData {
   completed: CompletedRow[];
   viewSettings: ViewSettingsValue;
   options: ReportOptionsValue;
+  /** Service line name setting (frozen into the snapshot; used for the report title). */
+  serviceLine: ServiceLineValue;
   reportDate: string;
   previousSnapshotGeneratedAt: Date | null;
 }
@@ -45,6 +49,7 @@ export class ReportDataLoader {
     const recipients = await db.recipient.findMany({ where: { active: true } });
     const viewSettings = await ViewSettingsService.get("report", db);
     const options = await ReportOptionsService.get(db);
+    const serviceLine = await ServiceLineService.get(db);
 
     const previousSnapshotGeneratedAt = previous?.generatedAt ?? null;
     const { rows, header } = ReportBuilder.build({
@@ -62,6 +67,6 @@ export class ReportDataLoader {
     const completed = CompletedThisPeriod.select({ projects, history, viewSettings, cutoff: now });
     // Frozen with the header (headerJson), so a frozen report keeps its count.
     header.completedFiscalYear = CompletedFiscalYear.count({ projects, history, reportDate });
-    return { rows, header, missingChampions, completed, viewSettings, options, reportDate, previousSnapshotGeneratedAt };
+    return { rows, header, missingChampions, completed, viewSettings, options, serviceLine, reportDate, previousSnapshotGeneratedAt };
   }
 }

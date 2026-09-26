@@ -5,6 +5,7 @@ import { AdminGate } from "@/lib/auth/AdminGate";
 import { AdminPolicy } from "@/lib/auth/AdminPolicy";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { ProjectCsv } from "@/lib/import/ProjectCsv";
+import { ServiceLineService } from "@/lib/services/ServiceLineService";
 
 export const metadata: Metadata = { title: "Import projects" };
 
@@ -14,6 +15,7 @@ export default async function AdminImportPage() {
   return (
     <ImportPanel
       adminEmail={adminEmail}
+      serviceLine={await ServiceLineService.getOrDefault()}
       adminMenu={<AdminMenuSlot viewer={AdminPolicy.viewerFor(adminEmail)} />}
       templateColumns={[...ProjectCsv.TEMPLATE_COLUMNS]}
       limits={{

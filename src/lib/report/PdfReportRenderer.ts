@@ -8,6 +8,7 @@ import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
 import { ReportDocument } from "@/lib/report/pdf/ReportDocument";
 import { ReportFonts } from "@/lib/report/pdf/ReportFonts";
 import { ReportLayout, type DocumentLayout, type ReportDocInput } from "@/lib/report/pdf/ReportLayout";
+import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
 
 /** Everything the renderer needs, all taken from the frozen snapshot. */
@@ -22,6 +23,8 @@ export interface ReportRenderInput {
   viewSettings: ViewSettingsValue;
   /** Report options frozen at generation (defaults for snapshots before 0004). */
   options: ReportOptionsValue;
+  /** Service line name frozen at generation (legacy name for snapshots before 0014). */
+  serviceLine: ServiceLineValue;
   periodStart: string;
   periodEnd: string;
   generatedAt: Date;
@@ -40,7 +43,7 @@ export class PdfReportRenderer {
 
   /** Rebuild the render input from a stored snapshot (old snapshots fall back to report defaults). */
   static inputFromSnapshot(
-    snapshot: Pick<ReportSnapshot, "id" | "rowsJson" | "headerJson" | "completedJson" | "viewSettingsJson" | "optionsJson" | "periodStart" | "periodEnd" | "generatedAt">,
+    snapshot: Pick<ReportSnapshot, "id" | "rowsJson" | "headerJson" | "completedJson" | "viewSettingsJson" | "optionsJson" | "serviceLineJson" | "periodStart" | "periodEnd" | "generatedAt">,
   ): ReportRenderInput {
     return {
       snapshotId: snapshot.id,
@@ -49,6 +52,7 @@ export class PdfReportRenderer {
       ...(snapshot.completedJson ? { completed: snapshot.completedJson as unknown as CompletedRow[] } : {}),
       viewSettings: ViewSettings.normalize("report", snapshot.viewSettingsJson ?? undefined),
       options: ReportOptionsService.normalize(snapshot.optionsJson),
+      serviceLine: ServiceLine.fromSnapshot(snapshot.serviceLineJson),
       periodStart: DateOnly.fromDbDate(snapshot.periodStart)!,
       periodEnd: DateOnly.fromDbDate(snapshot.periodEnd)!,
       generatedAt: snapshot.generatedAt,
@@ -63,6 +67,7 @@ export class PdfReportRenderer {
       ...(input.completed ? { completed: input.completed } : {}),
       viewSettings: input.viewSettings,
       showKeyPage: input.options.showKeyPage,
+      serviceLineName: input.serviceLine.name,
       reportDate: input.reportDate,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
@@ -92,7 +97,7 @@ export class PdfReportRenderer {
     const element = createElement(ReportDocument, {
       layout,
       draft: Boolean(doc.draft),
-      title: PdfReportLayout.TITLE,
+      title: PdfReportLayout.title(doc.serviceLineName),
     }) as unknown as ReactElement<DocumentProps>;
     return renderToBuffer(element);
   }

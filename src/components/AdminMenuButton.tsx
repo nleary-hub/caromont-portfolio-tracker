@@ -23,6 +23,7 @@ class AdminMenuIcons {
     template: <path d="M2 2h12v12H2zM2 6h12M6 6v8" />,
     people: <path d="M6 7.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.5 14c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4M11 7.5a2 2 0 100-4M12 10c1.5.4 2.5 1.7 2.5 4" />,
     audit: <path d="M3 1.5h10v13H3zM5.5 5h5M5.5 8h5M5.5 11h3" />,
+    tag: <path d="M1.5 2.5v5l7 7 6-6-7-7h-5zM4.5 5.5h.01" />,
     settings: <path d="M2 4h7M12 4h2M2 12h2M7 12h7M9 2.5v3M5 10.5v3M11 4a1 1 0 11-2 0 1 1 0 012 0zM6 12a1 1 0 11-2 0 1 1 0 012 0z" />,
   };
 

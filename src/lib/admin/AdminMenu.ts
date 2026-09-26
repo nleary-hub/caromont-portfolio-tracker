@@ -8,7 +8,7 @@ import type { Viewer } from "@/lib/auth/AdminPolicy";
  */
 export type AdminMenuItemKind = "link" | "download" | "action" | "viewSettings";
 
-export type AdminMenuIcon = "upload" | "file" | "download" | "pdf" | "archive" | "snowflake" | "template" | "people" | "audit" | "settings";
+export type AdminMenuIcon = "upload" | "file" | "download" | "pdf" | "archive" | "snowflake" | "template" | "people" | "audit" | "settings" | "tag";
 
 /** Display groups, in order, separated by dividers. */
 export type AdminMenuGroup = "work" | "library" | "admin";
@@ -55,6 +55,7 @@ export class AdminMenu {
     // Group 3: oversight and settings.
     { id: "audit", group: "admin", kind: "link", icon: "audit", label: "Audit log", href: "/admin/audit", shipped: true },
     { id: "settings", group: "admin", kind: "viewSettings", icon: "settings", label: "Settings", href: `/${AdminMenu.VIEW_SETTINGS_HASH}`, shipped: true },
+    { id: "service-line", group: "admin", kind: "link", icon: "tag", label: "Service line", href: "/admin/settings", shipped: true },
   ];
 
   /** Every defined item, shipped or not (for tests and docs). */
