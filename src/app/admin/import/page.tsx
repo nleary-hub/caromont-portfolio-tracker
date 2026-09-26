@@ -1,6 +1,8 @@
 import type { Metadata } from "next";
+import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { ImportPanel } from "@/components/ImportPanel";
 import { AdminGate } from "@/lib/auth/AdminGate";
+import { AdminPolicy } from "@/lib/auth/AdminPolicy";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { ProjectCsv } from "@/lib/import/ProjectCsv";
 
@@ -12,6 +14,7 @@ export default async function AdminImportPage() {
   return (
     <ImportPanel
       adminEmail={adminEmail}
+      adminMenu={<AdminMenuSlot viewer={AdminPolicy.viewerFor(adminEmail)} />}
       templateColumns={[...ProjectCsv.TEMPLATE_COLUMNS]}
       limits={{
         rows: AppConfig.IMPORT_MAX_ROWS,

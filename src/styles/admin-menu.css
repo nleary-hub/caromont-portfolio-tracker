@@ -1,0 +1,31 @@
+/* Admin menu (AdminMenuButton.tsx). Figma Bro admin menu spec; tokens from tokens.css. */
+@layer components {
+  .am-root { position: relative; }
+  .am-trigger {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; padding: 0 8px;
+    border-radius: var(--radius-control); background: transparent;
+    font: var(--app-label); color: var(--dark-text-secondary); cursor: pointer;
+  }
+  .am-trigger:hover, .am-trigger[aria-expanded="true"] { background: var(--dark-row-selected); color: var(--dark-text-primary); }
+  .am-trigger:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: 1px; }
+  .am-menu {
+    position: absolute; top: calc(100% + 6px); right: 0; z-index: 30; width: 240px; padding: 4px;
+    background: var(--dark-card); border: 1px solid var(--dark-border); border-radius: var(--radius-card);
+    box-shadow: 0 12px 30px rgba(0, 0, 0, 0.55);
+  }
+  .am-divider { height: 1px; background: var(--dark-border); margin: 4px 0; }
+  .am-item {
+    position: relative; display: flex; align-items: center; gap: 8px; height: 32px; padding: 0 8px;
+    border-radius: var(--radius-control); font: var(--app-table); color: var(--dark-text-primary);
+    outline: none; text-decoration: none;
+  }
+  .am-item > svg { color: var(--dark-text-secondary); flex: none; }
+  .am-item:hover, .am-item:focus-visible, .am-item:focus { background: var(--dark-input); }
+  .am-item[data-current="true"] { background: var(--dark-row-selected); }
+  .am-item[data-current="true"]::before {
+    content: ""; position: absolute; left: 0; top: 6px; bottom: 6px; width: 2px;
+    border-radius: 1px; background: var(--dark-accent);
+  }
+  .am-label { flex: 1; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .am-caption { font: var(--app-caption); color: var(--dark-text-secondary); }
+}

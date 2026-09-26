@@ -1,4 +1,5 @@
 import Link from "next/link";
+import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { redirect } from "next/navigation";
 import { setShowKeyPageForm } from "@/app/actions/reports";
 import { FreezeNowButton } from "@/components/FreezeNowButton";
@@ -35,15 +36,18 @@ export default async function ReportsPage() {
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
       <div className="flex items-center justify-between">
         <h1 className="type-title">Report archive</h1>
-        <Link href="/" className="text-muted type-table-strong hover:text-fg">
-          Back to dashboard
-        </Link>
+        <div className="flex items-center gap-3">
+          <AdminMenuSlot viewer={viewer} />
+          <Link href="/" className="text-muted type-table-strong hover:text-fg">
+            Back to dashboard
+          </Link>
+        </div>
       </div>
       <p className="text-muted type-caption">
         Frozen every other Tuesday at 5 PM ET. Next scheduled freeze: {ReportFormat.longDate(next)}.
       </p>
       {viewer.isAdmin && options && (
-        <section className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+        <section id="report-admin" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
           <div className="flex flex-wrap items-center gap-4">
             <FreezeNowButton />
             <a href="/api/reports/preview" download className="type-table-strong text-accent">

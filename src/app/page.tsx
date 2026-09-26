@@ -3,6 +3,7 @@ import { signOut, SIGN_IN_PATH } from "@/auth";
 import { deleteProject, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Db } from "@/lib/db/Db";
@@ -39,7 +40,7 @@ class DashboardData {
       latestReport: null,
       completedFiscalYear: null,
       admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [] }
+        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [] }
         : null,
       error,
     };
@@ -110,6 +111,7 @@ class DashboardData {
               hiddenFromReportIds: visible.filter((p) => p.hiddenFromReport).map((p) => p.id),
               ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner)),
               requesterSuggestions: Requester.suggestions(projects.map((p) => p.physicianChampion)),
+              menuItems: AdminMenu.itemsFor(viewer) ?? [],
             }
           : null,
         error: null,

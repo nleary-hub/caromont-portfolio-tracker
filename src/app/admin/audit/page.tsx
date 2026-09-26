@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
+import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { restoreProjectForm, unhideProjectForm } from "@/app/actions/admin";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
@@ -44,9 +45,12 @@ export default async function AuditPage() {
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
       <div className="flex items-center justify-between">
         <h1 className="type-title">Audit: hidden and deleted</h1>
-        <Link href="/" className="text-muted type-table-strong hover:text-fg">
-          Back to dashboard
-        </Link>
+        <div className="flex items-center gap-3">
+          <AdminMenuSlot viewer={viewer} />
+          <Link href="/" className="text-muted type-table-strong hover:text-fg">
+            Back to dashboard
+          </Link>
+        </div>
       </div>
       <p className="text-muted type-caption">Only admins can see this page.</p>
 

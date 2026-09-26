@@ -1,7 +1,7 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, useTransition } from "react";
+import { useRef, useState, useTransition, type ReactNode } from "react";
 import { commitImport, previewImport, type ImportMode } from "@/app/admin/import/actions";
 import type { CsvColumn } from "@/lib/import/ProjectCsv";
 import type { CreatePreview, ImportPreview, RowErrors, WordingPreview } from "@/lib/import/ImportService";
@@ -10,6 +10,8 @@ interface Props {
   adminEmail: string;
   templateColumns: CsvColumn[];
   limits: { rows: number; note: number; milestone: number };
+  /** Server-rendered admin menu (`AdminMenuSlot`). */
+  adminMenu?: ReactNode;
 }
 
 class ImportCopy {
@@ -32,7 +34,7 @@ const th = "sticky top-0 z-[1] h-9 border-b border-line bg-card px-2 text-left u
 const td = "border-b border-line px-2 py-1.5 align-top";
 const errCell = "bg-(--status-off-track-dark-bg) text-(--status-off-track-dark-fg)";
 
-export function ImportPanel({ adminEmail, templateColumns, limits }: Props) {
+export function ImportPanel({ adminEmail, templateColumns, limits, adminMenu }: Props) {
   const [mode, setMode] = useState<ImportMode>("create");
   const [csv, setCsv] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -106,6 +108,7 @@ export function ImportPanel({ adminEmail, templateColumns, limits }: Props) {
         <div className="h-6 w-px bg-line" />
         <span className="type-table-strong">Import projects (admin)</span>
         <div className="flex-1" />
+        {adminMenu && <div className="-mr-1">{adminMenu}</div>}
         <span className="type-caption text-muted">Signed in as {adminEmail}</span>
       </header>
 

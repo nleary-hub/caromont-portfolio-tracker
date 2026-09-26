@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent as ReactKeyboardEvent } from "react";
 import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
+import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import {
@@ -44,6 +45,22 @@ export function ViewSettingsPicker({ settings, counts, onSave }: ViewSettingsPic
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
+
+  // Opened from the admin menu "Settings" item: an event on "/", or "/#view-settings" from other pages.
+  useEffect(() => {
+    const openFromMenu = () => {
+      setReportDraft(settings.report);
+      setError(null);
+      setSaved(false);
+      setOpen(true);
+    };
+    if (window.location.hash === AdminMenu.VIEW_SETTINGS_HASH) {
+      window.history.replaceState(null, "", window.location.pathname + window.location.search);
+      openFromMenu();
+    }
+    window.addEventListener(AdminMenu.OPEN_VIEW_SETTINGS_EVENT, openFromMenu);
+    return () => window.removeEventListener(AdminMenu.OPEN_VIEW_SETTINGS_EVENT, openFromMenu);
+  }, [settings.report]);
 
   useEffect(() => {
     if (!open) return;
