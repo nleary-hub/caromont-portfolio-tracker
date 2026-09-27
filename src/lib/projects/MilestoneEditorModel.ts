@@ -2,6 +2,7 @@ import { MilestoneProgress, type MilestoneCount } from "@/lib/domain/MilestonePr
 import { MilestoneRules, type MilestoneDraft, type MilestoneEdit, type TemplateApplied } from "@/lib/domain/MilestoneRules";
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
+import type { PendingCheck } from "@/lib/projects/StepCheckedBy";
 
 /** One row of the drawer's Milestones editor. */
 export interface EditorStep {
@@ -15,6 +16,11 @@ export interface EditorStep {
   done: boolean;
   /** "YYYY-MM-DD" (America/New_York) or null. Display only; the server sets it on Save. */
   doneAt: string | null;
+  /** Saved checker (display name) and ISO time, from the server; null when not recorded. */
+  checkedBy?: string | null;
+  checkedAt?: string | null;
+  /** Checked in this session and not saved yet: who and when (the tooltip says "Not saved yet."). */
+  pending?: PendingCheck | null;
   sourceTemplateId: string | null;
 }
 
@@ -52,6 +58,8 @@ export class MilestoneEditorModel {
           dueDate: s.dueDate ?? "",
           done: s.done,
           doneAt: s.doneAt,
+          checkedBy: s.checkedBy ?? null,
+          checkedAt: s.checkedAt ?? null,
           sourceTemplateId: s.sourceTemplateId,
         })),
         applied: null,
@@ -72,9 +80,18 @@ export class MilestoneEditorModel {
     return { ...state, steps: state.steps.map((s) => (s.key === key ? { ...s, ...patch } : s)) };
   }
 
-  /** Check or uncheck: checking sets doneAt to today (America/New_York), unchecking clears it. */
-  static setDone(state: EditorState, key: string, done: boolean, today: string): EditorState {
-    return { ...state, steps: state.steps.map((s) => (s.key === key ? { ...s, done, doneAt: done ? today : null } : s)) };
+  /**
+   * Check or uncheck: checking sets doneAt to today (America/New_York) and marks the check as this session's
+   * (`checker`, until the server returns the saved step); unchecking clears the date and every checker field, so
+   * nothing from an earlier check is kept.
+   */
+  static setDone(state: EditorState, key: string, done: boolean, today: string, checker: PendingCheck | null = null): EditorState {
+    return {
+      ...state,
+      steps: state.steps.map((s) =>
+        s.key === key ? { ...s, done, doneAt: done ? today : null, checkedBy: null, checkedAt: null, pending: done ? checker : null } : s,
+      ),
+    };
   }
 
   static remove(state: EditorState, key: string): EditorState {

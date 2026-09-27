@@ -512,7 +512,7 @@ export class FakeDb {
           rec("projectMilestone", "create");
           if (!this.state.projects.some((p) => p.id === data.projectId)) throw new Error("FK project_milestones_projectId_fkey");
           const now = new Date();
-          const row = { id: randomUUID(), done: false, doneAt: null, dueDate: null, sourceTemplateId: null, createdAt: now, updatedAt: now, ...data };
+          const row = { id: randomUUID(), done: false, doneAt: null, doneBy: null, checkedAt: null, dueDate: null, sourceTemplateId: null, createdAt: now, updatedAt: now, ...data };
           this.state.milestones.push(row);
           return { ...row };
         },

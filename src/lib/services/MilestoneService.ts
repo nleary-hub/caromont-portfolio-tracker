@@ -3,6 +3,8 @@ import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import type { Prisma, ProjectMilestone } from "@/generated/prisma/client";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
+import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
+import { StepCheckedBy } from "@/lib/projects/StepCheckedBy";
 import { MilestoneRules, type MilestoneDraft, type MilestonePlan, type TemplateApplied } from "@/lib/domain/MilestoneRules";
 
 type StepReader = Pick<Prisma.TransactionClient, "projectMilestone">;
@@ -20,6 +22,10 @@ export interface MilestoneStepDto {
   dueDate: string | null;
   done: boolean;
   doneAt: string | null;
+  /** Who checked it: a People list name, the name read from the email, or "Tracker"; null when not recorded. */
+  checkedBy: string | null;
+  /** ISO time it was checked; null when not recorded. */
+  checkedAt: string | null;
   position: number;
   sourceTemplateId: string | null;
 }
@@ -63,22 +69,26 @@ export class MilestoneService {
     return MilestoneService.loadSteps(db, [projectId]);
   }
 
-  static toDto(s: ProjectMilestone): MilestoneStepDto {
+  /** `people`: the line's People list names, for the checker's display name (same rule as History). */
+  static toDto(s: ProjectMilestone, people: readonly string[] = []): MilestoneStepDto {
+    const checked = StepCheckedBy.recorded(s);
     return {
       id: s.id,
       name: s.name,
       dueDate: DateOnly.fromDbDate(s.dueDate),
       done: s.done,
       doneAt: DateOnly.fromDbDate(s.doneAt),
+      checkedBy: checked?.by ? UpdateTimeline.actor(checked.by, people) : null,
+      checkedAt: checked ? checked.at.toISOString() : null,
       position: s.position,
       sourceTemplateId: s.sourceTemplateId,
     };
   }
 
   /** Steps grouped by project, as DTOs (for the admin drawer). */
-  static byProject(steps: readonly ProjectMilestone[]): Record<string, MilestoneStepDto[]> {
+  static byProject(steps: readonly ProjectMilestone[], people: readonly string[] = []): Record<string, MilestoneStepDto[]> {
     const out: Record<string, MilestoneStepDto[]> = {};
-    for (const s of MilestoneProgress.ordered(steps)) (out[s.projectId] ??= []).push(MilestoneService.toDto(s));
+    for (const s of MilestoneProgress.ordered(steps)) (out[s.projectId] ??= []).push(MilestoneService.toDto(s, people));
     return out;
   }
 
@@ -116,7 +126,7 @@ export class MilestoneService {
       ? new Set((await tx.milestoneTemplate.findMany({ where: { id: { in: templateIds }, ...ServiceLineAccess.where(scope) }, select: { id: true } })).map((t) => t.id))
       : new Set<string>();
     const checked = drafts.map((d) => (d.sourceTemplateId && !d.id && !known.has(d.sourceTemplateId) ? { ...d, sourceTemplateId: null } : d));
-    const plan = MilestoneRules.plan(stored, checked, DateOnly.inZone(at), applied);
+    const plan = MilestoneRules.plan(stored, checked, DateOnly.inZone(at), applied, { by: actor.changedBy, at });
     const mirror = MilestoneProgress.mirror(plan.result);
     if (!MilestoneRules.hasChanges(plan)) return { changed: false, mirror, plan };
 

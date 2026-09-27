@@ -5,7 +5,7 @@ import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
-import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { ProjectPeopleForms } from "@/lib/services/ProjectPeopleForms";
@@ -112,10 +112,12 @@ export async function saveProjectMilestones(projectId: string, milestones: unkno
   const edit = ProjectFormAction.milestones(milestones);
   if (!edit) return { ok: false, error: "Nothing to save." };
   try {
-    const steps = await ProjectService.saveMilestones(String(projectId), edit, viewer, undefined, await ServiceLineAccess.activeFor(viewer));
+    const scope = await ServiceLineAccess.activeFor(viewer);
+    const steps = await ProjectService.saveMilestones(String(projectId), edit, viewer, undefined, scope);
     revalidatePath("/");
     revalidatePath("/admin/audit");
-    return { ok: true, steps: steps.map((s) => MilestoneService.toDto(s)) };
+    const people = ServiceLine.peopleNames(scope);
+    return { ok: true, steps: steps.map((s) => MilestoneService.toDto(s, people)) };
   } catch (e) {
     if (e instanceof ProjectValidationError) return { ok: false, error: Object.values(e.errors).flat()[0] ?? "Invalid milestone." };
     if (e instanceof ProjectNotFoundError || e instanceof ProjectArchivedError) return { ok: false, error: "This project was deleted or no longer exists." };

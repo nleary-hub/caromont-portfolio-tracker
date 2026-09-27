@@ -50,6 +50,12 @@ export class ReportFormat {
     return `${ReportFormat.shortDate(startIso)}\u2013${day(endIso)}, ${ey}`;
   }
 
+  /** "5:00 PM ET" */
+  static timeEt(instant: Date): string {
+    const s = new Intl.DateTimeFormat("en-US", { timeZone: AppConfig.TIME_ZONE, hour: "numeric", minute: "2-digit" }).format(instant);
+    return `${s.replace(/\u202f/g, " ")} ET`;
+  }
+
   /** "Sep 29, 2026, 5:00 PM ET" */
   static dateTimeEt(instant: Date): string {
     const s = new Intl.DateTimeFormat("en-US", {

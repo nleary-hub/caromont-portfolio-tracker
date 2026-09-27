@@ -75,10 +75,9 @@ class M21 {
 }
 
 describe("0021_prior_infor_numbers on production-shaped data (PGlite)", () => {
-  it("is the latest migration and follows 0020", () => {
+  it("follows 0020", () => {
     const f = M21.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0020_people_lists");
+    expect(f[f.indexOf(M) - 1]).toBe("0020_people_lists");
   });
 
   it("is additive: one new table, every existing column and value unchanged", async () => {

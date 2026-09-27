@@ -5,6 +5,8 @@ import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
 import { MilestoneEditorModel, type EditorState, type EditorStep } from "@/lib/projects/MilestoneEditorModel";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
+import { StepCheckedBy } from "@/lib/projects/StepCheckedBy";
+import { CheckedByTooltip } from "./CheckedByTooltip";
 
 export interface MilestonesEditorProps {
   /** Checklist at open (stored steps, or the legacy next milestone shown as step 1). */
@@ -17,6 +19,8 @@ export interface MilestonesEditorProps {
    * new project, whose checklist is created with the project.
    */
   autosave?: (edit: MilestoneEdit) => Promise<MilestoneSaveActionResult>;
+  /** The signed-in admin's display name, recorded on a check until it is saved ("Not saved yet."). */
+  checkerName?: string;
   /** Every change to the checklist (the form reads the derived next milestone from it). */
   onStateChange: (state: EditorState) => void;
   /** Messages for the whole section (e.g. "Next milestone is required for this status"). */
@@ -33,7 +37,7 @@ const DONE = "var(--status-complete-dark-fg)";
  * check, name (click to rename, "23/40" counter), Next pill, the due date or "Done Sep 26", and a row menu
  * with Reopen and Delete. No inner scroll: the drawer scrolls as one piece.
  */
-export function MilestonesEditor({ initial, templates, today, autosave, onStateChange, errors }: MilestonesEditorProps) {
+export function MilestonesEditor({ initial, templates, today, checkerName, autosave, onStateChange, errors }: MilestonesEditorProps) {
   const [state, setState] = useState(initial);
   const [saved, setSaved] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -266,12 +270,17 @@ export function MilestonesEditor({ initial, templates, today, autosave, onStateC
                       ))}
                     </svg>
                   </button>
+                  <CheckedByTooltip text={StepCheckedBy.line(s, s.pending ?? null)}>
                   <label className="relative flex h-3.5 w-3.5 shrink-0 cursor-pointer items-center justify-center">
                     <input
                       type="checkbox"
                       checked={s.done}
-                      onChange={(e) => void commit(MilestoneEditorModel.setDone(state, s.key, e.target.checked, today))}
-                      aria-label={`Done: ${label(s, i)}`}
+                      onChange={(e) =>
+                        void commit(
+                          MilestoneEditorModel.setDone(state, s.key, e.target.checked, today, checkerName ? { name: checkerName, at: new Date().toISOString() } : null),
+                        )
+                      }
+                      aria-label={StepCheckedBy.ariaLabel(label(s, i), s, s.pending ?? null)}
                       className="peer absolute inset-0 cursor-pointer opacity-0"
                     />
                     <span
@@ -286,6 +295,7 @@ export function MilestonesEditor({ initial, templates, today, autosave, onStateC
                       )}
                     </span>
                   </label>
+                  </CheckedByTooltip>
                   <input
                     value={s.name}
                     onFocus={() => setEditingName(s.key)}

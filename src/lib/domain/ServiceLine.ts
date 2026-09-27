@@ -79,6 +79,11 @@ export class ServiceLine {
   }
 
   /** The default line as a scope, for code paths that run without a database (and as the service default). */
+  /** Every People list name of the line (owners, requesters, contracts leads): display names for History and checkers. */
+  static peopleNames(scope: Pick<ServiceLineScope, "owners" | "requesters" | "contractsLeads">): string[] {
+    return [...scope.owners, ...scope.requesters, ...scope.contractsLeads];
+  }
+
   static defaultScope(): ServiceLineScope {
     return {
       id: ServiceLine.DEFAULT_ID,

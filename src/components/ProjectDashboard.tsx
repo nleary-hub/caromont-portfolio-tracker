@@ -72,6 +72,8 @@ export interface AdminDashboardProps {
   menuItems: AdminMenuItem[];
   /** Drawer edit form values per listed project (stored values, as form strings). */
   formValues: Record<string, ProjectFormValues>;
+  /** The signed-in admin's display name, for "Checked by <name> at 1:45 AM ET. Not saved yet." */
+  checkerName?: string;
   /** Stored checklist steps per listed project (drawer Milestones section). */
   milestoneSteps: Record<string, MilestoneStepDto[]>;
   /** Milestone templates for "Apply a template". */
@@ -574,6 +576,7 @@ export function ProjectDashboard({
               original={ProjectFormModel.empty()}
               milestones={[]}
               templates={admin.templates}
+              checkerName={admin.checkerName}
               today={today}
               people={null}
               adminDelete={null}
@@ -633,6 +636,7 @@ export function ProjectDashboard({
                   {...(line ? { departments: line.departments } : {})}
                   original={admin.formValues[selected.id]}
                   milestones={admin.milestoneSteps[selected.id] ?? []}
+                  checkerName={admin.checkerName}
                   templates={admin.templates}
                   today={today}
                   people={

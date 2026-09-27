@@ -51,7 +51,7 @@ export class ProjectHistoryService {
     }
     const rows = await ProjectHistoryService.forProject(projectId, viewer, db);
     const prior = await db.projectPriorInforNumber.findMany({ where: { projectId }, select: { number: true, recordedAt: true } });
-    const people = scope ? [...scope.owners, ...scope.requesters, ...scope.contractsLeads] : [];
+    const people = scope ? ServiceLine.peopleNames(scope) : [];
     return UpdateTimeline.build(rows, prior, project.inforRequestNumber, people);
   }
 
