@@ -12,6 +12,8 @@ import { MilestoneService } from "@/lib/services/MilestoneService";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLine, type ServiceLineScope, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
+import { LineLayoutService } from "@/lib/services/LineLayoutService";
+import type { LineLayoutValue } from "@/lib/layout/LineLayout";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
@@ -25,6 +27,8 @@ export interface LiveReportData {
   completed: CompletedRow[];
   viewSettings: ViewSettingsValue;
   options: ReportOptionsValue;
+  /** The line's column layout and manual row order (frozen into the snapshot as layoutJson). */
+  layout: LineLayoutValue;
   /** Service line name (frozen into the snapshot; used for the report title). */
   serviceLine: ServiceLineValue;
   /** The line the report is for (its departments shape the page 1 grid and the department filter). */
@@ -51,6 +55,7 @@ export class ReportDataLoader {
       select: { generatedAt: true },
     });
     const options = await ReportOptionsService.get(db, line);
+    const layout = await LineLayoutService.get(db, line);
     // Report department filter (admin setting): excluded departments leave no trace (rows, counts, flags,
     // completed blocks, FY count). All selected = no filter.
     const stored = DepartmentFilter.apply(
@@ -86,6 +91,6 @@ export class ReportDataLoader {
     const completed = CompletedThisPeriod.select({ projects, history, viewSettings, cutoff: now });
     // Frozen with the header (headerJson), so a frozen report keeps its count.
     header.completedFiscalYear = CompletedFiscalYear.count({ projects, history, reportDate });
-    return { rows, header, missingChampions, completed, viewSettings, options, serviceLine, scope: line, reportDate, previousSnapshotGeneratedAt };
+    return { rows, header, missingChampions, completed, viewSettings, options, layout, serviceLine, scope: line, reportDate, previousSnapshotGeneratedAt };
   }
 }

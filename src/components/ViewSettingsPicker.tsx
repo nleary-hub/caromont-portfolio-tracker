@@ -4,6 +4,8 @@ import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent as Reac
 import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { DashboardColumnModel, type PickerEntry } from "@/lib/dashboard/DashboardColumnModel";
+import { LayoutCopy } from "@/lib/layout/LineLayout";
+import { LayoutResetDialog, type LayoutResetKind } from "./LayoutResetDialog";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import {
@@ -26,6 +28,15 @@ export interface ViewSettingsPickerProps {
   counts: Record<ViewContext, StatusCounts>;
   /** Persist a context. Resolves to an error message, or null on success. */
   onSave: (context: ViewContext, value: ViewSettingsValue) => Promise<string | null>;
+  /** "Reset columns" and "Reset row order" for the active line (bottom of the menu, each with a confirmation). */
+  layoutReset?: LayoutResetProps;
+}
+
+export interface LayoutResetProps {
+  /** Active line's short name, e.g. CVPSL. */
+  shortName: string;
+  onResetColumns: () => Promise<string | null>;
+  onResetRows: () => Promise<string | null>;
 }
 
 class PickerCopy {
@@ -38,13 +49,14 @@ class PickerCopy {
   static readonly TAB_LABEL: Record<ViewContext, string> = { dashboard: "Dashboard", report: "Report" };
 }
 
-export function ViewSettingsPicker({ settings, counts, onSave }: ViewSettingsPickerProps) {
+export function ViewSettingsPicker({ settings, counts, onSave, layoutReset }: ViewSettingsPickerProps) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<ViewContext>("dashboard");
   const [reportDraft, setReportDraft] = useState<ViewSettingsValue>(settings.report);
   const [error, setError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
+  const [confirm, setConfirm] = useState<LayoutResetKind | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
   // Opened from the admin menu "Settings" item: an event on "/", or "/#view-settings" from other pages.
@@ -66,10 +78,14 @@ export function ViewSettingsPicker({ settings, counts, onSave }: ViewSettingsPic
   useEffect(() => {
     if (!open) return;
     const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      const inDialog = e.target instanceof Element && e.target.closest("[data-layout-dialog]");
+      if (rootRef.current && !rootRef.current.contains(e.target as Node) && !inDialog) setOpen(false);
     };
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
+      if (e.key !== "Escape") return;
+      // Esc closes the reset confirmation first, then the menu.
+      if (confirm) setConfirm(null);
+      else setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     document.addEventListener("keydown", onKey);
@@ -77,7 +93,7 @@ export function ViewSettingsPicker({ settings, counts, onSave }: ViewSettingsPic
       document.removeEventListener("mousedown", onDown);
       document.removeEventListener("keydown", onKey);
     };
-  }, [open]);
+  }, [open, confirm]);
 
   const value = tab === "dashboard" ? settings.dashboard : reportDraft;
   const reportDirty = !ViewSettings.equals(reportDraft, settings.report);
@@ -178,7 +194,32 @@ export function ViewSettingsPicker({ settings, counts, onSave }: ViewSettingsPic
               </span>
             )}
           </div>
+          {layoutReset && (
+            <div className="vp-layout" data-testid="layout-resets">
+              <button type="button" className="vp-link" onClick={() => setConfirm("columns")}>
+                {LayoutCopy.RESET_COLUMNS}
+              </button>
+              <button type="button" className="vp-link" onClick={() => setConfirm("rows")}>
+                {LayoutCopy.RESET_ROWS}
+              </button>
+            </div>
+          )}
         </div>
+      )}
+      {open && confirm && layoutReset && (
+        <LayoutResetDialog
+          kind={confirm}
+          shortName={layoutReset.shortName}
+          onCancel={() => setConfirm(null)}
+          onConfirm={async () => {
+            const err = await (confirm === "columns" ? layoutReset.onResetColumns() : layoutReset.onResetRows());
+            if (!err) {
+              setConfirm(null);
+              setOpen(false);
+            }
+            return err;
+          }}
+        />
       )}
     </div>
   );

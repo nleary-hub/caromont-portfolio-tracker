@@ -1,4 +1,6 @@
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { LineLayoutService } from "@/lib/services/LineLayoutService";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { Requester } from "@/lib/domain/Requester";
 import type { Prisma, PrismaClient, Project, ProjectMilestone } from "@/generated/prisma/client";
@@ -91,6 +93,8 @@ export class ProjectService {
     const now = at;
     // The line is not a tracked field: it is set once here and never changes.
     const project = await tx.project.create({ data: { ...data, serviceLineId: scope.id, updatedBy: actor.changedBy } });
+    // Manual row order: a new project goes to the bottom of its department.
+    await LineLayoutService.placeNew(tx, scope, project.id, ServiceAreaInfo.groupOf(project.serviceArea), actor.changedBy);
     const snapshot: Record<string, string | null> = {};
     for (const field of HistoryDiff.TRACKED_FIELDS) {
       if (field in data) snapshot[field] = HistoryDiff.serialize(field, data[field as keyof typeof data]);
@@ -175,6 +179,10 @@ export class ProjectService {
       data: { ...(data as Prisma.ProjectUpdateInput), updatedBy: actor.changedBy },
     });
     await ProjectService.writeHistory(tx, id, changes, actor, options.at ?? new Date());
+    // Manual row order: a project moved to another department goes to the bottom of that department.
+    if (ServiceAreaInfo.groupOf(existing.serviceArea) !== ServiceAreaInfo.groupOf(updated.serviceArea)) {
+      await LineLayoutService.placeMoved(tx, scope, id, ServiceAreaInfo.groupOf(updated.serviceArea), actor.changedBy);
+    }
     // Outside the drawer (CSV wording update, Milestone met) the legacy fields lead: keep the checklist in step.
     if (!options.mirror && changes.some((c) => c.field === "nextMilestone" || c.field === "dueDate")) {
       await MilestoneService.syncLegacyEditInTx(tx, id, { nextMilestone: updated.nextMilestone, dueDate: updated.dueDate });

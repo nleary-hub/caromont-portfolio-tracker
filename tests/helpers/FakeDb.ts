@@ -24,6 +24,8 @@ interface State {
   serviceLines: Row[];
   serviceLineHistory: Row[];
   serviceLineUserState: Row[];
+  lineLayouts: Row[];
+  lineLayoutHistory: Row[];
 }
 
 /** Scoped tables: a row stored without serviceLineId (tests that push rows directly) belongs to the default line. */
@@ -56,6 +58,8 @@ export class FakeDb {
     serviceLines: [FakeDb.defaultLineRow()],
     serviceLineHistory: [],
     serviceLineUserState: [],
+    lineLayouts: [],
+    lineLayoutHistory: [],
   };
   writes: { model: string; op: string; inTx: boolean; txId: number | null }[] = [];
   /** Simulate a database without migration 0015 (project_milestones missing). */
@@ -127,6 +131,8 @@ export class FakeDb {
       serviceLines: c(state.serviceLines),
       serviceLineHistory: c(state.serviceLineHistory),
       serviceLineUserState: c(state.serviceLineUserState),
+      lineLayouts: c(state.lineLayouts),
+      lineLayoutHistory: c(state.lineLayoutHistory),
     };
   }
 
@@ -304,6 +310,42 @@ export class FakeDb {
           this.state.artifacts.push(row);
           return { ...row };
         },
+      },
+      lineLayout: {
+        findUnique: async ({ where }: { where: Row }) => {
+          const r = this.state.lineLayouts.find((o) => matches(o, where));
+          return r ? { ...r } : null;
+        },
+        upsert: async ({ where, create, update }: { where: Row; create: Row; update: Row }) => {
+          rec("lineLayout", "upsert");
+          const r = this.state.lineLayouts.find((o) => matches(o, where));
+          if (r) {
+            Object.assign(r, update, { updatedAt: new Date() });
+            return { ...r };
+          }
+          const row = { columnsJson: null, rowOrderJson: null, ...create, updatedAt: new Date() };
+          this.state.lineLayouts.push(row);
+          return { ...row };
+        },
+        update: async ({ where, data }: { where: Row; data: Row }) => {
+          rec("lineLayout", "update");
+          const r = this.state.lineLayouts.find((o) => matches(o, where));
+          if (!r) throw new Error("not found");
+          Object.assign(r, data, { updatedAt: new Date() });
+          return { ...r };
+        },
+      },
+      lineLayoutHistory: {
+        create: async ({ data }: { data: Row }) => {
+          rec("lineLayoutHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), oldValue: null, newValue: null, ...data };
+          this.state.lineLayoutHistory.push(row);
+          return { ...row };
+        },
+        findMany: async ({ where, orderBy, take }: { where?: Row; orderBy?: Record<string, "asc" | "desc">; take?: number } = {}) =>
+          sortBy(this.state.lineLayoutHistory.filter((h) => matches(h, where)), orderBy)
+            .slice(0, take ?? Number.POSITIVE_INFINITY)
+            .map((h) => ({ ...h })),
       },
       reportOptions: {
         findUnique: async ({ where }: { where: Row }) => {

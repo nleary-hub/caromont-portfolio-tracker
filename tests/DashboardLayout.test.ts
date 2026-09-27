@@ -604,10 +604,10 @@ describe("Grouped table markup", () => {
     expect([...html.matchAll(/data-area="([^"]+)"/g)].map((m) => m[1])).toEqual(["Cath", "EP", "Unassigned"]);
     expect([...html.matchAll(/data-row-key="([^"]+)"/g)].map((m) => m[1])).toEqual([projects[1].id, projects[0].id, projects[2].id]);
     expect(html).toContain('data-col="gutter" style="width:24px"');
-    expect(html).toContain(">People</th>");
-    expect(html).toContain(">Next milestone / Latest update</th>");
-    expect(html).toContain(">Due / Flags</th>");
-    expect(html).not.toContain(">Service area</th>");
+    expect(html).toContain(">People</span></th>");
+    expect(html).toContain(">Next milestone / Latest update</span></th>");
+    expect(html).toContain(">Due / Flags</span></th>");
+    expect(html).not.toContain(">Service area</span></th>");
     expect(html).toContain('data-col="milestoneUpdate" style="min-width:280px"');
     expect(html).toContain('data-col="dueFlags" style="width:188px"');
     expect(html).toContain('data-testid="milestone-update"');
@@ -619,7 +619,7 @@ describe("Grouped table markup", () => {
 
   it("hiding all three people fields removes the People column", () => {
     const html = render(dash({ hiddenColumns: ["owner", "physicianChampion", "contractsLead"] }));
-    expect(html).not.toContain(">People</th>");
+    expect(html).not.toContain(">People</span></th>");
     expect(html).not.toContain('data-testid="people-cell"');
   });
 

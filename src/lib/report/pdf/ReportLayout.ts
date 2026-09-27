@@ -15,6 +15,7 @@ import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import { PdfReportLayout, type LayoutColumn } from "@/lib/report/PdfReportLayout";
+import { LineLayout, RowOrder, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import type { FontWeight } from "@/lib/report/pdf/ReportFonts";
@@ -57,6 +58,11 @@ export interface ReportDocInput {
   departments?: readonly ServiceArea[];
   /** Totals grid placement (admin setting). Absent = "top", today's layout. */
   totalsGrid?: TotalsGridMode;
+  /**
+   * The line's column layout and manual row order (live for drafts, frozen layoutJson for snapshots). Absent,
+   * null or the default layout: today's columns and the report order, exactly as before.
+   */
+  layout?: LineLayoutValue | null;
   /**
    * The service line's departments, for a line other than the default. Absent = the default line (CVPSL):
    * all seven, exactly as before. Limits the page 1 grid to these departments and is the department
@@ -1404,6 +1410,11 @@ export class ReportLayout {
     );
     const completedRows = departments && input.completed ? DepartmentFilter.apply(input.completed, departments, options) : input.completed;
     input = { ...input, rows, ...(completedRows ? { completed: completedRows } : {}), ...(departments ? { departments } : {}) };
+    // Line layout: column order and widths ride on the settings, manual order within departments on the rows.
+    // The default layout leaves both untouched (same objects), so the default PDF is exactly today's.
+    if (input.layout && !LineLayout.isDefault(input.layout)) {
+      input = { ...input, viewSettings: PdfReportLayout.withLayout(input.viewSettings, input.layout.columns), rows: RowOrder.apply(input.rows, input.layout.rows, (r) => r.projectId) };
+    }
     // The FY-to-date count is not derived from rows: it comes from the (frozen) header as stored.
     const header = { ...ReportBuilder.header(input.rows), completedFiscalYear: input.header?.completedFiscalYear };
     const model = ReportLayout.header(m, input, header);

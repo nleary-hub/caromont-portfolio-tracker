@@ -10,6 +10,7 @@ import { ReportFonts } from "@/lib/report/pdf/ReportFonts";
 import { ReportLayout, type DocumentLayout, type ReportDocInput } from "@/lib/report/pdf/ReportLayout";
 import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
+import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
 
 /** Everything the renderer needs, all taken from the frozen snapshot. */
 export interface ReportRenderInput {
@@ -26,6 +27,8 @@ export interface ReportRenderInput {
   /** Service line name frozen at generation (legacy name for snapshots before 0014). */
   /** Null for snapshots frozen before migration 0014 (legacy header). */
   serviceLine: ServiceLineValue | null;
+  /** Layout frozen at generation (default layout for snapshots before migration 0017). */
+  layout?: LineLayoutValue;
   periodStart: string;
   periodEnd: string;
   generatedAt: Date;
@@ -44,7 +47,8 @@ export class PdfReportRenderer {
 
   /** Rebuild the render input from a stored snapshot (old snapshots fall back to report defaults). */
   static inputFromSnapshot(
-    snapshot: Pick<ReportSnapshot, "id" | "rowsJson" | "headerJson" | "completedJson" | "viewSettingsJson" | "optionsJson" | "serviceLineJson" | "periodStart" | "periodEnd" | "generatedAt">,
+    snapshot: Pick<ReportSnapshot, "id" | "rowsJson" | "headerJson" | "completedJson" | "viewSettingsJson" | "optionsJson" | "serviceLineJson" | "periodStart" | "periodEnd" | "generatedAt"> &
+      Partial<Pick<ReportSnapshot, "layoutJson">>,
   ): ReportRenderInput {
     return {
       snapshotId: snapshot.id,
@@ -54,6 +58,7 @@ export class PdfReportRenderer {
       viewSettings: ViewSettings.normalize("report", snapshot.viewSettingsJson ?? undefined),
       options: ReportOptionsService.normalize(snapshot.optionsJson),
       serviceLine: ServiceLine.fromSnapshot(snapshot.serviceLineJson),
+      layout: LineLayout.normalize(snapshot.layoutJson ?? null),
       periodStart: DateOnly.fromDbDate(snapshot.periodStart)!,
       periodEnd: DateOnly.fromDbDate(snapshot.periodEnd)!,
       generatedAt: snapshot.generatedAt,
@@ -71,6 +76,7 @@ export class PdfReportRenderer {
       departments: input.options.departments,
       totalsGrid: input.options.totalsGrid,
       serviceLine: input.serviceLine,
+      ...(input.layout ? { layout: input.layout } : {}),
       reportDate: input.reportDate,
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,

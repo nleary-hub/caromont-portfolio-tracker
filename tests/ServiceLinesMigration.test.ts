@@ -95,8 +95,9 @@ class M16 {
 }
 
 describe("0016_service_lines on production-shaped data (PGlite)", () => {
-  it("is the latest migration", () => {
-    expect(M16.folders().at(-1)).toBe(M);
+  it("follows 0015 directly", () => {
+    const folders = M16.folders();
+    expect(folders.indexOf(M)).toBe(folders.indexOf("0015_milestone_checklist") + 1);
   });
 
   it("keeps every row of every table unchanged (counts and checksums over the 0015 columns)", async () => {
