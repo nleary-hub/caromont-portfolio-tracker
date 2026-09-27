@@ -22,9 +22,14 @@ export class DriveCheckService {
   static readonly READ_FAILED = "Saved a test file, but couldn't read it back.";
   static readonly MISMATCH_DETAIL = "The file read back didn't match what was saved.";
 
-  /** The folder shown next to the button: the app's own folder, or a generic name when GOOGLE_DRIVE_FOLDER_ID picks one. */
+  static readonly SET_FOLDER_LABEL = "the report folder";
+
+  /**
+   * The folder shown next to the button before any check (no Drive call on page load): the app's own folder name, or
+   * "the report folder" whenever GOOGLE_DRIVE_FOLDER_ID is set (production), since its real name needs a Drive call.
+   */
   static folderLabel(env: EnvSource = process.env): string {
-    return ReportEnv.drive(env)?.folderId ? "the report folder" : GoogleDriveClient.FOLDER_NAME;
+    return env.GOOGLE_DRIVE_FOLDER_ID?.trim() ? DriveCheckService.SET_FOLDER_LABEL : GoogleDriveClient.FOLDER_NAME;
   }
 
   static help(folder: string): string {

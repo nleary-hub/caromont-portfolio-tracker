@@ -176,4 +176,37 @@ describe("DriveCheckService: one message per step", () => {
     expect(html).toContain("Saves a small test file to Cardiac Status Reports, then removes it. Nothing is frozen or sent.");
     expect(html).not.toContain('data-testid="drive-check-result"');
   });
+
+  it("with GOOGLE_DRIVE_FOLDER_ID set (production), the page shows \"the report folder\" before the first check", async () => {
+    for (const [k, v] of Object.entries(DRIVE)) vi.stubEnv(k, v);
+    vi.stubEnv("GOOGLE_DRIVE_FOLDER_ID", "prod-folder-id");
+    expect(DriveCheckService.folderLabel()).toBe("the report folder");
+    expect(DriveCheckService.help(DriveCheckService.folderLabel())).toBe("Saves a small test file to the report folder, then removes it. Nothing is frozen or sent.");
+    // Even with the Drive credentials missing, a set folder id never shows the app's default folder name.
+    expect(DriveCheckService.folderLabel({ GOOGLE_DRIVE_FOLDER_ID: "prod-folder-id" })).toBe("the report folder");
+    expect(DriveCheckService.folderLabel({ GOOGLE_DRIVE_FOLDER_ID: "  " })).toBe("Cardiac Status Reports");
+    // The page passes exactly this label to the button (src/app/reports/page.tsx).
+    const { readFileSync } = await import("node:fs");
+    expect(readFileSync("src/app/reports/page.tsx", "utf8")).toContain("<DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} />");
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { DriveCheckButton } = await import("@/components/DriveCheckButton");
+    const html = renderToStaticMarkup(createElement(DriveCheckButton, { folder: DriveCheckService.folderLabel(), help: DriveCheckService.help(DriveCheckService.folderLabel()) }));
+    expect(html).toMatch(/data-testid="drive-folder">the report folder</);
+  });
+
+  it("result colors: delete failed is amber (the Locked tag tone), save and read failures are red, the detail stays gray", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { DriveCheckButton } = await import("@/components/DriveCheckButton");
+    const line = (step: "save" | "read" | "delete") => {
+      const html = renderToStaticMarkup(createElement(DriveCheckButton, { folder: "F", help: "h", initialResult: { ok: false, step, message: `msg-${step}`, detail: `detail-${step}` } }));
+      return { line: /<p class="type-table ([^"]+)">msg-/.exec(html)?.[1], detail: /<p class="([^"]+)">detail-/.exec(html)?.[1] };
+    };
+    expect(line("delete")).toEqual({ line: "text-(--status-at-risk-dark-fg)", detail: "text-muted type-caption break-words" });
+    expect(line("save").line).toBe("text-danger");
+    expect(line("read").line).toBe("text-danger");
+    const { PasswordTags } = await import("@/components/AccessAccountControls");
+    expect(renderToStaticMarkup(createElement(PasswordTags, { status: { state: "active", off: false, locked: true } }))).toContain("text-(--status-at-risk-dark-fg)");
+  });
 });

@@ -11,8 +11,8 @@ const FAILED = "Drive check failed. Try again.";
  * Admin > Report freeze: next to the Drive folder name. Saves, reads back and removes a small test file in the report
  * folder (no freeze, no email). Secondary button; the result stays inline under it (not a toast).
  */
-export function DriveCheckButton({ folder, help }: { folder: string; help: string }) {
-  const [result, setResult] = useState<DriveCheckResult | null>(null);
+export function DriveCheckButton({ folder, help, initialResult = null }: { folder: string; help: string; initialResult?: DriveCheckResult | null }) {
+  const [result, setResult] = useState<DriveCheckResult | null>(initialResult);
   const [pending, start] = useTransition();
   const check = () =>
     start(async () => {
@@ -52,7 +52,8 @@ export function DriveCheckButton({ folder, help }: { folder: string; help: strin
             </p>
           ) : (
             <>
-              <p className="type-table text-danger">{result.message}</p>
+              {/* Delete failed means saves work: a warning (amber, the Locked tag's tone), not an error. */}
+              <p className={`type-table ${result.step === "delete" ? "text-(--status-at-risk-dark-fg)" : "text-danger"}`}>{result.message}</p>
               {result.detail && <p className="text-muted type-caption break-words">{result.detail}</p>}
             </>
           )}
