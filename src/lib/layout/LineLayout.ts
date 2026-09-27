@@ -402,6 +402,8 @@ export class LayoutCopy {
   static readonly RESIZE_TOOLTIP = "Drag to resize. Double-click to fit.";
   static readonly GRIP_TOOLTIP = "Drag to reorder.";
   static readonly ROW_MOVED = "Row moved";
+  /** Shown under the toolbar when any layout save (resize, reorder, row move, reset) fails. */
+  static readonly SAVE_FAILED = "Couldn't save the layout. Try again.";
   static readonly ROW_MOVED_BACK = "Row moved back";
   static readonly UNDO = "Undo";
   static readonly MANUAL_ORDER = "Manual order";

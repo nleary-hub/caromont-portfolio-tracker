@@ -28,7 +28,7 @@ import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { DashboardTable, type DashboardLayoutControl } from "./DashboardTable";
 import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardSort";
-import { LineLayout, type ColumnLayoutValue, type LineLayoutValue } from "@/lib/layout/LineLayout";
+import { LayoutCopy, LineLayout, type ColumnLayoutValue, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentsSelect, TileVisibilityButton } from "./DashboardFilterControls";
 import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
@@ -183,13 +183,13 @@ export function ProjectDashboard({
     try {
       err = await save();
     } catch {
-      err = "Could not save the layout.";
+      err = LayoutCopy.SAVE_FAILED;
     }
     if (err) {
       setLineLayout(previous);
-      setLayoutError(err);
+      setLayoutError(LayoutCopy.SAVE_FAILED);
     }
-    return err;
+    return err ? LayoutCopy.SAVE_FAILED : null;
   };
   const saveColumns = (columns: ColumnLayoutValue | null) =>
     admin ? persistLayout({ ...lineLayout, columns: LineLayout.isDefaultColumns(columns) ? null : columns }, () => admin.saveColumnLayoutAction(columns)) : Promise.resolve("Not authorized.");

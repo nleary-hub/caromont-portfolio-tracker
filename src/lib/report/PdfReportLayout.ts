@@ -11,7 +11,11 @@ export interface LayoutColumn {
  * Report settings as the layout functions see them: the frozen view settings, plus line-one widths (inches) when
  * the line has a custom column layout. Only built in memory by PdfReportLayout.withLayout; never stored.
  */
-export type ReportColumnSettings = ViewSettingsValue & { widthsIn?: Partial<Record<LayoutColumn["key"], number>> };
+/**
+ * Report settings as the PDF lays them out. `widthsIn`: line-one widths from a custom layout's shares.
+ * `customLayout`: the line has a non-default column layout (flags then pack left under the FLAGS header).
+ */
+export type ReportColumnSettings = ViewSettingsValue & { widthsIn?: Partial<Record<LayoutColumn["key"], number>>; customLayout?: boolean };
 
 /**
  * Layout spec for the biweekly PDF (design: portfolio-tracker-mockups/report.*).
@@ -124,7 +128,7 @@ export class PdfReportLayout {
    */
   static withLayout(settings: ViewSettingsValue, columns: ColumnLayoutValue | null | undefined): ReportColumnSettings {
     if (!columns || LineLayout.isDefaultColumns(columns)) return settings;
-    const ordered = LineLayout.orderedSettings("report", settings, columns.order);
+    const ordered: ReportColumnSettings = { ...LineLayout.orderedSettings("report", settings, columns.order), customLayout: true };
     if (!columns.shares) return ordered;
     return { ...ordered, widthsIn: PdfReportLayout.layoutWidthsIn(ordered, columns.shares) };
   }
@@ -150,14 +154,21 @@ export class PdfReportLayout {
     for (const item of fitted) {
       const cols = parts(item.key);
       if (item.key === "dueFlags" && cols.length === 2) {
-        // The date keeps today's width; Flags takes the rest (at least today's 2.95 in, the minimum).
-        out.due = PdfReportLayout.COLUMNS_IN.due;
-        out.flags = item.width - PdfReportLayout.COLUMNS_IN.due;
+        // Due and Flags split the width in today's 0.6 : 2.95 ratio, so a wider Due/Flags column never squeezes
+        // the date; at the minimum both keep today's widths.
+        out.due = PdfReportLayout.dueShareIn(item.width);
+        out.flags = item.width - out.due;
       } else {
         out[cols[0]] = item.width;
       }
     }
     return out;
+  }
+
+  /** Due's part of a custom Due/Flags width (inches): today's ratio, never below today's 0.6 in. */
+  static dueShareIn(widthIn: number): number {
+    const { due, flags } = PdfReportLayout.COLUMNS_IN;
+    return Math.max(due, (widthIn * due) / (due + flags));
   }
 
   static showsChampion(settings: ViewSettingsValue): boolean {
