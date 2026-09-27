@@ -3,18 +3,18 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { ReportSettingsForm } from "@/components/ReportSettingsForm";
-import { ContractsLeadsForm, LineDepartmentsForm } from "@/components/ServiceLineListsForms";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLineHistoryText } from "@/lib/admin/ServiceLineHistoryText";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { AdminMenu } from "@/lib/admin/AdminMenu";
+import { ReportSettingsCopy } from "@/lib/admin/ReportSettingsCopy";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { ServiceLineService } from "@/lib/services/ServiceLineService";
 
-export const metadata: Metadata = { title: "Line settings" };
+export const metadata: Metadata = { title: AdminMenu.REPORT_SETTINGS };
 
 class SettingsFormat {
   private static readonly WHEN = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/New_York" });
@@ -42,7 +42,7 @@ export default async function AdminSettingsPage() {
         <div className="flex min-w-0 items-center gap-3">
           <ServiceLineSlot viewer={viewer} active={scope} />
           <div className="h-6 w-px bg-line" />
-          <h1 className="type-title whitespace-nowrap">Line settings</h1>
+          <h1 className="type-title whitespace-nowrap">{AdminMenu.REPORT_SETTINGS}</h1>
         </div>
         <div className="flex items-center gap-3">
           <AdminMenuSlot viewer={viewer} />
@@ -64,31 +64,17 @@ export default async function AdminSettingsPage() {
         <h2 id="report-settings" className="type-heading">
           Report
         </h2>
-        <ReportSettingsForm departments={reportOptions.departments} totalsGrid={reportOptions.totalsGrid} options={options} scheduled={scope.isDefault} />
+        <ReportSettingsForm departments={reportOptions.departments} totalsGrid={reportOptions.totalsGrid} options={options} list={scope.departments} scheduled={scope.isDefault} />
       </section>
 
-      <section className={section} aria-labelledby="line-departments">
-        <h2 id="line-departments" className="type-heading">
-          Departments
-        </h2>
-        {scope.isDefault ? (
-          <p className="type-table text-muted">
-            {ServiceAreaInfo.all()
-              .map((a) => ServiceAreaInfo.label(a))
-              .join(", ")}
-            . The default service line keeps all of its departments.
-          </p>
-        ) : (
-          <LineDepartmentsForm lineId={scope.id} departments={scope.departments} />
-        )}
-      </section>
-
-      <section className={section} aria-labelledby="line-contracts">
-        <h2 id="line-contracts" className="type-heading">
-          People
-        </h2>
-        <ContractsLeadsForm lineId={scope.id} leads={scope.contractsLeads} />
-      </section>
+      {/* Contracts leads moved to Admin > People (temporary pointer, for a release or two). */}
+      <p className="type-caption text-muted" data-testid="people-pointer">
+        {ReportSettingsCopy.POINTER_BEFORE}
+        <Link href="/admin/people" className="text-accent hover:underline">
+          {ReportSettingsCopy.POINTER_LINK}
+        </Link>
+        {ReportSettingsCopy.POINTER_AFTER}
+      </p>
 
       <section className="flex flex-col gap-2">
         <h2 className="type-heading">Recent changes to {scope.shortName}</h2>

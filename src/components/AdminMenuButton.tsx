@@ -21,6 +21,7 @@ class AdminMenuIcons {
     archive: <path d="M1.5 3h13v3h-13zM2.5 6v7.5h11V6M6.5 8.5h3" />,
     snowflake: <path d="M8 1.5v13M2.4 4.75l11.2 6.5M2.4 11.25l11.2-6.5M6.5 2.5L8 4l1.5-1.5M6.5 13.5L8 12l1.5 1.5" />,
     template: <path d="M2 2h12v12H2zM2 6h12M6 6v8" />,
+    departments: <path d="M2 2.5h12v3H2zM2 7h12v3H2zM2 11.5h12v2.5H2z" />,
     people: <path d="M6 7.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.5 14c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4M11 7.5a2 2 0 100-4M12 10c1.5.4 2.5 1.7 2.5 4" />,
     audit: <path d="M3 1.5h10v13H3zM5.5 5h5M5.5 8h5M5.5 11h3" />,
     tag: <path d="M1.5 2.5v5l7 7 6-6-7-7h-5zM4.5 5.5h.01" />,

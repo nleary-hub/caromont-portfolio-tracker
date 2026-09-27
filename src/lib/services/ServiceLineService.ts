@@ -1,5 +1,4 @@
 import type { Prisma, PrismaClient, ServiceLine as ServiceLineRow } from "@/generated/prisma/client";
-import type { ServiceArea } from "@/generated/prisma/enums";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
@@ -136,21 +135,6 @@ export class ServiceLineService {
       await ServiceLineService.assertUnique(tx, { name: row.name, shortName: row.shortName }, id);
       await tx.serviceLine.update({ where: { id }, data: { deletedAt: null, deletedBy: null, updatedBy: admin.email } });
       await ServiceLineService.log(tx, id, ServiceLineService.ACTIONS.restored, null, { name: row.name, shortName: row.shortName }, admin);
-    });
-  }
-
-  /** Departments a line uses. The default line keeps all seven (it must behave exactly as before). */
-  static async setDepartments(id: string, departments: readonly unknown[], admin: Viewer, db: PrismaClient = Db.client): Promise<ServiceLineScope> {
-    AdminPolicy.assertAdmin(admin);
-    const next = ServiceLine.parseDepartments(departments);
-    return db.$transaction(async (tx) => {
-      const row = await ServiceLineService.load(tx, id);
-      if (row.isDefault) throw new ServiceLineValidationError({ _form: "The default service line's departments can't be changed." });
-      const before = ServiceLineAccess.toScope(row).departments;
-      if (before.join() === next.join()) return ServiceLineAccess.toScope(row);
-      const updated = await tx.serviceLine.update({ where: { id }, data: { departments: next as ServiceArea[], updatedBy: admin.email } });
-      await ServiceLineService.log(tx, id, ServiceLineService.ACTIONS.departments, before, next, admin);
-      return ServiceLineAccess.toScope(updated);
     });
   }
 

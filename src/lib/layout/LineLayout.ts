@@ -1,5 +1,5 @@
 import type { ViewContext } from "@/generated/prisma/enums";
-import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { ViewColumn, ViewSettingsValue } from "@/lib/domain/ViewSettings";
 
 /** A resizable, movable table column (the dashboard's data columns; the PDF maps each onto its own columns). */
@@ -94,11 +94,26 @@ export class LineLayout {
   static normalizeRows(raw: unknown): RowOrderValue {
     const out: RowOrderValue = {};
     if (!raw || typeof raw !== "object") return out;
-    const groups = ServiceAreaInfo.groups() as readonly string[];
+    // Keys are department keys (ids since migration 0018; old enum values in layouts frozen before it) or
+    // "Unassigned". A key naming no department of the line is harmless: no row groups under it.
     for (const [area, ids] of Object.entries(raw as Record<string, unknown>)) {
-      if (!groups.includes(area) || !Array.isArray(ids)) continue;
+      if (!area || area.length > 64 || !Array.isArray(ids)) continue;
       const list = [...new Set(ids.filter((id): id is string => typeof id === "string" && id.length > 0))];
       if (list.length) out[area as AreaGroup] = list;
+    }
+    return out;
+  }
+
+  /**
+   * Row lists keyed by an old enum value ("Cath", written by the previous deployment during the deploy window of
+   * migration 0018) read as the department that replaced it. A list already under the id wins.
+   */
+  static resolveRows(rows: RowOrderValue, list: DepartmentList | undefined): RowOrderValue {
+    if (!list) return rows;
+    const out: RowOrderValue = {};
+    for (const [key, ids] of Object.entries(rows)) {
+      const id = ServiceAreaInfo.resolve(list, key);
+      if (id === key || !(id in rows)) out[id as AreaGroup] = ids;
     }
     return out;
   }

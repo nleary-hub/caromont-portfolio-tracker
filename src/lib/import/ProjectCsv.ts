@@ -1,12 +1,12 @@
 import { CsvError, parse } from "csv-parse/sync";
 import { stringify } from "csv-stringify/sync";
-import { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { Requester } from "@/lib/domain/Requester";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectRecord } from "@/lib/domain/types";
 import { ProjectValidator, type FieldErrors, type ProjectInput } from "@/lib/validation/ProjectValidator";
 
@@ -183,24 +183,24 @@ export class ProjectCsv {
   }
 
   /** Export rows (id + template columns) for the given projects. */
-  static exportCsv(projects: readonly ProjectRecord[]): string {
+  static exportCsv(projects: readonly ProjectRecord[], list: DepartmentList = ServiceAreaInfo.LEGACY): string {
     return ProjectCsv.stringify(
       ProjectCsv.EXPORT_COLUMNS,
       projects.map((p) => {
-        const cells = ProjectCsv.toCells(p);
+        const cells = ProjectCsv.toCells(p, list);
         return ProjectCsv.EXPORT_COLUMNS.map((c) => cells[c]);
       }),
     );
   }
 
   /** One project as CSV cell text, in the same formats the importer reads. */
-  static toCells(p: ProjectRecord): Record<CsvColumn, string> {
+  static toCells(p: ProjectRecord, list: DepartmentList = ServiceAreaInfo.LEGACY): Record<CsvColumn, string> {
     return {
       id: p.id,
       name: p.name,
       description: p.description ?? "",
       infor_request_number: p.inforRequestNumber === null ? "" : String(p.inforRequestNumber),
-      service_area: p.serviceArea ? ServiceAreaInfo.label(p.serviceArea) : "",
+      service_area: p.serviceArea ? ServiceAreaInfo.label(p.serviceArea, list) : "",
       owner: p.owner ?? "",
       requester: Requester.cellText(p.physicianChampion, p.requesterNotApplicable),
       contracts_lead: p.contractsLead ?? "",
@@ -283,7 +283,8 @@ export class ProjectCsv {
 
   /** Convert the present cells of a row to ProjectInput values. Validation proper is ProjectValidator's job. */
   /** `contractsLeads`: the service line's pick-list (default: the CVPSL list). */
-  static toInput(row: CsvRow, opts: { blankStatus?: ProjectStatus; contractsLeads?: readonly string[] } = {}): RowConversion {
+  static toInput(row: CsvRow, opts: { blankStatus?: ProjectStatus; contractsLeads?: readonly string[]; departments?: DepartmentList } = {}): RowConversion {
+    const list = opts.departments ?? ServiceAreaInfo.LEGACY;
     const input: Partial<ProjectInput> = {};
     const errors: RowConversion["errors"] = {};
     const fail = (col: CsvColumn, msg: string) => (errors[col] ??= []).push(msg);
@@ -299,12 +300,12 @@ export class ProjectCsv {
             input.serviceArea = null;
             break;
           }
-          const area = ProjectCsv.resolveServiceArea(value);
+          const area = ProjectCsv.resolveServiceArea(value, list);
           if (area) input.serviceArea = area;
           else {
             fail(
               col,
-              `"${value}" is not a service area. Use one of: ${ServiceAreaInfo.all().join(", ")}, or Unassigned (or leave blank)`,
+              `"${value}" is not a service area. Use one of: ${list.filter(ServiceAreaInfo.isOpen).map((d) => d.shortName).join(", ")}, or Unassigned (or leave blank)`,
             );
             input.serviceArea = value;
           }
@@ -416,15 +417,17 @@ export class ProjectCsv {
     return (row.cells.name ?? "").trim().toLowerCase().startsWith(ProjectCsv.EXAMPLE_PREFIX.toLowerCase());
   }
 
-  /** Case- and whitespace-insensitive match against enum keys and display labels. */
-  static resolveServiceArea(value: string): ServiceArea | null {
+  /**
+   * The line's department for a cell: case-, space- and punctuation-insensitive match against each open
+   * department's name ("Cath Lab"), short name ("Cath") and old enum value, then the spreadsheet aliases.
+   */
+  static resolveServiceArea(value: string, list: DepartmentList = ServiceAreaInfo.LEGACY): DepartmentKey | null {
     const key = ProjectCsv.enumKey(value);
-    const direct = (Object.values(ServiceArea) as ServiceArea[]).find(
-      (a) => ProjectCsv.enumKey(a) === key || ProjectCsv.enumKey(ServiceAreaInfo.label(a)) === key,
-    );
-    if (direct) return direct;
+    const open = list.filter(ServiceAreaInfo.isOpen);
+    const direct = open.find((d) => [d.name, d.shortName, d.legacyKey ?? ""].some((n) => n && ProjectCsv.enumKey(n) === key));
+    if (direct) return direct.id;
     const alias = Object.entries(ServiceAreaInfo.ALIASES).find(([name]) => ProjectCsv.enumKey(name) === key);
-    return alias ? alias[1] : null;
+    return alias ? (ServiceAreaInfo.find(open, alias[1])?.id ?? null) : null;
   }
 
   static resolveStatus(value: string): ProjectStatus | null {

@@ -1,5 +1,4 @@
-import type { ServiceArea } from "@/generated/prisma/enums";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type DepartmentKey } from "@/lib/domain/ServiceAreaInfo";
 
 /** Plain-text rendering of service_line_history rows for the admin tables. */
 export class ServiceLineHistoryText {
@@ -24,7 +23,7 @@ export class ServiceLineHistoryText {
     if (value === null || value === undefined) return "";
     if (Array.isArray(value)) {
       if (value.length === 0) return "None";
-      return value.map((v) => (ServiceAreaInfo.all().includes(v as ServiceArea) ? ServiceAreaInfo.label(v as ServiceArea) : String(v))).join(", ");
+      return value.map((v) => (ServiceAreaInfo.all().includes(v as DepartmentKey) ? ServiceAreaInfo.label(v as DepartmentKey) : String(v))).join(", ");
     }
     if (typeof value === "object") {
       const o = value as { name?: unknown; shortName?: unknown };

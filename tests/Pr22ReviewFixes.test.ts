@@ -104,10 +104,31 @@ describe("PR #22 review fixes: note on its own line starts at Next milestone", (
     const settings = Fx.narrowPeopleStatusLast();
     const placement = ReportLayout.notePlacement(settings);
     const milestone = ReportLayout.columns(settings).find((c) => c.key === "nextMilestone")!;
-    expect(placement).toEqual({ x: milestone.x, w: ReportGeometry.CONTENT_W - milestone.x, ownLine: true });
+    expect(placement).toEqual({ x: milestone.x, w: milestone.w - ReportGeometry.CELL_PAD_R, ownLine: true, underMilestone: true });
     const l = ReportLayout.rowLayout(m, Fx.row({ changed: false, note: null }), settings, SampleReportData.REPORT_DATE);
     expect(l.note?.x).toBe(milestone.x);
     expect(l.note?.lines[0]).toMatchObject({ text: "No change.", mutedPrefix: "No change.".length });
+  });
+
+  it("sits directly under the milestone line inside the Next milestone column, not below the tallest cell", () => {
+    const settings = Fx.narrowPeopleStatusLast();
+    const milestone = ReportLayout.columns(settings).find((c) => c.key === "nextMilestone")!;
+    // A tall People cell (wrapped owner and requester) must not push the note down.
+    const row = Fx.row({ changed: false, note: "Waiting on vendor quote.", owner: "Kimberly Nguyen-Alvarez Worthington", physicianChampion: "Dr. Requester Longname Example Person" });
+    const l = ReportLayout.rowLayout(m, row, settings, SampleReportData.REPORT_DATE);
+    const ms = Fx.cell(l.cells, "nextMilestone");
+    const g = ReportGeometry;
+    expect(l.note!.x).toBe(milestone.x);
+    expect(l.note!.w).toBe(milestone.w - g.CELL_PAD_R);
+    expect(l.note!.y).toBeCloseTo(Math.max(1, ms.lines.length) * g.TABLE_LH + g.NOTE_GAP, 9);
+    expect(l.note!.lines[0]).toMatchObject({ mutedPrefix: "No change.".length });
+    expect(l.note!.lines[0].text.startsWith("No change.")).toBe(true);
+    for (const line of l.note!.lines) expect(m.width(line.text, S.table, 400)).toBeLessThanOrEqual(l.note!.w + 0.01);
+    // The row is tall enough for whichever is taller: the other cells or the note.
+    const noteBottom = l.note!.y + l.note!.lines.length * g.TABLE_LH;
+    expect(l.height).toBeGreaterThanOrEqual(g.ROW_PAD * 2 + noteBottom + g.ROW_BORDER - 0.01);
+    const owner = Fx.cell(l.cells, "owner");
+    expect(owner.ownerMore.length + owner.championMore.length).toBeGreaterThan(0);
   });
 
   it("keeps the default placement (Next milestone to the margin, beside line 2) in the default layout", () => {

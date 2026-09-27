@@ -1,4 +1,5 @@
-import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import type { DepartmentKey, DepartmentList } from "@/lib/domain/ServiceAreaInfo";
+import type { ProjectStatus } from "@/generated/prisma/enums";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
@@ -10,7 +11,7 @@ export type DashboardTile = ProjectStatus | "completedFy";
 export interface PrefsLine {
   id: string;
   isDefault: boolean;
-  departments: readonly ServiceArea[];
+  departments: DepartmentList;
 }
 
 /** Minimal Storage surface (window.localStorage in the browser, a Map in tests). */
@@ -45,7 +46,7 @@ export class DashboardPrefs {
   }
 
   /** The department filter's options for the line. */
-  static options(line?: PrefsLine): readonly ServiceArea[] {
+  static options(line?: PrefsLine): readonly DepartmentKey[] {
     return line ? DepartmentFilter.optionsFor(line) : DepartmentFilter.OPTIONS;
   }
 
@@ -58,12 +59,17 @@ export class DashboardPrefs {
     }
   }
 
-  static readDepartments(storage: PrefsStorage | null, email: string, line?: PrefsLine): ServiceArea[] {
-    return DepartmentFilter.fromStored(storage ? DashboardPrefs.parse(storage.getItem(DashboardPrefs.departmentsKey(email, line))) : null, DashboardPrefs.options(line));
+  static readDepartments(storage: PrefsStorage | null, email: string, line?: PrefsLine): DepartmentKey[] {
+    // Saved before migration 0018: old enum values, read as the departments that replaced them.
+    return DepartmentFilter.fromStored(
+      storage ? DashboardPrefs.parse(storage.getItem(DashboardPrefs.departmentsKey(email, line))) : null,
+      DashboardPrefs.options(line),
+      line?.departments,
+    );
   }
 
   /** Excluded departments are stored (not included ones), so a department added later starts included. */
-  static writeDepartments(storage: PrefsStorage | null, email: string, selection: readonly ServiceArea[], line?: PrefsLine): void {
+  static writeDepartments(storage: PrefsStorage | null, email: string, selection: readonly DepartmentKey[], line?: PrefsLine): void {
     storage?.setItem(DashboardPrefs.departmentsKey(email, line), JSON.stringify(DepartmentFilter.toStored(selection, DashboardPrefs.options(line))));
   }
 

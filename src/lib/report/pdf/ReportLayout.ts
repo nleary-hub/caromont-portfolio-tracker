@@ -1,4 +1,4 @@
-import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import type { ProjectStatus } from "@/generated/prisma/enums";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { TotalsGridPlacement, type TotalsGridMode } from "@/lib/domain/TotalsGridPlacement";
 import { AppConfig } from "@/lib/config/AppConfig";
@@ -9,7 +9,7 @@ import { InforNumber } from "@/lib/domain/InforNumber";
 import { PeopleLabel } from "@/lib/domain/PeopleLabel";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
@@ -55,7 +55,7 @@ export interface ReportDocInput {
    * department, exactly as before. Otherwise only the included departments are listed, gridded and counted,
    * and page 1 gets a "Departments" detail naming them.
    */
-  departments?: readonly ServiceArea[];
+  departments?: readonly DepartmentKey[];
   /** Totals grid placement (admin setting). Absent = "top", today's layout. */
   totalsGrid?: TotalsGridMode;
   /**
@@ -64,11 +64,11 @@ export interface ReportDocInput {
    */
   layout?: LineLayoutValue | null;
   /**
-   * The service line's departments, for a line other than the default. Absent = the default line (CVPSL):
-   * all seven, exactly as before. Limits the page 1 grid to these departments and is the department
-   * filter's option list.
+   * The service line's departments in report order (live for drafts, the frozen departmentsJson for snapshots):
+   * headings, grid labels, order, and the department filter's options (its open departments). Absent =
+   * ServiceAreaInfo.LEGACY, today's seven keyed by their old values (snapshots frozen before migration 0018).
    */
-  lineDepartments?: readonly ServiceArea[];
+  lineDepartments?: DepartmentList;
 }
 
 /** Geometry in PDF points (1 in = 72 pt). Mirrors portfolio-tracker-mockups/report.css. */
@@ -656,9 +656,11 @@ export class ReportLayout {
    * Where the note goes: from the first column after the last column that has line-2 content
    * (project spans both lines, requester sits under owner, the status change under status) to the
    * right margin. With the default order that is Next milestone to the margin (5.55 in). When that leaves less
-   * than NOTE_MIN_W the note takes its own line under the row, starting at the Next milestone column.
+   * than NOTE_MIN_W the note takes its own line inside the Next milestone column, directly under the milestone
+   * text (`underMilestone`), whatever the height of the other cells. With Next milestone hidden it takes the
+   * full width under the row.
    */
-  static notePlacement(settings: ViewSettingsValue): { x: number; w: number; ownLine: boolean } {
+  static notePlacement(settings: ViewSettingsValue): { x: number; w: number; ownLine: boolean; underMilestone?: true } {
     const cols = ReportLayout.columns(settings);
     const hasLineTwo = (k: LayoutColumn["key"]) =>
       k === "project" ||
@@ -671,11 +673,10 @@ export class ReportLayout {
     const start = last + 1 < cols.length ? cols[last + 1].x : ReportGeometry.CONTENT_W;
     const w = ReportGeometry.CONTENT_W - start;
     if (w >= ReportGeometry.NOTE_MIN_W) return { x: start, w, ownLine: false };
-    // Its own line under the row: from the Next milestone column's left edge (the note stays under its
-    // milestone) to the right margin, or the full width when that is too narrow or the column is hidden.
+    // Its own line inside the Next milestone column, right under the milestone text (same inner width as the
+    // milestone text), or the full width under the row when the column is hidden.
     const milestone = cols.find((c) => c.key === "nextMilestone");
-    const mw = milestone ? ReportGeometry.CONTENT_W - milestone.x : 0;
-    if (milestone && mw >= ReportGeometry.NOTE_MIN_W) return { x: milestone.x, w: mw, ownLine: true };
+    if (milestone) return { x: milestone.x, w: milestone.w - ReportGeometry.CELL_PAD_R, ownLine: true, underMilestone: true };
     return { x: 0, w: ReportGeometry.CONTENT_W, ownLine: true };
   }
 
@@ -827,7 +828,11 @@ export class ReportLayout {
     const right = Math.max(lineOneH + (lineTwoH > 0 ? g.LINE_GAP + lineTwoH : 0), lineOneH + (noteH > 0 ? g.NOTE_GAP + noteH : 0));
     let content = Math.max(projectH, right);
     if (note) {
-      if (placement.ownLine) {
+      if (placement.underMilestone) {
+        const milestone = cells.find((c): c is Extract<RowCell, { kind: "nextMilestone" }> => c.kind === "nextMilestone");
+        note.y = Math.max(1, milestone?.lines.length ?? 1) * g.TABLE_LH + g.NOTE_GAP;
+        content = Math.max(content, note.y + note.lines.length * g.TABLE_LH);
+      } else if (placement.ownLine) {
         note.y = content + g.NOTE_GAP;
         content = note.y + note.lines.length * g.TABLE_LH;
       } else {
@@ -1042,7 +1047,7 @@ export class ReportLayout {
       const counts = ReportBuilder.areaCounts(header, a);
       const total = statuses.reduce((sum, s) => sum + counts[s], 0);
       return {
-        label: ServiceAreaInfo.label(a),
+        label: ServiceAreaInfo.label(a, ReportLayout.departmentList(input)),
         cells: [...statuses.map((s) => counts[s]), total],
         total: false,
         muted: a === ServiceAreaInfo.UNASSIGNED,
@@ -1055,10 +1060,11 @@ export class ReportLayout {
     };
     const gridWidth = g.GRID_AREA_W + columns.reduce((s, c) => s + c.width, 0);
 
-    const areasWithRows = ServiceAreaInfo.groups().filter((a) => input.rows.some((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a));
+    const list = ReportLayout.departmentList(input);
+    const areasWithRows = ServiceAreaInfo.groups(list, input.rows.map((r) => r.serviceArea)).filter((a) => input.rows.some((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a));
     // "N projects across M departments": only departments with listed projects; Unassigned never counts.
     const departments = areasWithRows.filter((a) => a !== ServiceAreaInfo.UNASSIGNED);
-    const strip = ReportLayout.strip(m, header, areasWithRows, statuses);
+    const strip = ReportLayout.strip(m, header, areasWithRows, statuses, list);
 
     const cols = ReportLayout.columns(settings).map((c) => ({
       ...c,
@@ -1077,7 +1083,7 @@ export class ReportLayout {
       [ReportLayout.PERIOD_LABEL, period ?? "Not set"],
       ["Projects", projectsLine],
     ];
-    const departmentsDetail = DepartmentFilter.reportDetail(input.departments, ReportLayout.departmentOptions(input));
+    const departmentsDetail = DepartmentFilter.reportDetail(input.departments, ReportLayout.departmentOptions(input), ReportLayout.departmentList(input));
     let meta = ReportLayout.meta(m, metaRows, metaWidth);
     let completedAt: HeaderModel["completedAt"] = null;
     const fy = header.completedFiscalYear;
@@ -1188,10 +1194,11 @@ export class ReportLayout {
     header: ReportHeader,
     areas: readonly AreaGroup[],
     statuses: readonly ProjectStatus[],
+    list: DepartmentList = ServiceAreaInfo.LEGACY,
   ): StripItem[][] {
     const g = ReportGeometry;
     const items: StripItem[] = areas.map((a) => {
-      const label = ServiceAreaInfo.label(a);
+      const label = ServiceAreaInfo.label(a, list);
       let cursor = m.width(label, g.SIZE.small, 600) + 4;
       const counts = statuses
         .filter((s) => ReportBuilder.areaCounts(header, a)[s] > 0)
@@ -1224,18 +1231,23 @@ export class ReportLayout {
    * Page 1 area table rows: each included department that has listed projects, in report order, then
    * Unassigned when a listed row has no department. An included department with no projects gets no row
    * (and no section in the body). handoff.json keeps its own list (HandoffBuilder.areas).
-   * `lineDepartments` are a non-default service line's departments (the filter's options).
+   * `list` is the line's department list (absent = ServiceAreaInfo.LEGACY).
    */
-  static gridAreas(rows: readonly ReportRow[], departments?: readonly ServiceArea[], lineDepartments?: readonly ServiceArea[]): AreaGroup[] {
-    const options = lineDepartments ?? DepartmentFilter.OPTIONS;
-    return ServiceAreaInfo.groups()
+  static gridAreas(rows: readonly ReportRow[], departments?: readonly DepartmentKey[], list: DepartmentList = ServiceAreaInfo.LEGACY): AreaGroup[] {
+    const options = ServiceAreaInfo.all(list);
+    return ServiceAreaInfo.groups(list, rows.map((r) => r.serviceArea))
       .filter((a) => rows.some((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a))
       .filter((a) => !departments || DepartmentFilter.includesGroup(departments, a, options));
   }
 
-  /** The department filter's options: the line's departments, or DepartmentFilter.OPTIONS for the default line. */
-  static departmentOptions(input: Pick<ReportDocInput, "lineDepartments">): readonly ServiceArea[] {
-    return input.lineDepartments ?? DepartmentFilter.OPTIONS;
+  /** The line's department list; ServiceAreaInfo.LEGACY when absent (snapshots frozen before migration 0018). */
+  static departmentList(input: Pick<ReportDocInput, "lineDepartments">): DepartmentList {
+    return input.lineDepartments ?? ServiceAreaInfo.LEGACY;
+  }
+
+  /** The department filter's options: the line's open departments, in report order. */
+  static departmentOptions(input: Pick<ReportDocInput, "lineDepartments">): readonly DepartmentKey[] {
+    return ServiceAreaInfo.all(ReportLayout.departmentList(input));
   }
 
   /** Width the badge takes at the top right (text at 7 pt semibold with 0.4 pt tracking, padding, border). */
@@ -1475,7 +1487,7 @@ export class ReportLayout {
       input = { ...input, viewSettings: PdfReportLayout.withLayout(input.viewSettings, input.layout.columns), rows: RowOrder.apply(input.rows, input.layout.rows, (r) => r.projectId) };
     }
     // The FY-to-date count is not derived from rows: it comes from the (frozen) header as stored.
-    const header = { ...ReportBuilder.header(input.rows), completedFiscalYear: input.header?.completedFiscalYear };
+    const header = { ...ReportBuilder.header(input.rows, ReportLayout.departmentList(input)), completedFiscalYear: input.header?.completedFiscalYear };
     const model = ReportLayout.header(m, input, header);
     const firstH = ReportLayout.firstHeaderHeight(input, model);
     const contH = ReportLayout.continuationHeaderHeight(input, model);
@@ -1504,9 +1516,10 @@ export class ReportLayout {
 
     const sectionH = (atTop: boolean) => (atTop ? 0 : g.SECTION_MT) + g.SECTION_H;
     const completed = input.completed ?? [];
+    const list = ReportLayout.departmentList(input);
     const pushSection = (area: AreaGroup, count: number, completedCount: number, continued: boolean) => {
       const h = sectionH(y === 0);
-      page.blocks.push({ kind: "section", y, height: h, area, label: ServiceAreaInfo.label(area), count, completedCount, continued });
+      page.blocks.push({ kind: "section", y, height: h, area, label: ServiceAreaInfo.label(area, list), count, completedCount, continued });
       y += h;
     };
 
@@ -1515,7 +1528,7 @@ export class ReportLayout {
     }
 
     // Departments in order, then Unassigned (null) last; Completed blocks work the same in every group.
-    for (const area of ServiceAreaInfo.groups()) {
+    for (const area of ServiceAreaInfo.groups(list, [...input.rows, ...completed].map((r) => r.serviceArea))) {
       const rows = input.rows.filter((r) => ServiceAreaInfo.groupOf(r.serviceArea) === area);
       const done = completed.filter((c) => ServiceAreaInfo.groupOf(c.serviceArea) === area);
       if (rows.length === 0 && done.length === 0) continue;

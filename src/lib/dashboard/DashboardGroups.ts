@@ -1,10 +1,12 @@
-import type { ServiceArea } from "@/generated/prisma/enums";
-import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 
 /** One department section of the grouped dashboard. */
 export interface DashboardGroup<R, C> {
   area: AreaGroup;
+  /** Heading (the short name, as in the PDF: "Cath"). */
   label: string;
+  /** Full name for announcements ("Moved to position 3 of 6 in Cath Lab"). */
+  name: string;
   /** Unassigned renders in the secondary gray, as in the PDF. */
   muted: boolean;
   rows: R[];
@@ -14,7 +16,7 @@ export interface DashboardGroup<R, C> {
   countText: string;
 }
 
-type Grouped = { serviceArea: ServiceArea | null };
+type Grouped = { serviceArea: DepartmentKey | null };
 
 /**
  * Groups dashboard rows by department exactly like the PDF body (ReportLayout.layout): departments in
@@ -28,15 +30,17 @@ export class DashboardGroups {
     rows: readonly R[],
     completed: readonly C[] = [],
     compare?: (a: R, b: R) => number,
+    list: DepartmentList = ServiceAreaInfo.LEGACY,
   ): DashboardGroup<R, C>[] {
     const groups: DashboardGroup<R, C>[] = [];
-    for (const area of ServiceAreaInfo.groups()) {
+    for (const area of ServiceAreaInfo.groups(list, [...rows, ...completed].map((r) => r.serviceArea))) {
       const inArea = rows.filter((r) => ServiceAreaInfo.groupOf(r.serviceArea) === area);
       const done = completed.filter((c) => ServiceAreaInfo.groupOf(c.serviceArea) === area);
       if (inArea.length === 0 && done.length === 0) continue;
       groups.push({
         area,
-        label: ServiceAreaInfo.label(area),
+        label: ServiceAreaInfo.label(area, list),
+        name: ServiceAreaInfo.fullName(area, list),
         muted: area === ServiceAreaInfo.UNASSIGNED,
         rows: compare ? [...inArea].sort(compare) : inArea,
         completed: done,

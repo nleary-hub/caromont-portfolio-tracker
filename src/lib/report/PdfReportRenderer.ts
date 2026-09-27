@@ -2,6 +2,7 @@ import { createElement, type ReactElement } from "react";
 import { Font, renderToBuffer, type DocumentProps } from "@react-pdf/renderer";
 import type { ReportSnapshot } from "@/generated/prisma/client";
 import { DateOnly } from "@/lib/domain/DateOnly";
+import { ServiceAreaInfo, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
@@ -29,6 +30,8 @@ export interface ReportRenderInput {
   serviceLine: ServiceLineValue | null;
   /** Layout frozen at generation (default layout for snapshots before migration 0017). */
   layout?: LineLayoutValue;
+  /** The line's departments frozen at generation (ServiceAreaInfo.LEGACY for snapshots before migration 0018). */
+  departmentList?: DepartmentList;
   periodStart: string;
   periodEnd: string;
   generatedAt: Date;
@@ -48,15 +51,18 @@ export class PdfReportRenderer {
   /** Rebuild the render input from a stored snapshot (old snapshots fall back to report defaults). */
   static inputFromSnapshot(
     snapshot: Pick<ReportSnapshot, "id" | "rowsJson" | "headerJson" | "completedJson" | "viewSettingsJson" | "optionsJson" | "serviceLineJson" | "periodStart" | "periodEnd" | "generatedAt"> &
-      Partial<Pick<ReportSnapshot, "layoutJson">>,
+      Partial<Pick<ReportSnapshot, "layoutJson" | "departmentsJson">>,
   ): ReportRenderInput {
+    // Frozen names, order and ids: a later rename, reorder or delete never changes this report.
+    const departmentList = ServiceAreaInfo.fromStored(snapshot.departmentsJson ?? null);
     return {
       snapshotId: snapshot.id,
       rows: snapshot.rowsJson as unknown as ReportRow[],
       header: (snapshot.headerJson as unknown as ReportHeader | null) ?? null,
       ...(snapshot.completedJson ? { completed: snapshot.completedJson as unknown as CompletedRow[] } : {}),
       viewSettings: ViewSettings.normalize("report", snapshot.viewSettingsJson ?? undefined),
-      options: ReportOptionsService.normalize(snapshot.optionsJson),
+      options: ReportOptionsService.normalize(snapshot.optionsJson, ServiceAreaInfo.all(departmentList), departmentList),
+      departmentList,
       serviceLine: ServiceLine.fromSnapshot(snapshot.serviceLineJson),
       layout: LineLayout.normalize(snapshot.layoutJson ?? null),
       periodStart: DateOnly.fromDbDate(snapshot.periodStart)!,
@@ -75,6 +81,7 @@ export class PdfReportRenderer {
       showKeyPage: input.options.showKeyPage,
       departments: input.options.departments,
       totalsGrid: input.options.totalsGrid,
+      ...(input.departmentList ? { lineDepartments: input.departmentList } : {}),
       serviceLine: input.serviceLine,
       ...(input.layout ? { layout: input.layout } : {}),
       reportDate: input.reportDate,

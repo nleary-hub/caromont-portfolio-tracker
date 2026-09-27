@@ -33,7 +33,7 @@ export class DraftReportService {
       showKeyPage: data.options.showKeyPage,
       departments: data.options.departments,
       totalsGrid: data.options.totalsGrid,
-      ...(line.isDefault ? {} : { lineDepartments: line.departments }),
+      lineDepartments: line.departments,
       serviceLine: data.serviceLine,
       layout: data.layout,
       reportDate: data.reportDate,

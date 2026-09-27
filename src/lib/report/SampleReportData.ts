@@ -1,12 +1,13 @@
+import type { DepartmentKey } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
-import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import type { ProjectStatus } from "@/generated/prisma/enums";
 import type { CompletedRow, ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import type { ReportDocInput } from "@/lib/report/pdf/ReportLayout";
 
-type Seed = [ServiceArea, string, ProjectStatus, string | null, string | null, string | null, boolean, ProjectStatus | null, string];
+type Seed = [DepartmentKey, string, ProjectStatus, string | null, string | null, string | null, boolean, ProjectStatus | null, string];
 
 /**
  * Clearly fictional sample rows for design review renders (sample-report.pdf) and layout tests.

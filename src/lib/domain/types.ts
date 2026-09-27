@@ -1,6 +1,6 @@
-import type { ProjectStatus, RecipientLine, ServiceArea } from "@/generated/prisma/enums";
+import type { ProjectStatus, RecipientLine } from "@/generated/prisma/enums";
 import type { MilestoneCount } from "@/lib/domain/MilestoneProgress";
-import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import type { AreaGroup, DepartmentKey } from "@/lib/domain/ServiceAreaInfo";
 
 /** Fields of a Project that the domain logic needs. Structurally compatible with the Prisma model. */
 export interface ProjectRecord {
@@ -10,7 +10,7 @@ export interface ProjectRecord {
   /** Optional Infor request number, whole number 1 to 99999 (null = none). Displayed as "REQ-5081". */
   inforRequestNumber: number | null;
   /** Null = Unassigned (grouped last). */
-  serviceArea: ServiceArea | null;
+  serviceArea: DepartmentKey | null;
   /** Null = not assigned yet (shown as "To assign"). */
   owner: string | null;
   physicianChampion: string | null;
@@ -44,7 +44,7 @@ export interface RecipientRecord {
   name: string;
   email: string;
   role: string | null;
-  serviceArea: ServiceArea | null;
+  serviceArea: DepartmentKey | null;
   line: RecipientLine;
   active: boolean;
 }
@@ -64,7 +64,7 @@ export interface ReportRow {
   projectId: string;
   name: string;
   /** Null = Unassigned (grouped last). */
-  serviceArea: ServiceArea | null;
+  serviceArea: DepartmentKey | null;
   /** Null = not assigned yet (shown as "To assign"). */
   owner: string | null;
   physicianChampion: string | null;
@@ -103,7 +103,7 @@ export interface CompletedRow {
   projectId: string;
   name: string;
   /** Null = Unassigned (grouped last). */
-  serviceArea: ServiceArea | null;
+  serviceArea: DepartmentKey | null;
   /** Null = not assigned yet (shown as "To assign"). */
   owner: string | null;
   accomplishment: string | null;

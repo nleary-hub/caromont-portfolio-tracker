@@ -1,9 +1,10 @@
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { Requester } from "@/lib/domain/Requester";
-import type { Prisma, PrismaClient, Project, ProjectMilestone } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient, Project as PrismaProject, ProjectMilestone } from "@/generated/prisma/client";
+import { ProjectRows } from "@/lib/domain/ProjectRows";
 import type { ViewContext } from "@/generated/prisma/enums";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
@@ -15,6 +16,10 @@ import { MilestoneRules, MilestoneValidationError, type MilestoneEdit } from "@/
 import { MilestoneService } from "@/lib/services/MilestoneService";
 import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 import { ProjectValidationError, ProjectValidator, type ProjectData, type ProjectInput } from "@/lib/validation/ProjectValidator";
+
+/** A stored project in domain terms: `serviceArea` is the department key (Project.departmentId), see ProjectRows. */
+export type ProjectRow = Omit<PrismaProject, "serviceArea"> & { serviceArea: DepartmentKey | null };
+type Project = ProjectRow;
 
 export interface Actor {
   /** Email (or name) of the signed-in user making the change. */
@@ -92,12 +97,12 @@ export class ProjectService {
     const data = parsed ?? ProjectValidator.parse(input, ProjectValidator.rulesOf(scope));
     const now = at;
     // The line is not a tracked field: it is set once here and never changes.
-    const project = await tx.project.create({ data: { ...data, serviceLineId: scope.id, updatedBy: actor.changedBy } });
+    const project = ProjectRows.fromDb(await tx.project.create({ data: { ...(ProjectRows.toDb(data) as Omit<Prisma.ProjectUncheckedCreateInput, "serviceLineId" | "updatedBy">), serviceLineId: scope.id, updatedBy: actor.changedBy } }));
     // Manual row order: a new project goes to the bottom of its department.
     await LineLayoutService.placeNew(tx, scope, project.id, ServiceAreaInfo.groupOf(project.serviceArea), actor.changedBy);
     const snapshot: Record<string, string | null> = {};
     for (const field of HistoryDiff.TRACKED_FIELDS) {
-      if (field in data) snapshot[field] = HistoryDiff.serialize(field, data[field as keyof typeof data]);
+      if (field in data) snapshot[field] = HistoryDiff.serialize(field, field === "serviceArea" ? ProjectService.departmentText(scope.departments, data.serviceArea) : data[field as keyof typeof data]);
     }
     await tx.projectHistory.create({
       data: {
@@ -174,11 +179,13 @@ export class ProjectService {
     const mirrorChanged = options.mirror ? HistoryDiff.diff(existing, { nextMilestone: data.nextMilestone, dueDate: data.dueDate }).length > 0 : false;
     if (changes.length === 0 && !mirrorChanged) return existing;
 
-    const updated = await tx.project.update({
-      where: { id },
-      data: { ...(data as Prisma.ProjectUpdateInput), updatedBy: actor.changedBy },
-    });
-    await ProjectService.writeHistory(tx, id, changes, actor, options.at ?? new Date());
+    const updated = ProjectRows.fromDb(
+      await tx.project.update({
+        where: { id },
+        data: { ...(ProjectRows.toDb(data) as Prisma.ProjectUncheckedUpdateInput), updatedBy: actor.changedBy },
+      }),
+    );
+    await ProjectService.writeHistory(tx, id, changes, actor, options.at ?? new Date(), scope.departments);
     // Manual row order: a project moved to another department goes to the bottom of that department.
     if (ServiceAreaInfo.groupOf(existing.serviceArea) !== ServiceAreaInfo.groupOf(updated.serviceArea)) {
       await LineLayoutService.placeMoved(tx, scope, id, ServiceAreaInfo.groupOf(updated.serviceArea), actor.changedBy);
@@ -242,11 +249,13 @@ export class ProjectService {
       });
 
       const changes = HistoryDiff.diff(existing, { ...data });
-      const updated = await tx.project.update({
-        where: { id },
-        data: { ...data, updatedBy: actor.changedBy },
-      });
-      await ProjectService.writeHistory(tx, id, changes, actor, now);
+      const updated = ProjectRows.fromDb(
+        await tx.project.update({
+          where: { id },
+          data: { ...(ProjectRows.toDb(data) as Prisma.ProjectUncheckedUpdateInput), updatedBy: actor.changedBy },
+        }),
+      );
+      await ProjectService.writeHistory(tx, id, changes, actor, now, scope.departments);
       if (changes.some((c) => c.field === "nextMilestone" || c.field === "dueDate")) {
         await MilestoneService.syncLegacyEditInTx(tx, id, { nextMilestone: updated.nextMilestone, dueDate: updated.dueDate });
       }
@@ -400,7 +409,7 @@ export class ProjectService {
       const existing = await ProjectService.loadMutable(tx, id, scope);
       const now = new Date();
       const data = { archivedAt: now, deletedBy: admin.email };
-      const updated = await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } });
+      const updated = ProjectRows.fromDb(await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } }));
       await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin, comment), now);
       return updated;
     });
@@ -410,12 +419,13 @@ export class ProjectService {
   static async restore(id: string, admin: Viewer, db: PrismaClient = Db.client, comment?: string, scope: ServiceLineScope = ServiceLine.defaultScope()): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     return db.$transaction(async (tx) => {
-      const existing = await tx.project.findUnique({ where: { id } });
-      if (!existing || !ServiceLineAccess.inScope(existing, scope)) throw new ProjectNotFoundError(id);
+      const found = await tx.project.findUnique({ where: { id } });
+      if (!found || !ServiceLineAccess.inScope(found, scope)) throw new ProjectNotFoundError(id);
+      const existing = ProjectRows.fromDb(found);
       if (!existing.archivedAt) return existing;
       const now = new Date();
       const data = { archivedAt: null, deletedBy: null };
-      const updated = await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } });
+      const updated = ProjectRows.fromDb(await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } }));
       await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin, comment), now);
       return updated;
     });
@@ -469,7 +479,7 @@ export class ProjectService {
       const existing = await ProjectService.loadMutable(tx, id, scope);
       if (existing[field] === hidden) return existing;
       const data = { [field]: hidden };
-      const updated = await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } });
+      const updated = ProjectRows.fromDb(await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } }));
       await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin), new Date());
       return updated;
     });
@@ -492,16 +502,21 @@ export class ProjectService {
     return count;
   }
 
+  /** A department key as history text: its short name (null stays null; an unknown key stays as is). */
+  static departmentText(list: DepartmentList, key: string | null | undefined): string | null {
+    return key ? ServiceAreaInfo.label(key, list) : null;
+  }
+
   private static actorOf(admin: Viewer, comment?: string): Actor {
     return { changedBy: admin.email, comment: comment ?? null };
   }
 
   /** A project of `scope` that may be changed. A project of another service line is "not found" (no leak). */
   private static async loadMutable(tx: Tx, id: string, scope: Pick<ServiceLineScope, "id">): Promise<Project> {
-    const existing = await tx.project.findUnique({ where: { id } });
-    if (!existing || !ServiceLineAccess.inScope(existing, scope)) throw new ProjectNotFoundError(id);
-    if (existing.archivedAt) throw new ProjectArchivedError(id);
-    return existing;
+    const found = await tx.project.findUnique({ where: { id } });
+    if (!found || !ServiceLineAccess.inScope(found, scope)) throw new ProjectNotFoundError(id);
+    if (found.archivedAt) throw new ProjectArchivedError(id);
+    return ProjectRows.fromDb(found);
   }
 
   private static readonly EDITABLE_FIELDS: readonly (keyof ProjectInput)[] = [
@@ -540,14 +555,18 @@ export class ProjectService {
     changes: FieldChange[],
     actor: Actor,
     at: Date,
+    departments?: DepartmentList,
   ): Promise<void> {
     if (changes.length === 0) return;
+    // A department change is recorded by its short name at the time (as before 0018, when values were "Cath"),
+    // so the history keeps the name the project had even after a rename.
+    const text = (c: FieldChange, v: string | null) => (c.field === "serviceArea" && departments ? ProjectService.departmentText(departments, v) : v);
     await tx.projectHistory.createMany({
       data: changes.map((c) => ({
         projectId,
         field: c.field,
-        oldValue: c.oldValue,
-        newValue: c.newValue,
+        oldValue: text(c, c.oldValue),
+        newValue: text(c, c.newValue),
         changedAt: at,
         changedBy: actor.changedBy,
         comment: actor.comment ?? null,

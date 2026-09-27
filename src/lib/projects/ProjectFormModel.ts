@@ -2,7 +2,7 @@ import type { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { FieldErrors, ProjectInput } from "@/lib/validation/ProjectValidator";
 
 /**
@@ -11,7 +11,7 @@ import type { FieldErrors, ProjectInput } from "@/lib/validation/ProjectValidato
  */
 export interface ProjectFormValues {
   name: string;
-  /** ServiceArea value, or "" for none. */
+  /** DepartmentKey value, or "" for none. */
   serviceArea: string;
   status: string;
   /** Digits only, without the "REQ-" prefix; "" for none. */
@@ -217,12 +217,13 @@ export class ProjectFormModel {
    * Instant client checks (the server repeats all of them through ProjectValidator). A stored value
    * already over a hard cap is flagged only once that field is edited.
    */
-  static errors(values: ProjectFormValues, original: ProjectFormValues, isNew: boolean): FieldErrors {
+  static errors(values: ProjectFormValues, original: ProjectFormValues, isNew: boolean, departments: DepartmentList = ServiceAreaInfo.LEGACY): FieldErrors {
     const e: Record<string, string[]> = {};
     const add = (f: FormField, msg: string) => (e[f] ??= []).push(msg);
     if (values.name.trim() === "") add("name", "Name is required");
     if (isNew && values.serviceArea === "") add("serviceArea", "Department is required");
-    if (values.serviceArea !== "" && !ServiceAreaInfo.isValid(values.serviceArea)) add("serviceArea", "Pick a department");
+    // An open department of the line, or the project's own department even if it has since been archived.
+    if (values.serviceArea !== "" && values.serviceArea !== original.serviceArea && !ServiceAreaInfo.isValid(values.serviceArea, departments)) add("serviceArea", "Pick a department");
     if (values.inforRequestNumber !== "" && !/^[0-9]{1,5}$/.test(values.inforRequestNumber)) add("inforRequestNumber", "Enter up to 5 digits");
     else if (values.inforRequestNumber !== "" && Number(values.inforRequestNumber) < AppConfig.INFOR_REQUEST_NUMBER_MIN) {
       add("inforRequestNumber", `Infor number must be from ${AppConfig.INFOR_REQUEST_NUMBER_MIN} to ${AppConfig.INFOR_REQUEST_NUMBER_MAX}`);

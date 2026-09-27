@@ -1,7 +1,7 @@
 "use client";
 
+import type { DepartmentKey, DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { useActionState, useState } from "react";
-import type { ServiceArea } from "@/generated/prisma/enums";
 import { saveReportOptions } from "@/app/actions/reports";
 import { TotalsGridPlacement, type TotalsGridMode } from "@/lib/domain/TotalsGridPlacement";
 import type { ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
@@ -12,24 +12,27 @@ export function ReportSettingsForm({
   departments,
   totalsGrid,
   options,
+  list,
   scheduled = true,
 }: {
-  departments: ServiceArea[];
+  departments: DepartmentKey[];
   totalsGrid: TotalsGridMode;
   /** The active line's department filter options. */
-  options?: readonly ServiceArea[];
+  options?: readonly DepartmentKey[];
+  /** The line's departments (checkbox labels). */
+  list?: DepartmentList;
   /** False for lines other than the default: they have on-demand PDFs only. */
   scheduled?: boolean;
 }) {
   const [state, action, pending] = useActionState<ReportOptionsFormState, FormData>(saveReportOptions, null);
-  const [selected, setSelected] = useState<ServiceArea[]>(departments);
+  const [selected, setSelected] = useState<DepartmentKey[]>(departments);
   const [mode, setMode] = useState<TotalsGridMode>(totalsGrid);
   return (
     <form action={action} className="flex max-w-[520px] flex-col gap-4">
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 type-label text-muted">Departments in report</legend>
         <div className="max-w-[260px]">
-          <DepartmentChecklist value={selected} onChange={setSelected} name="departments" options={options} />
+          <DepartmentChecklist value={selected} onChange={setSelected} name="departments" options={options} list={list} />
         </div>
       </fieldset>
       <fieldset className="flex flex-col gap-1.5">
