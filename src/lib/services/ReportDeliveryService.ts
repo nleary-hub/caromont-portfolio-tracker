@@ -4,6 +4,8 @@ import { Db } from "@/lib/db/Db";
 import { GoogleDriveClient, type FetchLike } from "@/lib/report/GoogleDriveClient";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { SignedLink } from "@/lib/report/SignedLink";
+import { ServiceLineDrive } from "@/lib/report/ServiceLineDrive";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 
 /** Latest delivery outcome, stored in ReportSnapshot.deliveryJson (admin-only). */
 export interface DeliveryRecord {
@@ -63,7 +65,10 @@ export class ReportDeliveryService {
     triggeredBy: string,
     deps: DeliveryDeps = {},
     db: PrismaClient = Db.client,
+    line: Pick<ServiceLineScope, "isDefault" | "shortName"> = ServiceLine.defaultScope(),
   ): Promise<DeliveryRecord> {
+    // The Drive folder stays CVPSL-only (the Wednesday email reads the newest file there).
+    ServiceLineDrive.assertRootAllowed(line);
     const env = deps.env ?? process.env;
     const now = deps.now ?? new Date();
     const record: DeliveryRecord = { status: "failed", attemptedAt: now.toISOString(), triggeredBy };

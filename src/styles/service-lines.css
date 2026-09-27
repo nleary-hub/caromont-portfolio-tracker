@@ -1,0 +1,26 @@
+/* Service line switcher and admin page (ServiceLineSwitcher.tsx, ServiceLinesAdmin.tsx). Reuses vp-* and tokens. */
+@layer components {
+  .sl-switch {
+    display: inline-flex; align-items: center; gap: 6px; height: 28px; max-width: 100%; padding: 0 8px;
+    border-radius: var(--radius-control); background: transparent; color: var(--dark-text-primary);
+    font: var(--app-title); cursor: pointer; min-width: 0;
+  }
+  .sl-switch:hover, .sl-switch[aria-expanded="true"] { background: var(--dark-row-selected); }
+  .sl-switch:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: 1px; }
+  .sl-switch > svg { color: var(--dark-text-secondary); flex: none; }
+  .sl-pop { width: 280px; left: 0; right: auto; padding: 8px; }
+  .sl-row { cursor: pointer; gap: 8px; }
+  .sl-row:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: -2px; }
+  .sl-check { width: 12px; display: grid; place-items: center; color: var(--dark-accent); flex: none; }
+  .sl-name { flex: 1; min-width: 0; font-size: 13px; line-height: 18px; color: var(--dark-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sl-short { font-size: 12px; line-height: 16px; color: var(--dark-text-secondary); flex: none; }
+  .sl-manage { display: flex; align-items: center; height: 32px; padding: 0 6px 0 26px; border-radius: var(--radius-control); font: var(--app-table-strong); color: var(--dark-accent); }
+  .sl-manage:hover { background: var(--dark-row-selected); }
+  .sl-toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 50;
+    padding: 8px 14px; border-radius: var(--radius-control); border: 1px solid var(--dark-border);
+    background: var(--dark-topbar-glass); backdrop-filter: blur(20px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
+    font: var(--app-table-strong); color: var(--dark-text-primary);
+  }
+  .sl-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.5); display: grid; place-items: center; }
+}

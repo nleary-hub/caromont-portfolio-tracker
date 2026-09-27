@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@/generated/prisma/client";
+import { ServiceLine } from "@/lib/domain/ServiceLine";
 
 type Row = Record<string, unknown>;
 
@@ -20,7 +21,13 @@ interface State {
   templates: Row[];
   templateItems: Row[];
   templateHistory: Row[];
+  serviceLines: Row[];
+  serviceLineHistory: Row[];
+  serviceLineUserState: Row[];
 }
+
+/** Scoped tables: a row stored without serviceLineId (tests that push rows directly) belongs to the default line. */
+const SCOPED_DEFAULT = ServiceLine.DEFAULT_ID;
 
 /**
  * Minimal in-memory stand-in for the Prisma calls used by the services.
@@ -45,6 +52,10 @@ export class FakeDb {
     templates: [],
     templateItems: [],
     templateHistory: [],
+    // Migration 0016 seeds the default line (CVPSL).
+    serviceLines: [FakeDb.defaultLineRow()],
+    serviceLineHistory: [],
+    serviceLineUserState: [],
   };
   writes: { model: string; op: string; inTx: boolean; txId: number | null }[] = [];
   /** Simulate a database without migration 0015 (project_milestones missing). */
@@ -52,6 +63,47 @@ export class FakeDb {
   transactions = 0;
   private txCounter = 0;
   private txQueue: Promise<unknown> = Promise.resolve();
+
+  static defaultLineRow(): Row {
+    const s = ServiceLine.defaultScope();
+    const at = new Date("2026-09-26T00:00:00Z");
+    return {
+      id: s.id,
+      name: s.name,
+      shortName: s.shortName,
+      isDefault: true,
+      departments: [...s.departments],
+      contractsLeads: [...s.contractsLeads],
+      archivedAt: null,
+      deletedAt: null,
+      deletedBy: null,
+      createdAt: at,
+      updatedAt: at,
+      updatedBy: "migration 0016",
+    };
+  }
+
+  /** Add an open service line (tests). */
+  addLine(overrides: Row = {}): Row {
+    const at = new Date();
+    const row = {
+      id: randomUUID(),
+      name: "Oncology Service Line",
+      shortName: "ONC",
+      isDefault: false,
+      departments: [],
+      contractsLeads: [],
+      archivedAt: null,
+      deletedAt: null,
+      deletedBy: null,
+      createdAt: at,
+      updatedAt: at,
+      updatedBy: "admin@example.org",
+      ...overrides,
+    };
+    this.state.serviceLines.push(row);
+    return row;
+  }
 
   static clone(state: State): State {
     const c = (rows: Row[]) => rows.map((r) => ({ ...r }));
@@ -72,6 +124,9 @@ export class FakeDb {
       templates: c(state.templates),
       templateItems: c(state.templateItems),
       templateHistory: c(state.templateHistory),
+      serviceLines: c(state.serviceLines),
+      serviceLineHistory: c(state.serviceLineHistory),
+      serviceLineUserState: c(state.serviceLineUserState),
     };
   }
 
@@ -81,17 +136,22 @@ export class FakeDb {
 
   private api(txId: number | null) {
     const rec = (model: string, op: string) => this.writes.push({ model, op, inTx: txId !== null, txId });
+    const value = (row: Row, k: string) => (k === "serviceLineId" && row[k] === undefined ? SCOPED_DEFAULT : row[k]);
     const matches = (row: Row, where: Row = {}): boolean =>
       Object.entries(where).every(([k, v]) => {
+        const rv = value(row, k);
         if (v && typeof v === "object" && !(v instanceof Date)) {
-          const cond = v as { in?: unknown[]; notIn?: unknown[]; gt?: Date };
-          if (cond.in) return cond.in.includes(row[k]);
-          if (cond.notIn) return !cond.notIn.includes(row[k]);
-          if (cond.gt) return (row[k] as Date).getTime() > cond.gt.getTime();
+          const cond = v as { in?: unknown[]; notIn?: unknown[]; gt?: Date; not?: unknown };
+          if (cond.in) return cond.in.includes(rv);
+          if (cond.notIn) return !cond.notIn.includes(rv);
+          if (cond.gt) return (rv as Date).getTime() > cond.gt.getTime();
+          if ("not" in cond) return cond.not === null ? rv !== null && rv !== undefined : rv !== cond.not;
         }
-        if (v instanceof Date) return row[k] instanceof Date && (row[k] as Date).getTime() === v.getTime();
-        return row[k] === v;
+        if (v instanceof Date) return rv instanceof Date && (rv as Date).getTime() === v.getTime();
+        if (v === null) return rv === null || rv === undefined;
+        return rv === v;
       });
+    const withLine = (row: Row): Row => (row.serviceLineId === undefined ? { ...row, serviceLineId: SCOPED_DEFAULT } : { ...row });
     const uniqueViolation = () => Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
     const sortBy = (rows: Row[], orderBy?: Record<string, "asc" | "desc">) => {
       if (!orderBy) return rows;
@@ -158,10 +218,14 @@ export class FakeDb {
         },
         findUnique: async ({ where }: { where: { id: string } }) => {
           const r = this.state.projects.find((p) => p.id === where.id);
-          return r ? { ...r } : null;
+          return r ? withLine(r) : null;
         },
-        findMany: async ({ where }: { where?: Row } = {}) =>
-          this.state.projects.filter((p) => matches(p, where)).map((p) => ({ ...p })),
+        findFirst: async ({ where, select }: { where?: Row; select?: Record<string, boolean> } = {}) => {
+          const r = this.state.projects.find((p) => matches(p, where));
+          return r ? pick(withLine(r), select) : null;
+        },
+        findMany: async ({ where, select }: { where?: Row; select?: Record<string, boolean> } = {}) =>
+          this.state.projects.filter((p) => matches(p, where)).map((p) => pick(withLine(p), select)),
         update: async ({ where, data }: { where: { id: string }; data: Row }) => {
           rec("project", "update");
           const r = this.state.projects.find((p) => p.id === where.id);
@@ -202,10 +266,10 @@ export class FakeDb {
             this.state.snapshots.filter((s) => matches(s, where)),
             orderBy ?? { generatedAt: "desc" },
           );
-          return rows[0] ? pick(rows[0], select) : null;
+          return rows[0] ? pick(withLine(rows[0]), select) : null;
         },
         findMany: async ({ where, select, orderBy }: { where?: Row; select?: Record<string, boolean>; orderBy?: Record<string, "asc" | "desc"> } = {}) =>
-          sortBy(this.state.snapshots.filter((s) => matches(s, where)), orderBy).map((s) => pick(s, select)),
+          sortBy(this.state.snapshots.filter((s) => matches(s, where)), orderBy).map((s) => pick(withLine(s), select)),
         create: async ({ data }: { data: Row }) => {
           rec("reportSnapshot", "create");
           const clash = this.state.snapshots.some(
@@ -242,13 +306,13 @@ export class FakeDb {
         },
       },
       reportOptions: {
-        findUnique: async ({ where }: { where: { id: string } }) => {
-          const r = this.state.reportOptions.find((o) => o.id === where.id);
+        findUnique: async ({ where }: { where: Row }) => {
+          const r = this.state.reportOptions.find((o) => matches(o, where));
           return r ? { ...r } : null;
         },
-        upsert: async ({ where, create, update }: { where: { id: string }; create: Row; update: Row }) => {
+        upsert: async ({ where, create, update }: { where: Row; create: Row; update: Row }) => {
           rec("reportOptions", "upsert");
-          const r = this.state.reportOptions.find((o) => o.id === where.id);
+          const r = this.state.reportOptions.find((o) => matches(o, where));
           if (r) {
             Object.assign(r, update, { updatedAt: new Date() });
             return { ...r };
@@ -259,8 +323,8 @@ export class FakeDb {
         },
       },
       reportOptionsHistory: {
-        findFirst: async () => {
-          const rows = [...this.state.reportOptionsHistory].reverse().sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime());
+        findFirst: async ({ where }: { where?: Row } = {}) => {
+          const rows = [...this.state.reportOptionsHistory.filter((h) => matches(h, where))].reverse().sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime());
           return rows[0] ? { ...rows[0] } : null;
         },
         create: async ({ data }: { data: Row }) => {
@@ -330,10 +394,10 @@ export class FakeDb {
       },
       milestoneTemplate: {
         findMany: async ({ where, select }: { where?: Row; select?: Record<string, boolean> } = {}) =>
-          this.state.templates.filter((t) => matches(t, where)).map((t) => pick(t, select)),
+          this.state.templates.filter((t) => matches(t, where)).map((t) => pick(withLine(t), select)),
         findUnique: async ({ where }: { where: { id: string } }) => {
           const r = this.state.templates.find((t) => t.id === where.id);
-          return r ? { ...r } : null;
+          return r ? withLine(r) : null;
         },
         create: async ({ data }: { data: Row }) => {
           rec("milestoneTemplate", "create");
@@ -395,8 +459,8 @@ export class FakeDb {
           this.state.templateHistory.push(row);
           return { ...row };
         },
-        findMany: async ({ take }: { orderBy?: unknown; take?: number } = {}) =>
-          [...this.state.templateHistory]
+        findMany: async ({ where, take }: { where?: Row; orderBy?: unknown; take?: number } = {}) =>
+          [...this.state.templateHistory.filter((h) => matches(h, where))]
             .sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime())
             .slice(0, take ?? undefined)
             .map((r) => ({ ...r })),
@@ -437,6 +501,65 @@ export class FakeDb {
         },
         findMany: async ({ where }: { where?: Row } = {}) =>
           this.state.viewSettingsHistory.filter((h) => matches(h, where)).map((h) => ({ ...h })),
+      },
+      serviceLine: {
+        findFirst: async ({ where }: { where?: Row } = {}) => {
+          const r = this.state.serviceLines.find((l) => matches(l, where));
+          return r ? { ...r } : null;
+        },
+        findUnique: async ({ where }: { where: { id: string } }) => {
+          const r = this.state.serviceLines.find((l) => l.id === where.id);
+          return r ? { ...r } : null;
+        },
+        findMany: async ({ where, orderBy }: { where?: Row; orderBy?: Record<string, "asc" | "desc"> } = {}) =>
+          sortBy(this.state.serviceLines.filter((l) => matches(l, where)), orderBy).map((l) => ({ ...l })),
+        create: async ({ data }: { data: Row }) => {
+          rec("serviceLine", "create");
+          const now = new Date();
+          const row = { id: randomUUID(), isDefault: false, departments: [], contractsLeads: [], archivedAt: null, deletedAt: null, deletedBy: null, createdAt: now, updatedAt: now, ...data };
+          this.state.serviceLines.push(row);
+          return { ...row };
+        },
+        update: async ({ where, data }: { where: { id: string }; data: Row }) => {
+          rec("serviceLine", "update");
+          const r = this.state.serviceLines.find((l) => l.id === where.id);
+          if (!r) throw new Error("not found");
+          // service_line_default_open check (migration 0016).
+          if (r.isDefault && ((data.archivedAt ?? null) !== null || (data.deletedAt ?? null) !== null)) throw new Error("service_line_default_open");
+          Object.assign(r, data, { updatedAt: new Date() });
+          return { ...r };
+        },
+      },
+      serviceLineHistory: {
+        create: async ({ data }: { data: Row }) => {
+          rec("serviceLineHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), oldValue: null, newValue: null, ...data };
+          this.state.serviceLineHistory.push(row);
+          return { ...row };
+        },
+        findMany: async ({ where, take }: { where?: Row; orderBy?: unknown; take?: number } = {}) =>
+          [...this.state.serviceLineHistory.filter((h) => matches(h, where))]
+            .reverse()
+            .sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime())
+            .slice(0, take ?? undefined)
+            .map((r) => ({ ...r })),
+      },
+      serviceLineUserState: {
+        findUnique: async ({ where }: { where: { email: string } }) => {
+          const r = this.state.serviceLineUserState.find((u) => u.email === where.email);
+          return r ? { ...r } : null;
+        },
+        upsert: async ({ where, create, update }: { where: { email: string }; create: Row; update: Row }) => {
+          rec("serviceLineUserState", "upsert");
+          const r = this.state.serviceLineUserState.find((u) => u.email === where.email);
+          if (r) {
+            Object.assign(r, update, { updatedAt: new Date() });
+            return { ...r };
+          }
+          const row = { ...create, updatedAt: new Date() };
+          this.state.serviceLineUserState.push(row);
+          return { ...row };
+        },
       },
       recipient: {
         findMany: async ({ where }: { where?: Row } = {}) =>

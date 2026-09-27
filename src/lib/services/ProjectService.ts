@@ -1,3 +1,5 @@
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { Requester } from "@/lib/domain/Requester";
 import type { Prisma, PrismaClient, Project, ProjectMilestone } from "@/generated/prisma/client";
 import type { ViewContext } from "@/generated/prisma/enums";
@@ -68,19 +70,27 @@ interface UpdateOptions {
 export type PeopleField = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "serviceArea";
 
 export class ProjectService {
-  static async create(input: ProjectInput, actor: Actor, db: PrismaClient = Db.client): Promise<Project> {
-    ProjectValidator.parse(input); // fail fast, before opening a transaction
-    return db.$transaction((tx) => ProjectService.createInTx(tx, input, actor));
+  static async create(input: ProjectInput, actor: Actor, db: PrismaClient = Db.client, scope: ServiceLineScope = ServiceLine.defaultScope()): Promise<Project> {
+    ProjectValidator.parse(input, ProjectValidator.rulesOf(scope)); // fail fast, before opening a transaction
+    return db.$transaction((tx) => ProjectService.createInTx(tx, input, actor, undefined, new Date(), scope));
   }
 
   /**
    * Create inside a caller-owned transaction (e.g. an all-or-nothing CSV import).
    * Validates, inserts, and writes the "created" history row on the same transaction.
    */
-  static async createInTx(tx: Tx, input: ProjectInput, actor: Actor, parsed?: ProjectData, at: Date = new Date()): Promise<Project> {
-    const data = parsed ?? ProjectValidator.parse(input);
+  static async createInTx(
+    tx: Tx,
+    input: ProjectInput,
+    actor: Actor,
+    parsed?: ProjectData,
+    at: Date = new Date(),
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
+  ): Promise<Project> {
+    const data = parsed ?? ProjectValidator.parse(input, ProjectValidator.rulesOf(scope));
     const now = at;
-    const project = await tx.project.create({ data: { ...data, updatedBy: actor.changedBy } });
+    // The line is not a tracked field: it is set once here and never changes.
+    const project = await tx.project.create({ data: { ...data, serviceLineId: scope.id, updatedBy: actor.changedBy } });
     const snapshot: Record<string, string | null> = {};
     for (const field of HistoryDiff.TRACKED_FIELDS) {
       if (field in data) snapshot[field] = HistoryDiff.serialize(field, data[field as keyof typeof data]);
@@ -109,8 +119,9 @@ export class ProjectService {
     patch: Partial<ProjectInput>,
     actor: Actor,
     db: PrismaClient = Db.client,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<Project> {
-    return db.$transaction((tx) => ProjectService.updateInTx(tx, id, patch, actor));
+    return db.$transaction((tx) => ProjectService.updateInTx(tx, id, patch, actor, "default", {}, scope));
   }
 
   /**
@@ -127,8 +138,10 @@ export class ProjectService {
     actor: Actor,
     mode: "default" | "form" = "default",
     options: UpdateOptions = {},
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<Project> {
-    const existing = await ProjectService.loadMutable(tx, id);
+    const existing = await ProjectService.loadMutable(tx, id, scope);
+    const rules = ProjectValidator.rulesOf(scope);
     // Requester: a new name clears Not applicable and Not applicable clears the name.
     const stored = ProjectValidator.toInput(existing);
     const editable = ProjectService.pickEditable(patch);
@@ -142,7 +155,7 @@ export class ProjectService {
       : {};
     const merged: ProjectInput = { ...stored, ...Requester.normalizePatch(editable), ...mirrorInput };
     const data: Record<string, unknown> = {
-      ...(mode === "form" ? ProjectValidator.parseForm(merged, { existing: stored }) : ProjectValidator.parseUpdate(merged, stored)),
+      ...(mode === "form" ? ProjectValidator.parseForm(merged, { existing: stored, rules }) : ProjectValidator.parseUpdate(merged, stored, rules)),
     };
 
     // Reopening (status leaves Complete) clears completionReportedAt, so a later completion is listed
@@ -179,9 +192,10 @@ export class ProjectService {
     completion: MilestoneCompletion,
     actor: Actor,
     db: PrismaClient = Db.client,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<Project> {
     return db.$transaction(async (tx) => {
-      const existing = await ProjectService.loadMutable(tx, id);
+      const existing = await ProjectService.loadMutable(tx, id, scope);
       if (!existing.nextMilestone) throw new MilestoneError("Project has no current milestone to complete");
       if (ProjectStatusInfo.isClosed(existing.status)) {
         throw new MilestoneError("Project is already Complete or Cancelled");
@@ -204,7 +218,7 @@ export class ProjectService {
         ...(completion.note !== undefined ? { note: completion.note } : {}),
         ...(completion.markComplete ? { status: "Complete" } : {}),
       };
-      const data = ProjectValidator.parseUpdate(merged, stored);
+      const data = ProjectValidator.parseUpdate(merged, stored, ProjectValidator.rulesOf(scope));
       const now = new Date();
 
       await tx.projectHistory.create({
@@ -259,21 +273,22 @@ export class ProjectService {
     admin: Viewer,
     db: PrismaClient = Db.client,
     milestones?: MilestoneEdit | null,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const patch = ProjectService.pickFormFields(values);
     const actor = ProjectService.actorOf(admin);
     return db.$transaction(async (tx) => {
       const at = new Date();
-      await ProjectService.loadMutable(tx, id);
+      await ProjectService.loadMutable(tx, id, scope);
       let mirror: UpdateOptions["mirror"];
       if (milestones) {
         const saved = await ProjectService.withMilestoneErrors(() =>
-          MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null),
+          MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null, scope),
         );
         if (saved.changed) mirror = saved.mirror;
       }
-      return ProjectService.updateInTx(tx, id, patch, actor, "form", { mirror, at });
+      return ProjectService.updateInTx(tx, id, patch, actor, "form", { mirror, at }, scope);
     });
   }
 
@@ -282,16 +297,22 @@ export class ProjectService {
    * add, delete, apply template) in its own transaction, with one history row per action and the derived
    * next milestone mirrored to the legacy columns. Returns the stored steps. Admin only.
    */
-  static async saveMilestones(id: string, milestones: MilestoneEdit, admin: Viewer, db: PrismaClient = Db.client): Promise<ProjectMilestone[]> {
+  static async saveMilestones(
+    id: string,
+    milestones: MilestoneEdit,
+    admin: Viewer,
+    db: PrismaClient = Db.client,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
+  ): Promise<ProjectMilestone[]> {
     AdminPolicy.assertAdmin(admin);
     const actor = ProjectService.actorOf(admin);
     return db.$transaction(async (tx) => {
       const at = new Date();
-      await ProjectService.loadMutable(tx, id);
-      const saved = await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null));
+      await ProjectService.loadMutable(tx, id, scope);
+      const saved = await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null, scope));
       if (saved.changed) {
         try {
-          await ProjectService.updateInTx(tx, id, {}, actor, "form", { mirror: saved.mirror, at });
+          await ProjectService.updateInTx(tx, id, {}, actor, "form", { mirror: saved.mirror, at }, scope);
         } catch (e) {
           // The status needs a next milestone (e.g. deleting the last step of an On track project).
           if (e instanceof ProjectValidationError && e.errors.nextMilestone) {
@@ -325,6 +346,7 @@ export class ProjectService {
     admin: Viewer,
     db: PrismaClient = Db.client,
     milestones?: MilestoneEdit | null,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const input: ProjectInput = { name: "", ...ProjectService.pickFormFields(values), status: values.status || "NotStarted" };
@@ -336,13 +358,13 @@ export class ProjectService {
       input.nextMilestone = mirror.nextMilestone;
       input.dueDate = HistoryDiff.serialize("dueDate", mirror.dueDate);
     }
-    const data = ProjectValidator.parseForm(input, { existing: null });
+    const data = ProjectValidator.parseForm(input, { existing: null, rules: ProjectValidator.rulesOf(scope) });
     const actor = ProjectService.actorOf(admin);
     return db.$transaction(async (tx) => {
       const at = new Date();
-      const project = await ProjectService.createInTx(tx, input, actor, data, at);
+      const project = await ProjectService.createInTx(tx, input, actor, data, at, scope);
       if (drafts.length > 0) {
-        await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, project.id, drafts, actor, at, milestones?.applied ?? null));
+        await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, project.id, drafts, actor, at, milestones?.applied ?? null, scope));
       }
       return project;
     });
@@ -364,10 +386,10 @@ export class ProjectService {
    * Admin "Delete": soft delete (archivedAt + deletedBy). The record and its history are kept;
    * the DB still blocks hard deletes. Audited like every other change. Archived projects throw.
    */
-  static async softDelete(id: string, admin: Viewer, db: PrismaClient = Db.client, comment?: string): Promise<Project> {
+  static async softDelete(id: string, admin: Viewer, db: PrismaClient = Db.client, comment?: string, scope: ServiceLineScope = ServiceLine.defaultScope()): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     return db.$transaction(async (tx) => {
-      const existing = await ProjectService.loadMutable(tx, id);
+      const existing = await ProjectService.loadMutable(tx, id, scope);
       const now = new Date();
       const data = { archivedAt: now, deletedBy: admin.email };
       const updated = await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } });
@@ -377,11 +399,11 @@ export class ProjectService {
   }
 
   /** Admin restore of a soft-deleted project. Writes audit rows. */
-  static async restore(id: string, admin: Viewer, db: PrismaClient = Db.client, comment?: string): Promise<Project> {
+  static async restore(id: string, admin: Viewer, db: PrismaClient = Db.client, comment?: string, scope: ServiceLineScope = ServiceLine.defaultScope()): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     return db.$transaction(async (tx) => {
       const existing = await tx.project.findUnique({ where: { id } });
-      if (!existing) throw new ProjectNotFoundError(id);
+      if (!existing || !ServiceLineAccess.inScope(existing, scope)) throw new ProjectNotFoundError(id);
       if (!existing.archivedAt) return existing;
       const now = new Date();
       const data = { archivedAt: null, deletedBy: null };
@@ -404,7 +426,14 @@ export class ProjectService {
    * or service area. A blank owner or requester goes back to "To assign". Goes through update(), so
    * validation applies and ProjectHistory records the change (no-op when unchanged).
    */
-  static async setPeopleField(id: string, field: PeopleField, value: string, admin: Viewer, db: PrismaClient = Db.client): Promise<Project> {
+  static async setPeopleField(
+    id: string,
+    field: PeopleField,
+    value: string,
+    admin: Viewer,
+    db: PrismaClient = Db.client,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
+  ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     if (field === "owner" || field === "physicianChampion") {
       // Combobox names: trimmed, whitespace collapsed, length-checked (PeopleDirectory).
@@ -415,7 +444,7 @@ export class ProjectService {
     const patch: Partial<ProjectInput> =
       field === "requesterNotApplicable" ? { requesterNotApplicable: value === "true" } : { [field]: value };
     // Clearing Not applicable leaves the requester "not yet addressed" (no name).
-    return ProjectService.update(id, patch, ProjectService.actorOf(admin), db);
+    return ProjectService.update(id, patch, ProjectService.actorOf(admin), db, scope);
   }
 
   static async setHidden(
@@ -424,11 +453,12 @@ export class ProjectService {
     hidden: boolean,
     admin: Viewer,
     db: PrismaClient = Db.client,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const field = context === "dashboard" ? "hiddenFromDashboard" : "hiddenFromReport";
     return db.$transaction(async (tx) => {
-      const existing = await ProjectService.loadMutable(tx, id);
+      const existing = await ProjectService.loadMutable(tx, id, scope);
       if (existing[field] === hidden) return existing;
       const data = { [field]: hidden };
       const updated = await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } });
@@ -458,9 +488,10 @@ export class ProjectService {
     return { changedBy: admin.email, comment: comment ?? null };
   }
 
-  private static async loadMutable(tx: Tx, id: string): Promise<Project> {
+  /** A project of `scope` that may be changed. A project of another service line is "not found" (no leak). */
+  private static async loadMutable(tx: Tx, id: string, scope: Pick<ServiceLineScope, "id">): Promise<Project> {
     const existing = await tx.project.findUnique({ where: { id } });
-    if (!existing) throw new ProjectNotFoundError(id);
+    if (!existing || !ServiceLineAccess.inScope(existing, scope)) throw new ProjectNotFoundError(id);
     if (existing.archivedAt) throw new ProjectArchivedError(id);
     return existing;
   }

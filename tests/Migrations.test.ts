@@ -33,6 +33,9 @@ class Migrations {
   }
 }
 
+/** Tests of migrations before service lines insert rows without serviceLineId, so they stop before 0016. */
+const PRE_LINES = "0016_service_lines";
+
 describe("migrations (PGlite)", () => {
   it("0010_project_description is additive only and sorts after every 000x migration (0002 to 0004 on open branches)", () => {
     const folders = Migrations.folders();
@@ -46,7 +49,7 @@ describe("migrations (PGlite)", () => {
   });
 
   it("all migrations apply; description is a nullable text column that accepts null and text", async () => {
-    const db = await Migrations.applyAll();
+    const db = await Migrations.applyUpTo(PRE_LINES);
     const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
       `select data_type, is_nullable, column_default from information_schema.columns
        where table_name = 'Project' and column_name = 'description'`,
@@ -91,7 +94,7 @@ describe("migrations (PGlite)", () => {
       .split("\n")
       .filter((l) => l.trim() && !l.trim().startsWith("--"));
     expect(statements).toEqual(['ALTER TABLE "Project" ADD COLUMN     "contractsLead" TEXT;']);
-    const db = await Migrations.applyAll();
+    const db = await Migrations.applyUpTo(PRE_LINES);
     const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
       `select data_type, is_nullable, column_default from information_schema.columns
        where table_name = 'Project' and column_name = 'contractsLead'`,
@@ -101,7 +104,7 @@ describe("migrations (PGlite)", () => {
   }, 30_000);
 
   it("0012_completed_this_period adds nullable columns only", async () => {
-    const db = await Migrations.applyAll();
+    const db = await Migrations.applyUpTo(PRE_LINES);
     const cols = await db.query<{ table_name: string; column_name: string; data_type: string; is_nullable: string; column_default: string | null }>(
       `select table_name, column_name, data_type, is_nullable, column_default from information_schema.columns
        where (table_name = 'Project' and column_name in ('accomplishment', 'completedOn', 'completionReportedAt'))
@@ -125,7 +128,7 @@ describe("migrations (PGlite)", () => {
   }, 30_000);
 
   it("next milestone may be blank for Not started, On hold, Complete and Cancelled only", async () => {
-    const db = await Migrations.applyAll();
+    const db = await Migrations.applyUpTo(PRE_LINES);
     const insert = (name: string, status: string, milestone: string | null) =>
       db.query(
         `insert into "Project" (id, name, "serviceArea", owner, status, "nextMilestone", "updatedAt", "updatedBy")
@@ -141,7 +144,7 @@ describe("migrations (PGlite)", () => {
   }, 30_000);
 
   it("requesterNotApplicable is boolean default false and cannot coexist with a requester name", async () => {
-    const db = await Migrations.applyAll();
+    const db = await Migrations.applyUpTo(PRE_LINES);
     const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
       `select data_type, is_nullable, column_default from information_schema.columns where table_name = 'Project' and column_name = 'requesterNotApplicable'`,
     );
@@ -160,7 +163,7 @@ describe("migrations (PGlite)", () => {
   }, 30_000);
 
   it("infor_request_number is a nullable integer column limited to 1..99999", async () => {
-    const db = await Migrations.applyAll();
+    const db = await Migrations.applyUpTo(PRE_LINES);
     const col = await db.query<{ data_type: string; is_nullable: string; column_default: string | null }>(
       `select data_type, is_nullable, column_default from information_schema.columns
        where table_name = 'Project' and column_name = 'infor_request_number'`,
@@ -198,7 +201,7 @@ describe("migrations (PGlite)", () => {
     // Additive only: no drops, no data changes to existing tables.
     expect(code).not.toMatch(/\bDROP\b|\bUPDATE "|\bDELETE FROM\b/);
 
-    const db = await Migrations.applyAll();
+    const db = await Migrations.applyUpTo(PRE_LINES);
     const seeded = await db.query<{ service_line_name: string; service_line_short: string }>(
       `select service_line_name, service_line_short from service_line_settings where id = 'service_line'`,
     );
@@ -251,9 +254,10 @@ describe("migrations (PGlite)", () => {
         [name, milestone, due, milestone?.trim() ? "OnTrack" : "NotStarted"],
       );
 
-    it("is the latest migration and additive only (no drops or changes to existing tables outside the documented rollback)", () => {
+    it("is followed only by 0016 and additive only (no drops or changes to existing tables outside the documented rollback)", () => {
       const folders = Migrations.folders();
-      expect(folders.at(-1)).toBe(M);
+      // 0016_service_lines follows it.
+      expect(folders[folders.indexOf(M) + 1]).toBe(PRE_LINES);
       const code = Migrations.sql(M)
         .split("\n")
         .filter((l) => !l.trim().startsWith("--"))
@@ -311,7 +315,7 @@ describe("migrations (PGlite)", () => {
     }, 30_000);
 
     it("seeds the six templates verbatim from milestone-templates-draft.md, in order", async () => {
-      const db = await Migrations.applyAll();
+      const db = await Migrations.applyUpTo(PRE_LINES);
       const rows = await db.query<{ template: string; tpos: number; item: string; ipos: number }>(
         `select t.name as template, t.position as tpos, i.name as item, i.position as ipos
          from milestone_templates t join milestone_template_items i on i."templateId" = t.id order by t.position, i.position`,
@@ -335,7 +339,7 @@ describe("migrations (PGlite)", () => {
     }, 30_000);
 
     it("enforces non-blank names, the 40 cap on template steps, doneAt with done, and an append-only template audit", async () => {
-      const db = await Migrations.applyAll();
+      const db = await Migrations.applyUpTo(PRE_LINES);
       await insertProject(db, "P", "Step", null);
       const [{ id }] = (await db.query<{ id: string }>(`select id from "Project" where name = 'P'`)).rows;
       await db.query(`insert into project_milestones (id, "projectId", name, position) values (gen_random_uuid(), $1, 'Step', 1)`, [id]);

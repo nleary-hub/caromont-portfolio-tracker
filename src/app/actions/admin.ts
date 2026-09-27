@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { ProjectArchivedError, ProjectNotFoundError, ProjectService, type MilestoneEdit } from "@/lib/services/ProjectService";
@@ -16,14 +18,15 @@ export type AdminActionResult = { ok: true } | { ok: false; error: string };
 /**
  * Admin-only mutations. Server Actions are reachable by direct POST, so every action resolves
  * the viewer from the session and re-checks ADMIN_EMAILS itself (the services check again).
+ * Project actions run in the viewer's active service line: a project of another line is "not found".
  */
 class AdminAction {
-  static async run(label: string, fn: (admin: Viewer) => Promise<unknown>): Promise<AdminActionResult> {
+  static async run(label: string, fn: (admin: Viewer, scope: ServiceLineScope) => Promise<unknown>): Promise<AdminActionResult> {
     const viewer = await CurrentViewer.get();
     if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
     try {
       AdminPolicy.assertAdmin(viewer);
-      await fn(viewer);
+      await fn(viewer, await ServiceLineAccess.activeFor(viewer));
       revalidatePath("/");
       revalidatePath("/admin/audit");
       return { ok: true };
@@ -42,11 +45,11 @@ export type ProjectFormResult = { ok: true; id: string } | { ok: false; error: s
  * goes through ProjectValidator (form rules) on the server, and its field errors go back to the form.
  */
 class ProjectFormAction {
-  static async run(label: string, fn: (admin: Viewer) => Promise<{ id: string }>): Promise<ProjectFormResult> {
+  static async run(label: string, fn: (admin: Viewer, scope: ServiceLineScope) => Promise<{ id: string }>): Promise<ProjectFormResult> {
     const viewer = await CurrentViewer.get();
     if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
     try {
-      const project = await fn(viewer);
+      const project = await fn(viewer, await ServiceLineAccess.activeFor(viewer));
       revalidatePath("/");
       revalidatePath("/admin/audit");
       return { ok: true, id: project.id };
@@ -88,13 +91,14 @@ class ProjectFormAction {
  * `milestones` is omitted when the checklist was not touched.
  */
 export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
-  return ProjectFormAction.run("saveProjectForm", (admin) =>
+  return ProjectFormAction.run("saveProjectForm", (admin, scope) =>
     ProjectService.saveForm(
       String(projectId),
       ProjectFormModel.toInput(ProjectFormAction.values(changes)),
       admin,
       undefined,
       ProjectFormAction.milestones(milestones),
+      scope,
     ),
   );
 }
@@ -106,7 +110,7 @@ export async function saveProjectMilestones(projectId: string, milestones: unkno
   const edit = ProjectFormAction.milestones(milestones);
   if (!edit) return { ok: false, error: "Nothing to save." };
   try {
-    const steps = await ProjectService.saveMilestones(String(projectId), edit, viewer);
+    const steps = await ProjectService.saveMilestones(String(projectId), edit, viewer, undefined, await ServiceLineAccess.activeFor(viewer));
     revalidatePath("/");
     revalidatePath("/admin/audit");
     return { ok: true, steps: steps.map((s) => MilestoneService.toDto(s)) };
@@ -122,19 +126,20 @@ export type MilestoneSaveActionResult = { ok: true; steps: MilestoneStepDto[] } 
 
 /** Create a project from the New project drawer (name and department required), with its checklist. */
 export async function createProjectFromForm(values: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
-  return ProjectFormAction.run("createProjectFromForm", (admin) =>
-    ProjectService.createFromForm(ProjectFormModel.toInput(ProjectFormAction.values(values)), admin, undefined, ProjectFormAction.milestones(milestones)),
+  return ProjectFormAction.run("createProjectFromForm", (admin, scope) =>
+    ProjectService.createFromForm(ProjectFormModel.toInput(ProjectFormAction.values(values)), admin, undefined, ProjectFormAction.milestones(milestones), scope),
   );
 }
 
 export async function saveViewSettings(context: string, value: unknown): Promise<AdminActionResult> {
   if (!ViewSettings.isContext(context)) return { ok: false, error: "Unknown view." };
+  // View settings are shared by every service line.
   return AdminAction.run("saveViewSettings", (admin) => ViewSettingsService.update(context, value, { changedBy: admin.email }));
 }
 
 export async function setProjectHidden(projectId: string, context: string, hidden: boolean): Promise<AdminActionResult> {
   if (!ViewSettings.isContext(context)) return { ok: false, error: "Unknown view." };
-  return AdminAction.run("setProjectHidden", (admin) => ProjectService.setHidden(projectId, context, Boolean(hidden), admin));
+  return AdminAction.run("setProjectHidden", (admin, scope) => ProjectService.setHidden(projectId, context, Boolean(hidden), admin, undefined, scope));
 }
 
 export async function setProjectPeopleField(projectId: string, field: string, value: string): Promise<AdminActionResult> {
@@ -142,7 +147,7 @@ export async function setProjectPeopleField(projectId: string, field: string, va
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
   try {
-    await ProjectService.setPeopleField(projectId, field, String(value ?? ""), viewer);
+    await ProjectService.setPeopleField(projectId, field, String(value ?? ""), viewer, undefined, await ServiceLineAccess.activeFor(viewer));
   } catch (e) {
     if (e instanceof ProjectValidationError) return { ok: false, error: Object.values(e.errors).flat()[0] ?? "Invalid value." };
     console.error("Admin action failed: setProjectPeopleField", e);
@@ -153,11 +158,11 @@ export async function setProjectPeopleField(projectId: string, field: string, va
 }
 
 export async function deleteProject(projectId: string): Promise<AdminActionResult> {
-  return AdminAction.run("deleteProject", (admin) => ProjectService.softDelete(projectId, admin));
+  return AdminAction.run("deleteProject", (admin, scope) => ProjectService.softDelete(projectId, admin, undefined, undefined, scope));
 }
 
 export async function restoreProject(projectId: string): Promise<AdminActionResult> {
-  return AdminAction.run("restoreProject", (admin) => ProjectService.restore(projectId, admin));
+  return AdminAction.run("restoreProject", (admin, scope) => ProjectService.restore(projectId, admin, undefined, undefined, scope));
 }
 
 /** Form wrapper for the audit page (fields: projectId). */

@@ -1,3 +1,5 @@
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import type { PrismaClient, ReportArtifact } from "@/generated/prisma/client";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
@@ -21,8 +23,10 @@ export interface ArchiveEntry {
 
 /** Signed-in archive of frozen reports (/reports). Delivery details and handoff.json are admin-only. */
 export class ReportArchiveService {
-  static async list(viewer: Viewer, db: PrismaClient = Db.client): Promise<ArchiveEntry[]> {
+  /** Frozen reports of the viewer's service line (only the default line has scheduled reports). */
+  static async list(viewer: Viewer, db: PrismaClient = Db.client, scope: Pick<ServiceLineScope, "id"> = ServiceLine.defaultScope()): Promise<ArchiveEntry[]> {
     const snapshots = await db.reportSnapshot.findMany({
+      where: ServiceLineAccess.where(scope),
       orderBy: { periodEnd: "desc" },
       select: { id: true, periodStart: true, periodEnd: true, generatedAt: true, generatedBy: true, pdfStorageKey: true, deliveryJson: true },
     });
@@ -37,9 +41,17 @@ export class ReportArchiveService {
   }
 
   /** A stored file for download, or null (unknown snapshot, not rendered yet, or handoff.json for a non-admin). */
-  static async file(viewer: Viewer, snapshotId: string, kind: ArtifactKind, db: PrismaClient = Db.client): Promise<ReportArtifact | null> {
+  static async file(
+    viewer: Viewer,
+    snapshotId: string,
+    kind: ArtifactKind,
+    db: PrismaClient = Db.client,
+    scope: Pick<ServiceLineScope, "id"> = ServiceLine.defaultScope(),
+  ): Promise<ReportArtifact | null> {
     if (kind === "handoff" && !viewer.isAdmin) return null;
     if (!/^[0-9a-f-]{36}$/i.test(snapshotId)) return null;
+    const snapshot = await db.reportSnapshot.findFirst({ where: { id: snapshotId }, select: { serviceLineId: true } });
+    if (!ServiceLineAccess.inScope(snapshot, scope)) return null;
     return ReportArtifactService.get(snapshotId, kind, db);
   }
 

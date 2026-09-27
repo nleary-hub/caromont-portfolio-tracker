@@ -16,7 +16,7 @@ import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import type { AdminMenuItem } from "@/lib/admin/AdminMenu";
-import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
+import type { ServiceLineScope, ServiceLineValue } from "@/lib/domain/ServiceLine";
 import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
@@ -103,6 +103,10 @@ interface Props {
   loadError: string | null;
   /** Service line name setting (top bar lockup). */
   serviceLine: ServiceLineValue;
+  /** The active service line (departments, contracts leads, per-line prefs). Absent = the default line. */
+  line?: ServiceLineScope;
+  /** Admins: the service line switcher, shown in place of the plain name. */
+  switcher?: ReactNode;
   admin?: AdminDashboardProps;
   signOutAction: () => Promise<void>;
 }
@@ -136,6 +140,8 @@ export function ProjectDashboard({
   completedFiscalYear,
   loadError,
   serviceLine,
+  line,
+  switcher,
   columns: columnsProp,
   admin,
   signOutAction,
@@ -156,27 +162,29 @@ export function ProjectDashboard({
 
   // Per-user preferences in localStorage (department filter, hidden tiles). Defaults until read after mount,
   // so the server render and the first client render agree.
-  const [departments, setDepartmentsState] = useState<ServiceArea[]>(() => DepartmentFilter.all());
+  // The line's filter options (the #20 four for the default line) and its own saved prefs.
+  const deptOptions = useMemo(() => DashboardPrefs.options(line), [line]);
+  const [departments, setDepartmentsState] = useState<ServiceArea[]>(() => DepartmentFilter.all(deptOptions));
   const [hiddenTiles, setHiddenTilesState] = useState<DashboardTile[]>([]);
   useEffect(() => {
     const storage = DashboardPrefsBrowser.storage();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of browser-only storage after hydration
-    setDepartmentsState(DashboardPrefs.readDepartments(storage, userEmail));
-    setHiddenTilesState(DashboardPrefs.readHiddenTiles(storage, userEmail));
-  }, [userEmail]);
+    setDepartmentsState(DashboardPrefs.readDepartments(storage, userEmail, line));
+    setHiddenTilesState(DashboardPrefs.readHiddenTiles(storage, userEmail, line));
+  }, [userEmail, line]);
   const setDepartments = (next: ServiceArea[]) => {
     setDepartmentsState(next);
-    DashboardPrefs.writeDepartments(DashboardPrefsBrowser.storage(), userEmail, next);
-    if (area !== "All" && !DepartmentFilter.includesGroup(next, area)) setArea("All");
+    DashboardPrefs.writeDepartments(DashboardPrefsBrowser.storage(), userEmail, next, line);
+    if (area !== "All" && !DepartmentFilter.includesGroup(next, area, deptOptions)) setArea("All");
   };
   const setHiddenTiles = (next: DashboardTile[]) => {
     setHiddenTilesState(next);
-    DashboardPrefs.writeHiddenTiles(DashboardPrefsBrowser.storage(), userEmail, next);
+    DashboardPrefs.writeHiddenTiles(DashboardPrefsBrowser.storage(), userEmail, next, line);
   };
 
   // Department filter first: tiles, chips, rows and the Unassigned group all follow it.
-  const deptRows = useMemo(() => DepartmentFilter.apply(rows, departments), [rows, departments]);
-  const deptCompleted = useMemo(() => DepartmentFilter.apply(completed, departments), [completed, departments]);
+  const deptRows = useMemo(() => DepartmentFilter.apply(rows, departments, deptOptions), [rows, departments, deptOptions]);
+  const deptCompleted = useMemo(() => DepartmentFilter.apply(completed, departments, deptOptions), [completed, departments, deptOptions]);
   const summary = useMemo(() => DashboardViewModel.summarize(deptRows), [deptRows]);
   const visible = useMemo(() => DashboardViewModel.filter(deptRows, area, query), [deptRows, area, query]);
   const visibleCompleted = useMemo(() => DashboardViewModel.filter(deptCompleted, area, query), [deptCompleted, area, query]);
@@ -251,7 +259,7 @@ export function ProjectDashboard({
       // Show the new project whatever the current filter, then scroll its row into view.
       setArea("All");
       setQuery("");
-      setDepartments(DepartmentFilter.all());
+      setDepartments(DepartmentFilter.all(deptOptions));
       setSelectedId(id);
       scrollToRef.current = id;
       setFlashId(id);
@@ -301,7 +309,7 @@ export function ProjectDashboard({
       <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-topbar px-6 backdrop-blur-[20px]">
         <div className="flex shrink-0 items-center gap-2.5">
           <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
-          <ServiceLineLabel value={serviceLine} />
+          {switcher ?? <ServiceLineLabel value={serviceLine} />}
         </div>
         <div className="h-6 w-px bg-line" />
         <button
@@ -379,6 +387,8 @@ export function ProjectDashboard({
           </p>
         )}
 
+        {line && !line.isDefault && rows.length === 0 && completed.length === 0 && !loadError && <EmptyLineState line={line} admin={Boolean(admin)} onNew={openNew} />}
+
         {tileTemplate && (
           <section className="grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
             {tiles.map((t) =>
@@ -399,7 +409,8 @@ export function ProjectDashboard({
             All <b>{summary.total}</b>
           </button>
           {ServiceAreaInfo.groups()
-            .filter((a) => DepartmentFilter.includesGroup(departments, a))
+            .filter((a) => !line || line.isDefault || a === ServiceAreaInfo.UNASSIGNED || line.departments.includes(a) || summary.byArea[a] > 0)
+            .filter((a) => DepartmentFilter.includesGroup(departments, a, deptOptions))
             .filter((a) => a !== ServiceAreaInfo.UNASSIGNED || summary.byArea[a] > 0)
             .map((a) => (
               <button key={a} type="button" className="chip" aria-pressed={area === a} onClick={() => setArea(a)}>
@@ -409,7 +420,7 @@ export function ProjectDashboard({
           <div className="flex-1" />
           <span className="type-caption text-muted">Showing {visible.length} projects</span>
           <div className="ml-2">
-            <DepartmentsSelect value={departments} onChange={setDepartments} />
+            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} />
           </div>
           {admin && (
             <button
@@ -462,6 +473,7 @@ export function ProjectDashboard({
             <ProjectEditForm
               key="new"
               mode="new"
+              {...(line ? { departments: line.departments } : {})}
               original={ProjectFormModel.empty()}
               milestones={[]}
               templates={admin.templates}
@@ -496,6 +508,7 @@ export function ProjectDashboard({
                   requesterSuggestions={admin.requesterSuggestions}
                   contractsLead={selected.contractsLead}
                   serviceArea={selected.serviceArea}
+                  {...(line ? { contractsLeads: line.contractsLeads, departments: line.departments } : {})}
                   ownerSuggestions={admin.ownerSuggestions}
                   saveAction={admin.setPeopleFieldAction}
                 />
@@ -518,6 +531,7 @@ export function ProjectDashboard({
                 <ProjectEditForm
                   key={`edit-${selected.id}`}
                   mode="edit"
+                  {...(line ? { departments: line.departments } : {})}
                   original={admin.formValues[selected.id]}
                   milestones={admin.milestoneSteps[selected.id] ?? []}
                   templates={admin.templates}
@@ -774,5 +788,38 @@ function ProjectDrawer({
       {adminControls}
 
     </aside>
+  );
+}
+
+/** A new service line with no projects yet: what to set up first. */
+function EmptyLineState({ line, admin, onNew }: { line: ServiceLineScope; admin: boolean; onNew: () => void }) {
+  const link = "text-accent type-table-strong hover:underline";
+  return (
+    <section aria-label="Get started" className="flex flex-col gap-3 rounded-card border border-line bg-card px-5 py-4" data-testid="empty-line">
+      <div>
+        <h2 className="type-heading">No projects in {line.name} yet</h2>
+        <p className="mt-1 text-muted type-table">
+          {line.departments.length === 0
+            ? "Start by choosing its departments. Then add projects one at a time or import a CSV."
+            : "Add projects one at a time or import a CSV."}
+        </p>
+      </div>
+      {admin && (
+        <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
+          <Link href="/admin/settings" className={link}>
+            Departments and contracts leads
+          </Link>
+          <Link href="/admin/templates" className={link}>
+            Milestone templates
+          </Link>
+          <Link href="/admin/import" className={link}>
+            Import a CSV
+          </Link>
+          <button type="button" onClick={onNew} className={link}>
+            + New project
+          </button>
+        </div>
+      )}
+    </section>
   );
 }

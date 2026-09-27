@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { TemplatesEditor } from "@/components/TemplatesEditor";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { MilestoneTemplateService, type TemplateChange } from "@/lib/services/MilestoneTemplateService";
@@ -49,13 +51,19 @@ export default async function AdminTemplatesPage() {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) notFound();
   const configured = Db.isConfigured();
-  const templates = configured ? await MilestoneTemplateService.listOrEmpty() : [];
-  const history = configured ? await MilestoneTemplateService.history(viewer).catch(() => []) : [];
+  // Templates of the admin's active service line.
+  const scope = await ServiceLineAccess.activeOrDefault(viewer);
+  const templates = configured ? await MilestoneTemplateService.listOrEmpty(undefined, scope) : [];
+  const history = configured ? await MilestoneTemplateService.history(viewer, 20, undefined, scope).catch(() => []) : [];
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
-      <div className="flex items-center justify-between">
-        <h1 className="type-title">Milestone templates</h1>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <ServiceLineSlot viewer={viewer} active={scope} />
+          <div className="h-6 w-px bg-line" />
+          <h1 className="type-title whitespace-nowrap">Milestone templates</h1>
+        </div>
         <div className="flex items-center gap-3">
           <AdminMenuSlot viewer={viewer} />
           <Link href="/" className="text-muted type-table-strong hover:text-fg">
@@ -65,7 +73,7 @@ export default async function AdminTemplatesPage() {
       </div>
       {!configured && <p className="text-danger type-caption">DATABASE_URL is not configured.</p>}
 
-      <TemplatesEditor initial={templates} />
+      <TemplatesEditor key={scope.id} initial={templates} />
 
       <section className="flex flex-col gap-2">
         <h2 className="type-heading">Recent changes</h2>

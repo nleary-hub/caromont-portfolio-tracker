@@ -1,3 +1,4 @@
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { PrismaClient, ReportArtifact, ReportSnapshot } from "@/generated/prisma/client";
 import { ReportEnv } from "@/lib/config/ReportEnv";
 import { Db } from "@/lib/db/Db";
@@ -115,6 +116,11 @@ export class FreezeService {
   /** Render the PDF, write handoff.json and deliver, each only if not done yet. Returns the delivery done now, if any. */
   static async complete(snapshot: ReportSnapshot, options: FreezeOptions, db: PrismaClient = Db.client): Promise<DeliveryRecord | null> {
     const env = options.env ?? process.env;
+    // Scheduled reports, handoff.json and Drive delivery are for the default line (CVPSL) only.
+    const line = await ServiceLineAccess.scheduledReportLine(db);
+    if (snapshot.serviceLineId && snapshot.serviceLineId !== line.id) {
+      throw new Error("Scheduled report steps run for the default service line only");
+    }
     const input = PdfReportRenderer.inputFromSnapshot(snapshot);
 
     let pdf: ReportArtifact | null = await ReportArtifactService.get(snapshot.id, "pdf", db);
@@ -178,6 +184,6 @@ export class FreezeService {
     }
 
     if (!ReportDeliveryService.needsDelivery(ReportDeliveryService.parse(snapshot.deliveryJson), env)) return null;
-    return ReportDeliveryService.deliver(snapshot.id, { pdf, handoff }, options.actor, options, db);
+    return ReportDeliveryService.deliver(snapshot.id, { pdf, handoff }, options.actor, options, db, line);
   }
 }

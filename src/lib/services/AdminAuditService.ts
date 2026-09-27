@@ -4,6 +4,9 @@ import type { ViewContext } from "@/generated/prisma/enums";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLineHistoryText } from "@/lib/admin/ServiceLineHistoryText";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
@@ -17,7 +20,7 @@ export interface AuditProject {
 }
 
 export interface AuditEvent {
-  kind: "project" | "viewSettings";
+  kind: "project" | "viewSettings" | "serviceLine" | "template";
   at: Date;
   by: string;
   /** Project name, or the view settings context. */
@@ -33,6 +36,16 @@ export interface AuditData {
   deleted: AuditProject[];
   viewSettings: Record<ViewContext, ViewSettingsValue>;
   events: AuditEvent[];
+  /** Soft-deleted service lines (any line; restorable here). */
+  deletedLines: DeletedLine[];
+}
+
+export interface DeletedLine {
+  id: string;
+  name: string;
+  shortName: string;
+  deletedAt: Date | null;
+  deletedBy: string | null;
 }
 
 /**
@@ -42,11 +55,16 @@ export interface AuditData {
 export class AdminAuditService {
   static readonly EVENT_LIMIT = 200;
 
-  static async load(viewer: Viewer | null, db: PrismaClient = Db.client): Promise<AuditData> {
+  /**
+   * The audit log of one service line (the admin's active line): its projects and their admin-only history,
+   * its template and service line changes. View settings are shared by every line. Deleted lines are listed
+   * whatever the active line, so they can be restored.
+   */
+  static async load(viewer: Viewer | null, db: PrismaClient = Db.client, scope: Pick<ServiceLineScope, "id" | "name"> = ServiceLine.defaultScope()): Promise<AuditData> {
     if (!viewer?.isAdmin) notFound();
 
     // Small table; filtering in memory keeps one code path with VisibilityPolicy.
-    const projects = await db.project.findMany({});
+    const projects = await db.project.findMany({ where: ServiceLineAccess.where(scope) });
     const toAudit = (p: (typeof projects)[number]): AuditProject => ({
       id: p.id,
       name: p.name,
@@ -64,10 +82,13 @@ export class AdminAuditService {
       .sort(byName);
 
     const names = new Map(projects.map((p) => [p.id, p.name]));
-    const [projectEvents, settingsEvents, viewSettings] = await Promise.all([
-      db.projectHistory.findMany({ where: { field: { in: [...VisibilityPolicy.ADMIN_ONLY_HISTORY_FIELDS] } } }),
+    const [projectEvents, settingsEvents, viewSettings, lineEvents, templateEvents, deletedLines] = await Promise.all([
+      db.projectHistory.findMany({ where: { projectId: { in: projects.map((p) => p.id) }, field: { in: [...VisibilityPolicy.ADMIN_ONLY_HISTORY_FIELDS] } } }),
       db.viewSettingsHistory.findMany({}),
       ViewSettingsService.getAll(db),
+      db.serviceLineHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
+      db.milestoneTemplateHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
+      db.serviceLine.findMany({ where: { deletedAt: { not: null } }, orderBy: { deletedAt: "desc" } }),
     ]);
     const events: AuditEvent[] = [
       ...projectEvents.map((h) => ({
@@ -90,10 +111,36 @@ export class AdminAuditService {
         newValue: JSON.stringify(h.newValue),
         comment: null,
       })),
+      ...lineEvents.map((h) => ({
+        kind: "serviceLine" as const,
+        at: h.changedAt,
+        by: h.changedBy,
+        subject: scope.name,
+        field: `serviceLine.${h.action}`,
+        oldValue: ServiceLineHistoryText.value(h.oldValue) || null,
+        newValue: ServiceLineHistoryText.value(h.newValue) || null,
+        comment: null,
+      })),
+      ...templateEvents.map((h) => ({
+        kind: "template" as const,
+        at: h.changedAt,
+        by: h.changedBy,
+        subject: "Milestone templates",
+        field: `template.${h.action}`,
+        oldValue: h.oldValue === null ? null : JSON.stringify(h.oldValue),
+        newValue: h.newValue === null ? null : JSON.stringify(h.newValue),
+        comment: null,
+      })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, AdminAuditService.EVENT_LIMIT);
 
-    return { hidden, deleted, viewSettings, events };
+    return {
+      hidden,
+      deleted,
+      viewSettings,
+      events,
+      deletedLines: deletedLines.map((l) => ({ id: l.id, name: l.name, shortName: l.shortName, deletedAt: l.deletedAt, deletedBy: l.deletedBy })),
+    };
   }
 }

@@ -54,8 +54,10 @@ export class AdminMenu {
     // Group 3: oversight and settings.
     { id: "audit", group: "admin", kind: "link", icon: "audit", label: "Audit log", href: "/admin/audit", shipped: true },
     { id: "settings", group: "admin", kind: "viewSettings", icon: "settings", label: "Settings", href: `/${AdminMenu.VIEW_SETTINGS_HASH}`, shipped: true },
-    { id: "service-line", group: "admin", kind: "link", icon: "tag", label: "Service line", href: "/admin/settings", shipped: true },
-    // Milestone templates, next to the Service line settings.
+    { id: "service-lines", group: "admin", kind: "link", icon: "tag", label: "Service lines", href: "/admin/service-lines", shipped: true },
+    // Settings of the active line: report options, departments, contracts leads.
+    { id: "service-line", group: "admin", kind: "link", icon: "settings", label: "Line settings", href: "/admin/settings", shipped: true },
+    // Milestone templates, next to the line settings.
     { id: "templates", group: "admin", kind: "link", icon: "template", label: "Templates", href: "/admin/templates", shipped: true },
   ];
 

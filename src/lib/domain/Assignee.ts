@@ -20,7 +20,7 @@ export class Assignee {
   }
 
   /** Owner combobox options: the built-in owners plus distinct existing owners (see PeopleDirectory.owners). */
-  static ownerSuggestions(existing: readonly (string | null | undefined)[]): string[] {
-    return PeopleDirectory.owners(existing);
+  static ownerSuggestions(existing: readonly (string | null | undefined)[], seed: readonly string[] = PeopleDirectory.OWNER_SEED): string[] {
+    return PeopleDirectory.owners(existing, seed);
   }
 }

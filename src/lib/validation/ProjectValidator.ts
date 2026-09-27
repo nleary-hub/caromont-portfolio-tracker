@@ -7,6 +7,7 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectRecord } from "@/lib/domain/types";
+import { ServiceLine } from "@/lib/domain/ServiceLine";
 
 /** Editable project fields as received from a form/API. Dates are "YYYY-MM-DD". */
 export interface ProjectInput {
@@ -22,7 +23,7 @@ export interface ProjectInput {
   physicianChampion?: string | null;
   physicianChampionEmail?: string | null;
   requesterNotApplicable?: boolean;
-  /** One of AppConfig.CONTRACTS_LEADS (case/space tolerant) or blank. */
+  /** One of the service line's contracts leads (case/space tolerant) or blank. */
   contractsLead?: string | null;
   status: ProjectStatus | string;
   nextMilestone?: string | null;
@@ -89,9 +90,52 @@ export interface FormValidationOptions {
    * fields; it must be shortened only when that field is edited.
    */
   existing: ProjectInput | null;
+  /** The service line's pick-lists (defaults to the default line's). */
+  rules?: LineRules;
+}
+
+/**
+ * Per service line rules: the contracts lead pick-list and the departments the line uses. A stored value that
+ * is no longer on the list is accepted while it is unchanged, so trimming a list never blocks other edits.
+ */
+export interface LineRules {
+  contractsLeads: readonly string[];
+  departments: readonly ServiceArea[];
 }
 
 export class ProjectValidator {
+  static readonly DEPARTMENT_NOT_IN_LINE_MESSAGE = "Department must be one of this service line's departments";
+
+  /** The default line's rules (all seven departments, CVPSL's contracts leads). */
+  static defaultRules(): LineRules {
+    const scope = ServiceLine.defaultScope();
+    return { contractsLeads: scope.contractsLeads, departments: scope.departments };
+  }
+
+  /** Rules of a service line scope. */
+  static rulesOf(scope: { contractsLeads: readonly string[]; departments: readonly ServiceArea[] }): LineRules {
+    return { contractsLeads: scope.contractsLeads, departments: scope.departments };
+  }
+
+  /**
+   * Contracts lead canonical spelling and department membership for the line. Adds errors in place and
+   * returns the corrected data. `existing` grandfathers unchanged stored values.
+   */
+  private static applyLineRules(data: ProjectData, rules: LineRules, existing: ProjectInput | null, errors: FieldErrors): ProjectData {
+    const out = { ...data };
+    if (out.contractsLead !== null) {
+      const lead = ContractsLead.resolve(out.contractsLead, rules.contractsLeads);
+      const stored = existing?.contractsLead ?? null;
+      if (lead) out.contractsLead = lead;
+      else if (stored !== null && stored.trim().replace(/\s+/g, " ").toLowerCase() === out.contractsLead.trim().replace(/\s+/g, " ").toLowerCase()) out.contractsLead = stored;
+      else (errors.contractsLead ??= []).push(ContractsLead.invalidMessage(out.contractsLead, rules.contractsLeads));
+    }
+    if (out.serviceArea !== null && !rules.departments.includes(out.serviceArea) && existing?.serviceArea !== out.serviceArea) {
+      (errors.serviceArea ??= []).push(ProjectValidator.DEPARTMENT_NOT_IN_LINE_MESSAGE);
+    }
+    return out;
+  }
+
   static readonly MILESTONE_REQUIRED_MESSAGE =
     "Next milestone is required unless the project is Not started, On hold, Complete or Cancelled";
 
@@ -156,8 +200,9 @@ export class ProjectValidator {
     if (!options.existing && (input.serviceArea === null || input.serviceArea === undefined || String(input.serviceArea).trim() === "")) {
       (errors.serviceArea ??= []).push(ProjectValidator.DEPARTMENT_REQUIRED_MESSAGE);
     }
-    if (!parsed.success || Object.keys(errors).length > 0) return { ok: false, errors };
-    return { ok: true, data: { ...parsed.data, ...restore } };
+    const data = parsed.success ? ProjectValidator.applyLineRules(parsed.data, options.rules ?? ProjectValidator.defaultRules(), options.existing, errors) : null;
+    if (!data || Object.keys(errors).length > 0) return { ok: false, errors };
+    return { ok: true, data: { ...data, ...restore } };
   }
 
   /**
@@ -165,9 +210,9 @@ export class ProjectValidator {
    * but a capped field left at its stored value is not length-checked, so an existing over-cap value
    * (for example a milestone over 40 saved from the edit form) never blocks an unrelated save.
    */
-  static parseUpdate(input: ProjectInput, existing: ProjectInput): ProjectData {
+  static parseUpdate(input: ProjectInput, existing: ProjectInput, rules?: LineRules): ProjectData {
     const { checked, restore } = ProjectValidator.grandfather(input, existing, ProjectValidator.MILESTONE_MAX);
-    return { ...ProjectValidator.parse(checked), ...restore };
+    return { ...ProjectValidator.parse(checked, rules, existing), ...restore };
   }
 
   /** Like validateForm() but throws ProjectValidationError. */
@@ -214,10 +259,13 @@ export class ProjectValidator {
   }
 
   /** Validate and normalize a full set of editable fields. */
-  static validate(input: unknown): ValidationResult {
+  static validate(input: unknown, rules: LineRules = ProjectValidator.defaultRules(), existing: ProjectInput | null = null): ValidationResult {
     const parsed = ProjectValidator.schema.safeParse(input);
-    if (parsed.success) return { ok: true, data: parsed.data };
     const errors: FieldErrors = {};
+    if (parsed.success) {
+      const data = ProjectValidator.applyLineRules(parsed.data, rules, existing, errors);
+      return Object.keys(errors).length ? { ok: false, errors } : { ok: true, data };
+    }
     for (const issue of parsed.error.issues) {
       const key = (issue.path[0] as keyof FieldErrors | undefined) ?? "_form";
       (errors[key] ??= []).push(issue.message);
@@ -226,8 +274,8 @@ export class ProjectValidator {
   }
 
   /** Like validate() but throws ProjectValidationError. */
-  static parse(input: unknown): ProjectData {
-    const result = ProjectValidator.validate(input);
+  static parse(input: unknown, rules?: LineRules, existing: ProjectInput | null = null): ProjectData {
+    const result = ProjectValidator.validate(input, rules, existing);
     if (!result.ok) throw new ProjectValidationError(result.errors);
     return result.data;
   }
@@ -315,12 +363,10 @@ export class ProjectValidator {
         ),
         owner: ProjectValidator.optionalText({ label: "Owner", length: ProjectValidator.NAME_MAX }),
         physicianChampion: ProjectValidator.optionalText(),
+        // Checked against the service line's list after parsing (applyLineRules).
         contractsLead: z
           .preprocess((v) => (v === undefined ? null : v), z.string().nullable())
-          .superRefine((v, ctx) => {
-            if (ContractsLead.resolve(v) === undefined) ctx.addIssue({ code: "custom", message: ContractsLead.invalidMessage(String(v)) });
-          })
-          .transform((v) => ContractsLead.resolve(v) ?? null),
+          .transform((v) => (v === null || v.trim() === "" ? null : v.trim().replace(/\s+/g, " "))),
         physicianChampionEmail: z.preprocess(
           (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim().toLowerCase()) : v ?? null),
           z.email("Requester email is not a valid email").nullable(),

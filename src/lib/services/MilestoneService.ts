@@ -1,3 +1,5 @@
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import type { Prisma, ProjectMilestone } from "@/generated/prisma/client";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
@@ -82,7 +84,7 @@ export class MilestoneService {
 
   /**
    * Apply the drawer's checklist to the project inside `tx`: creates, updates, deletes, and one history
-   * row per action (all at `at`). Template ids that no longer exist are stored as null. No-op without changes.
+   * row per action (all at `at`). Template ids that no longer exist (or belong to another service line) are stored as null. No-op without changes.
    */
   static async saveInTx(
     tx: Tx,
@@ -91,6 +93,7 @@ export class MilestoneService {
     actor: Actor,
     at: Date,
     applied: TemplateApplied | null = null,
+    scope: Pick<ServiceLineScope, "id"> = ServiceLine.defaultScope(),
   ): Promise<MilestoneSaveResult> {
     let stored = await MilestoneService.stepsFor(tx, projectId);
     // A project without steps but with a legacy next milestone (e.g. created by CSV after 0015): the drawer
@@ -110,7 +113,7 @@ export class MilestoneService {
     drafts = drafts.map((d) => (d.id === MilestoneService.LEGACY_STEP_ID ? { ...d, id: null } : d));
     const templateIds = [...new Set(drafts.filter((d) => !d.id && d.sourceTemplateId).map((d) => d.sourceTemplateId as string))];
     const known = templateIds.length
-      ? new Set((await tx.milestoneTemplate.findMany({ where: { id: { in: templateIds } }, select: { id: true } })).map((t) => t.id))
+      ? new Set((await tx.milestoneTemplate.findMany({ where: { id: { in: templateIds }, ...ServiceLineAccess.where(scope) }, select: { id: true } })).map((t) => t.id))
       : new Set<string>();
     const checked = drafts.map((d) => (d.sourceTemplateId && !d.id && !known.has(d.sourceTemplateId) ? { ...d, sourceTemplateId: null } : d));
     const plan = MilestoneRules.plan(stored, checked, DateOnly.inZone(at), applied);

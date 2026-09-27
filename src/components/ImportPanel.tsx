@@ -16,6 +16,8 @@ interface Props {
   adminMenu?: ReactNode;
   /** Service line name setting (top bar lockup). */
   serviceLine: ServiceLineValue;
+  /** Admin service line switcher (replaces the plain name). */
+  switcher?: ReactNode;
 }
 
 class ImportCopy {
@@ -38,7 +40,7 @@ const th = "sticky top-0 z-[1] h-9 border-b border-line bg-card px-2 text-left u
 const td = "border-b border-line px-2 py-1.5 align-top";
 const errCell = "bg-(--status-off-track-dark-bg) text-(--status-off-track-dark-fg)";
 
-export function ImportPanel({ adminEmail, templateColumns, limits, adminMenu, serviceLine }: Props) {
+export function ImportPanel({ adminEmail, templateColumns, limits, adminMenu, serviceLine, switcher }: Props) {
   const [mode, setMode] = useState<ImportMode>("create");
   const [csv, setCsv] = useState<string | null>(null);
   const [fileName, setFileName] = useState<string | null>(null);
@@ -105,10 +107,12 @@ export function ImportPanel({ adminEmail, templateColumns, limits, adminMenu, se
   return (
     <div className="min-h-screen">
       <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-topbar px-6 backdrop-blur-[20px]">
-        <Link href="/" className="flex shrink-0 items-center gap-2.5">
-          <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
-          <ServiceLineLabel value={serviceLine} />
-        </Link>
+        <div className="flex min-w-0 shrink-0 items-center gap-2.5">
+          <Link href="/" aria-label="Dashboard" className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">
+            SL
+          </Link>
+          {switcher ?? <ServiceLineLabel value={serviceLine} />}
+        </div>
         <div className="h-6 w-px bg-line" />
         <span className="type-table-strong">Import projects (admin)</span>
         <div className="flex-1" />

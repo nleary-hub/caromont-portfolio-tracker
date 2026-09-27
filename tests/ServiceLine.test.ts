@@ -3,7 +3,7 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { AdminRequiredError } from "@/lib/auth/AdminPolicy";
 import { ServiceLineLabel } from "@/components/ServiceLineLabel";
-import { ServiceLine, ServiceLineValidationError } from "@/lib/domain/ServiceLine";
+import { ServiceLine, ServiceLineCopy, ServiceLineValidationError } from "@/lib/domain/ServiceLine";
 import { HandoffBuilder } from "@/lib/report/HandoffBuilder";
 import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
@@ -11,7 +11,8 @@ import { ReportGeometry, ReportLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { SampleReportData } from "@/lib/report/SampleReportData";
 import { ProjectService } from "@/lib/services/ProjectService";
-import { ServiceLineForm } from "@/lib/services/ServiceLineForm";
+import { ServiceLineForms } from "@/lib/services/ServiceLineForms";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLineService } from "@/lib/services/ServiceLineService";
 import { SnapshotService } from "@/lib/services/SnapshotService";
 import { Factory } from "./helpers/factories";
@@ -27,85 +28,266 @@ describe("ServiceLine (pure rules)", () => {
     expect(ServiceLine.reportTitle(SEED)).toBe("Cardiovascular & Pulmonary Service Line: Project Status Report");
   });
 
-  it("requires both names, trims and collapses spaces, and enforces max lengths (short up to 12)", () => {
+  it("the default scope keeps all seven CVPSL departments in their current order and the current contracts leads", () => {
+    const s = ServiceLine.defaultScope();
+    expect(s).toMatchObject({ id: ServiceLine.DEFAULT_ID, isDefault: true, ...SEED });
+    expect(s.departments).toEqual(["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
+    expect(s.contractsLeads).toEqual(["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"]);
+  });
+
+  it("requires both names, trims and collapses spaces; name up to 80, short name 2 to 12 of A-Z and 0-9", () => {
     expect(ServiceLine.parse({ name: "  Heart   and Lung  ", shortName: " HL " })).toEqual({ name: "Heart and Lung", shortName: "HL" });
-    expect(() => ServiceLine.parse({ name: " ", shortName: "X" })).toThrow(ServiceLineValidationError);
-    expect(() => ServiceLine.parse({ name: "Name", shortName: "" })).toThrow(ServiceLineValidationError);
-    expect(ServiceLine.parse({ name: "x".repeat(80), shortName: "A".repeat(12) }).shortName).toHaveLength(12);
-    try {
-      ServiceLine.parse({ name: "x".repeat(81), shortName: "A".repeat(13) });
-      expect.unreachable();
-    } catch (e) {
-      expect((e as ServiceLineValidationError).errors).toEqual({
-        name: "Service line name must be 80 characters or fewer.",
-        shortName: "Short name must be 12 characters or fewer.",
-      });
-    }
+    expect(ServiceLine.parse({ name: "x".repeat(80), shortName: "A1".repeat(6) }).shortName).toHaveLength(12);
+    const errorsOf = (raw: { name: string; shortName: string }) => {
+      try {
+        ServiceLine.parse(raw);
+        return null;
+      } catch (e) {
+        return (e as ServiceLineValidationError).errors;
+      }
+    };
+    expect(errorsOf({ name: " ", shortName: "" })).toEqual({ name: "Name is required.", shortName: "Short name is required." });
+    expect(errorsOf({ name: "x".repeat(81), shortName: "A".repeat(13) })).toEqual({
+      name: "Name must be 80 characters or fewer.",
+      shortName: "Short name must be 2 to 12 characters.",
+    });
+    expect(errorsOf({ name: "Heart", shortName: "H" })?.shortName).toBe("Short name must be 2 to 12 characters.");
+    expect(errorsOf({ name: "Heart", shortName: "hvsl" })?.shortName).toBe("Use uppercase letters and digits only.");
+    expect(errorsOf({ name: "Heart", shortName: "H-V" })?.shortName).toBe("Use uppercase letters and digits only.");
+  });
+
+  it("suggests the short name from the name's initials (one word: its first three letters)", () => {
+    expect(ServiceLine.suggestShortName("Oncology Service Line")).toBe("OSL");
+    expect(ServiceLine.suggestShortName("Women's & Children's Health 2")).toBe("WCH2");
+    expect(ServiceLine.suggestShortName("Oncology")).toBe("ONC");
+    expect(ServiceLine.suggestShortName("   ")).toBe("");
+    expect(ServiceLine.suggestShortName("a b c d e f g h i j k l m n")).toBe("ABCDEFGHIJKL");
+  });
+
+  it("editor previews", () => {
+    expect(ServiceLine.topBarPreview("CVPSL")).toBe("Top bar: CVPSL");
+    expect(ServiceLine.runningHeaderPreview("CVPSL")).toBe("PDF running header: CVPSL \u00b7 Project Status Report");
+  });
+
+  it("switcher order: the default line first, then A to Z (case-insensitive)", () => {
+    const lines = [
+      { name: "oncology", isDefault: false },
+      { name: "Behavioral Health", isDefault: false },
+      { name: "Cardiovascular & Pulmonary Service Line", isDefault: true },
+      { name: "Ambulatory", isDefault: false },
+    ];
+    expect(ServiceLine.sortForSwitcher(lines).map((l) => l.name)).toEqual(["Cardiovascular & Pulmonary Service Line", "Ambulatory", "Behavioral Health", "oncology"]);
   });
 
   it("normalize falls back to the seed for missing or invalid parts", () => {
     expect(ServiceLine.normalize(null)).toEqual(SEED);
     expect(ServiceLine.normalize({ name: "Heart", shortName: "" })).toEqual({ name: "Heart", shortName: "CVPSL" });
   });
+
+  it("contracts leads and departments parse as saved", () => {
+    expect(ServiceLine.parseContractsLeads([" Pat  Lee ", "", "pat lee", "Sam Roe"])).toEqual(["Pat Lee", "Sam Roe"]);
+    expect(() => ServiceLine.parseContractsLeads(["x".repeat(201)])).toThrow(ServiceLineValidationError);
+    expect(ServiceLine.parseDepartments(["IR", "Cath", "Bogus", "Cath"])).toEqual(["Cath", "IR"]);
+  });
+});
+
+describe("ServiceLineCopy (Writing Bot rules)", () => {
+  it("fixed strings", () => {
+    expect(ServiceLineCopy.PAGE_TITLE).toBe("Service lines");
+    expect(ServiceLineCopy.NEW_BUTTON).toBe("+ New service line");
+    expect(ServiceLineCopy.LOCK_TOOLTIP).toBe("The default service line can't be archived or deleted");
+    expect(ServiceLineCopy.NEW_LINE_HELP).toBe("Departments, people and templates start empty. Add them from Admin after switching to this line.");
+    expect(ServiceLineCopy.CONFIRM_LABEL).toBe("Type the service line name to confirm");
+    expect(ServiceLineCopy.MANAGE_LINK).toBe("Manage service lines");
+    expect(ServiceLineCopy.COLUMNS).toEqual(["Name", "Short name", "Projects", "Updated"]);
+    expect(ServiceLineCopy.archivedHeading(2)).toBe("Archived (2)");
+    expect(ServiceLineCopy.switchedToast("CVPSL")).toBe("Switched to CVPSL");
+  });
+
+  it("delete confirm: title, plural, singular and zero-project bodies", () => {
+    expect(ServiceLineCopy.deleteTitle("Oncology Service Line")).toBe("Delete Oncology Service Line?");
+    expect(ServiceLineCopy.deleteBody(3)).toBe("Its 3 projects, people lists and templates will be hidden everywhere. You can restore it from the audit log.");
+    expect(ServiceLineCopy.deleteBody(1)).toBe("Its 1 project, people lists and templates will be hidden everywhere. You can restore it from the audit log.");
+    expect(ServiceLineCopy.deleteBody(0)).toBe("Its people lists and templates will be hidden everywhere. You can restore it from the audit log.");
+  });
+
+  it("the typed name must match exactly (case-sensitive, outer spaces trimmed)", () => {
+    expect(ServiceLineCopy.confirmMatches("Oncology Service Line", "Oncology Service Line")).toBe(true);
+    expect(ServiceLineCopy.confirmMatches("  Oncology Service Line ", "Oncology Service Line")).toBe(true);
+    expect(ServiceLineCopy.confirmMatches("oncology service line", "Oncology Service Line")).toBe(false);
+    expect(ServiceLineCopy.confirmMatches("Oncology  Service Line", "Oncology Service Line")).toBe(false);
+    expect(ServiceLineCopy.confirmMatches("", "Oncology Service Line")).toBe(false);
+  });
+
+  it("no em dashes in any service line copy", () => {
+    const all = [
+      ...Object.values(ServiceLineCopy).filter((v): v is string => typeof v === "string"),
+      ...ServiceLineCopy.COLUMNS,
+      ServiceLineCopy.deleteBody(0),
+      ServiceLineCopy.deleteBody(1),
+      ServiceLineCopy.deleteBody(2),
+      ServiceLineCopy.deleteTitle("X"),
+    ];
+    for (const text of all) expect(text).not.toContain("\u2014");
+  });
 });
 
 describe("ServiceLineService", () => {
-  it("falls back to the seed values when the settings row is unset", async () => {
-    const fake = new FakeDb();
-    expect(await ServiceLineService.get(fake.asClient())).toEqual(SEED);
-  });
-
-  it("admin update writes the row and one audit entry (old, new, who, when) in one transaction", async () => {
+  it("renaming the default line writes the row and one audit entry (old, new, who, when) in one transaction", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const before = Date.now();
-    const saved = await ServiceLineService.update({ name: "Heart and Vascular Service Line", shortName: "HVSL" }, ADMIN, db);
-    expect(saved).toEqual({ name: "Heart and Vascular Service Line", shortName: "HVSL" });
-    expect(await ServiceLineService.get(db)).toEqual(saved);
-    expect(fake.state.serviceLineSettings[0]).toMatchObject({ id: "service_line", updatedBy: ADMIN.email });
-    expect(fake.state.serviceLineSettingsHistory).toHaveLength(1);
-    const h = fake.state.serviceLineSettingsHistory[0];
-    expect(h).toMatchObject({ oldValue: SEED, newValue: saved, changedBy: ADMIN.email });
+    const saved = await ServiceLineService.update(ServiceLine.DEFAULT_ID, { name: "Heart and Vascular Service Line", shortName: "HVSL" }, ADMIN, db);
+    expect(saved).toMatchObject({ id: ServiceLine.DEFAULT_ID, name: "Heart and Vascular Service Line", shortName: "HVSL", isDefault: true });
+    expect(fake.state.serviceLines[0]).toMatchObject({ name: "Heart and Vascular Service Line", updatedBy: ADMIN.email });
+    expect(fake.state.serviceLineHistory).toHaveLength(1);
+    const h = fake.state.serviceLineHistory[0];
+    expect(h).toMatchObject({ serviceLineId: ServiceLine.DEFAULT_ID, action: "renamed", oldValue: SEED, newValue: { name: "Heart and Vascular Service Line", shortName: "HVSL" }, changedBy: ADMIN.email });
     expect((h.changedAt as Date).getTime()).toBeGreaterThanOrEqual(before);
     expect(fake.writes.filter((w) => w.model.startsWith("serviceLine")).every((w) => w.inTx)).toBe(true);
-
-    const changes = await ServiceLineService.history(ADMIN, 20, db);
+    const changes = await ServiceLineService.history({ id: ServiceLine.DEFAULT_ID }, ADMIN, 20, db);
     expect(changes).toHaveLength(1);
-    expect(changes[0]).toMatchObject({ oldValue: SEED, newValue: saved, changedBy: ADMIN.email });
   });
 
   it("an unchanged save writes nothing", async () => {
     const fake = new FakeDb();
-    await ServiceLineService.update({ name: SEED.name, shortName: ` ${SEED.shortName} ` }, ADMIN, fake.asClient());
-    expect(fake.state.serviceLineSettings).toHaveLength(0);
-    expect(fake.state.serviceLineSettingsHistory).toHaveLength(0);
+    await ServiceLineService.update(ServiceLine.DEFAULT_ID, { name: SEED.name, shortName: ` ${SEED.shortName} ` }, ADMIN, fake.asClient());
+    expect(fake.writes).toHaveLength(0);
   });
 
-  it("rejects non-admins (service and history) and writes nothing", async () => {
+  it("creates a line with empty departments, people and templates; names are unique among lines not deleted", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
-    await expect(ServiceLineService.update({ name: "X", shortName: "X" }, MEMBER, db)).rejects.toThrow(AdminRequiredError);
-    await expect(ServiceLineService.history(MEMBER, 20, db)).rejects.toThrow(AdminRequiredError);
+    const onc = await ServiceLineService.create({ name: "Oncology Service Line", shortName: "ONC" }, ADMIN, db);
+    expect(onc).toMatchObject({ name: "Oncology Service Line", shortName: "ONC", isDefault: false, departments: [], contractsLeads: [] });
+    expect(fake.state.serviceLineHistory.at(-1)).toMatchObject({ serviceLineId: onc.id, action: "created" });
+    await expect(ServiceLineService.create({ name: " oncology   service line ", shortName: "ONC2" }, ADMIN, db)).rejects.toMatchObject({
+      errors: { name: "Another service line already uses this name." },
+    });
+    await expect(ServiceLineService.create({ name: "Other", shortName: "CVPSL" }, ADMIN, db)).rejects.toMatchObject({
+      errors: { shortName: "Another service line already uses this short name." },
+    });
+    // After a delete the name is free again, and restoring then clashes.
+    await ServiceLineService.softDelete(onc.id, "Oncology Service Line", ADMIN, db);
+    const again = await ServiceLineService.create({ name: "Oncology Service Line", shortName: "ONC" }, ADMIN, db);
+    await expect(ServiceLineService.restore(onc.id, ADMIN, db)).rejects.toThrow(ServiceLineValidationError);
+    await ServiceLineService.softDelete(again.id, "Oncology Service Line", ADMIN, db);
+    await ServiceLineService.restore(onc.id, ADMIN, db);
+    expect(fake.state.serviceLines.find((l) => l.id === onc.id)).toMatchObject({ deletedAt: null, deletedBy: null });
+  });
+
+  it("archive, unarchive, delete and restore are logged; the default line can't be archived or deleted", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    const onc = await ServiceLineService.create({ name: "Oncology Service Line", shortName: "ONC" }, ADMIN, db);
+    await ServiceLineService.archive(onc.id, ADMIN, db);
+    let lists = await ServiceLineService.list(ADMIN, db);
+    expect(lists.active.map((l) => l.shortName)).toEqual(["CVPSL"]);
+    expect(lists.archived.map((l) => l.shortName)).toEqual(["ONC"]);
+    await ServiceLineService.unarchive(onc.id, ADMIN, db);
+    await expect(ServiceLineService.softDelete(onc.id, "oncology service line", ADMIN, db)).rejects.toMatchObject({ errors: { confirm: "The name doesn't match." } });
+    await ServiceLineService.softDelete(onc.id, "  Oncology Service Line ", ADMIN, db);
+    lists = await ServiceLineService.list(ADMIN, db);
+    expect([...lists.active, ...lists.archived].map((l) => l.shortName)).toEqual(["CVPSL"]);
+    expect((await ServiceLineService.deleted(ADMIN, db)).map((l) => l.shortName)).toEqual(["ONC"]);
+    await ServiceLineService.restore(onc.id, ADMIN, db);
+    expect(fake.state.serviceLineHistory.filter((h) => h.serviceLineId === onc.id).map((h) => h.action)).toEqual(["created", "archived", "unarchived", "deleted", "restored"]);
+
+    for (const run of [
+      () => ServiceLineService.archive(ServiceLine.DEFAULT_ID, ADMIN, db),
+      () => ServiceLineService.softDelete(ServiceLine.DEFAULT_ID, SEED.name, ADMIN, db),
+    ]) {
+      await expect(run()).rejects.toMatchObject({ errors: { _form: "The default service line can't be archived or deleted." } });
+    }
+    expect(fake.state.serviceLines[0]).toMatchObject({ archivedAt: null, deletedAt: null });
+  });
+
+  it("departments are editable for new lines only; contracts leads for every line", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    const onc = await ServiceLineService.create({ name: "Oncology Service Line", shortName: "ONC" }, ADMIN, db);
+    expect((await ServiceLineService.setDepartments(onc.id, ["IR", "Cath"], ADMIN, db)).departments).toEqual(["Cath", "IR"]);
+    await expect(ServiceLineService.setDepartments(ServiceLine.DEFAULT_ID, ["Cath"], ADMIN, db)).rejects.toThrow(ServiceLineValidationError);
+    expect(fake.state.serviceLines[0].departments).toEqual(["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
+    expect((await ServiceLineService.setContractsLeads(onc.id, ["Pat Lee"], ADMIN, db)).contractsLeads).toEqual(["Pat Lee"]);
+    expect(fake.state.serviceLines[0].contractsLeads).toEqual(ServiceLine.CVPSL_CONTRACTS_LEADS);
+    expect(fake.state.serviceLineHistory.filter((h) => h.serviceLineId === onc.id).map((h) => h.action)).toEqual(["created", "departments_changed", "contracts_leads_changed"]);
+  });
+
+  it("rejects non-admins and writes nothing", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    await expect(ServiceLineService.create({ name: "X Line", shortName: "XL" }, MEMBER, db)).rejects.toThrow(AdminRequiredError);
+    await expect(ServiceLineService.update(ServiceLine.DEFAULT_ID, { name: "X", shortName: "XL" }, MEMBER, db)).rejects.toThrow(AdminRequiredError);
+    await expect(ServiceLineService.list(MEMBER, db)).rejects.toThrow(AdminRequiredError);
+    await expect(ServiceLineService.history({ id: ServiceLine.DEFAULT_ID }, MEMBER, 20, db)).rejects.toThrow(AdminRequiredError);
     expect(fake.writes).toHaveLength(0);
   });
 });
 
-describe("ServiceLineForm.submit (the Server Action body)", () => {
+describe("ServiceLineForms (the Server Action bodies)", () => {
   it("returns Not authorized for non-admins and no viewer, writing nothing", async () => {
     const fake = new FakeDb();
-    expect(await ServiceLineForm.submit(MEMBER, { name: "X", shortName: "X" }, fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
-    expect(await ServiceLineForm.submit(null, { name: "X", shortName: "X" }, fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
+    expect(await ServiceLineForms.save(MEMBER, { name: "X Line", shortName: "XL" }, fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
+    expect(await ServiceLineForms.save(null, { name: "X Line", shortName: "XL" }, fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
+    expect(await ServiceLineForms.switchTo(MEMBER, ServiceLine.DEFAULT_ID, fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
     expect(fake.writes).toHaveLength(0);
   });
 
   it("returns field errors for invalid input and saves valid input", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
-    const bad = await ServiceLineForm.submit(ADMIN, { name: "", shortName: "WAYTOOLONGNAME" }, db);
-    expect(bad).toMatchObject({ ok: false, errors: { name: "Service line name is required.", shortName: "Short name must be 12 characters or fewer." } });
+    const bad = await ServiceLineForms.save(ADMIN, { name: "", shortName: "WAYTOOLONGNAME" }, db);
+    expect(bad).toMatchObject({ ok: false, errors: { name: "Name is required.", shortName: "Short name must be 2 to 12 characters." } });
     expect(fake.writes).toHaveLength(0);
-    const good = await ServiceLineForm.submit(ADMIN, { name: "Heart", shortName: "H" }, db);
-    expect(good).toMatchObject({ ok: true, value: { name: "Heart", shortName: "H" } });
+    const good = await ServiceLineForms.save(ADMIN, { name: "Heart Line", shortName: "HL" }, db);
+    expect(good).toMatchObject({ ok: true, line: { name: "Heart Line", shortName: "HL" } });
+  });
+
+  it("switching saves the active line per user; archiving or deleting the active line switches to CVPSL with a toast", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    const onc = fake.addLine({ name: "Oncology Service Line", shortName: "ONC" });
+    const other = { email: "other@example.org", isAdmin: true };
+    expect(await ServiceLineForms.switchTo(ADMIN, onc.id as string, db)).toMatchObject({ ok: true, switchedTo: "ONC" });
+    expect((await ServiceLineAccess.activeFor(ADMIN, db)).shortName).toBe("ONC");
+    expect((await ServiceLineAccess.activeFor(other, db)).shortName).toBe("CVPSL");
+
+    // Archiving a line someone else has open does not toast for me.
+    expect(await ServiceLineForms.archive(other, onc.id as string, db)).toEqual({ ok: true, message: "Archived." });
+    // My saved line is archived: I read the default line.
+    expect((await ServiceLineAccess.activeFor(ADMIN, db)).shortName).toBe("CVPSL");
+    await ServiceLineForms.unarchive(ADMIN, onc.id as string, db);
+    await ServiceLineForms.switchTo(ADMIN, onc.id as string, db);
+    expect(await ServiceLineForms.archive(ADMIN, onc.id as string, db)).toEqual({ ok: true, message: "Switched to CVPSL", switchedTo: "CVPSL" });
+    expect(fake.state.serviceLineUserState.find((u) => u.email === ADMIN.email)).toMatchObject({ serviceLineId: ServiceLine.DEFAULT_ID });
+
+    await ServiceLineForms.unarchive(ADMIN, onc.id as string, db);
+    await ServiceLineForms.switchTo(ADMIN, onc.id as string, db);
+    expect(await ServiceLineForms.remove(ADMIN, onc.id as string, "Wrong", db)).toMatchObject({ ok: false, errors: { confirm: "The name doesn't match." } });
+    expect(await ServiceLineForms.remove(ADMIN, onc.id as string, "Oncology Service Line", db)).toEqual({ ok: true, message: "Switched to CVPSL", switchedTo: "CVPSL" });
+    // A deleted or archived line can't be switched to.
+    expect(await ServiceLineForms.switchTo(ADMIN, onc.id as string, db)).toEqual({ ok: false, message: "That service line is not available." });
+  });
+
+  it("non-admins always work in the default line (the seam for per-line access)", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    const onc = fake.addLine();
+    fake.state.serviceLineUserState.push({ email: MEMBER.email, serviceLineId: onc.id, updatedAt: new Date() });
+    expect((await ServiceLineAccess.activeFor(MEMBER, db)).id).toBe(ServiceLine.DEFAULT_ID);
+    expect(await ServiceLineAccess.usableLines(MEMBER, db)).toEqual([]);
+    expect(ServiceLineAccess.mayUse(MEMBER, onc as never)).toBe(false);
+    expect(ServiceLineAccess.mayUse(ADMIN, onc as never)).toBe(true);
+  });
+
+  it("the switcher lists open lines only, default first then A to Z", async () => {
+    const fake = new FakeDb();
+    fake.addLine({ name: "Oncology Service Line", shortName: "ONC" });
+    fake.addLine({ name: "Ambulatory Care", shortName: "AMB" });
+    fake.addLine({ name: "Archived Line", shortName: "ARC", archivedAt: new Date() });
+    fake.addLine({ name: "Deleted Line", shortName: "DEL", deletedAt: new Date() });
+    expect((await ServiceLineAccess.usableLines(ADMIN, fake.asClient())).map((l) => l.shortName)).toEqual(["CVPSL", "AMB", "ONC"]);
   });
 });
 
@@ -122,7 +304,7 @@ describe("report title and frozen snapshots", () => {
     const s1 = await SnapshotService.create(period1, db);
     expect(s1.serviceLineJson).toEqual(SEED);
 
-    await ServiceLineService.update({ name: "Heart and Vascular Service Line", shortName: "HVSL" }, ADMIN, db);
+    await ServiceLineService.update(ServiceLine.DEFAULT_ID, { name: "Heart and Vascular Service Line", shortName: "HVSL" }, ADMIN, db);
     const s2 = await SnapshotService.create(period2, db);
 
     const in1 = PdfReportRenderer.inputFromSnapshot(fake.state.snapshots.find((s) => s.id === s1.id) as never);
