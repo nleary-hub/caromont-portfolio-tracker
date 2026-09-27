@@ -11,6 +11,9 @@ type Reader = Pick<Prisma.TransactionClient, "serviceLineAccessGrant" | "departm
  * (dashboard rows, tiles, counts, search, the department filter, History) sees only their departments. Unassigned
  * projects belong to no department, so a limited viewer never sees them. Admins are never limited.
  */
+/** Prisma project filter for a scope (DepartmentAccess.projectWhere). */
+export type ProjectScopeWhere = { serviceLineId: string; OR?: ({ departmentId: { in: string[] } } | { departmentId: null })[] };
+
 export class DepartmentAccess {
   /** Department ids the viewer is limited to in this line, or null for every department. */
   static async limitFor(viewer: Viewer, serviceLineId: string, db: Reader): Promise<string[] | null> {
@@ -39,14 +42,18 @@ export class DepartmentAccess {
     return Array.isArray(scope.departmentLimit);
   }
 
-  /** Project filter for the scope: its line, and for a limited viewer only their departments. */
-  static projectWhere(scope: Pick<ServiceLineScope, "id" | "departmentLimit">): { serviceLineId: string; departmentId?: { in: string[] } } {
-    return scope.departmentLimit ? { serviceLineId: scope.id, departmentId: { in: [...scope.departmentLimit] } } : { serviceLineId: scope.id };
+  /**
+   * Project filter for the scope: its line, and for a limited viewer only their departments plus Unassigned
+   * (projects with no department; everyone with the line sees those, Nick's decision).
+   */
+  static projectWhere(scope: Pick<ServiceLineScope, "id" | "departmentLimit">): ProjectScopeWhere {
+    if (!scope.departmentLimit) return { serviceLineId: scope.id };
+    return { serviceLineId: scope.id, OR: [{ departmentId: { in: [...scope.departmentLimit] } }, { departmentId: null }] };
   }
 
-  /** Whether a project in `departmentId` (null = Unassigned) is inside the scope's departments. */
+  /** Whether a project in `departmentId` (null = Unassigned, visible to everyone with the line) is inside the scope. */
   static allows(scope: Pick<ServiceLineScope, "departmentLimit">, departmentId: string | null | undefined): boolean {
     if (!scope.departmentLimit) return true;
-    return typeof departmentId === "string" && scope.departmentLimit.includes(departmentId);
+    return departmentId === null || departmentId === undefined || scope.departmentLimit.includes(departmentId);
   }
 }

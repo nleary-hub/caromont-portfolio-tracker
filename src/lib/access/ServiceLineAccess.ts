@@ -4,7 +4,7 @@ import { Db } from "@/lib/db/Db";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentRules, type DepartmentRow } from "@/lib/domain/DepartmentRules";
-import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
+import { DepartmentAccess, type ProjectScopeWhere } from "@/lib/access/DepartmentAccess";
 
 type Reader = Pick<Prisma.TransactionClient, "serviceLine" | "serviceLineUserState" | "serviceLineAccessGrant" | "departmentAccessGrant">;
 type LineReader = Pick<Prisma.TransactionClient, "serviceLine" | "serviceLineAccessGrant">;
@@ -162,8 +162,8 @@ export class ServiceLineAccess {
     return { serviceLineId: scope.id };
   }
 
-  /** Filter for project reads: the line, and for a viewer limited to some departments only those (DepartmentAccess). */
-  static projectWhere(scope: Pick<ServiceLineScope, "id" | "departmentLimit">): { serviceLineId: string; departmentId?: { in: string[] } } {
+  /** Filter for project reads: the line, and for a viewer limited to some departments only those plus Unassigned (DepartmentAccess). */
+  static projectWhere(scope: Pick<ServiceLineScope, "id" | "departmentLimit">): ProjectScopeWhere {
     return DepartmentAccess.projectWhere(scope);
   }
 

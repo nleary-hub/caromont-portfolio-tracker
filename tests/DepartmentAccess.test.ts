@@ -110,9 +110,9 @@ describe("DepartmentAccess: the narrowed scope", () => {
     const n = DepartmentAccess.narrow(full, ["Echo", "Cath", "nope"]);
     expect(n.departments.map((d) => d.id)).toEqual(["Cath", "Echo"]);
     expect(n.departmentLimit).toEqual(["Cath", "Echo"]);
-    expect(DepartmentAccess.projectWhere(n)).toEqual({ serviceLineId: CVPSL, departmentId: { in: ["Cath", "Echo"] } });
+    expect(DepartmentAccess.projectWhere(n)).toEqual({ serviceLineId: CVPSL, OR: [{ departmentId: { in: ["Cath", "Echo"] } }, { departmentId: null }] });
     expect(DepartmentAccess.projectWhere(full)).toEqual({ serviceLineId: CVPSL });
-    expect([DepartmentAccess.allows(n, "Echo"), DepartmentAccess.allows(n, "EP"), DepartmentAccess.allows(n, null), DepartmentAccess.allows(full, null)]).toEqual([true, false, false, true]);
+    expect([DepartmentAccess.allows(n, "Echo"), DepartmentAccess.allows(n, "EP"), DepartmentAccess.allows(n, null), DepartmentAccess.allows(full, null)]).toEqual([true, false, true, true]); // Unassigned (null): everyone with the line
   });
 
   it("activeFor: All departments = the whole line; limited = their departments; admins are never limited", async () => {

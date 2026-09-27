@@ -220,6 +220,7 @@ export class FakeDb {
     };
     const matches = (row: Row, where: Row = {}): boolean =>
       Object.entries(where).every(([k, v]) => {
+        if (k === "OR") return (v as Row[]).some((w) => matches(row, w));
         const rv = value(row, k);
         if (v && typeof v === "object" && !(v instanceof Date)) {
           const cond = v as { in?: unknown[]; notIn?: unknown[]; gt?: Date; not?: unknown };

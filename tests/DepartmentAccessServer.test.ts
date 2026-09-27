@@ -116,7 +116,7 @@ beforeEach(async () => {
     echo: await make("Echo", "Echo visible project"),
     cath: await make("Cath", "Cath secret project"),
     ep: await make("EP", "EP secret project"),
-    none: await make(null, "Unassigned secret project"),
+    none: await make(null, "Unassigned shared project"),
     echoDone: await make("Echo", "Echo finished project", "Complete"),
   };
   fake.grant(JANE.email, CVPSL);
@@ -129,17 +129,18 @@ afterEach(() => {
 });
 
 describe("limited user: dashboard, tiles, counts, search and the filter only include their departments", () => {
-  it("the dashboard reads and sends only their departments' projects (no Unassigned), and the filter lists only theirs", async () => {
+  it("the dashboard reads and sends only their departments' projects plus Unassigned, and the filter lists only theirs", async () => {
     h.viewer = JANE;
     const reads = vi.spyOn((h.db as { project: { findMany: (a: unknown) => unknown } }).project, "findMany");
     const el = await Page.render(DashboardPage);
     expect(el.type).toBe(ProjectDashboard);
     const props = el.props as DashProps;
-    expect(props.rows.map((r) => r.name)).toEqual(["Echo visible project"]);
+    // Unassigned projects (no department) are visible to everyone with the line (Nick's decision).
+    expect(props.rows.map((r) => r.name).sort()).toEqual(["Echo visible project", "Unassigned shared project"]);
     expect(props.fiscalYearRows.map((r) => r.name)).toEqual(["Echo finished project"]);
     expect(props.line.departments.map((d) => d.name)).toEqual(["Echo", "IR"]);
     expect(DepartmentFilter.optionsFor(props.line as never)).toEqual(["Echo", "IR"]);
-    expect(reads.mock.calls[0][0]).toMatchObject({ where: { serviceLineId: CVPSL, departmentId: { in: ["Echo", "IR"] } } });
+    expect(reads.mock.calls[0][0]).toMatchObject({ where: { serviceLineId: CVPSL, OR: [{ departmentId: { in: ["Echo", "IR"] } }, { departmentId: null }] } });
     // Tiles, counts and search are computed in the browser from these rows: nothing else is sent.
     expect(Page.payload(el)).not.toMatch(/secret|Cath Lab|EP Lab|CardioNeuro/);
   });
@@ -167,7 +168,7 @@ describe("limited user: dashboard, tiles, counts, search and the filter only inc
     h.viewer = JANE;
     fake.state.accessGrants[0].allDepartments = true;
     const props = (await Page.render(DashboardPage)).props as DashProps;
-    expect(props.rows.map((r) => r.name).sort()).toEqual(["Cath secret project", "EP secret project", "Echo visible project", "Unassigned secret project"]);
+    expect(props.rows.map((r) => r.name).sort()).toEqual(["Cath secret project", "EP secret project", "Echo visible project", "Unassigned shared project"]);
     expect(props.line.departments).toHaveLength(7);
   });
 });
@@ -179,7 +180,11 @@ describe("project links", () => {
     expect(own.type).toBe(ProjectDashboard);
     expect((own.props as DashProps).initialProjectId).toBe(ids.echo);
     const cards = [];
-    for (const id of [ids.cath, ids.none, MISSING, "not-a-uuid"]) {
+    // Unassigned projects open for everyone with the line.
+    const unassigned = await Page.render(DashboardPage, { project: ids.none });
+    expect(unassigned.type).toBe(ProjectDashboard);
+    expect((unassigned.props as DashProps).initialProjectId).toBe(ids.none);
+    for (const id of [ids.cath, MISSING, "not-a-uuid"]) {
       const el = await Page.render(DashboardPage, { project: id });
       expect(el.type, id).toBe(NoAccessCard);
       cards.push(Page.payload(el));
@@ -222,6 +227,33 @@ describe("routes and actions", () => {
     expect((await loadProjectHistory(ids.cath))?.entries).toEqual([]);
     expect(await loadProjectHistory(ids.cath)).toEqual(await loadProjectHistory(MISSING));
     expect((await loadProjectHistory(ids.echo))?.entries.length).toBeGreaterThan(0);
+    // Unassigned projects' history (the drawer) is open to everyone with the line.
+    expect((await loadProjectHistory(ids.none))?.entries.length).toBeGreaterThan(0);
+  });
+
+  it("Unassigned projects: a limited user sees them everywhere; a user without the line sees nothing", async () => {
+    // Limited user (Echo and IR): dashboard rows, project link, drawer history and on-demand PDF.
+    h.viewer = JANE;
+    expect(((await Page.render(DashboardPage)).props as DashProps).rows.map((r) => r.name)).toContain("Unassigned shared project");
+    expect(((await Page.render(DashboardPage, { project: ids.none })).props as DashProps).initialProjectId).toBe(ids.none);
+    expect((await loadProjectHistory(ids.none))?.entries.length).toBeGreaterThan(0);
+    // No access to any line: the no-access card, no history, no PDF.
+    const ben = { email: "ben.noaccess@caromonthealth.org", isAdmin: false, name: "Ben" };
+    h.viewer = ben;
+    for (const params of [{}, { project: ids.none }] as Record<string, string>[]) {
+      const el = await Page.render(DashboardPage, params);
+      expect(el.type).toBe(NoAccessCard);
+      expect(Page.payload(el)).not.toMatch(/Unassigned shared project/);
+    }
+    expect(await loadProjectHistory(ids.none)).toEqual(await loadProjectHistory(MISSING));
+    expect((await previewGET(new Request("https://tracker.example.org/api/reports/preview"))).status).toBe(404);
+    // Access to another line only: CVPSL's Unassigned projects stay out of reach.
+    const ep = fake.addLine({ name: "Electrophysiology Service Line", shortName: "EP" }).id as string;
+    fake.grant(ben.email, ep);
+    const other = await Page.render(DashboardPage);
+    expect(Page.payload(other)).not.toMatch(/Unassigned shared project/);
+    expect((await Page.render(DashboardPage, { project: ids.none })).type).toBe(NoAccessCard);
+    expect(await loadProjectHistory(ids.none)).toEqual(await loadProjectHistory(MISSING));
   });
 
   it("reports: a limited user lists and opens the weekly PDF, the archive and the year-end report of their line, like a user with all departments", async () => {
@@ -362,7 +394,7 @@ describe("on-demand PDFs (Generate PDF now): the departments the user is viewing
     /** Project names in the rendered rows (and "Completed this period"). */
     static names(input: DocInput | null): string[] {
       const text = JSON.stringify(input);
-      return ["Echo visible project", "Echo finished project", "Cath secret project", "EP secret project", "Unassigned secret project"].filter((n) => text.includes(n));
+      return ["Echo visible project", "Echo finished project", "Cath secret project", "EP secret project", "Unassigned shared project"].filter((n) => text.includes(n));
     }
   }
 
@@ -371,16 +403,17 @@ describe("on-demand PDFs (Generate PDF now): the departments the user is viewing
     const all = await Draft.get();
     expect(all.status).toBe(200);
     expect(all.bytes.subarray(0, 5).toString()).toBe("%PDF-");
-    expect(Draft.names(all.input)).toEqual(["Echo visible project", "Echo finished project"]);
+    // All of their departments selected: Unassigned is included too (everyone with the line sees it).
+    expect(Draft.names(all.input)).toEqual(["Echo visible project", "Echo finished project", "Unassigned shared project"]);
     expect(all.input!.departments).toEqual(["Echo", "IR"]);
     expect(all.input!.lineDepartments!.map((d) => d.id)).toEqual(["Echo", "IR"]);
     // Asking for departments they don't have (and junk) changes nothing: the server keeps only theirs.
     const forged = await Draft.get("?departments=Cath,EP,Echo,IR,CardioNeuro,nope");
-    expect(Draft.names(forged.input)).toEqual(["Echo visible project", "Echo finished project"]);
+    expect(Draft.names(forged.input)).toEqual(["Echo visible project", "Echo finished project", "Unassigned shared project"]);
     expect(forged.input!.departments).toEqual(["Echo", "IR"]);
     // Only departments they lack: falls back to all of theirs, never to the others.
     const onlyOthers = await Draft.get("?departments=Cath,EP");
-    expect(Draft.names(onlyOthers.input)).toEqual(["Echo visible project", "Echo finished project"]);
+    expect(Draft.names(onlyOthers.input)).toEqual(["Echo visible project", "Echo finished project", "Unassigned shared project"]);
   });
 
   it("narrowing to some of their departments gets only that subset", async () => {
@@ -393,6 +426,7 @@ describe("on-demand PDFs (Generate PDF now): the departments the user is viewing
     expect(JSON.stringify(irOnly.input)).toContain("IR visible project");
     expect(Draft.names(irOnly.input)).toEqual([]);
     const echoOnly = await Draft.get("?departments=Echo");
+    // A narrowed filter leaves Unassigned out, as on the dashboard (the filter has no Unassigned option).
     expect(Draft.names(echoOnly.input)).toEqual(["Echo visible project", "Echo finished project"]);
     expect(JSON.stringify(echoOnly.input)).not.toContain("IR visible project");
     expect(ir.id).toBeTruthy();
@@ -481,7 +515,7 @@ describe("on-demand PDFs (Generate PDF now): the departments the user is viewing
     const all = await Draft.get();
     expect(all.status).toBe(200);
     // (The finished Echo project was listed by the freeze above, so "Completed this period" doesn't repeat it.)
-    expect(Draft.names(all.input)).toEqual(["Echo visible project", "Cath secret project", "EP secret project", "Unassigned secret project"]);
+    expect(Draft.names(all.input)).toEqual(["Echo visible project", "Cath secret project", "EP secret project", "Unassigned shared project"]);
     expect(all.input!.lineDepartments).toHaveLength(7);
     // Narrowed to Cath and EP: only those.
     const some = await Draft.get("?departments=Cath,EP");
