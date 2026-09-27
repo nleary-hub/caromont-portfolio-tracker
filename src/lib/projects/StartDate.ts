@@ -50,9 +50,14 @@ export class StartDate {
     return ReportFormat.mediumDate(iso);
   }
 
-  /** Admin audit: "Start date changed from Sep 26, 2026 to Mar 3, 2026 by Nick Leary, Sep 28, 2026, 9:12 AM ET." */
-  static auditLine(from: string | null, to: string | null, by: string, at: Date): string {
-    const d = (iso: string | null) => (iso && DateOnly.isIso(iso) ? StartDate.display(iso) : "none");
-    return `Start date changed from ${d(from)} to ${d(to)} by ${by}, ${ReportFormat.dateTimeEt(at)}.`;
+  /**
+   * Admin > Recent changes, CHANGE cell. The table's OLD / NEW / WHO / WHEN columns carry the dates, the person and
+   * the time, so the cell is just this label. (The start date is audited nowhere else: never in the drawer History.)
+   */
+  static readonly AUDIT_CHANGE = "Start date changed";
+
+  /** Admin > Recent changes, OLD / NEW cells: a stored YYYY-MM-DD reads "Mar 3, 2026"; anything else as stored. */
+  static auditValue(stored: string | null): string | null {
+    return stored && DateOnly.isIso(stored) ? StartDate.display(stored) : stored;
   }
 }

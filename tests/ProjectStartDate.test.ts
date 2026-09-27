@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { ProjectHistoryService } from "@/lib/services/ProjectHistoryService";
@@ -194,10 +196,22 @@ describe("ProjectFormModel start date (client, same rule)", () => {
 });
 
 describe("StartDate copy", () => {
-  it("details and admin audit line", () => {
+  it("details", () => {
     expect(`${StartDate.DETAIL_LABEL} ${StartDate.display("2026-03-03")}`).toBe("Started Mar 3, 2026");
-    expect(StartDate.auditLine("2026-09-26", "2026-03-03", "Nick Leary", new Date("2026-09-28T13:12:00Z"))).toBe(
-      "Start date changed from Sep 26, 2026 to Mar 3, 2026 by Nick Leary, Sep 28, 2026, 9:12 AM ET.",
-    );
+  });
+
+  it("admin Recent changes: CHANGE reads just \"Start date changed\"; OLD / NEW carry the dates", () => {
+    expect(StartDate.AUDIT_CHANGE).toBe("Start date changed");
+    expect(StartDate.auditValue("2026-09-26")).toBe("Sep 26, 2026");
+    expect(StartDate.auditValue("2026-03-03")).toBe("Mar 3, 2026");
+    expect(StartDate.auditValue(null)).toBeNull();
+    expect(StartDate.auditValue("not a date")).toBe("not a date");
+  });
+
+  it("the audit page uses the short label, never a full sentence", () => {
+    const page = readFileSync(path.resolve(__dirname, "../src/app/admin/audit/page.tsx"), "utf8");
+    expect(page).toContain("StartDate.AUDIT_CHANGE");
+    expect(page).toContain("StartDate.auditValue");
+    expect(page).not.toMatch(/changed from/);
   });
 });

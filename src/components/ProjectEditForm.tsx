@@ -229,7 +229,6 @@ export function ProjectEditForm({
               field="startDate"
               label={StartDate.LABEL}
               errors={shown("startDate")}
-              hint={StartDate.HELP}
               tag={ProjectFormModel.showsStartDateDefault(values, original, startDateIsDefault) ? <StartDateDefaultTag /> : null}
             >
               <input
@@ -258,6 +257,12 @@ export function ProjectEditForm({
                   }}
                 />
               </Field>
+            )}
+            {/* Help text spans the whole row (both columns), not just the date input; hidden while an error shows. */}
+            {shown("startDate").length === 0 && (
+              <p className="col-span-2 -mt-2 text-muted type-table" data-testid="start-date-help">
+                {StartDate.HELP}
+              </p>
             )}
           </div>
           <Field field="inforRequestNumber" label="Infor number" errors={shown("inforRequestNumber")}>
