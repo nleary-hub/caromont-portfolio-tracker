@@ -21,6 +21,7 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { MilestoneService } from "@/lib/services/MilestoneService";
 import { MilestoneTemplateService } from "@/lib/services/MilestoneTemplateService";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceLineSwitcher } from "@/components/ServiceLineSwitcher";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
@@ -164,7 +165,12 @@ class DashboardData {
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
               // The form reads the stored legacy fields; the checklist comes separately.
               formValues: DashboardData.formValues(stored, listedIds),
-              milestoneSteps: MilestoneService.byProject(steps.filter((s) => listedIds.includes(s.projectId))),
+              milestoneSteps: MilestoneService.byProject(
+                steps.filter((s) => listedIds.includes(s.projectId)),
+                ServiceLine.peopleNames(scope),
+              ),
+              // "Checked by <you> at 1:45 AM ET. Not saved yet." (same name rule as History and saved checks).
+              checkerName: UpdateTimeline.actor(viewer.email, ServiceLine.peopleNames(scope)),
               templates: await MilestoneTemplateService.listOrEmpty(db, scope),
             }
           : null,

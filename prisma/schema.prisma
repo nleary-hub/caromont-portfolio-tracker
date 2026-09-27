@@ -331,6 +331,11 @@ model ProjectMilestone {
   done             Boolean   @default(false)
   /// America/New_York calendar date the step was checked off. Null while not done (DB check).
   doneAt           DateTime? @db.Date
+  /// Email of who checked the step (migration 0022), or a "system ..." actor. Set on check, cleared on uncheck; null for
+  /// steps checked before 0022 (never backfilled).
+  doneBy           String?
+  /// When the step was checked (migration 0022). Set and cleared with doneBy.
+  checkedAt        DateTime?
   /// 1-based order within the project.
   position         Int
   /// Template the step was copied from (kept for the "From '<template>'" note). Editing or deleting the

@@ -19,6 +19,8 @@ export interface StoredStep {
   dueDate: Date | null;
   done: boolean;
   doneAt: Date | null;
+  doneBy?: string | null;
+  checkedAt?: Date | null;
   position: number;
   sourceTemplateId: string | null;
 }
@@ -41,8 +43,18 @@ export interface StepWrite {
   dueDate: Date | null;
   done: boolean;
   doneAt: Date | null;
+  /** Who checked the step (migration 0022); null when not done. */
+  doneBy: string | null;
+  /** When it was checked (migration 0022); null when not done. */
+  checkedAt: Date | null;
   position: number;
   sourceTemplateId: string | null;
+}
+
+/** Who is saving, and when: recorded on each step this save checks. */
+export interface StepChecker {
+  by: string;
+  at: Date;
 }
 
 export interface HistoryChange {
@@ -140,7 +152,13 @@ export class MilestoneRules {
    * Plan the writes for a Save. `today` is the America/New_York date used for doneAt. Throws
    * MilestoneValidationError with one message per bad step ("Step 3: At most 40 characters").
    */
-  static plan(stored: readonly StoredStep[], drafts: readonly MilestoneDraft[], today: string, applied: TemplateApplied | null = null): MilestonePlan {
+  static plan(
+    stored: readonly StoredStep[],
+    drafts: readonly MilestoneDraft[],
+    today: string,
+    applied: TemplateApplied | null = null,
+    checker: StepChecker | null = null,
+  ): MilestonePlan {
     const F = MilestoneRules.FIELDS;
     const byId = new Map(stored.map((s) => [s.id, s]));
     const errors: string[] = [];
@@ -169,7 +187,16 @@ export class MilestoneRules {
       const dueDate = d.dueDate ? DateOnly.toDbDate(d.dueDate) : null;
       const existing = d.id ? byId.get(d.id) : undefined;
       if (!existing) {
-        const write: StepWrite = { name, dueDate, done: d.done, doneAt: d.done ? todayDate : null, position, sourceTemplateId: d.sourceTemplateId };
+        const write: StepWrite = {
+          name,
+          dueDate,
+          done: d.done,
+          doneAt: d.done ? todayDate : null,
+          doneBy: d.done ? (checker?.by ?? null) : null,
+          checkedAt: d.done ? (checker?.at ?? null) : null,
+          position,
+          sourceTemplateId: d.sourceTemplateId,
+        };
         plan.creates.push(write);
         plan.result.push(write);
         if (applied && d.sourceTemplateId === applied.templateId) templateSteps += 1;
@@ -192,6 +219,9 @@ export class MilestoneRules {
       if (d.done !== existing.done) {
         data.done = d.done;
         data.doneAt = d.done ? todayDate : null;
+        // A new check records the new person and time; unchecking clears both. Nothing is kept from an earlier check.
+        data.doneBy = d.done ? (checker?.by ?? null) : null;
+        data.checkedAt = d.done ? (checker?.at ?? null) : null;
         plan.history.push(d.done ? { field: F.done, oldValue: null, newValue: name } : { field: F.reopened, oldValue: name, newValue: null });
       }
       if (position !== existing.position) data.position = position;
@@ -201,6 +231,8 @@ export class MilestoneRules {
         dueDate: "dueDate" in data ? (data.dueDate ?? null) : existing.dueDate,
         done: data.done ?? existing.done,
         doneAt: "doneAt" in data ? (data.doneAt ?? null) : existing.doneAt,
+        doneBy: "doneBy" in data ? (data.doneBy ?? null) : (existing.doneBy ?? null),
+        checkedAt: "checkedAt" in data ? (data.checkedAt ?? null) : (existing.checkedAt ?? null),
         position,
         sourceTemplateId: existing.sourceTemplateId,
       });

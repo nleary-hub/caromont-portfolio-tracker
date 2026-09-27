@@ -33,6 +33,8 @@ export interface ProjectEditFormProps {
   milestones: readonly MilestoneStepDto[];
   /** Templates for "Apply a template". */
   templates: readonly TemplateDto[];
+  /** The signed-in admin's display name, for the checked-by tooltip of a check not saved yet. */
+  checkerName?: string;
   /** YYYY-MM-DD in America/New_York (Completed on prefill). */
   today: string;
   /** The People editor (saves on pick). Null for a new project. */
@@ -67,6 +69,7 @@ export function ProjectEditForm({
   original: originalProp,
   milestones,
   templates,
+  checkerName,
   today,
   people,
   adminDelete,
@@ -256,6 +259,7 @@ export function ProjectEditForm({
             initial={isNew ? MilestoneEditorModel.startFrom(startFrom, templates) : msOriginal}
             templates={templates}
             today={today}
+            checkerName={checkerName}
             autosave={isNew ? undefined : saveMilestones}
             onStateChange={(next) => {
               setMs(next);
