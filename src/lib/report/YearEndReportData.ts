@@ -159,7 +159,15 @@ export class YearEndCopy {
     return c === "carriedIn" ? YearEndCopy.carriedInFrom(YearEndReportData.previousLabel(fy)) : c === "completed" ? YearEndCopy.completedFy(fy) : YearEndCopy.STILL_IN_PROGRESS;
   }
 
-  static readonly GRID_EXPLAINER = "Carried in includes projects later closed without being completed. The other columns include projects started this year.";
+  /** Under the grid when Carried in is shown. */
+  static readonly GRID_NOTE_CARRIED_IN = "Carried in includes projects later closed without being completed.";
+  /** Under the grid when any other column (Completed, Carried into or Still in progress) is shown. */
+  static readonly GRID_NOTE_OTHERS = "The other columns include projects started this year.";
+
+  /** What the shown columns count: one line with only the sentences that apply to them. */
+  static gridExplainer(columns: readonly SummaryKey[]): string {
+    return [columns.includes("carriedIn") ? YearEndCopy.GRID_NOTE_CARRIED_IN : null, columns.some((k) => k !== "carriedIn") ? YearEndCopy.GRID_NOTE_OTHERS : null].filter(Boolean).join(" ");
+  }
 
   static completedIn(fy: string): string {
     return `Completed in ${fy}`;

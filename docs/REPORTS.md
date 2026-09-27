@@ -269,10 +269,13 @@ entered completion date and no status was on record for D, the status cell says 
 
 **Notes under the grid** (small gray text, left-aligned under the Total row):
 
-- Always: "Carried in includes projects later closed without being completed. The other columns include projects
-  started this year."
+- What the columns count, one line with only the sentences that apply: "Carried in includes projects later closed
+  without being completed." when Carried in is shown, and "The other columns include projects started this year." when
+  any other column is shown. A closed year shows both.
 - **Tracking rule.** Project history only goes back to the first tracked day: the earliest project creation or history
-  entry (Sep 26, 2026 in production, when the tracker's data was imported; imports don't set creation dates). A shown
+  entry (Sep 26, 2026 in production, when the tracker's data was imported; imports don't set creation dates). Both
+  reports get it from one place: `YearEndReportData.build` calls `trackedSince` once over the projects and history
+  that `YearEndReportService.load` reads for the line. A shown
   carried total whose boundary is before that prints a dash, in the grid and the header, never 0, with a note such as
   "Tracking started Sep 26, 2026, so Carried in from FY26 isn't available." (or "... so Carried into FY27 isn't
   available."). An empty Carried section then reads "Tracking started Sep 26, 2026, so this list isn't available."

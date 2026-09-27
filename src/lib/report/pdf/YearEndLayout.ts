@@ -139,7 +139,7 @@ export class YearEndLayout {
     };
 
     // Dash notes for shown columns only, then what the columns count.
-    const summaryNotes = [data.columns.includes("carriedIn") ? data.carriedInNote : null, data.columns.includes("openAtEnd") ? data.openAtEndNote : null, YearEndCopy.GRID_EXPLAINER].filter((n): n is string => Boolean(n));
+    const summaryNotes = [data.columns.includes("carriedIn") ? data.carriedInNote : null, data.columns.includes("openAtEnd") ? data.openAtEndNote : null, YearEndCopy.gridExplainer(data.columns)].filter((n): n is string => Boolean(n));
     const summaryH = YearEndLayout.SUMMARY_LABEL_H + YearEndLayout.GRID.headH + data.summary.length * YearEndLayout.GRID.rowH + (summaryNotes.length ? 3 + summaryNotes.length * YearEndLayout.SUMMARY_NOTE_H : 0);
     push({ kind: "summary", height: summaryH });
 
