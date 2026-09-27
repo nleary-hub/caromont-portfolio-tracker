@@ -26,7 +26,8 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   // Deep links (screenshots): ?add=1 (Contracts leads) or ?add=owner|requester; ?role=owner|requester with ?rename= or ?remove=.
   const section = (v: string | undefined) => (v === "owner" || v === "requester" || v === "lead" ? v : undefined);
   // Password tags and row menus for everyone in the grid. ?menu=<email> opens that row's ⋯ menu.
-  const passwords = await UserAccountService.statuses(viewer, [...grid.admins, ...grid.users].map((r) => r.email));
+  const emails = [...grid.admins, ...grid.users].map((r) => r.email);
+  const [passwords, google] = await Promise.all([UserAccountService.statuses(viewer, emails), UserAccountService.googleSignIn(viewer, emails)]);
   const accessGrid = UserAccountService.withPasswordAdmins(grid, passwords);
 
   return (
@@ -49,7 +50,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
         initial={{ add: params.add === "1" ? true : section(params.add), role: section(params.role), remove: params.remove ?? null, rename: params.rename ?? null }}
         // Access (item 8) covers every line, so it is not keyed to the active one. ?add=user opens its Add row;
         // ?access=<email> opens that person's department panel; ?menu=<email> opens that row's ⋯ menu.
-        top={<AccessAdmin grid={accessGrid} initialAdd={params.add === "user"} initialExpanded={params.access?.trim().toLowerCase() || null} passwords={passwords} initialMenu={params.menu?.trim().toLowerCase() || null} viewerEmail={viewer.email?.trim().toLowerCase() || null} />}
+        top={<AccessAdmin grid={accessGrid} initialAdd={params.add === "user"} initialExpanded={params.access?.trim().toLowerCase() || null} passwords={passwords} google={google} initialMenu={params.menu?.trim().toLowerCase() || null} viewerEmail={viewer.email?.trim().toLowerCase() || null} />}
       />
     </main>
   );

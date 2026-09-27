@@ -118,6 +118,8 @@ export class ReportColorScheme {
     bandLegend: "Header band",
     none: "None",
     custom: "Custom",
+    /** Appended to the default option in the segmented controls ("Navy solid (default)", "None (default)"). Not in Recent changes. */
+    defaultSuffix: " (default)",
     hexLabel: "Hex color",
     pickerLabel: "Pick a color",
     bandHelp: "A color band behind the title on page 1. Shows when the summary grid is at the top.",
@@ -293,6 +295,33 @@ export class ReportColorScheme {
     const pick = (key: string) => (ReportColorScheme.isPreset(key) ? ReportColorScheme.PRESETS[key] : ReportColorScheme.derive(key));
     if (value?.bar === ReportColorScheme.CLASSIC) return { bar: ReportColorScheme.CLASSIC_BAR, band: v.band === ReportColorScheme.NONE ? null : pick(v.band).band };
     return { bar: pick(v.bar).bar, band: v.band === ReportColorScheme.NONE ? null : pick(v.band).band };
+  }
+
+  /**
+   * Live preview while editing: presets and None as usual; a custom color previews as typed once it parses as a hex
+   * color, even when it fails contrast (Save stays disabled). Only unparseable input keeps `fallback` (the last valid).
+   */
+  static preview(input: { bar: string; band: string }, fallback: ReportColorsValue): ResolvedReportColors {
+    const one = (v: string, key: "bar" | "band"): { ok: true; bar: BarPalette | null; band: BandPalette | null } | { ok: false } => {
+      if (key === "band" && v === ReportColorScheme.NONE) return { ok: true, bar: null, band: null };
+      if (ReportColorScheme.isPreset(v)) return { ok: true, ...ReportColorScheme.PRESETS[v] };
+      const hex = ReportColorScheme.hex(v);
+      return hex ? { ok: true, ...ReportColorScheme.derive(hex) } : { ok: false };
+    };
+    const defaults = ReportColorScheme.resolve(ReportColorScheme.DEFAULTS);
+    const pick = (key: "bar" | "band") => {
+      const typed = one(input[key], key);
+      if (typed.ok) return typed;
+      const last = one(fallback[key], key);
+      return last.ok ? last : { ok: true as const, bar: defaults.bar, band: defaults.band };
+    };
+    return { bar: pick("bar").bar ?? defaults.bar, band: pick("band").band };
+  }
+
+  /** Segmented control option label: the default option reads "Navy solid (default)" / "None (default)". */
+  static optionLabel(key: string, field: "bar" | "band"): string {
+    const base = key === ReportColorScheme.NONE ? ReportColorScheme.COPY.none : key === ReportColorScheme.CUSTOM ? ReportColorScheme.COPY.custom : ReportColorScheme.isPreset(key) ? ReportColorScheme.PRESETS[key].label : key;
+    return key === ReportColorScheme.DEFAULTS[field] ? `${base}${ReportColorScheme.COPY.defaultSuffix}` : base;
   }
 
   /** Label for the audit / history: "Navy solid", "Custom #2B4C7E", "None". */

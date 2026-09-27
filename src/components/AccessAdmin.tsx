@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useState, useTransition } from "react";
+import { Fragment, useEffect, useState, useTransition, type ReactNode } from "react";
 import { setAllDepartments, setDepartmentAccess, setLineAccess } from "@/app/actions/access";
 import { AccountRowMenu, PasswordTags, TempPasswordDialog } from "@/components/AccessAccountControls";
 import { AddUserWithDepartments } from "@/components/AddUserDepartments";
@@ -37,6 +37,7 @@ export function AccessAdmin({
   initialAdd = false,
   initialExpanded = null,
   passwords = {},
+  google,
   initialMenu = null,
   viewerEmail = null,
 }: {
@@ -45,6 +46,8 @@ export function AccessAdmin({
   initialExpanded?: string | null;
   /** Password tags and the row menu (email and password sign-in). */
   passwords?: Record<string, PasswordStatus>;
+  /** Whether Google sign-in lets each email in (UserAccountService.googleSignIn), for the method tags. */
+  google?: Record<string, boolean>;
   /** Email whose ⋯ menu starts open (screenshots). */
   initialMenu?: string | null;
   /** The signed-in admin (lowercase): their own row has no Turn off sign-in. */
@@ -161,10 +164,9 @@ export function AccessAdmin({
             {grid.admins.map((r) => (
               <tr key={r.email} data-access-row={r.email} data-admin="">
                 <td className="border-b border-line px-3 py-2">
-                  <span className="flex min-w-0 items-center gap-2" title={LineAccessCopy.ADMIN_LOCK_TOOLTIP}>
+                  <span className="flex min-w-0 items-start gap-2" title={LineAccessCopy.ADMIN_LOCK_TOOLTIP}>
                     <LockIcon />
-                    <span className="truncate type-table-strong">{r.name}</span>
-                    <PasswordTags status={passwords[r.email]} />
+                    <PersonCell identity={<PersonName row={r} />} tags={<PasswordTags status={passwords[r.email]} google={google?.[r.email]} />} />
                   </span>
                 </td>
                 <td className="truncate border-b border-line px-3 py-2 text-muted">{r.email}</td>
@@ -186,32 +188,38 @@ export function AccessAdmin({
                 <Fragment key={r.email}>
                   <tr data-access-row={r.email} data-expanded={open ? "" : undefined} className={open ? "bg-row-selected" : undefined}>
                     <td className={`${open ? "" : "border-b"} border-line px-3 py-2`}>
-                      <span className="flex min-w-0 items-center gap-2">
-                        {canExpand ? (
-                          <button
-                            type="button"
-                            className="truncate text-left type-table-strong hover:text-accent"
-                            aria-expanded={open}
-                            aria-controls={open ? panelId : undefined}
-                            onClick={() => toggleExpanded(r.email)}
-                            data-testid="access-name"
-                          >
-                            {r.name}
-                          </button>
-                        ) : (
-                          <span className="truncate type-table-strong">{r.name}</span>
-                        )}
-                        {AccessGridModel.hasNoAccess(r) && (
-                          <span
-                            className="flex-none rounded-[4px] bg-(--status-at-risk-dark-bg) px-1.5 py-px type-label font-semibold text-(--status-at-risk-dark-fg)"
-                            title={LineAccessCopy.NO_ACCESS_TOOLTIP}
-                            data-testid="access-no-access"
-                          >
-                            {LineAccessCopy.NO_ACCESS_TAG}
-                          </span>
-                        )}
-                        <PasswordTags status={passwords[r.email]} />
-                      </span>
+                      <PersonCell
+                        identity={
+                          canExpand ? (
+                            <button
+                              type="button"
+                              className="group block max-w-full min-w-0 text-left"
+                              aria-expanded={open}
+                              aria-controls={open ? panelId : undefined}
+                              onClick={() => toggleExpanded(r.email)}
+                              data-testid="access-name"
+                            >
+                              <PersonName row={r} hover />
+                            </button>
+                          ) : (
+                            <PersonName row={r} />
+                          )
+                        }
+                        tags={
+                          <>
+                            {AccessGridModel.hasNoAccess(r) && (
+                              <span
+                                className="flex-none rounded-[4px] bg-(--status-at-risk-dark-bg) px-1.5 py-px type-label font-semibold text-(--status-at-risk-dark-fg)"
+                                title={LineAccessCopy.NO_ACCESS_TOOLTIP}
+                                data-testid="access-no-access"
+                              >
+                                {LineAccessCopy.NO_ACCESS_TAG}
+                              </span>
+                            )}
+                            <PasswordTags status={passwords[r.email]} google={google?.[r.email]} />
+                          </>
+                        }
+                      />
                     </td>
                     <td className={`truncate ${open ? "" : "border-b"} border-line px-3 py-2 text-muted`}>{r.email}</td>
                     {grid.lines.map((l) => {
@@ -304,9 +312,34 @@ export function AccessAdmin({
   );
 }
 
+/**
+ * Every row's person cell, the same fixed layout: email in bold (line 1), name muted (line 2), then the tags on their
+ * own line (line 3).
+ */
+function PersonCell({ identity, tags }: { identity: ReactNode; tags: ReactNode }) {
+  return (
+    <span className="flex min-w-0 flex-1 flex-col gap-1" data-testid="access-person">
+      {identity}
+      <span className="flex flex-wrap items-center gap-1" data-testid="access-tags">
+        {tags}
+      </span>
+    </span>
+  );
+}
+
+/** Email (bold) over the name (muted). `hover`: inside the expand button, the email turns accent on hover. */
+function PersonName({ row, hover = false }: { row: AccessRow; hover?: boolean }) {
+  return (
+    <span className="flex max-w-full min-w-0 flex-col leading-tight" data-testid="access-identity">
+      <span className={`truncate type-table-strong ${hover ? "group-hover:text-accent" : ""}`}>{row.email}</span>
+      <span className="truncate text-muted type-caption font-normal">{row.name}</span>
+    </span>
+  );
+}
+
 function LockIcon() {
   return (
-    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-label={LineAccessCopy.ADMIN_LOCK_TOOLTIP} role="img" className="flex-none text-muted" data-testid="access-lock">
+    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-label={LineAccessCopy.ADMIN_LOCK_TOOLTIP} role="img" className="mt-[3px] flex-none text-muted" data-testid="access-lock">
       <rect x="2.5" y="5.5" width="7" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
       <path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" stroke="currentColor" strokeWidth="1.2" />
     </svg>

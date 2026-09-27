@@ -209,9 +209,11 @@ describe("StartDate copy", () => {
   });
 
   it("the audit page uses the short label, never a full sentence", () => {
-    const page = readFileSync(path.resolve(__dirname, "../src/app/admin/audit/page.tsx"), "utf8");
-    expect(page).toContain("StartDate.AUDIT_CHANGE");
-    expect(page).toContain("StartDate.auditValue");
-    expect(page).not.toMatch(/changed from/);
+    // Recent changes text is built by AuditText (the page renders it).
+    const text = readFileSync(path.resolve(__dirname, "../src/lib/admin/AuditText.ts"), "utf8");
+    expect(text).toContain("StartDate.AUDIT_CHANGE");
+    expect(text).toContain("StartDate.auditValue");
+    expect(text).not.toMatch(/changed from/);
+    expect(readFileSync(path.resolve(__dirname, "../src/app/admin/audit/page.tsx"), "utf8")).toContain("AuditText.change(e)");
   });
 });

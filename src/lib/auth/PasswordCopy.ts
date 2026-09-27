@@ -47,8 +47,9 @@ export class PasswordCopy {
   static readonly TAG_LOCKED_TIP = "Too many wrong passwords. Unlocks by itself after 15 minutes.";
   static readonly TAG_OFF_TIP = "Sign-in is turned off for this person.";
   static readonly MENU_LABEL = "More actions";
+  /** Access grid: the sign-in method tags (every method that works for the account) as a group. */
+  static readonly METHODS_LABEL = "Sign-in methods";
   static readonly MENU_CREATE = "Create temporary password";
-  static readonly MENU_RESET = "Reset password";
   static readonly MENU_UNLOCK = "Unlock";
   static readonly MENU_TURN_OFF = "Turn off sign-in";
   static readonly MENU_TURN_ON = "Turn on sign-in";
@@ -63,7 +64,7 @@ export class PasswordCopy {
   static readonly UNKNOWN_LINE = "One of those service lines isn't available. Refresh and try again.";
 
   static readonly TEMP_TITLE = "Temporary password";
-  static readonly TEMP_BODY = "Share it in person or by phone, not by email. You won't see it again. They'll choose their own when they first sign in.";
+  static readonly TEMP_BODY = "This password is shown only once. Copy it now and share it by phone or in person. They'll choose their own password the first time they sign in.";
   static readonly COPY = "Copy";
   static readonly COPIED = "Copied";
   static readonly DONE = "Done";
@@ -78,6 +79,11 @@ export class PasswordCopy {
 
   static turnedOnToast(name: string): string {
     return `${name} can sign in again.`;
+  }
+
+  /** The temporary password dialog's title. */
+  static tempDialogTitle(email: string): string {
+    return `Create temporary password for ${email}`;
   }
 
   static tempFor(name: string): string {

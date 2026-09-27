@@ -403,13 +403,13 @@ describe("Turn off sign-in blocks every way in, even ALLOWED_EMAILS and ADMIN_EM
       ["Turn on sign-in", false],
     ]);
     expect(items(menu({ state: "active", off: false, locked: false }))).toEqual([
-      [PasswordCopy.MENU_RESET, false],
+      [PasswordCopy.MENU_CREATE, false],
       ["Turn off sign-in", true],
     ]);
     expect(items(menu({ state: "none", off: false, locked: false }))).toContainEqual(["Turn off sign-in", true]);
     // Your own row: Turn off is left out entirely (not shown disabled).
     const self = menu({ state: "active", off: false, locked: false }, true);
-    expect(items(self)).toEqual([[PasswordCopy.MENU_RESET, false]]);
+    expect(items(self)).toEqual([[PasswordCopy.MENU_CREATE, false]]);
     expect(self).not.toContain("Turn off");
     // Tags: the sign-in method plus Off, with the status line as its tooltip.
     const tags = renderToStaticMarkup(createElement(PasswordTags, { status: { state: "none", off: true, locked: false } }));
