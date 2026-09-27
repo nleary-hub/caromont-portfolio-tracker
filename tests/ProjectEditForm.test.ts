@@ -134,9 +134,10 @@ describe("ProjectFormModel", () => {
   });
 
   it("a new project requires a name and department; status defaults to Not started", () => {
-    const empty = ProjectFormModel.empty();
+    const empty = ProjectFormModel.empty("2026-09-27");
     expect(empty.status).toBe("NotStarted");
-    const e = ProjectFormModel.errors(empty, empty, true);
+    expect(empty.startDate).toBe("2026-09-27");
+    const e = ProjectFormModel.errors(empty, empty, true, undefined, { today: "2026-09-27" });
     expect(Object.keys(e).sort()).toEqual(["name", "serviceArea"]);
     expect(ProjectFormModel.firstErrorField(e)).toBe("name");
   });
@@ -225,7 +226,7 @@ describe("edit form server actions", () => {
     if (!bad.ok) expect(Object.keys(bad.fieldErrors ?? {}).sort()).toEqual(["name", "serviceArea"]);
     expect(fake.state.projects).toHaveLength(0);
 
-    const r = await createProjectFromForm({ ...ProjectFormModel.empty(), name: "Hybrid OR scheduling", serviceArea: "Cath", inforRequestNumber: "04656" });
+    const r = await createProjectFromForm({ ...ProjectFormModel.empty(DateOnly.today()), name: "Hybrid OR scheduling", serviceArea: "Cath", inforRequestNumber: "04656" });
     expect(r.ok).toBe(true);
     const created = fake.state.projects[0];
     expect(r.ok && r.id).toBe(created.id);

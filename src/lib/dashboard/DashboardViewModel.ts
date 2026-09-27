@@ -40,6 +40,10 @@ export interface DashboardRow {
   updatedOn: string | null;
   /** Latest update is AppConfig.STALE_AFTER_DAYS or more days before today (same rule as the report). */
   stale: boolean;
+  /** YYYY-MM-DD (America/New_York) when work began; drawer detail only (not a table column, not in the PDF). */
+  startDate?: string | null;
+  /** The start date is still the import default (drawer "Default" tag). */
+  startDateIsDefault?: boolean;
 }
 
 export interface DashboardSummary {
@@ -134,6 +138,7 @@ export class DashboardViewModel {
       overdue: flags.overdue,
       updatedOn,
       stale: ReportBuilder.isStale({ status: p.status, updatedOn }, today),
+      ...(p.startDate !== undefined ? { startDate: DateOnly.fromDbDate(p.startDate), startDateIsDefault: Boolean(p.startDateIsDefault) } : {}),
     };
   }
 

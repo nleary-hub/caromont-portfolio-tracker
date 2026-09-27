@@ -40,6 +40,8 @@ import { OnDemandPdfLink } from "@/lib/report/OnDemandPdfLink";
 import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { Flags, StatusPill } from "./StatusPill";
+import { StartDateDefaultTag } from "./StartDateDefaultTag";
+import { StartDate } from "@/lib/projects/StartDate";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
@@ -592,7 +594,7 @@ export function ProjectDashboard({
               key="new"
               mode="new"
               {...(line ? { departments: line.departments } : {})}
-              original={ProjectFormModel.empty()}
+              original={ProjectFormModel.empty(today)}
               milestones={[]}
               templates={admin.templates}
               checkerName={admin.checkerName}
@@ -654,6 +656,7 @@ export function ProjectDashboard({
                   mode="edit"
                   {...(line ? { departments: line.departments } : {})}
                   original={admin.formValues[selected.id]}
+                  startDateIsDefault={Boolean(selected.startDateIsDefault)}
                   milestones={admin.milestoneSteps[selected.id] ?? []}
                   checkerName={admin.checkerName}
                   templates={admin.templates}
@@ -904,6 +907,15 @@ export function ProjectDrawer({
             </span>
           )}
         </dd>
+        {row.startDate !== undefined && (
+          <>
+            <dt className="text-muted">{StartDate.DETAIL_LABEL}</dt>
+            <dd data-testid="start-date">
+              {DateFormat.long(row.startDate) ?? "–"}
+              {row.startDateIsDefault && <StartDateDefaultTag />}
+            </dd>
+          </>
+        )}
         <dt className="text-muted">Due date</dt>
         <dd className={row.overdue ? "font-semibold text-danger" : ""}>
           {DateFormat.long(row.dueDate) ?? "–"}

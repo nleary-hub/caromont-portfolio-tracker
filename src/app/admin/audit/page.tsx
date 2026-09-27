@@ -14,6 +14,9 @@ import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { AdminAuditService, type AuditEvent, type AuditProject } from "@/lib/services/AdminAuditService";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
+import { StartDate } from "@/lib/projects/StartDate";
+import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
+import { ServiceLine } from "@/lib/domain/ServiceLine";
 
 
 class AuditFormat {
@@ -33,15 +36,27 @@ class AuditFormat {
     hiddenFromDashboard: "Hidden from dashboard",
     hiddenFromReport: "Hidden from report",
     viewSettings: "Dashboard view",
+    [StartDate.HISTORY_FIELD]: StartDate.LABEL,
     ...MilestoneRules.FIELD_LABELS,
   };
 
-  static field(e: AuditEvent): string {
+  static field(e: AuditEvent, people: readonly string[] = []): string {
     if (e.kind === "serviceLine") return `Service line: ${ServiceLineHistoryText.action(e.field.replace(/^serviceLine\./, ""))}`;
     if (e.kind === "layout") return `Layout: ${AuditLayoutText.action(e.field.replace(/^layout\./, ""))}`;
     if (e.kind === "access") return e.comment ?? "Access";
     if (e.kind === "template") return `Template: ${e.field.replace(/^template\./, "").replace(/_/g, " ")}`;
+    // Start date: private audit only (never in the drawer History), shown as one sentence.
+    if (AuditFormat.isStartDate(e)) return StartDate.auditLine(e.oldValue, e.newValue, UpdateTimeline.actor(e.by, people), e.at);
     return AuditFormat.FIELD_LABELS[e.field] ?? e.field;
+  }
+
+  static isStartDate(e: AuditEvent): boolean {
+    return e.kind === "project" && e.field === StartDate.HISTORY_FIELD;
+  }
+
+  /** Old/New cells: start dates read "Mar 3, 2026"; other values as stored. */
+  static value(e: AuditEvent, v: string | null): string | null {
+    return v && AuditFormat.isStartDate(e) && /^\d{4}-\d{2}-\d{2}$/.test(v) ? StartDate.display(v) : v;
   }
 }
 
@@ -52,6 +67,7 @@ export default async function AuditPage() {
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
   const data = await AdminAuditService.load(viewer, undefined, scope);
+  const people = ServiceLine.peopleNames(scope);
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
@@ -210,12 +226,12 @@ export default async function AuditPage() {
                   <td className="border-b border-line px-3 py-2 whitespace-nowrap">{AuditFormat.when(e.at)}</td>
                   <td className="border-b border-line px-3 py-2">{e.by}</td>
                   <td className="border-b border-line px-3 py-2">{e.subject}</td>
-                  <td className="border-b border-line px-3 py-2">{AuditFormat.field(e)}</td>
+                  <td className="border-b border-line px-3 py-2">{AuditFormat.field(e, people)}</td>
                   <td className="max-w-[220px] truncate border-b border-line px-3 py-2 text-muted" title={e.oldValue ?? ""}>
-                    {e.oldValue ?? "–"}
+                    {AuditFormat.value(e, e.oldValue) ?? "–"}
                   </td>
                   <td className="max-w-[220px] truncate border-b border-line px-3 py-2" title={e.newValue ?? ""}>
-                    {e.newValue ?? "–"}
+                    {AuditFormat.value(e, e.newValue) ?? "–"}
                   </td>
                 </tr>
               ))}

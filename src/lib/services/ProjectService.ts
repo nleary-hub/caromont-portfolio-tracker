@@ -18,6 +18,7 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { MilestoneRules, MilestoneValidationError, type MilestoneEdit } from "@/lib/domain/MilestoneRules";
 import { MilestoneService } from "@/lib/services/MilestoneService";
 import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
+import { StartDate } from "@/lib/projects/StartDate";
 import { ProjectValidationError, ProjectValidator, type ProjectData, type ProjectInput } from "@/lib/validation/ProjectValidator";
 
 /** A stored project in domain terms: `serviceArea` is the department key (Project.departmentId), see ProjectRows. */
@@ -107,8 +108,20 @@ export class ProjectService {
   ): Promise<Project> {
     const data = parsed ?? ProjectValidator.parse(input, ProjectValidator.rulesOf(scope));
     const now = at;
-    // The line is not a tracked field: it is set once here and never changes.
-    const project = ProjectRows.fromDb(await tx.project.create({ data: { ...(ProjectRows.toDb(data) as Omit<Prisma.ProjectUncheckedCreateInput, "serviceLineId" | "updatedBy">), serviceLineId: scope.id, updatedBy: actor.changedBy } }));
+    const start = ProjectService.startDateForCreate(input, data, at);
+    // The line is not a tracked field: it is set once here and never changes. Neither is the start date: it is not
+    // part of the public "created" row below.
+    const project = ProjectRows.fromDb(
+      await tx.project.create({
+        data: {
+          ...(ProjectRows.toDb(data) as Omit<Prisma.ProjectUncheckedCreateInput, "serviceLineId" | "updatedBy">),
+          serviceLineId: scope.id,
+          updatedBy: actor.changedBy,
+          startDate: DateOnly.toDbDate(start.date),
+          startDateIsDefault: start.isDefault,
+        },
+      }),
+    );
     // Manual row order: a new project goes to the bottom of its department.
     await LineLayoutService.placeNew(tx, scope, project.id, ServiceAreaInfo.groupOf(project.serviceArea), actor.changedBy);
     const snapshot: Record<string, string | null> = {};
@@ -127,6 +140,54 @@ export class ProjectService {
       },
     });
     return project;
+  }
+
+  /**
+   * The start date of a new project: the one entered (checked with StartDate rules), else the import day (ET) marked
+   * as a default (CSV import, callers that do not send one).
+   */
+  private static startDateForCreate(input: ProjectInput, data: ProjectData, at: Date): { date: string; isDefault: boolean } {
+    if (input.startDate === undefined || input.startDate === null) return { date: StartDate.fromInstant(at), isDefault: true };
+    const errors = StartDate.errors(input.startDate, { status: data.status, completedOn: DateOnly.fromDbDate(data.completedOn), today: DateOnly.inZone(at) });
+    if (errors.length) throw new ProjectValidationError({ startDate: errors });
+    return { date: String(input.startDate).trim(), isDefault: false };
+  }
+
+  /**
+   * Start date messages for a form save (StartDate.errors on the merged values). A stored start date that is still the
+   * import default and not edited is not checked against the completed date (its real value is unknown), so editing
+   * an old Complete project never gets blocked by it.
+   */
+  static startDateErrors(
+    existing: Pick<Project, "status" | "completedOn"> & { startDate?: Date | null; startDateIsDefault?: boolean },
+    values: Pick<Partial<ProjectInput>, "startDate" | "status" | "completedOn">,
+    today: string,
+  ): string[] {
+    const edited = values.startDate !== undefined;
+    const stored = DateOnly.fromDbDate(existing.startDate ?? null);
+    const startDate = edited ? values.startDate : stored;
+    const status = values.status !== undefined ? String(values.status) : existing.status;
+    const completedOn = values.completedOn !== undefined ? values.completedOn : DateOnly.fromDbDate(existing.completedOn);
+    const closeChanged = values.status !== undefined || values.completedOn !== undefined;
+    if (!edited && (!closeChanged || existing.startDateIsDefault || stored === null)) return [];
+    return StartDate.errors(startDate, { status, completedOn, today });
+  }
+
+  /**
+   * Set a project's start date. NOT a status update: no tracked-field history row (so no Changed flag, no Stale
+   * reset, no "Updated" date) and updatedBy is left alone. The change is audited in one admin-only "startDate"
+   * ProjectHistory row (old and new day, who, when); the default flag clears. No-op when the day is unchanged.
+   */
+  static async applyStartDate(tx: Tx, id: string, startDate: string, actor: Actor, at: Date): Promise<Project> {
+    const current = ProjectRows.fromDb((await tx.project.findUnique({ where: { id } }))!);
+    const before = DateOnly.fromDbDate(current.startDate ?? null);
+    const after = startDate.trim();
+    if (before === after) return current;
+    const updated = ProjectRows.fromDb(await tx.project.update({ where: { id }, data: { startDate: DateOnly.toDbDate(after), startDateIsDefault: false } }));
+    await tx.projectHistory.create({
+      data: { projectId: id, field: StartDate.HISTORY_FIELD, oldValue: before, newValue: after, changedAt: at, changedBy: actor.changedBy, comment: actor.comment ?? null },
+    });
+    return updated;
   }
 
   /**
@@ -306,17 +367,28 @@ export class ProjectService {
     AdminPolicy.assertAdmin(admin);
     const patch = ProjectService.pickFormFields(values);
     const actor = ProjectService.actorOf(admin);
+    const startDate = values.startDate === undefined || values.startDate === null ? undefined : String(values.startDate);
     return db.$transaction(async (tx) => {
       const at = new Date();
-      await ProjectService.loadMutable(tx, id, scope);
+      const existing = await ProjectService.loadMutable(tx, id, scope);
+      // Start date errors come back with the other field errors (one inline message each, Save blocked).
+      const startErrors = ProjectService.startDateErrors(existing, { startDate: values.startDate === null ? "" : startDate, status: patch.status, completedOn: patch.completedOn }, DateOnly.inZone(at));
       let mirror: UpdateOptions["mirror"];
-      if (milestones) {
-        const saved = await ProjectService.withMilestoneErrors(() =>
-          MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null, scope),
-        );
-        if (saved.changed) mirror = saved.mirror;
+      let project: Project;
+      try {
+        if (milestones) {
+          const saved = await ProjectService.withMilestoneErrors(() =>
+            MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null, scope),
+          );
+          if (saved.changed) mirror = saved.mirror;
+        }
+        project = await ProjectService.updateInTx(tx, id, patch, actor, "form", { mirror, at }, scope);
+      } catch (e) {
+        if (e instanceof ProjectValidationError && startErrors.length) throw new ProjectValidationError({ ...e.errors, startDate: startErrors });
+        throw e;
       }
-      return ProjectService.updateInTx(tx, id, patch, actor, "form", { mirror, at }, scope);
+      if (startErrors.length) throw new ProjectValidationError({ startDate: startErrors });
+      return startDate === undefined ? project : ProjectService.applyStartDate(tx, id, startDate, actor, at);
     });
   }
 
@@ -386,7 +458,13 @@ export class ProjectService {
       input.nextMilestone = mirror.nextMilestone;
       input.dueDate = HistoryDiff.serialize("dueDate", mirror.dueDate);
     }
-    const data = ProjectValidator.parseForm(input, { existing: null, rules: ProjectValidator.rulesOf(scope) });
+    // The form always sends a start date (pre-filled with today, ET); blank is an error, not the import default.
+    input.startDate = values.startDate === undefined ? undefined : String(values.startDate ?? "");
+    const checked = ProjectValidator.validateForm(input, { existing: null, rules: ProjectValidator.rulesOf(scope) });
+    const startErrors =
+      input.startDate === undefined ? [] : StartDate.errors(input.startDate, { status: String(input.status), completedOn: input.completedOn ?? null, today: DateOnly.today() });
+    if (!checked.ok || startErrors.length) throw new ProjectValidationError({ ...(checked.ok ? {} : checked.errors), ...(startErrors.length ? { startDate: startErrors } : {}) });
+    const data = checked.data;
     const actor = ProjectService.actorOf(admin);
     return db.$transaction(async (tx) => {
       const at = new Date();

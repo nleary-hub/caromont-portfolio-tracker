@@ -84,11 +84,11 @@ class M24 {
 }
 
 describe("0024_department_access on production-shaped data (PGlite)", () => {
-  it("follows 0023; only 0025_password_sign_in comes after it", () => {
+  it("follows 0023; 0025_password_sign_in comes right after it", () => {
     const f = M24.folders();
-    expect(f.at(-1)).toBe("0025_password_sign_in");
-    expect(f.at(-2)).toBe(M);
-    expect(f.at(-3)).toBe("0023_line_access");
+    const i = f.indexOf(M);
+    expect(f[i + 1]).toBe("0025_password_sign_in");
+    expect(f[i - 1]).toBe("0023_line_access");
   });
 
   it("is additive: two new tables, one defaulted column; everyone keeps every department; nothing else changes", async () => {
