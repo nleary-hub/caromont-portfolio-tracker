@@ -14,7 +14,7 @@ export interface YearEndRowLayout {
   owner: { text: string; muted: boolean };
   /** Requester, or the gray en dash when Not applicable (as blank update cells). */
   requester: { text: string; muted: boolean };
-  /** Completed / Cancelled date, or null (carried rows print the status chip). */
+  /** Completed date, or null (carried rows print the status chip). */
   date: string | null;
   pill: PillBox | null;
   /** Gray status text in place of a chip (status at the year end not on record). */
@@ -61,8 +61,8 @@ export interface YearEndDocumentLayout {
 
 /**
  * Year-end report layout: the weekly PDF's page, tokens and one-band page 1 header (overline, title, details
- * right-aligned: Period, Completed, Cancelled, Carried into FY28), the weekly heading bars for departments, the
- * weekly running header and footer. Body: the summary grid, then Completed, Cancelled and Carried sections.
+ * right-aligned: Period, then the grid's three totals), the weekly heading bars for departments, the weekly running
+ * header and footer. Body: the summary grid, then the Completed and Carried (or Still in progress) sections.
  * The weekly layout (ReportLayout) is only read from, never changed.
  */
 export class YearEndLayout {
@@ -108,9 +108,10 @@ export class YearEndLayout {
       badge: null,
       details: [
         { label: YearEndCopy.PERIOD, value: data.periodText, accent: false },
-        { label: YearEndCopy.COMPLETED, value: String(data.totals.completed), accent: false },
-        { label: YearEndCopy.CANCELLED, value: String(data.totals.cancelled), accent: false },
-        { label: data.openAtEndLabel, value: data.totals.openAtEnd === null ? YearEndCopy.EMPTY_VALUE : String(data.totals.openAtEnd), accent: false },
+        // Same order, labels and dashes as the summary grid.
+        { label: YearEndCopy.carriedInFrom(data.previousFiscalYear), value: YearEndLayout.total(data.totals.carriedIn), accent: false },
+        { label: data.openAtEndLabel, value: YearEndLayout.total(data.totals.openAtEnd), accent: false },
+        { label: YearEndCopy.completedFy(data.fiscalYear), value: String(data.totals.completed), accent: false },
       ],
     });
     const firstTop = band.height + g.BAND.ruleW + g.BAND.gapAfter;
@@ -206,9 +207,14 @@ export class YearEndLayout {
     };
   }
 
-  /** Column labels of a section's table: "Completed" / "Cancelled" and "Final update", or "Status" and "Latest update" for carried projects. */
+  /** A header total: the count, or a dash when it can't be stated (see the grid notes). */
+  static total(n: number | null): string {
+    return n === null ? YearEndCopy.EMPTY_VALUE : String(n);
+  }
+
+  /** Column labels of a section's table: "Completed" and "Final update", or "Status" and "Latest update" for carried projects. */
   static columnLabels(section: YearEndSectionKind): string[] {
-    const date = section === "completed" ? YearEndCopy.COMPLETED : section === "cancelled" ? YearEndCopy.CANCELLED : YearEndCopy.STATUS;
+    const date = section === "completed" ? YearEndCopy.COMPLETED : YearEndCopy.STATUS;
     const update = section === "carried" ? YearEndCopy.LATEST_UPDATE : YearEndCopy.FINAL_UPDATE;
     return [YearEndCopy.PROJECT, YearEndCopy.OWNER, YearEndCopy.REQUESTER, date, update];
   }

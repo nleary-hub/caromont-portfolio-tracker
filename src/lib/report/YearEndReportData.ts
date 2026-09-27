@@ -9,7 +9,7 @@ import type { CompletableProject } from "@/lib/report/CompletedThisPeriod";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
-export type YearEndSectionKind = "completed" | "cancelled" | "carried";
+export type YearEndSectionKind = "completed" | "carried";
 
 export interface YearEndRow {
   projectId: string;
@@ -17,7 +17,7 @@ export interface YearEndRow {
   owner: string | null;
   /** Requester text; null = Not applicable (printed blank). "To assign" is muted. */
   requester: { text: string; muted: boolean } | null;
-  /** YYYY-MM-DD completed or cancelled date; null for carried rows. */
+  /** YYYY-MM-DD completed date; null for carried rows. */
   date: string | null;
   /** Carried rows: the status chip (status at the fiscal year end, or today for a current-year report). */
   status: ProjectStatus;
@@ -79,7 +79,7 @@ export interface YearEndData {
   openAtEndLabel: string;
   sections: YearEndSection[];
   /** carried = rows in the Carried / Still in progress section; carriedIn / openAtEnd = grid totals (null = blank, see the notes). */
-  totals: { completed: number; cancelled: number; carried: number; carriedIn: number | null; openAtEnd: number | null };
+  totals: { completed: number; carried: number; carriedIn: number | null; openAtEnd: number | null };
 }
 
 /** Copy of the year-end report and its dialog (Writing Bot). */
@@ -95,7 +95,6 @@ export class YearEndCopy {
   static readonly LIST_HEADING = "Year-end reports";
   static readonly DOWNLOAD = "Download PDF";
   static readonly COMPLETED = "Completed";
-  static readonly CANCELLED = "Cancelled";
   static readonly SUMMARY = "SUMMARY";
   static readonly DEPARTMENT = "Department";
   static readonly TOTAL = "Total";
@@ -154,17 +153,11 @@ export class YearEndCopy {
     return `Completed in ${fy}`;
   }
 
-  static cancelledIn(fy: string): string {
-    return `Cancelled in ${fy}`;
-  }
 
   static emptyCompleted(fy: string, toDate: boolean): string {
     return toDate ? `No projects completed in ${fy} so far.` : `No projects were completed in ${fy}.`;
   }
 
-  static emptyCancelled(fy: string, toDate: boolean): string {
-    return toDate ? `No projects cancelled in ${fy} so far.` : `No projects were cancelled in ${fy}.`;
-  }
 
   static emptyCarried(next: string, toDate = false): string {
     return toDate ? "No projects still in progress so far." : `No active projects carry into ${next}.`;
@@ -205,8 +198,9 @@ type YearEndProject = ProjectRecord & Pick<CompletableProject, "createdAt"> & { 
  * so every department of the line is covered. Grouped by the line's departments in report order, Unassigned last;
  * empty departments are left out.
  *
- * - Completed / Cancelled: closed (ClosedProjects.closedOn) between the fiscal year start and its end, or today
- *   for a current-year ("to date") report. Newest first.
+ * - Completed: Complete with its completion date (ClosedProjects.closedOn) between the fiscal year start and its
+ *   end, or today for a current-year ("to date") report. Newest first. Cancelled projects aren't listed or
+ *   counted anywhere in the report; they are never open, so they don't count as carried or in progress either.
  * - Carried into the next FY: projects that were active (not Complete or Cancelled) at the fiscal year end,
  *   with that status rebuilt from ProjectHistory (ClosedProjects.statusOn). For a current-year report: today's
  *   active projects with today's status. By name.
@@ -248,7 +242,6 @@ export class YearEndReportData {
     const outTracked = trackedSince !== null && fy.end >= trackedSince;
 
     const completed: { p: YearEndProject; date: string }[] = [];
-    const cancelled: { p: YearEndProject; date: string }[] = [];
     const carried: { p: YearEndProject; status: ProjectStatus; unknown?: boolean }[] = [];
     const carriedIn: YearEndProject[] = [];
     for (const p of candidates) {
@@ -256,7 +249,7 @@ export class YearEndReportData {
       const closed = ClosedProjects.closedIn(p, input.history, input.today);
       if (inTracked && YearEndReportData.openAt(p, inDay, input.history)) carriedIn.push(p);
       if (closed?.fiscalYear === fy.label) {
-        (p.status === "Complete" ? completed : cancelled).push({ p, date: closed.closedOn });
+        if (p.status === "Complete") completed.push({ p, date: closed.closedOn });
         continue;
       }
       if (toDate) {
@@ -282,7 +275,6 @@ export class YearEndReportData {
     const byDate = (a: { p: YearEndProject; date: string }, b: { p: YearEndProject; date: string }) => b.date.localeCompare(a.date) || a.p.name.localeCompare(b.p.name);
     const sections: YearEndSection[] = [
       YearEndReportData.section("completed", YearEndCopy.completedIn(fy.label), YearEndCopy.emptyCompleted(fy.label, toDate), [...completed].sort(byDate).map((c) => ({ area: c.p.serviceArea, row: row(c.p, c.date, c.p.status) })), input.departments),
-      YearEndReportData.section("cancelled", YearEndCopy.cancelledIn(fy.label), YearEndCopy.emptyCancelled(fy.label, toDate), [...cancelled].sort(byDate).map((c) => ({ area: c.p.serviceArea, row: row(c.p, c.date, c.p.status) })), input.departments),
       YearEndReportData.section(
         "carried",
         YearEndCopy.openAtEnd(next, toDate),
@@ -298,7 +290,6 @@ export class YearEndReportData {
     const carriedInRows = inNote ? null : carriedIn;
     const totals = {
       completed: completed.length,
-      cancelled: cancelled.length,
       carried: carried.length,
       carriedIn: carriedInRows ? carriedInRows.length : null,
       openAtEnd: carriedOutRows ? carriedOutRows.length : null,

@@ -211,8 +211,17 @@ signed link, handoff.json downloads, Freeze now, the key-page toggle and Generat
 
 ## Year-end report: summary grid and table
 
-**Summary grid: always 3 columns, one row per department plus Total.** The Cancelled column is gone (cancelled projects
-still get their own table section).
+**No Cancelled anywhere.** The year-end report doesn't list or count cancelled projects: there's no Cancelled header
+total, grid column or section. The carried counts treat Cancelled as closed, as before: a project cancelled on or
+before a boundary isn't counted there, and a currently cancelled project is never Still in progress. (A project
+cancelled later was open at an earlier boundary, so it can be in Carried in for that year.) Cancelled projects are
+still on the Cancelled page in the app. The report is the header, the summary grid, then
+"Completed in FY N" and "Carried into FY N+1" (closed year) or "Still in progress" (current year).
+
+**Header totals** (right of the title, after Period) use the same three columns, order, labels and dashes as the grid's
+Total row.
+
+**Summary grid: always 3 columns, one row per department plus Total.**
 
 | Report | Column 1 | Column 2 | Column 3 |
 | --- | --- | --- | --- |
@@ -232,8 +241,8 @@ All counts use report candidates only (projects hidden from reports are left out
 "Open at the end of day D" is rebuilt as of D, so edits after D don't change it:
 
 1. The project existed: created on or before D.
-2. Closed now: open at D if its official close date (the completion date, or the last Cancelled date in history) is
-   after D, unless a status change on or before D shows it was already closed then.
+2. Closed now: open at D if its official close date (the completion date, or for a cancelled project the last
+   Cancelled date in history) is after D, unless a status change on or before D shows it was already closed then.
 3. Open now: its status at D rebuilt from project history was open. A project closed at D and reopened later counts
    as closed at D.
 

@@ -63,13 +63,16 @@ describe("summary grid: 3 columns, relative to the report's fiscal year", () => 
     ]);
     expect([d.carriedInNote, d.openAtEndNote]).toEqual([null, null]);
     expect(layout.summaryNotes).toEqual([]);
-    expect(d.sections[2].heading).toBe("Carried into FY27");
-    expect(d.sections[2].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status, r.statusUnknown ?? false]))).toEqual([
+    expect(d.sections[1].heading).toBe("Carried into FY27");
+    expect(d.sections[1].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status, r.statusUnknown ?? false]))).toEqual([
       ["Done in FY27", "OnTrack", false],
       ["Open all along", "OnTrack", false],
       ["Started in FY26", "AtRisk", false],
     ]);
-    expect(bandLabels(layout)).toContainEqual(["CARRIED INTO FY27", "3"]);
+    // Header totals: Period, then the grid's three columns in the grid's order. No Cancelled total.
+    expect(bandLabels(layout)).toEqual([["PERIOD", d.periodText], ["CARRIED IN FROM FY25", "5"], ["CARRIED INTO FY27", "3"], ["COMPLETED FY26", "1"]]);
+    expect(d.sections.map((s) => s.heading)).toEqual(["Completed in FY26", "Carried into FY27"]);
+    expect(JSON.stringify(layout)).not.toMatch(/cancel/i);
     // A closed year is a snapshot: the same figures whenever it's run, and its carry-out is FY27's carry-in.
     expect(build(list, history, "FY26", "2027-03-01").totals).toMatchObject({ carriedIn: 5, openAtEnd: 3, completed: 1 });
     expect(build(list, history, "FY27").totals.carriedIn).toBe(3);
@@ -82,13 +85,15 @@ describe("summary grid: 3 columns, relative to the report's fiscal year", () => 
     expect(layout.summaryHeads).toEqual(["Carried in from FY26", "Still in progress", "Completed FY27"]);
     // Still in progress = open today: Open all along (OnHold), Started in FY26, Reopened, Started in FY27.
     expect(d.summary.at(-1)).toEqual({ area: "total", label: "Total", muted: false, carriedIn: 3, openAtEnd: 4, completed: 1 });
-    expect(d.sections[2].heading).toBe("Still in progress");
-    expect(bandLabels(layout)).toContainEqual(["STILL IN PROGRESS", "4"]);
+    expect(d.sections[1].heading).toBe("Still in progress");
+    expect(bandLabels(layout).slice(1)).toEqual([["CARRIED IN FROM FY26", "3"], ["STILL IN PROGRESS", "4"], ["COMPLETED FY27", "1"]]);
+    expect(d.sections.map((s) => s.heading)).toEqual(["Completed in FY27", "Still in progress"]);
+    expect(JSON.stringify(layout)).not.toMatch(/cancel/i);
     expect(layout.summaryNotes).toEqual([]);
     expect(JSON.stringify(layout)).not.toContain("FY28");
     expect(JSON.stringify(d)).not.toMatch(/"(heading|emptyText|openAtEndLabel|title)":"[^"]*FY28/);
     const empty = build([p({ name: "Done", status: "Complete", completedOn: "2026-08-01" })], [], "FY27");
-    expect(empty.sections[2].emptyText).toBe("No projects still in progress so far.");
+    expect(empty.sections[1].emptyText).toBe("No projects still in progress so far.");
     expect(build([], [], "FY27").sections[0].emptyText).toBe("No projects completed in FY27 so far.");
   });
 
@@ -103,10 +108,12 @@ describe("summary grid: 3 columns, relative to the report's fiscal year", () => 
     const fy26 = build(list, [], "FY26");
     expect(fy26.summary.at(-1)).toMatchObject({ carriedIn: null, openAtEnd: null });
     expect(fy26.openAtEndNote).toBe("Carried into FY27: Not tracked before Sep 26, 2026.");
-    expect(fy26.sections[2].emptyText).toBe("Not tracked before Sep 26, 2026.");
+    expect(fy26.sections[1].emptyText).toBe("Not tracked before Sep 26, 2026.");
     const layout = YearEndLayout.layout(fy26, AT, "Nick Leary");
     expect(layout.summaryNotes).toHaveLength(2);
-    expect(layout.band.details.map((x) => x.value)).toContain(YearEndCopy.EMPTY_VALUE);
+    // Header totals get the same dash (notes sit under the grid).
+    expect(bandLabels(layout).slice(1)).toEqual([["CARRIED IN FROM FY25", YearEndCopy.EMPTY_VALUE], ["CARRIED INTO FY27", YearEndCopy.EMPTY_VALUE], ["COMPLETED FY26", "0"]]);
+    expect(bandLabels(YearEndLayout.layout(fy27, AT, "Nick Leary")).slice(1)).toEqual([["CARRIED IN FROM FY26", YearEndCopy.EMPTY_VALUE], ["STILL IN PROGRESS", "1"], ["COMPLETED FY27", "1"]]);
     const summary = layout.pages[0].blocks[0];
     expect(summary.height).toBe(YearEndLayout.SUMMARY_LABEL_H + YearEndLayout.GRID.headH + layout.summary.length * YearEndLayout.GRID.rowH + 3 + 2 * YearEndLayout.SUMMARY_NOTE_H);
   });
@@ -143,7 +150,7 @@ describe("table: wider Final update that wraps in full, and completed rows tinte
     const m = new TextMeasure();
     const room = C.date.w - ReportGeometry.CELL_PAD_R;
     expect(m.width("Sep 30, 2026", 8, 400)).toBeLessThan(room);
-    expect(m.width("CANCELLED", 7, 600)).toBeLessThan(room);
+    expect(m.width("COMPLETED", 7, 600)).toBeLessThan(room);
   });
 
   it("the whole final update shows (no 2-line cap): a 200-character update wraps onto every line it needs, no ellipsis", () => {
@@ -168,14 +175,14 @@ describe("table: wider Final update that wraps in full, and completed rows tinte
     for (const pg of layout.pages) for (const b of pg.blocks) expect(pg.bodyTop + b.y + b.height).toBeLessThanOrEqual(bottom + 0.001);
   });
 
-  it("completed rows are shaded with the weekly CompletedBlockStyle; cancelled and carried rows are not; long rows move whole to the next page", async () => {
+  it("completed rows are shaded with the weekly CompletedBlockStyle; carried rows are not; cancelled projects aren't listed; long rows move whole to the next page", async () => {
     const many = Array.from({ length: 40 }, (_, i) => p({ name: `Done ${String(i).padStart(2, "0")}`, serviceArea: "Cath", status: "Complete", completedOn: "2026-08-12", accomplishment: LONG }));
     const stopped = p({ name: "Stopped", status: "Cancelled", note: LONG });
     const d = build([...many, stopped, p({ name: "Still open", status: "OnTrack", note: LONG })], [status(stopped.id, "2026-08-01T15:00:00Z", "OnHold", "Cancelled")], "FY27");
     const layout = YearEndLayout.layout(d, AT, "Nick Leary");
     const rows = layout.pages.flatMap((pg) => pg.blocks).filter((b): b is Extract<YearEndBlock, { kind: "row" }> => b.kind === "row");
     expect(rows.filter((r) => r.row.shaded)).toHaveLength(40);
-    expect(rows.filter((r) => !r.row.shaded).map((r) => r.row.name[0])).toEqual(["Stopped", "Still open"]);
+    expect(rows.filter((r) => !r.row.shaded).map((r) => r.row.name[0])).toEqual(["Still open"]);
     expect(layout.pages.length).toBeGreaterThan(1);
     // The PDF uses the weekly style's own values (no copied colors).
     const pdf = await YearEndRenderer.render(d, AT, "Nick Leary");
@@ -191,7 +198,7 @@ describe("table: wider Final update that wraps in full, and completed rows tinte
     const later = p({ name: "Completed later by date", serviceArea: "Cath", status: "Complete", completedOn: "2026-09-10" });
     const tracked = p({ name: "Tracked", serviceArea: "Cath", status: "OnTrack", createdAt: new Date("2025-01-01T12:00:00Z") });
     const d = build([later, tracked], [], "FY26");
-    const row = d.sections[2].groups[0].rows.find((r) => r.name === "Completed later by date")!;
+    const row = d.sections[1].groups[0].rows.find((r) => r.name === "Completed later by date")!;
     expect(row.statusUnknown).toBe(true);
     const laid = YearEndLayout.row(new TextMeasure(), row);
     expect([laid.pill, laid.statusText]).toEqual([null, "Open"]);

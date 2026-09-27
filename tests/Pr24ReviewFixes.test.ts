@@ -78,14 +78,16 @@ describe("CHECK: one fiscal year per closed project, dashboard and PDF agree", (
     });
   });
 
-  it("dashboard sections and year-end PDF sections list the same projects for every year (same visibility inputs)", () => {
+  it("dashboard Completed sections and year-end PDF Completed sections list the same projects for every year; the PDF has no Cancelled section", () => {
     const rows = FiscalYearRows.build({ projects: list, closedHistory: history, history: [], latestUpdates: [], previousSnapshotGeneratedAt: null, today: TODAY });
     for (const fy of ["FY27", "FY26", "FY25"]) {
       const pdf = YearEndReportData.build({ projects: list, history, fiscalYear: fy, today: TODAY, departments: ServiceAreaInfo.CVPSL, serviceLineName: null });
       const pdfIds = (kind: string) => pdf.sections.find((s) => s.kind === kind)!.groups.flatMap((g) => g.rows.map((r) => [r.projectId, r.date]));
       const dash = (s: "Complete" | "Cancelled") => FiscalYearSections.section(rows, fy, s).map((r) => [r.id, r.closedOn]);
       expect(pdfIds("completed").sort()).toEqual(dash("Complete").sort());
-      expect(pdfIds("cancelled").sort()).toEqual(dash("Cancelled").sort());
+      expect(pdf.sections.map((s) => s.kind)).toEqual(["completed", "carried"]);
+      const cancelledIds = dash("Cancelled").map(([id]) => id);
+      for (const s of pdf.sections) for (const g of s.groups) for (const r of g.rows) expect(cancelledIds).not.toContain(r.projectId);
     }
     // Both read the one shared method.
     expect(R.src("lib/dashboard/FiscalYearRows.ts")).toContain("ClosedProjects.closedIn(");
@@ -130,7 +132,6 @@ describe("Review fixes: names, times, PDF copy", () => {
   it("carried table: Status and Latest update; blank updates are a gray en dash; summary head Carried into FY(n+1)", () => {
     expect(YearEndLayout.columnLabels("carried")).toEqual(["Project", "Owner", "Requester", "Status", "Latest update"]);
     expect(YearEndLayout.columnLabels("completed")).toEqual(["Project", "Owner", "Requester", "Completed", "Final update"]);
-    expect(YearEndLayout.columnLabels("cancelled")).toEqual(["Project", "Owner", "Requester", "Cancelled", "Final update"]);
     const open = R.p({ name: "Open", status: "OnTrack", note: null });
     const d = YearEndReportData.build({ projects: [open], history: [], fiscalYear: "FY26", today: TODAY, departments: ServiceAreaInfo.CVPSL, serviceLineName: null });
     const layout = YearEndLayout.layout(d, new Date("2026-09-27T04:34:00Z"), "Nick Leary");
