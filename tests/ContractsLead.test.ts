@@ -1,7 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { ContractsLeadLine } from "@/components/ProjectDashboard";
 import { ProjectPeopleEditor } from "@/components/ProjectPeopleEditor";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
@@ -110,7 +109,7 @@ describe("ContractsLead", () => {
     const cell = (s: typeof settings, r = row) =>
       ReportLayout.rowLayout(m, r, s, SampleReportData.REPORT_DATE).cells.find((c): c is OwnerCell => c.kind === "owner")!;
     const shown = cell(settings);
-    expect(shown.contracts?.lines[0].prefix).toBe("Contracts ");
+    expect(shown.contracts?.lines[0].prefix).toBe("Contracts: ");
     expect(shown.contracts?.lines.map((l) => l.text).join(" ")).toBe("Jeff Krause");
     const blank = cell(settings, { ...row, contractsLead: null });
     expect(blank.contracts?.missing).toBe(true);
@@ -125,7 +124,7 @@ describe("ContractsLead", () => {
     expect(ReportLayout.rowLayout(m, row, settings, SampleReportData.REPORT_DATE).height).toBeGreaterThanOrEqual(hRow);
   });
 
-  it("report: every name fits on one line in the 1.35 in owner column at 7 pt; never shrunk (wraps if a column is narrower)", () => {
+  it("report: every name fits on one line (with its label) in the 1.4 in owner column at 7 pt; never shrunk (wraps if a column is narrower)", () => {
     const settings = ViewSettings.defaults("report");
     const row: ReportRow = SampleReportData.rows()[0];
     for (const lead of [...ContractsLead.options(), null]) {
@@ -136,12 +135,5 @@ describe("ContractsLead", () => {
     const narrow = ReportLayout.contractsLine(m, "Mellisa Gonzales", 66);
     expect(narrow.lines.map((l) => l.text).join(" ")).toBe("Mellisa Gonzales");
     for (const l of narrow.lines) expect(l.text).not.toContain("\u2026");
-  });
-
-  it("dashboard: small gray line with Contracts at weight 500", () => {
-    const html = renderToStaticMarkup(createElement(ContractsLeadLine, { value: null }));
-    expect(html).toContain("text-muted");
-    expect(html).toContain('<span class="font-medium">Contracts</span> To assign');
-    expect(renderToStaticMarkup(createElement(ContractsLeadLine, { value: "Dave Dermady" }))).toContain("Dave Dermady");
   });
 });

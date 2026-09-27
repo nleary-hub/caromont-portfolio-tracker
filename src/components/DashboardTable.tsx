@@ -219,14 +219,34 @@ function ProjectRow({
   );
 }
 
-/** Stacked People cell: up to three single-line entries at 13/18 with an ellipsis and the full text as a tooltip. */
+/**
+ * People cell text styles. Owner: label 400 and name 600 in the primary color. Requester and Contracts:
+ * label and name 400 in the secondary gray, the same as the Latest update note. "To assign" is always
+ * regular weight secondary gray (never amber).
+ */
+export class PeopleCellStyle {
+  static labelClass(l: PeopleLine): string {
+    return l.primary ? "font-normal text-fg" : "font-normal text-muted";
+  }
+
+  static nameClass(l: PeopleLine): string {
+    return l.primary && !l.muted ? "font-semibold text-fg" : "font-normal text-muted";
+  }
+}
+
+/**
+ * Stacked People cell: up to three labeled single-line entries at 13/18 ("Owner: Name"). The label is never
+ * cut; a long name ends in an ellipsis with the full name as a tooltip.
+ */
 export function PeopleCell({ lines }: { lines: readonly PeopleLine[] }) {
   return (
     <div className="flex flex-col text-[13px] leading-[18px]" data-testid="people-cell">
       {lines.map((l) => (
-        <div key={l.kind} data-line={l.kind} title={l.title} className="truncate">
-          {l.prefix && <span className="font-medium text-muted">{l.prefix} </span>}
-          <span className={l.muted ? "font-normal text-muted" : "text-fg"}>{l.text}</span>
+        <div key={l.kind} data-line={l.kind} className="flex min-w-0 whitespace-nowrap">
+          <span className={`shrink-0 whitespace-pre ${PeopleCellStyle.labelClass(l)}`}>{`${l.label} `}</span>
+          <span title={l.title} className={`min-w-0 truncate ${PeopleCellStyle.nameClass(l)}`}>
+            {l.text}
+          </span>
         </div>
       ))}
     </div>

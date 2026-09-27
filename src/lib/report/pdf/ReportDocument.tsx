@@ -1,6 +1,7 @@
 import { Circle, Document, Page, Path, Rect, Svg, Text, View } from "@react-pdf/renderer";
 import { Fragment } from "react";
 import type { ProjectStatus } from "@/generated/prisma/enums";
+import { PeopleLabel } from "@/lib/domain/PeopleLabel";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { StatusShapes, type ShapePart } from "@/lib/domain/StatusShapes";
 import { ReportFonts } from "@/lib/report/pdf/ReportFonts";
@@ -472,8 +473,8 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
     case "owner":
       return (
         <>
-          <Line x={cell.x} y={0} w={cell.w} text={cell.owner} size={S.table} color={cell.ownerMissing ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
-          {cell.champion && <Line x={cell.x} y={two} w={cell.w} text={cell.champion} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />}
+          <OwnerText name={cell.owner} missing={cell.ownerMissing} labelW={cell.ownerLabelW} x={cell.x} y={0} w={cell.w} />
+          {cell.champion && <RequesterText name={cell.champion} labelW={cell.championLabelW} x={cell.x} y={two} w={cell.w} />}
           {cell.contracts && <ContractsText c={cell.contracts} x={cell.x} y={two + (cell.champion ? G.SMALL_LH : 0)} w={cell.w} />}
         </>
       );
@@ -568,6 +569,37 @@ function Row({ row, y }: { row: RowLayout; y: number }) {
 }
 
 /** "Contracts Shea Waldron": prefix at weight 500, name regular, both in the requester's small gray. */
+/** "Owner: Name": label regular and name 600, both primary; "To assign" regular in the secondary gray. */
+function OwnerText({ name, missing, labelW, x, y, w }: { name: string; missing: boolean; labelW: number; x: number; y: number; w: number }) {
+  const S = G.SIZE;
+  return (
+    <>
+      <Line x={x} y={y} w={labelW + 1} text={PeopleLabel.OWNER} size={S.table} color={C.TEXT} lh={G.TABLE_LH} />
+      <Line
+        x={x + labelW}
+        y={y}
+        w={w - labelW}
+        text={name}
+        size={S.table}
+        weight={missing ? 400 : ReportLayout.OWNER_NAME_WEIGHT}
+        color={missing ? C.MUTED : C.TEXT}
+        lh={G.TABLE_LH}
+      />
+    </>
+  );
+}
+
+/** "Requester: Name": label and name regular in the secondary gray. */
+function RequesterText({ name, labelW, x, y, w }: { name: string; labelW: number; x: number; y: number; w: number }) {
+  const S = G.SIZE;
+  return (
+    <>
+      <Line x={x} y={y} w={labelW + 1} text={PeopleLabel.REQUESTER} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />
+      <Line x={x + labelW} y={y} w={w - labelW} text={name} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />
+    </>
+  );
+}
+
 function ContractsText({ c, x, y, w }: { c: ContractsLine; x: number; y: number; w: number }) {
   const S = G.SIZE;
   return (
@@ -644,9 +676,9 @@ function CompletedBlock({ block, top }: { block: Extract<BodyBlock, { kind: "com
             {r.req && <MetaText run={r.req} x={r.name.x} y={inner + r.name.lines.length * G.TABLE_LH} w={r.name.w} />}
             {r.owner && (
               <>
-                <Line x={r.owner.x} y={inner} w={r.owner.w} text={r.owner.owner} size={S.table} color={r.owner.ownerMissing ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
+                <OwnerText name={r.owner.owner} missing={r.owner.ownerMissing} labelW={r.owner.ownerLabelW} x={r.owner.x} y={inner} w={r.owner.w} />
                 {r.owner.champion && (
-                  <Line x={r.owner.x} y={inner + G.TABLE_LH + G.LINE_GAP} w={r.owner.w} text={r.owner.champion} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />
+                  <RequesterText name={r.owner.champion} labelW={r.owner.championLabelW} x={r.owner.x} y={inner + G.TABLE_LH + G.LINE_GAP} w={r.owner.w} />
                 )}
                 {r.owner.contracts && (
                   <ContractsText

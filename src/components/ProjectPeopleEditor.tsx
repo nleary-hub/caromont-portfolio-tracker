@@ -8,6 +8,7 @@ import { Requester } from "@/lib/domain/Requester";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { PeopleComboboxModel, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
 import { PeopleDirectory, type PeopleRole } from "@/lib/people/PeopleDirectory";
+import { SelectControl } from "./FieldControl";
 import { PeopleCombobox } from "./PeopleCombobox";
 
 export type PeopleFieldName = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "serviceArea";
@@ -95,7 +96,7 @@ function ContractsLeadSelect({ projectId, contractsLead, saveAction }: ProjectPe
   const id = `contractsLead-${projectId}`;
   return (
     <Row label="Contracts lead" htmlFor={id} state={state}>
-      <select
+      <SelectControl
         id={id}
         name="contractsLead"
         value={value}
@@ -109,7 +110,6 @@ function ContractsLeadSelect({ projectId, contractsLead, saveAction }: ProjectPe
             return err;
           });
         }}
-        className="h-[28px] min-w-0 flex-1 rounded-control border border-line bg-input px-2"
       >
         <option value="">{Assignee.TO_ASSIGN}</option>
         {ContractsLead.options().map((n) => (
@@ -117,7 +117,7 @@ function ContractsLeadSelect({ projectId, contractsLead, saveAction }: ProjectPe
             {n}
           </option>
         ))}
-      </select>
+      </SelectControl>
     </Row>
   );
 }
@@ -129,7 +129,7 @@ function DepartmentSelect({ projectId, serviceArea, saveAction }: ProjectPeopleE
   const id = `serviceArea-${projectId}`;
   return (
     <Row label="Department" htmlFor={id} state={state}>
-      <select
+      <SelectControl
         id={id}
         name="serviceArea"
         value={value}
@@ -143,7 +143,6 @@ function DepartmentSelect({ projectId, serviceArea, saveAction }: ProjectPeopleE
             return err;
           });
         }}
-        className="h-[28px] min-w-0 flex-1 rounded-control border border-line bg-input px-2"
       >
         {ServiceAreaInfo.all().map((a) => (
           <option key={a} value={a}>
@@ -151,7 +150,7 @@ function DepartmentSelect({ projectId, serviceArea, saveAction }: ProjectPeopleE
           </option>
         ))}
         <option value="">{ServiceAreaInfo.UNASSIGNED}</option>
-      </select>
+      </SelectControl>
     </Row>
   );
 }
