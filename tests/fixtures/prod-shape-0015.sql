@@ -76,7 +76,7 @@ SELECT ('40000000-0000-4000-8000-' || lpad((p * 10 + s)::text, 12, '0'))::uuid,
 FROM generate_series(1, 30) AS p, generate_series(1, 4) AS s
 WHERE s <= 1 + (p % 4);
 
--- Report settings: options row (key page off) with history carrying departments and totals grid.
+-- Report contents: options row (key page off) with history carrying departments and totals grid.
 INSERT INTO report_options (id, "showKeyPage", "updatedAt", "updatedBy") VALUES ('report', false, '2026-09-14 11:00:00', 'nick@example.org')
 ON CONFLICT (id) DO UPDATE SET "showKeyPage" = EXCLUDED."showKeyPage", "updatedAt" = EXCLUDED."updatedAt", "updatedBy" = EXCLUDED."updatedBy";
 INSERT INTO report_options_history (id, "oldValue", "newValue", "changedAt", "changedBy") VALUES

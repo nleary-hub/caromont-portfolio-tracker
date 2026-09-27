@@ -48,7 +48,7 @@ export class Factory {
     };
   }
 
-  /** Report settings with only the given statuses hidden. */
+  /** Report contents with only the given statuses hidden. */
   static reportSettings(hiddenStatuses: ViewSettingsValue["hiddenStatuses"] = []): ViewSettingsValue {
     return ViewSettings.normalize("report", { hiddenStatuses });
   }

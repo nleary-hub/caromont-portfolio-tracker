@@ -312,7 +312,7 @@ describe("default CVPSL output is unchanged on the new department ids", () => {
   });
 });
 
-describe("People (contracts leads) and Report settings", () => {
+describe("People (contracts leads) and Report contents", () => {
   it("lists the line's contracts leads with project counts, adds at the end, rejects duplicates and names over 200", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
@@ -341,7 +341,7 @@ describe("People (contracts leads) and Report settings", () => {
     expect(await DepartmentForms.addContractsLead(MEMBER, "X", db)).toEqual({ ok: false, message: "Not authorized." });
   });
 
-  it("copy: remove confirm, empty state, and the Report settings pointer", () => {
+  it("copy: remove confirm, empty state, and the Report contents pointer", () => {
     expect(ContractsLeadRules.removeTitle("Jeff Krause")).toBe("Remove Jeff Krause from contracts leads?");
     expect(ContractsLeadRules.removeBody("Jeff Krause", 2)).toBe("2 projects list Jeff Krause as contracts lead. They keep that name, but new projects won't offer it.");
     expect(ContractsLeadRules.EMPTY).toBe("No contracts leads yet. Add the people who handle contracts for this service line.");

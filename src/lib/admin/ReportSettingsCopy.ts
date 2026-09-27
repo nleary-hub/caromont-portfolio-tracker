@@ -1,4 +1,4 @@
-/** Copy of Admin > Report settings (was "Line settings"). */
+/** Copy of Admin > Report contents (was "Line settings"). */
 export class ReportSettingsCopy {
   /** Gray pointer where the People section was: "Contracts leads are now on the People page", with "People" linked. */
   static readonly POINTER_BEFORE = "Contracts leads are now on the ";

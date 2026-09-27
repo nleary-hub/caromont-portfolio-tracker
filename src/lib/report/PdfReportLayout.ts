@@ -8,11 +8,11 @@ export interface LayoutColumn {
 }
 
 /**
- * Report settings as the layout functions see them: the frozen view settings, plus line-one widths (inches) when
+ * Report contents as the layout functions see them: the frozen view settings, plus line-one widths (inches) when
  * the line has a custom column layout. Only built in memory by PdfReportLayout.withLayout; never stored.
  */
 /**
- * Report settings as the PDF lays them out. `widthsIn`: line-one widths from a custom layout's shares.
+ * Report contents as the PDF lays them out. `widthsIn`: line-one widths from a custom layout's shares.
  * `customLayout`: the line has a non-default column layout (flags then pack left under the FLAGS header).
  */
 export type ReportColumnSettings = ViewSettingsValue & { widthsIn?: Partial<Record<LayoutColumn["key"], number>>; customLayout?: boolean };
