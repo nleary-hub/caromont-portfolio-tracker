@@ -113,10 +113,12 @@ export default async function SignInPage({
                 data-testid="password-signin"
                 action={async (formData: FormData) => {
                   "use server";
+                  // Via /set-password, which sends anyone not on a temporary password on to redirectTo. A sign-in's own
+                  // redirect renders its target without the proxy, so this keeps the address bar on /set-password.
                   await SignInActions.run(SessionPolicy.PASSWORD_PROVIDER, {
                     email: String(formData.get("email") ?? ""),
                     password: String(formData.get("password") ?? ""),
-                    redirectTo,
+                    redirectTo: `${SessionAccess.SET_PASSWORD_PATH}?next=${encodeURIComponent(redirectTo)}`,
                   });
                 }}
               >

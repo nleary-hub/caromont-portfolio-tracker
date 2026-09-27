@@ -48,6 +48,23 @@ export function AccountRowMenu({
 }) {
   const { open, setOpen, rootRef } = usePopover();
   const [, start] = useTransition();
+  // Fixed position from the button, so the grid's scroll container never clips the menu.
+  const [pos, setPos] = useState<{ top: number; right: number } | null>(null);
+  const btnRef = useRef<HTMLButtonElement>(null);
+  const place = () => {
+    const r = btnRef.current?.getBoundingClientRect();
+    if (r) setPos({ top: r.bottom + 4, right: window.innerWidth - r.right });
+  };
+  useEffect(() => {
+    if (!open) return;
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open]);
   const [opened, setOpened] = useState(false);
   if (initialOpen && !opened) {
     setOpened(true);
@@ -66,7 +83,7 @@ export function AccountRowMenu({
   else if (state !== "none") items.push({ label: PasswordCopy.MENU_TURN_OFF, act: () => setPasswordSignIn(email, false), danger: true });
   return (
     <div ref={rootRef} className="relative inline-block">
-      <button type="button" className="df-icon-btn" aria-haspopup="menu" aria-expanded={open} aria-label={`${PasswordCopy.MENU_LABEL} for ${name}`} onClick={() => setOpen(!open)} data-testid="access-row-menu">
+      <button ref={btnRef} type="button" className="df-icon-btn" aria-haspopup="menu" aria-expanded={open} aria-label={`${PasswordCopy.MENU_LABEL} for ${name}`} onClick={() => setOpen(!open)} data-testid="access-row-menu">
         <svg width="14" height="14" viewBox="0 0 14 14" fill="currentColor" aria-hidden="true">
           <circle cx="3" cy="7" r="1.3" />
           <circle cx="7" cy="7" r="1.3" />
@@ -74,7 +91,7 @@ export function AccountRowMenu({
         </svg>
       </button>
       {open && (
-        <ul role="menu" className="vp-pop vp-list right-0 w-[210px] p-1 text-left">
+        <ul role="menu" className="vp-pop vp-list w-[210px] p-1 text-left" style={pos ? { position: "fixed", top: pos.top, right: pos.right, left: "auto", zIndex: 60 } : { visibility: "hidden" }}>
           {items.map((i) => (
             <li
               key={i.label}

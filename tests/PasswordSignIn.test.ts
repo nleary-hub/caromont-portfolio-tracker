@@ -327,6 +327,11 @@ describe("SessionAccess: who may use the app", () => {
     expect(SessionAccess.viewer(pw("pat@example.org"), env)).toEqual({ email: "pat@example.org", isAdmin: false });
   });
 
+  it("safeNext only allows same-site paths", () => {
+    expect(SessionAccess.safeNext("/admin/people?x=1")).toBe("/admin/people?x=1");
+    for (const bad of [undefined, "", "https://evil.example", "//evil.example", "/\\evil.example", "/signin", "/set-password?next=/", "admin"]) expect(SessionAccess.safeNext(bad)).toBe("/");
+  });
+
   it("a temporary password gets no viewer (only /set-password) until it is replaced", () => {
     expect(SessionAccess.allowed(pw("pat@example.org", true), env)).toBe(true);
     expect(SessionAccess.mustChangePassword(pw("pat@example.org", true))).toBe(true);
@@ -474,7 +479,7 @@ describe("first sign-in: replace the temporary password", () => {
     expect((await db.passwordCredential.findUnique({ where: { email: "pat@example.org" } }))!.mustChange).toBe(true);
   });
 
-  it("saves the new password, clears the flag, and the old session version no longer works", async () => {
+  it("saves the new password, clears the flag, and the old session version is refused", async () => {
     const db = await Fx.db({ email: "pat@example.org", password: "tmp1-tmp2-tmp3-tmp4", mustChange: true });
     expect(await PasswordSignInService.changeOwnPassword("pat@example.org", "my own password", "my own password", db as never, T0)).toEqual({ ok: true });
     const cred = (await db.passwordCredential.findUnique({ where: { email: "pat@example.org" } }))!;
@@ -489,5 +494,15 @@ describe("first sign-in: replace the temporary password", () => {
     const t = SessionPolicy.start({ email: "pat@example.org" } as JWT, "password", { mustChangePassword: true, pwdVersion: 5 }, T0);
     expect(t.mustChange).toBe(true);
     expect(await SessionPolicy.continue(t, async () => ({ mustChange: true }), at(5 * MIN))).toMatchObject({ mustChange: true });
+  });
+});
+
+describe("Access grid: ADMIN_EMAILS with a password shows as an admin", () => {
+  it("moves a listed admin with an active or temporary password into the admin rows; others stay", () => {
+    const row = (email: string, name: string) => ({ email, name, isAdmin: false, lineIds: ["line-cv"] });
+    const grid = { lines: [], canAdd: true, admins: [], users: [row(NICK, "Nick Leary"), row("pat@example.org", "Pat Lee"), row("boss@example.org", "Boss")] };
+    const out = UserAccountService.withPasswordAdmins(grid, { [NICK]: { state: "active", locked: false }, "pat@example.org": { state: "active", locked: false }, "boss@example.org": { state: "off", locked: false } }, env);
+    expect(out.admins).toEqual([{ email: NICK, name: "Nick Leary", isAdmin: true, lineIds: [] }]);
+    expect(out.users.map((r) => r.email)).toEqual(["pat@example.org", "boss@example.org"]);
   });
 });

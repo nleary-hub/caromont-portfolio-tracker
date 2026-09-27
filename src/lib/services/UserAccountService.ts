@@ -58,6 +58,23 @@ export class UserAccountService {
     return out;
   }
 
+  /**
+   * The Access grid lists admins from AdminPolicy, which (for Google) also needs ALLOWED_EMAILS. Someone in ADMIN_EMAILS
+   * who signs in with an active password is an admin too (SessionAccess), so show them in the admin rows.
+   */
+  static withPasswordAdmins<G extends { admins: R[]; users: R[] }, R extends { email: string; isAdmin: boolean; lineIds: string[]; name: string }>(
+    grid: G,
+    statuses: Record<string, PasswordStatus>,
+    env: Env = process.env,
+  ): G {
+    const admins = AdminPolicy.fromEnv(env);
+    const promote = (r: R) => !r.isAdmin && admins.allows(r.email) && ["active", "mustChange"].includes(statuses[r.email]?.state ?? "none");
+    const moved = grid.users.filter(promote).map((r) => ({ ...r, isAdmin: true, lineIds: [] }));
+    if (!moved.length) return grid;
+    const byName = (a: R, b: R) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || a.email.localeCompare(b.email);
+    return { ...grid, admins: [...grid.admins, ...moved].sort(byName), users: grid.users.filter((r) => !promote(r)) };
+  }
+
   static async addUser(viewer: Viewer | null, input: AddUserInput, db: AccountDb = Db.client as unknown as AccountDb, env: Env = process.env, hook?: AddUserGrantHook, now: Date = new Date()): Promise<AccountResult> {
     AdminPolicy.assertAdmin(viewer);
     const email = PasswordSignInService.normalize(input.email);

@@ -19,6 +19,13 @@ export interface SessionLike {
 export class SessionAccess {
   static readonly SET_PASSWORD_PATH = "/set-password";
 
+  /** A same-site path to continue to (never another host, never back to sign-in). */
+  static safeNext(value: string | null | undefined): string {
+    if (!value || !value.startsWith("/") || value.startsWith("//") || value.startsWith("/\\")) return "/";
+    if (value.startsWith("/signin") || value.startsWith("/api/auth") || value.startsWith(SessionAccess.SET_PASSWORD_PATH)) return "/";
+    return value;
+  }
+
   static email(session: SessionLike | null | undefined): string | null {
     const e = session?.user?.email?.trim().toLowerCase();
     return e && /^[^@\s]+@[^@\s]+$/.test(e) ? e : null;

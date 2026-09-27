@@ -27,6 +27,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   const section = (v: string | undefined) => (v === "owner" || v === "requester" || v === "lead" ? v : undefined);
   // Password tags and row menus for everyone in the grid. ?menu=<email> opens that row's ⋯ menu.
   const passwords = await UserAccountService.statuses(viewer, [...grid.admins, ...grid.users].map((r) => r.email));
+  const accessGrid = UserAccountService.withPasswordAdmins(grid, passwords);
   const { menu } = params as { menu?: string };
 
   return (
@@ -48,7 +49,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
         requesters={lists.requesters}
         initial={{ add: params.add === "1" ? true : section(params.add), role: section(params.role), remove: params.remove ?? null, rename: params.rename ?? null }}
         // Access (item 8) covers every line, so it is not keyed to the active one. ?add=user opens its Add row.
-        top={<AccessAdmin grid={grid} initialAdd={params.add === "user"} passwords={passwords} initialMenu={menu?.trim().toLowerCase() || null} />}
+        top={<AccessAdmin grid={accessGrid} initialAdd={params.add === "user"} passwords={passwords} initialMenu={menu?.trim().toLowerCase() || null} />}
       />
     </main>
   );
