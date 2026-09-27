@@ -134,7 +134,7 @@ describe("Review fixes: names, times, PDF copy", () => {
     const open = R.p({ name: "Open", status: "OnTrack", note: null });
     const d = YearEndReportData.build({ projects: [open], history: [], fiscalYear: "FY26", today: TODAY, departments: ServiceAreaInfo.CVPSL, serviceLineName: null });
     const layout = YearEndLayout.layout(d, new Date("2026-09-27T04:34:00Z"), "Nick Leary");
-    expect(layout.summaryHeads).toEqual(["Completed", "Cancelled", "Carried into FY27"]);
+    expect(layout.summaryHeads).toEqual(["Carried in from FY25", "Carried into FY27", "Completed FY26"]);
     const row = layout.pages.flatMap((p) => p.blocks).find((b) => b.kind === "row");
     expect(row && row.kind === "row" && row.row.update).toEqual(["\u2013"]);
     expect(YearEndCopy.EMPTY_VALUE).toBe("\u2013");

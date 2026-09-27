@@ -208,3 +208,46 @@ signed link, handoff.json downloads, Freeze now, the key-page toggle and Generat
 | `ADMIN_EMAILS` | Freeze now, draft PDF, delivery status | From PR #1. |
 | `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | Drive upload | Needs a Google Cloud OAuth client (Nick's approval). Unset = fallback link. |
 | `GOOGLE_DRIVE_FOLDER_ID` | Drive upload | Optional; see the drive.file caveat above. |
+
+## Year-end report: summary grid and table
+
+**Summary grid: always 3 columns, one row per department plus Total.** The Cancelled column is gone (cancelled projects
+still get their own table section).
+
+| Report | Column 1 | Column 2 | Column 3 |
+| --- | --- | --- | --- |
+| Current year (FY end on or after today, e.g. FY27 now) | Carried in from FY26 | Still in progress | Completed FY27 |
+| Closed year (e.g. FY26) | Carried in from FY25 | Carried into FY27 | Completed FY26 |
+
+All counts use report candidates only (projects hidden from reports are left out), the same set as the tables.
+
+- **Completed FY N**: unchanged. Complete with a completion date in the fiscal year (to date for the current year).
+  Reopened projects aren't Complete, so they don't count.
+- **Carried in from FY N-1**: projects open (not Complete or Cancelled) at the end of Jun 30 before the fiscal year.
+- **Carried into FY N+1** (closed year): projects open at the end of Jun 30 of the fiscal year. This is the same test
+  as the next year's carried in, so FY26 "Carried into FY27" equals FY27 "Carried in from FY26".
+- **Still in progress** (current year): projects open today. The Carried section heading is "Still in progress" too,
+  and its empty line is "No projects still in progress so far." A current-year report never mentions FY N+1.
+
+"Open at the end of day D" is rebuilt as of D, so edits after D don't change it:
+
+1. The project existed: created on or before D.
+2. Closed now: open at D if its official close date (the completion date, or the last Cancelled date in history) is
+   after D, unless a status change on or before D shows it was already closed then.
+3. Open now: its status at D rebuilt from project history was open. A project closed at D and reopened later counts
+   as closed at D.
+
+In the Carried table, a past year's row shows the status it had at D. When a project was only closed later by an
+entered completion date and no status was on record for D, the status cell says "Open" in gray, not a guessed chip.
+
+**Tracking honesty rule.** Project history only goes back to the first tracked day (the earliest project creation or
+history entry, Sep 26, 2026 in production, when the tracker's data was imported). A carried figure whose boundary day is
+before that shows a dash, not 0, with a note under the grid, for example "Carried in from FY26: Not tracked before Sep
+26, 2026." The same goes for Carried into on a closed year that ended before tracking began. Still in progress is
+always known.
+
+**Table columns (landscape Letter, 720 pt wide):** Project 206 to 184, Owner 116 to 100, Requester 116 to 100, Date or
+Status 76 to 68, Final or Latest update 206 to 268. The update column wraps with no fixed line cap; the only guard is a
+page-height limit (a single update longer than a full page is cut with an ellipsis, which only an imported update of
+thousands of characters could reach). Rows never split across pages. Completed rows use the weekly report's completed
+block shading (`CompletedBlockStyle`: fill, border and green left edge).

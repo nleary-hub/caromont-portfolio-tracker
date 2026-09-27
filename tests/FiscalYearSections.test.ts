@@ -155,12 +155,16 @@ describe("Year-end report data", () => {
     expect(d.toDate).toBe(true);
     expect(d.title).toBe("FY27 Year-End Report");
     expect(d.periodText).toBe("Jul 1, 2026 \u2013 Sep 27, 2026 (to date)");
-    expect(d.sections.map((s) => [s.heading, s.count])).toEqual([["Completed in FY27", 1], ["Cancelled in FY27", 0], ["Carried into FY28", 1]]);
+    expect(d.sections.map((s) => [s.heading, s.count])).toEqual([["Completed in FY27", 1], ["Cancelled in FY27", 0], ["Still in progress", 1]]);
     expect(d.sections[0].groups[0].rows[0]).toMatchObject({ name: "Done 27", date: "2026-08-01", finalUpdate: "Live." });
     expect(d.sections[1].emptyText).toBe("No projects cancelled in FY27 so far.");
     expect(d.sections[2].groups[0]).toMatchObject({ label: "IR" });
     expect(d.sections[2].groups[0].rows[0]).toMatchObject({ name: "Open", status: "AtRisk", date: null, finalUpdate: "Waiting on vendor." });
-    expect(d.summary.at(-1)).toEqual({ area: "total", label: "Total", muted: false, completed: 1, cancelled: 0, carried: 1 });
+    // Grid: carried in from FY26 = open at the end of Jun 30, 2026 (Done 27 and Open); still in progress = open
+    // today (Open); Completed FY27 1.
+    expect(d.summary.at(-1)).toEqual({ area: "total", label: "Total", muted: false, carriedIn: 2, openAtEnd: 1, completed: 1 });
+    expect(d.carriedInNote).toBeNull();
+    expect(d.openAtEndNote).toBeNull();
   });
 
   it("past year: full period, closed dates in the year, carried status rebuilt at June 30", () => {
@@ -174,8 +178,8 @@ describe("Year-end report data", () => {
     // Done 27 was OnTrack at the FY26 end (completed in FY27); Open was OffTrack then.
     expect(d.sections[2].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status]))).toEqual([["Done 27", "OnTrack"], ["Open", "OffTrack"]]);
     // Groups follow the line's department order, Unassigned last and muted; empty departments are left out.
-    expect(d.summary.map((s) => s.label)).toEqual(["Cath", "Echo", "IR", "Unassigned", "Total"]);
-    expect(d.summary.find((s) => s.label === "Unassigned")).toMatchObject({ muted: true, cancelled: 1 });
+    // The grid has no Cancelled column, so a department with only a cancelled project (Unassigned here) isn't listed.
+    expect(d.summary.map((s) => s.label)).toEqual(["Cath", "Echo", "IR", "Total"]);
     expect(d.sections[1].groups[0]).toMatchObject({ label: "Unassigned", muted: true });
   });
 

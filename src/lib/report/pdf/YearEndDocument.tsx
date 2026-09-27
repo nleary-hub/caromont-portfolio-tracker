@@ -87,13 +87,29 @@ function Summary({ l, top }: { l: YearEndDocumentLayout; top: number }) {
     const total = r.area === "total";
     if (total) els.push(<Rule key="tr" x={0} y={ry} w={width} h={1} />);
     els.push(<Line key={`ga${ri}`} x={0} y={ry + 1.5} w={S.labelW} text={r.label} size={G.SIZE.table} weight={total ? 600 : 500} color={r.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />);
-    [r.completed, r.cancelled, r.carried].forEach((n, ci) =>
+    // Blank (null) carried cells print the gray en dash; the reason is the note under the grid.
+    [r.carriedIn, r.openAtEnd, r.completed].forEach((n, ci) =>
       els.push(
-        <Line key={`gc${ri}-${ci}`} x={S.labelW + ci * S.colW} y={ry + 1.5} w={S.colW} text={n === 0 ? "\u00b7" : String(n)} size={G.SIZE.table} weight={total ? 600 : 400} color={n === 0 || r.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} align="right" />,
+        <Line
+          key={`gc${ri}-${ci}`}
+          x={S.labelW + ci * S.colW}
+          y={ry + 1.5}
+          w={S.colW}
+          text={n === null ? YearEndCopy.EMPTY_VALUE : n === 0 ? "\u00b7" : String(n)}
+          size={G.SIZE.table}
+          weight={total ? 600 : 400}
+          color={n === null || n === 0 || r.muted ? C.MUTED : C.TEXT}
+          lh={G.TABLE_LH}
+          align="right"
+        />,
       ),
     );
     if (!total) els.push(<Rule key={`gb${ri}`} x={0} y={ry + S.rowH - 0.5} w={width} h={0.5} color={C.DIVIDER} />);
   });
+  const notesTop = gt + S.headH + l.summary.length * S.rowH + 3;
+  l.summaryNotes.forEach((note, i) =>
+    els.push(<Line key={`gn${i}`} x={0} y={notesTop + i * YearEndLayout.SUMMARY_NOTE_H} w={G.CONTENT_W} text={note} size={G.SIZE.small} color={C.MUTED} lh={YearEndLayout.SUMMARY_NOTE_H} />),
+  );
   return <>{els}</>;
 }
 
@@ -133,19 +149,28 @@ function Block({ b, top, l }: { b: YearEndBlock; top: number; l: YearEndDocument
       const r = b.row;
       const ty = y + G.ROW_PAD;
       const w = (c: { w: number }) => c.w - G.CELL_PAD_R;
+      // Completed rows: the weekly report's completed tint, green left edge and separator (CompletedBlockStyle).
+      const st = CompletedBlockStyle;
+      const inset = r.shaded ? st.INSET : 0;
       return (
         <>
+          {r.shaded && (
+            <View
+              style={{ position: "absolute", left: 0, top: y, width: G.CONTENT_W, height: b.height, backgroundColor: st.FILL, borderLeftWidth: st.EDGE_W, borderLeftColor: st.ACCENT }}
+            />
+          )}
           {r.name.map((t, i) => (
-            <Line key={`n${i}`} x={Col.project.x} y={ty + i * G.TABLE_LH} w={w(Col.project)} text={t} size={S.table} weight={600} lh={G.TABLE_LH} />
+            <Line key={`n${i}`} x={Col.project.x + inset} y={ty + i * G.TABLE_LH} w={w(Col.project) - inset} text={t} size={S.table} weight={600} lh={G.TABLE_LH} />
           ))}
           <Line x={Col.owner.x} y={ty} w={w(Col.owner)} text={r.owner.text} size={S.table} color={r.owner.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
           <Line x={Col.requester.x} y={ty} w={w(Col.requester)} text={r.requester.text} size={S.table} color={r.requester.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
           {r.date && <Line x={Col.date.x} y={ty} w={w(Col.date)} text={r.date} size={S.table} lh={G.TABLE_LH} />}
           {r.pill && <Pill pill={r.pill} x={Col.date.x} y={ty - 0.25} />}
+          {r.statusText && <Line x={Col.date.x} y={ty} w={w(Col.date)} text={r.statusText} size={S.table} color={C.MUTED} lh={G.TABLE_LH} />}
           {r.update.map((t, i) => (
             <Line key={`u${i}`} x={Col.update.x} y={ty + i * G.TABLE_LH} w={w(Col.update)} text={t} size={S.table} color={C.MUTED} lh={G.TABLE_LH} />
           ))}
-          <Rule y={y + b.height - G.ROW_BORDER} h={G.ROW_BORDER} color={C.DIVIDER} />
+          <Rule y={y + b.height - G.ROW_BORDER} h={G.ROW_BORDER} color={r.shaded ? st.SEPARATOR : C.DIVIDER} />
         </>
       );
     }
