@@ -3,7 +3,6 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import type { MilestoneCount } from "@/lib/domain/MilestoneProgress";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import type { CompletedRow, HistoryEntryRecord, ProjectRecord, StatusCounts } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { CompletedThisPeriod, type CompletableProject } from "@/lib/report/CompletedThisPeriod";
@@ -53,13 +52,11 @@ export interface DashboardCompletedRow extends DashboardRow {
 export interface DashboardSummary {
   total: number;
   byStatus: Record<ProjectStatus, number>;
-  /** Departments plus "Unassigned". */
-  byArea: Record<AreaGroup, number>;
 }
 
 /**
  * Builds dashboard rows/tiles. Same flag rules as the report. Rows go through VisibilityPolicy
- * (dashboard context), and tiles/chips are summarized from those rows only, so hidden and
+ * (dashboard context), and tiles are summarized from those rows only, so hidden and
  * deleted projects leave no trace in anything the dashboard shows.
  */
 export class DashboardViewModel {
@@ -158,17 +155,13 @@ export class DashboardViewModel {
   }
 
   /**
-   * Status tiles and area chip counts. Pass only rows() output (visible rows). No flag totals: flags
+   * Status tile counts. Pass only rows() output (visible rows). No flag totals: flags
    * are shown per row, and a flag tile would read as extra projects that do not add into the total.
    */
   static summarize(rows: readonly DashboardRow[]): DashboardSummary {
     const byStatus = Object.fromEntries(ProjectStatusInfo.all().map((s) => [s, 0])) as Record<ProjectStatus, number>;
-    const byArea = Object.fromEntries(ServiceAreaInfo.groups().map((a) => [a, 0])) as Record<AreaGroup, number>;
-    for (const r of rows) {
-      byStatus[r.status] += 1;
-      byArea[ServiceAreaInfo.groupOf(r.serviceArea)] += 1;
-    }
-    return { total: rows.length, byStatus, byArea };
+    for (const r of rows) byStatus[r.status] += 1;
+    return { total: rows.length, byStatus };
   }
 
   /**
@@ -185,11 +178,13 @@ export class DashboardViewModel {
     return { dashboard: count("dashboard"), report: count("report") };
   }
 
-  /** Area filter + free-text search over name, Infor number, owner, requester, milestone, note. */
-  static filter<R extends DashboardRow>(rows: readonly R[], area: AreaGroup | "All", query: string): R[] {
+  /**
+   * Free-text search over name, Infor number, owner, requester, milestone, note. Departments are filtered
+   * before this with DepartmentFilter (the Departments dropdown).
+   */
+  static filter<R extends DashboardRow>(rows: readonly R[], query: string): R[] {
     const q = query.trim().toLowerCase();
     return rows.filter((r) => {
-      if (area !== "All" && ServiceAreaInfo.groupOf(r.serviceArea) !== area) return false;
       if (!q) return true;
       return [r.name, InforNumber.format(r.inforRequestNumber), r.owner, r.physicianChampion, r.contractsLead, r.nextMilestone, r.note]
         .some((v) => v?.toLowerCase().includes(q));

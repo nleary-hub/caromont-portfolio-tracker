@@ -266,7 +266,7 @@ describe("Infor request number: dashboard", () => {
       ["a", 5081, "2026-09-24", false],
       ["b", null, "2026-09-01", true],
     ]);
-    expect(DashboardViewModel.filter(rows, "All", "req-5081").map((r) => r.id)).toEqual(["a"]);
+    expect(DashboardViewModel.filter(rows, "req-5081").map((r) => r.id)).toEqual(["a"]);
   });
 
   it('shows "REQ-5081" left-aligned in a fixed 9ch monospace slot, then an 8px gap, then Updated (no separator)', () => {

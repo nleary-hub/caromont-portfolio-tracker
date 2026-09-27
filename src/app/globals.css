@@ -83,17 +83,4 @@ body {
   .fl-stale { background: var(--status-at-risk-dark-bg); color: var(--status-at-risk-dark-fg); border: 1px dashed var(--status-at-risk-dark-fg); }
   .flag > svg { flex: none; width: 8px; height: 8px; margin-right: 4px; }
 
-  .chip {
-    height: 28px; padding: 0 10px; border-radius: var(--radius-pill); border: 1px solid var(--dark-border);
-    background: var(--dark-card); font: var(--app-label); color: var(--dark-text-primary);
-    display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
-  }
-  .chip > b { font-weight: 500; color: var(--dark-text-secondary); background: var(--dark-input); border-radius: 999px; padding: 0 6px; }
-  .chip[aria-pressed="true"] { background: var(--dark-accent); border-color: var(--dark-accent); color: #fff; }
-  .chip[aria-pressed="true"] > b { background: rgba(255, 255, 255, 0.2); color: #fff; }
-
-  .area-tag {
-    font: var(--app-label); color: var(--dark-text-secondary); border: 1px solid var(--dark-border);
-    border-radius: 4px; padding: 1px 6px;
-  }
 }

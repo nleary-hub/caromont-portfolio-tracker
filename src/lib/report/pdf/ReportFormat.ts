@@ -36,6 +36,20 @@ export class ReportFormat {
     return `${start} \u2013 ${ReportFormat.mediumDate(endIso)}`;
   }
 
+  /**
+   * Compact range with an en dash and no spaces: "Sep 15\u201329, 2026" (same month), "Sep 22\u2013Oct 6, 2026"
+   * (same year), "Dec 22, 2026\u2013Jan 5, 2027" (different years). Used by the running header on pages 2+.
+   * `period` (page 1, handoff.json) is unchanged.
+   */
+  static dateRange(startIso: string, endIso: string): string {
+    const [sy, sm] = [startIso.slice(0, 4), startIso.slice(5, 7)];
+    const [ey, em] = [endIso.slice(0, 4), endIso.slice(5, 7)];
+    const day = (iso: string) => String(Number(iso.slice(8, 10)));
+    if (sy !== ey) return `${ReportFormat.mediumDate(startIso)}\u2013${ReportFormat.mediumDate(endIso)}`;
+    if (sm !== em) return `${ReportFormat.shortDate(startIso)}\u2013${ReportFormat.shortDate(endIso)}, ${ey}`;
+    return `${ReportFormat.shortDate(startIso)}\u2013${day(endIso)}, ${ey}`;
+  }
+
   /** "Sep 29, 2026, 5:00 PM ET" */
   static dateTimeEt(instant: Date): string {
     const s = new Intl.DateTimeFormat("en-US", {

@@ -12,7 +12,7 @@ import type { FiscalYearCount } from "@/lib/domain/types";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import type { AdminMenuItem } from "@/lib/admin/AdminMenu";
@@ -146,7 +146,6 @@ export function ProjectDashboard({
   admin,
   signOutAction,
 }: Props) {
-  const [area, setArea] = useState<AreaGroup | "All">("All");
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const searchRef = useRef<HTMLInputElement>(null);
@@ -175,19 +174,19 @@ export function ProjectDashboard({
   const setDepartments = (next: ServiceArea[]) => {
     setDepartmentsState(next);
     DashboardPrefs.writeDepartments(DashboardPrefsBrowser.storage(), userEmail, next, line);
-    if (area !== "All" && !DepartmentFilter.includesGroup(next, area, deptOptions)) setArea("All");
   };
   const setHiddenTiles = (next: DashboardTile[]) => {
     setHiddenTilesState(next);
     DashboardPrefs.writeHiddenTiles(DashboardPrefsBrowser.storage(), userEmail, next, line);
   };
 
-  // Department filter first: tiles, chips, rows and the Unassigned group all follow it.
+  // Department filter first (the Departments dropdown is the only department filter): tiles, rows and the
+  // Unassigned group all follow it. Options are the line's departments (every department for CVPSL).
   const deptRows = useMemo(() => DepartmentFilter.apply(rows, departments, deptOptions), [rows, departments, deptOptions]);
   const deptCompleted = useMemo(() => DepartmentFilter.apply(completed, departments, deptOptions), [completed, departments, deptOptions]);
   const summary = useMemo(() => DashboardViewModel.summarize(deptRows), [deptRows]);
-  const visible = useMemo(() => DashboardViewModel.filter(deptRows, area, query), [deptRows, area, query]);
-  const visibleCompleted = useMemo(() => DashboardViewModel.filter(deptCompleted, area, query), [deptCompleted, area, query]);
+  const visible = useMemo(() => DashboardViewModel.filter(deptRows, query), [deptRows, query]);
+  const visibleCompleted = useMemo(() => DashboardViewModel.filter(deptCompleted, query), [deptCompleted, query]);
   const tiles = DashboardPrefs.visibleTiles(hiddenTiles, Boolean(completedFiscalYear));
   const tileTemplate = DashboardPrefs.gridTemplate(tiles);
   // Non-admins get only the visible columns in order; that is the same model with nothing hidden.
@@ -257,7 +256,6 @@ export function ProjectDashboard({
     setMode("view");
     if (created && id) {
       // Show the new project whatever the current filter, then scroll its row into view.
-      setArea("All");
       setQuery("");
       setDepartments(DepartmentFilter.all(deptOptions));
       setSelectedId(id);
@@ -404,19 +402,7 @@ export function ProjectDashboard({
           </section>
         )}
 
-        <section className="flex items-center gap-1.5" aria-label="Service area filter">
-          <button type="button" className="chip" aria-pressed={area === "All"} onClick={() => setArea("All")}>
-            All <b>{summary.total}</b>
-          </button>
-          {ServiceAreaInfo.groups()
-            .filter((a) => !line || line.isDefault || a === ServiceAreaInfo.UNASSIGNED || line.departments.includes(a) || summary.byArea[a] > 0)
-            .filter((a) => DepartmentFilter.includesGroup(departments, a, deptOptions))
-            .filter((a) => a !== ServiceAreaInfo.UNASSIGNED || summary.byArea[a] > 0)
-            .map((a) => (
-              <button key={a} type="button" className="chip" aria-pressed={area === a} onClick={() => setArea(a)}>
-                {ServiceAreaInfo.label(a)} <b>{summary.byArea[a]}</b>
-              </button>
-            ))}
+        <section className="flex items-center gap-1.5" aria-label="Department filter">
           <div className="flex-1" />
           <span className="type-caption text-muted">Showing {visible.length} projects</span>
           <div className="ml-2">

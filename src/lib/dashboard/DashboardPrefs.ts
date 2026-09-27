@@ -59,11 +59,12 @@ export class DashboardPrefs {
   }
 
   static readDepartments(storage: PrefsStorage | null, email: string, line?: PrefsLine): ServiceArea[] {
-    return DepartmentFilter.normalize(storage ? DashboardPrefs.parse(storage.getItem(DashboardPrefs.departmentsKey(email, line))) : null, DashboardPrefs.options(line));
+    return DepartmentFilter.fromStored(storage ? DashboardPrefs.parse(storage.getItem(DashboardPrefs.departmentsKey(email, line))) : null, DashboardPrefs.options(line));
   }
 
+  /** Excluded departments are stored (not included ones), so a department added later starts included. */
   static writeDepartments(storage: PrefsStorage | null, email: string, selection: readonly ServiceArea[], line?: PrefsLine): void {
-    storage?.setItem(DashboardPrefs.departmentsKey(email, line), JSON.stringify(DepartmentFilter.normalize(selection, DashboardPrefs.options(line))));
+    storage?.setItem(DashboardPrefs.departmentsKey(email, line), JSON.stringify(DepartmentFilter.toStored(selection, DashboardPrefs.options(line))));
   }
 
   /** Hidden tiles are stored (not shown ones), so a tile added later starts visible. */

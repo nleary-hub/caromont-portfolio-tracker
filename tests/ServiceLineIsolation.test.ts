@@ -111,8 +111,11 @@ describe("service line isolation", () => {
     expect(cv.rows.map((r) => r.name)).toEqual(["CVPSL project"]);
     expect(on.rows.map((r) => r.name)).toEqual(["Oncology project"]);
     expect(on.serviceLine).toMatchObject({ name: onc.name, shortName: "ONC" });
-    expect(ReportLayout.gridAreas(on.rows, undefined, onc.departments).filter((a) => a !== "Unassigned")).toEqual(["Cath", "IR"]);
-    expect(ReportLayout.gridAreas(cv.rows).filter((a) => a !== "Unassigned")).toEqual(["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
+    // Grid rows are the departments with listed projects (PR #20), so each line's grid shows only its own.
+    expect(ReportLayout.gridAreas(on.rows, on.options.departments, onc.departments)).toEqual(["IR"]);
+    expect(ReportLayout.gridAreas(cv.rows, cv.options.departments)).toEqual(["EP"]);
+    expect(on.options.departments).toEqual(["Cath", "IR"]);
+    expect(ReportLayout.departmentOptions({ lineDepartments: onc.departments })).toEqual(["Cath", "IR"]);
     const layout = JSON.stringify(ReportLayout.layout({ ...on, lineDepartments: onc.departments, periodStart: "2026-09-15", periodEnd: "2026-09-29", generatedAt: NOW, draft: true }));
     expect(layout).toContain("Oncology project");
     expect(layout).not.toContain("CVPSL project");
