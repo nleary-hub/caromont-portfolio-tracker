@@ -1,15 +1,19 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { HistoryEntryRecord, ProjectRecord } from "@/lib/domain/types";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { CompletedBlockStyle, ReportGeometry } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { YearEndLayout, type YearEndBlock } from "@/lib/report/pdf/YearEndLayout";
 import { YearEndRenderer } from "@/lib/report/YearEndRenderer";
-import { YearEndCopy, YearEndReportData } from "@/lib/report/YearEndReportData";
+import { YearEndCategories, YearEndCopy, YearEndReportData, type YearEndCategory, type YearEndData } from "@/lib/report/YearEndReportData";
+import { ServiceLine } from "@/lib/domain/ServiceLine";
+import { YearEndReportService } from "@/lib/services/YearEndReportService";
+import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
 
 // Year-end export: wider Final update column that wraps in full, completed rows tinted like the weekly report, and
-// the summary grid (Completed FY N, Carried in from FY N-1, Carried into FY N+1), all relative to the report's FY.
+// the summary grid and header totals (Carried in from FY N-1, Completed FY N, Carried into FY N+1 or Still in
+// progress), all relative to the report's FY.
 type P = ProjectRecord & { createdAt: Date; accomplishment?: string | null };
 const CVPSL = ServiceAreaInfo.CVPSL;
 const AT = new Date("2026-09-27T16:00:00Z");
@@ -18,22 +22,23 @@ const p = (o: Omit<Partial<P>, "completedOn"> & { completedOn?: string } = {}): 
   return { ...Factory.project(), createdAt: new Date("2025-03-01T15:00:00Z"), ...rest, completedOn: completedOn ? Factory.date(completedOn) : null } as P;
 };
 const status = (projectId: string, iso: string, oldValue: string, newValue: string): HistoryEntryRecord => ({ projectId, changedAt: new Date(iso), field: "status", oldValue, newValue });
-const build = (projects: P[], history: HistoryEntryRecord[], fiscalYear: string, today = "2026-09-27") =>
-  YearEndReportData.build({ projects, history, fiscalYear, today, departments: CVPSL, serviceLineName: "Cardiovascular & Pulmonary Service Line" });
+const build = (projects: P[], history: HistoryEntryRecord[], fiscalYear: string, today = "2026-09-27", categories?: YearEndCategory[]) =>
+  YearEndReportData.build({ projects, history, fiscalYear, today, departments: CVPSL, serviceLineName: "Cardiovascular & Pulmonary Service Line", categories });
 const LONG = "Go-live finished on schedule across all four cath labs. Hemodynamic monitoring now feeds Epic directly, which removed the double charting step for nurses. Staff trained on every shift before cutover.";
 
-describe("summary grid: 3 columns, relative to the report's fiscal year", () => {
+describe("summary grid and header totals: the same columns in the same order", () => {
+  const D = ServiceAreaInfo.CVPSL_IDS;
   /** Data tracked since Mar 2025, so both FY26 boundaries (Jun 30, 2025 and Jun 30, 2026) can be rebuilt. */
   const world = () => {
-    const openAll = p({ name: "Open all along", serviceArea: "Cath", status: "OnTrack" });
-    const doneFy26 = p({ name: "Done in FY26", serviceArea: "Cath", status: "Complete", completedOn: "2026-02-01" });
-    const doneFy27 = p({ name: "Done in FY27", serviceArea: "Echo", status: "Complete", completedOn: "2026-08-15" });
-    const newFy26 = p({ name: "Started in FY26", serviceArea: "IR", status: "AtRisk", createdAt: new Date("2025-10-01T15:00:00Z") });
-    const cancelledFy26 = p({ name: "Cancelled in FY26", serviceArea: "EP", status: "Cancelled" });
-    const closedFy25 = p({ name: "Done in FY25", serviceArea: "Cath", status: "Complete", completedOn: "2025-05-01" });
+    const openAll = p({ name: "Open all along", serviceArea: D.Cath, status: "OnTrack" });
+    const doneFy26 = p({ name: "Done in FY26", serviceArea: D.Cath, status: "Complete", completedOn: "2026-02-01" });
+    const doneFy27 = p({ name: "Done in FY27", serviceArea: D.Echo, status: "Complete", completedOn: "2026-08-15" });
+    const newFy26 = p({ name: "Started in FY26", serviceArea: D.IR, status: "AtRisk", createdAt: new Date("2025-10-01T15:00:00Z") });
+    const cancelledFy26 = p({ name: "Cancelled in FY26", serviceArea: D.EP, status: "Cancelled" });
+    const closedFy25 = p({ name: "Done in FY25", serviceArea: D.Cath, status: "Complete", completedOn: "2025-05-01" });
     // Reopened: Complete on Jun 1, 2026, back to OnTrack in Aug 2026: closed at the FY26 end, open now.
-    const reopened = p({ name: "Reopened", serviceArea: "Echo", status: "OnTrack" });
-    const newFy27 = p({ name: "Started in FY27", serviceArea: "IR", status: "NotStarted", createdAt: new Date("2026-09-10T15:00:00Z") });
+    const reopened = p({ name: "Reopened", serviceArea: D.Echo, status: "OnTrack" });
+    const newFy27 = p({ name: "Started in FY27", serviceArea: D.IR, status: "NotStarted", createdAt: new Date("2026-09-10T15:00:00Z") });
     // A status change in FY27 (openAll to OnHold) doesn't change the closed FY26 figures.
     const history = [
       status(cancelledFy26.id, "2026-01-10T15:00:00Z", "OnHold", "Cancelled"),
@@ -45,95 +50,216 @@ describe("summary grid: 3 columns, relative to the report's fiscal year", () => 
     return { list: [openAll, doneFy26, doneFy27, newFy26, cancelledFy26, closedFy25, reopened, newFy27], history };
   };
   const bandLabels = (l: ReturnType<typeof YearEndLayout.layout>) => l.band.details.map((x) => [x.label.toUpperCase(), x.value]);
+  const grid = (d: YearEndData) => d.summary.map((r) => [r.label, ...d.columns.map((k) => r[k])]);
+  /** Header totals after Period must be the grid's heads and Total row, in the same order. */
+  const aligned = (d: YearEndData) => {
+    const l = YearEndLayout.layout(d, AT, "Nick Leary");
+    const total = d.summary.at(-1)!;
+    expect(bandLabels(l).slice(1)).toEqual(l.summaryKeys.map((k, i) => [l.summaryHeads[i].toUpperCase(), total[k] === null ? YearEndCopy.EMPTY_VALUE : String(total[k])]));
+    return l;
+  };
 
-  it("a past FY (FY26 viewed in FY27): Carried in from FY25 | Carried into FY27 | Completed FY26, all values, as of Jun 30, 2025 and Jun 30, 2026", () => {
+  it("closed year (FY26): Carried in from FY25 | Completed FY26 | Carried into FY27, header aligned, values as of Jun 30, 2025 and Jun 30, 2026", () => {
     const { list, history } = world();
     const d = build(list, history, "FY26");
-    const layout = YearEndLayout.layout(d, AT, "Nick Leary");
-    expect(layout.summaryHeads).toEqual(["Carried in from FY25", "Carried into FY27", "Completed FY26"]);
-    expect(JSON.stringify(layout)).not.toContain("FY28");
+    const layout = aligned(d);
+    expect(d.title).toBe("FY26 Year-End Report");
+    expect(layout.summaryHeads).toEqual(["Carried in from FY25", "Completed FY26", "Carried into FY27"]);
     // In (open at the end of Jun 30, 2025): Open all along, Done in FY26, Done in FY27, Cancelled in FY26, Reopened.
     // Into FY27 (open at the end of Jun 30, 2026): Open all along, Done in FY27, Started in FY26 (Reopened was Complete then).
-    expect(d.summary.map((r) => [r.label, r.carriedIn, r.openAtEnd, r.completed])).toEqual([
+    expect(grid(d)).toEqual([
       ["Cath", 2, 1, 1],
-      ["Echo", 2, 1, 0],
       ["EP", 1, 0, 0],
-      ["IR", 0, 1, 0],
-      ["Total", 5, 3, 1],
+      ["Echo", 2, 0, 1],
+      ["IR", 0, 0, 1],
+      ["Total", 5, 1, 3],
     ]);
+    expect(bandLabels(layout)[0]).toEqual(["PERIOD", d.periodText]);
     expect([d.carriedInNote, d.openAtEndNote]).toEqual([null, null]);
-    expect(layout.summaryNotes).toEqual([]);
-    expect(d.sections[1].heading).toBe("Carried into FY27");
+    expect(layout.summaryNotes).toEqual([YearEndCopy.GRID_EXPLAINER]);
+    expect(d.sections.map((s) => s.heading)).toEqual(["Completed in FY26", "Carried into FY27"]);
     expect(d.sections[1].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status, r.statusUnknown ?? false]))).toEqual([
-      ["Done in FY27", "OnTrack", false],
       ["Open all along", "OnTrack", false],
+      ["Done in FY27", "OnTrack", false],
       ["Started in FY26", "AtRisk", false],
     ]);
-    // Header totals: Period, then the grid's three columns in the grid's order. No Cancelled total.
-    expect(bandLabels(layout)).toEqual([["PERIOD", d.periodText], ["CARRIED IN FROM FY25", "5"], ["CARRIED INTO FY27", "3"], ["COMPLETED FY26", "1"]]);
-    expect(d.sections.map((s) => s.heading)).toEqual(["Completed in FY26", "Carried into FY27"]);
-    expect(JSON.stringify(layout)).not.toMatch(/cancel/i);
-    // A closed year is a snapshot: the same figures whenever it's run, and its carry-out is FY27's carry-in.
+    expect(JSON.stringify(layout)).not.toMatch(/cancel|FY28/i);
+    // A closed year is a snapshot: the same figures whenever it's run.
     expect(build(list, history, "FY26", "2027-03-01").totals).toMatchObject({ carriedIn: 5, openAtEnd: 3, completed: 1 });
-    expect(build(list, history, "FY27").totals.carriedIn).toBe(3);
   });
 
-  it("the current FY (FY27): Carried in from FY26 | Still in progress | Completed FY27, and no FY28 text anywhere", () => {
+  it("current year (FY27, a Mid-Year Report): Carried in from FY26 | Completed FY27 | Still in progress, header aligned, no FY28 text", () => {
     const { list, history } = world();
     const d = build(list, history, "FY27");
-    const layout = YearEndLayout.layout(d, AT, "Nick Leary");
-    expect(layout.summaryHeads).toEqual(["Carried in from FY26", "Still in progress", "Completed FY27"]);
+    const layout = aligned(d);
+    expect(d.title).toBe("FY27 Mid-Year Report");
+    expect(layout.footerLeft).toBe("Generated Sep 27, 2026 by Nick Leary \u00b7 FY27 Mid-Year Report");
+    expect(layout.summaryHeads).toEqual(["Carried in from FY26", "Completed FY27", "Still in progress"]);
     // Still in progress = open today: Open all along (OnHold), Started in FY26, Reopened, Started in FY27.
-    expect(d.summary.at(-1)).toEqual({ area: "total", label: "Total", muted: false, carriedIn: 3, openAtEnd: 4, completed: 1 });
-    expect(d.sections[1].heading).toBe("Still in progress");
-    expect(bandLabels(layout).slice(1)).toEqual([["CARRIED IN FROM FY26", "3"], ["STILL IN PROGRESS", "4"], ["COMPLETED FY27", "1"]]);
+    expect(grid(d)).toEqual([
+      ["Cath", 1, 0, 1],
+      ["Echo", 1, 1, 1],
+      ["IR", 1, 0, 2],
+      ["Total", 3, 1, 4],
+    ]);
     expect(d.sections.map((s) => s.heading)).toEqual(["Completed in FY27", "Still in progress"]);
-    expect(JSON.stringify(layout)).not.toMatch(/cancel/i);
-    expect(layout.summaryNotes).toEqual([]);
-    expect(JSON.stringify(layout)).not.toContain("FY28");
-    expect(JSON.stringify(d)).not.toMatch(/"(heading|emptyText|openAtEndLabel|title)":"[^"]*FY28/);
-    const empty = build([p({ name: "Done", status: "Complete", completedOn: "2026-08-01" })], [], "FY27");
-    expect(empty.sections[1].emptyText).toBe("No projects still in progress so far.");
+    expect(layout.summaryNotes).toEqual([YearEndCopy.GRID_EXPLAINER]);
+    expect(JSON.stringify(layout)).not.toMatch(/cancel|FY28/i);
+    expect(build([p({ name: "Done", status: "Complete", completedOn: "2026-08-01" })], [], "FY27").sections[1].emptyText).toBe("No projects are still in progress.");
     expect(build([], [], "FY27").sections[0].emptyText).toBe("No projects completed in FY27 so far.");
+    expect(build([], [], "FY25").sections[1].emptyText).toBe("No projects carried into FY26.");
   });
 
-  it("a boundary before the first tracked day is a dash with 'Not tracked before …', never a false 0", () => {
+  it("FY N 'Carried into FY N+1' equals FY N+1 'Carried in from FY N', in total and per department (one shared computation)", () => {
+    const { list, history } = world();
+    // Extra cases around the Jul 1 boundary: closed on Jun 30 (not carried), closed on Jul 1 (carried), cancelled
+    // on Jul 2 (carried: open at the end of Jun 30), created on Jul 1 (not carried), unknown status then.
+    const edge = [
+      p({ name: "Done Jun 30", serviceArea: D.EP, status: "Complete", completedOn: "2026-06-30" }),
+      p({ name: "Done Jul 1", serviceArea: D.EP, status: "Complete", completedOn: "2026-07-01" }),
+      p({ name: "Cancelled Jul 2", serviceArea: D.INU, status: "Cancelled" }),
+      p({ name: "Created Jul 1", serviceArea: D.CVSS, status: "OnTrack", createdAt: new Date("2026-07-01T14:00:00Z") }),
+      p({ name: "Unassigned open", serviceArea: null, status: "OnTrack" }),
+    ];
+    const h = [...history, status(edge[2].id, "2026-07-02T15:00:00Z", "OnTrack", "Cancelled")];
+    const all = [...list, ...edge];
+    for (const [fy, next] of [["FY26", "FY27"], ["FY25", "FY26"]] as const) {
+      const a = build(all, h, fy);
+      const b = build(all, h, next);
+      const out = Object.fromEntries(a.summary.map((r) => [r.label, r.openAtEnd]));
+      const inn = Object.fromEntries(b.summary.map((r) => [r.label, r.carriedIn]));
+      for (const label of new Set([...Object.keys(out), ...Object.keys(inn)])) expect([label, out[label] ?? 0]).toEqual([label, inn[label] ?? 0]);
+      expect(a.totals.openAtEnd).toBe(b.totals.carriedIn);
+    }
+    expect(build(all, h, "FY26").summary.map((r) => [r.label, r.openAtEnd])).toEqual([
+      ["Cath", 1],
+      ["EP", 1],
+      ["Echo", 1],
+      ["INU", 1],
+      ["IR", 1],
+      ["Unassigned", 1],
+      ["Total", 6],
+    ]);
+  });
+
+  it("department order is the weekly report's (the line's department list): Cath, EP, Echo, CVSS, INU, CardioNeuro, IR, Unassigned last; empty departments are left out, as in the weekly", () => {
+    expect(CVPSL.map((x) => x.shortName)).toEqual(["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
+    const keys = ["IR", "CardioNeuro", "INU", "CVSS", "Echo", "EP", "Cath"];
+    const list = [p({ name: "No dept", serviceArea: null, status: "OnTrack" }), ...keys.flatMap((k) => [p({ name: `${k} done`, serviceArea: D[k], status: "Complete", completedOn: "2026-08-01" }), p({ name: `${k} open`, serviceArea: D[k], status: "OnTrack" })])];
+    const d = build(list, [], "FY27");
+    const order = ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"];
+    expect(d.summary.map((r) => r.label)).toEqual([...order, "Unassigned", "Total"]);
+    expect(d.sections[0].groups.map((g) => g.label)).toEqual(order);
+    expect(d.sections[1].groups.map((g) => g.label)).toEqual([...order, "Unassigned"]);
+    const few = build([p({ name: "IR only", serviceArea: D.IR, status: "OnTrack" }), p({ name: "Cath only", serviceArea: D.Cath, status: "Complete", completedOn: "2026-08-01" })], [], "FY27");
+    expect(few.summary.map((r) => r.label)).toEqual(["Cath", "IR", "Total"]);
+  });
+
+  it("a boundary before tracking began is a dash (header and grid) with 'Tracking started …' under the Total row, never a false 0", () => {
     // Production today: every project was created (imported) on Sep 26, 2026, and history starts then.
     const imported = new Date("2026-09-26T14:00:00Z");
-    const list = [p({ name: "Imported open", serviceArea: "Cath", status: "OnTrack", createdAt: imported }), p({ name: "Imported done", serviceArea: "Echo", status: "Complete", completedOn: "2026-08-01", createdAt: imported })];
+    const list = [p({ name: "Imported open", serviceArea: D.Cath, status: "OnTrack", createdAt: imported }), p({ name: "Imported done", serviceArea: D.Echo, status: "Complete", completedOn: "2026-08-01", createdAt: imported })];
     const fy27 = build(list, [], "FY27");
-    expect(fy27.summary.at(-1)).toMatchObject({ carriedIn: null, openAtEnd: 1, completed: 1 });
-    expect(fy27.carriedInNote).toBe("Carried in from FY26: Not tracked before Sep 26, 2026.");
+    expect(fy27.summary.at(-1)).toMatchObject({ carriedIn: null, completed: 1, openAtEnd: 1 });
+    expect(fy27.carriedInNote).toBe("Tracking started Sep 26, 2026, so Carried in from FY26 isn't available.");
     expect(fy27.openAtEndNote).toBeNull();
+    expect(bandLabels(aligned(fy27)).slice(1)).toEqual([["CARRIED IN FROM FY26", YearEndCopy.EMPTY_VALUE], ["COMPLETED FY27", "1"], ["STILL IN PROGRESS", "1"]]);
     const fy26 = build(list, [], "FY26");
-    expect(fy26.summary.at(-1)).toMatchObject({ carriedIn: null, openAtEnd: null });
-    expect(fy26.openAtEndNote).toBe("Carried into FY27: Not tracked before Sep 26, 2026.");
-    expect(fy26.sections[1].emptyText).toBe("Not tracked before Sep 26, 2026.");
-    const layout = YearEndLayout.layout(fy26, AT, "Nick Leary");
-    expect(layout.summaryNotes).toHaveLength(2);
-    // Header totals get the same dash (notes sit under the grid).
-    expect(bandLabels(layout).slice(1)).toEqual([["CARRIED IN FROM FY25", YearEndCopy.EMPTY_VALUE], ["CARRIED INTO FY27", YearEndCopy.EMPTY_VALUE], ["COMPLETED FY26", "0"]]);
-    expect(bandLabels(YearEndLayout.layout(fy27, AT, "Nick Leary")).slice(1)).toEqual([["CARRIED IN FROM FY26", YearEndCopy.EMPTY_VALUE], ["STILL IN PROGRESS", "1"], ["COMPLETED FY27", "1"]]);
+    expect(fy26.summary.at(-1)).toMatchObject({ carriedIn: null, completed: 0, openAtEnd: null });
+    expect(fy26.openAtEndNote).toBe("Tracking started Sep 26, 2026, so Carried into FY27 isn't available.");
+    expect(fy26.sections[1].emptyText).toBe("Tracking started Sep 26, 2026, so this list isn't available.");
+    const layout = aligned(fy26);
+    expect(layout.summaryNotes).toEqual([
+      "Tracking started Sep 26, 2026, so Carried in from FY25 isn't available.",
+      "Tracking started Sep 26, 2026, so Carried into FY27 isn't available.",
+      YearEndCopy.GRID_EXPLAINER,
+    ]);
     const summary = layout.pages[0].blocks[0];
-    expect(summary.height).toBe(YearEndLayout.SUMMARY_LABEL_H + YearEndLayout.GRID.headH + layout.summary.length * YearEndLayout.GRID.rowH + 3 + 2 * YearEndLayout.SUMMARY_NOTE_H);
+    expect(summary.height).toBe(YearEndLayout.SUMMARY_LABEL_H + YearEndLayout.GRID.headH + layout.summary.length * YearEndLayout.GRID.rowH + 3 + 3 * YearEndLayout.SUMMARY_NOTE_H);
+    // FY26's Carried in from FY25 (boundary Jun 30, 2025) is a dash whenever tracking started after it.
+    const tracked2025 = build([p({ name: "Old", serviceArea: D.Cath, status: "OnTrack", createdAt: new Date("2025-08-01T12:00:00Z") })], [], "FY26");
+    expect(tracked2025.summary.at(-1)!.carriedIn).toBeNull();
+    expect(tracked2025.carriedInNote).toBe("Tracking started Aug 1, 2025, so Carried in from FY25 isn't available.");
   });
 
-  it("always 3 columns, no Cancelled column; plain labels, no em dashes; completed matches 'Completed FY27 to date' (no hidden, no reopened)", () => {
+  it("current-year categories: every one of the 7 combinations shows exactly the selected totals, in order, in the header and the grid", () => {
     const { list, history } = world();
-    const hidden = p({ name: "Hidden", serviceArea: "Cath", status: "Complete", completedOn: "2026-08-20", hiddenFromReport: true });
+    const all = build(list, history, "FY27");
+    const label = { carriedIn: "Carried in from FY26", completed: "Completed FY27", inProgress: "Still in progress" } as const;
+    const key = { carriedIn: "carriedIn", completed: "completed", inProgress: "openAtEnd" } as const;
+    const combos: YearEndCategory[][] = [["carriedIn"], ["completed"], ["inProgress"], ["carriedIn", "completed"], ["carriedIn", "inProgress"], ["completed", "inProgress"], ["carriedIn", "completed", "inProgress"]];
+    for (const c of combos) {
+      const d = build(list, history, "FY27", undefined, [...c].reverse());
+      const l = aligned(d);
+      expect(l.summaryHeads).toEqual(c.map((x) => label[x]));
+      expect(bandLabels(l).length).toBe(1 + c.length);
+      // Per-department values are the same numbers as the all-three report, only for the selected columns;
+      // the Total row sums each selected column (no cross-column sum: the categories overlap).
+      // Rows: departments with a project in a shown column.
+      expect(d.summary.map((r) => [r.label, ...c.map((x) => r[key[x]])])).toEqual(all.summary.filter((r) => r.area === "total" || c.some((x) => (r[key[x]] ?? 0) > 0)).map((r) => [r.label, ...c.map((x) => r[key[x]])]));
+      expect(l.summary.at(-1)).toMatchObject({ label: "Total" });
+      // Sections, notes and the dash note don't change.
+      expect(d.sections).toEqual(all.sections);
+      expect(l.summaryNotes).toEqual([YearEndCopy.GRID_EXPLAINER]);
+    }
+    expect(grid(build(list, history, "FY27", undefined, ["completed"]))).toEqual([["Echo", 1], ["Total", 1]]);
+    expect(grid(build(list, history, "FY27", undefined, ["carriedIn", "inProgress"]))).toEqual([["Cath", 1, 1], ["Echo", 1, 1], ["IR", 1, 2], ["Total", 3, 4]]);
+    // Default (missing) = all three; a closed year ignores the option.
+    expect(all.columns).toEqual(["carriedIn", "completed", "openAtEnd"]);
+    expect(build(list, history, "FY26", undefined, ["completed"]).columns).toEqual(["carriedIn", "completed", "openAtEnd"]);
+    // A dash note appears only when its column is shown.
+    const imported = [p({ name: "Imported", serviceArea: D.Cath, status: "OnTrack", createdAt: new Date("2026-09-26T14:00:00Z") })];
+    expect(YearEndLayout.layout(build(imported, [], "FY27", undefined, ["completed"]), AT, "N").summaryNotes).toEqual([YearEndCopy.GRID_EXPLAINER]);
+    expect(YearEndLayout.layout(build(imported, [], "FY27", undefined, ["carriedIn"]), AT, "N").summaryNotes).toHaveLength(2);
+  });
+
+  it("the category option is validated: missing = all three; empty, unknown, repeated or non-list values are refused", () => {
+    expect(YearEndCategories.parse(undefined)).toEqual(["carriedIn", "completed", "inProgress"]);
+    expect(YearEndCategories.parse(null)).toEqual(["carriedIn", "completed", "inProgress"]);
+    expect(YearEndCategories.parse(["inProgress", "carriedIn"])).toEqual(["carriedIn", "inProgress"]);
+    for (const bad of [[], ["cancelled"], ["completed", "completed"], "completed", 3, [1], ["carriedIn", "completed", "inProgress", "carriedIn"]]) expect(YearEndCategories.parse(bad)).toBeNull();
+    expect([YearEndCopy.CATEGORIES_LABEL, ...YearEndCategories.ALL.map((c) => YearEndCopy.categoryLabel(c, "FY27")), YearEndCopy.CATEGORIES_NONE]).toEqual(["Show in totals", "Carried in from FY26", "Completed FY27", "Still in progress", "Pick at least one."]);
+  });
+
+  it("no Cancelled column; plain labels, no em dashes; completed matches 'Completed FY27 to date' (no hidden, no reopened)", () => {
+    const { list, history } = world();
+    const hidden = p({ name: "Hidden", serviceArea: D.Cath, status: "Complete", completedOn: "2026-08-20", hiddenFromReport: true });
     const d = build([...list, hidden], history, "FY27");
     expect(Object.keys(d.summary[0]).sort()).toEqual(["area", "carriedIn", "completed", "label", "muted", "openAtEnd"]);
     expect(d.sections[0].groups.flatMap((g) => g.rows.map((r) => r.name))).toEqual(["Done in FY27"]);
     for (const fy of ["FY26", "FY27"]) {
       const l = YearEndLayout.layout(build(list, history, fy), AT, "Nick Leary");
       expect(l.summaryHeads).toHaveLength(3);
-      for (const t of l.summaryHeads) expect(t).not.toMatch(/\u2014|Cancelled/);
+      for (const t of [...l.summaryHeads, ...l.summaryNotes]) expect(t).not.toMatch(/\u2014|Cancelled/);
     }
-    expect(YearEndCopy.notTrackedBefore("2026-09-26")).toBe("Not tracked before Sep 26, 2026");
     expect(YearEndReportData.previousLabel("FY27")).toBe("FY26");
     expect(YearEndReportData.previousLabel("FY00")).toBe("FY99");
     expect(YearEndReportData.dayBefore("2026-07-01")).toBe("2026-06-30");
   });
+
+  it("the year-end export is download-only: never a handoff.json, Drive upload, artifact or email (the Wednesday email only reads weekly files)", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    fake.state.projects.push({ ...p({ name: "Done", status: "Complete", completedOn: "2026-08-01" }), serviceLineId: ServiceLine.DEFAULT_ID });
+    const fetchSpy = vi.spyOn(globalThis, "fetch");
+    for (const fy of ["FY27", "FY26"]) await YearEndReportService.generate({ ...Factory.ADMIN, name: "Nick Leary" }, fy, ServiceLine.defaultScope(), db, AT);
+    // No network call at all (the PDF engine loads its layout module from an inline data: URL).
+    expect(fetchSpy.mock.calls.map((c) => String(c[0])).filter((u) => !u.startsWith("data:"))).toEqual([]);
+    fetchSpy.mockRestore();
+    expect(fake.writes.map((w) => w.model)).toEqual(["yearEndReport", "yearEndReport"]);
+    expect(fake.state.artifacts).toHaveLength(0);
+    expect(fake.state.yearEndReports.map((r) => r.fileName)).toEqual(["mid-year-fy27-2026-09-27.pdf", "year-end-fy26-2026-09-27.pdf"]);
+    const { readFileSync } = await import("node:fs");
+    const files = ["src/lib/services/YearEndReportService.ts", "src/lib/report/YearEndReportData.ts", "src/lib/report/YearEndRenderer.ts", "src/lib/report/pdf/YearEndLayout.ts", "src/lib/report/pdf/YearEndDocument.tsx", "src/app/reports/year-end/[id]/route.ts"];
+    // No Drive, handoff, delivery, archive or mail code is imported or called (comments aside).
+    for (const f of files) {
+      const code = readFileSync(f, "utf8").replace(/\/\*[\s\S]*?\*\/|\/\/.*$/gm, "");
+      expect([f, code.match(/GoogleDriveClient|HandoffBuilder|handoff\.json|ReportDeliveryService|ReportArchiveService|reportArtifact|sendMail|Mailer/g)]).toEqual([f, null]);
+    }
+    const action = readFileSync("src/app/actions/reports.ts", "utf8");
+    const gen = action.slice(action.indexOf("export async function generateYearEndReport"));
+    expect(gen.slice(0, gen.indexOf("\n}\n"))).not.toMatch(/Drive|Handoff|handoff|Delivery|Archive/);
+  }, 30000);
 });
 
 describe("table: wider Final update that wraps in full, and completed rows tinted like the weekly report", () => {

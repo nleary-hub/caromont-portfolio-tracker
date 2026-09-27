@@ -75,6 +75,8 @@ export interface YearEndData {
   carriedInNote: string | null;
   /** Why the middle column is blank (its boundary is before tracking began), or null when it has numbers. */
   openAtEndNote: string | null;
+  /** The totals the header and grid show, in order (YearEndCategories.columns). */
+  columns: SummaryKey[];
   /** Middle column, band detail and Carried section heading: "Carried into FY27", or "Still in progress" for the current year. */
   openAtEndLabel: string;
   sections: YearEndSection[];
@@ -111,9 +113,9 @@ export class YearEndCopy {
   static readonly OPEN_UNKNOWN = "Open";
   static readonly PERIOD = "Period";
 
-  /** "FY27 Year-End Report" */
-  static title(fy: string): string {
-    return `${fy} Year-End Report`;
+  /** "FY26 Year-End Report", or "FY27 Mid-Year Report" for the current (unfinished) fiscal year. */
+  static title(fy: string, toDate = false): string {
+    return `${fy} ${toDate ? "Mid-Year" : "Year-End"} Report`;
   }
 
   /** "Carried into FY28" (header total, grid column and section heading). */
@@ -139,15 +141,25 @@ export class YearEndCopy {
     return toDate ? YearEndCopy.STILL_IN_PROGRESS : YearEndCopy.carriedInto(next);
   }
 
-  /** Blank carried cell when the boundary is before the app has data: "Not tracked before Sep 26, 2026". */
-  static notTrackedBefore(day: string): string {
-    return `Not tracked before ${ReportFormat.mediumDate(day)}`;
+  /** Note under the grid for a dashed column: "Tracking started Sep 26, 2026, so Carried in from FY26 isn't available." */
+  static notTracked(trackedSince: string, column: string): string {
+    return `Tracking started ${ReportFormat.mediumDate(trackedSince)}, so ${column} isn't available.`;
   }
 
-  /** Note under the grid for a blank column: "Carried in from FY26: Not tracked before Sep 26, 2026." */
-  static gridNote(column: string, reason: string): string {
-    return `${column}: ${reason}.`;
+  /** Empty Carried section when its boundary is before tracking began. */
+  static carriedNotTracked(trackedSince: string): string {
+    return `Tracking started ${ReportFormat.mediumDate(trackedSince)}, so this list isn't available.`;
   }
+
+  /** Always under the grid: what the columns count. */
+  /** Generate dialog: the current-year category checkboxes. */
+  static readonly CATEGORIES_LABEL = "Show in totals";
+  static readonly CATEGORIES_NONE = "Pick at least one.";
+  static categoryLabel(c: YearEndCategory, fy: string): string {
+    return c === "carriedIn" ? YearEndCopy.carriedInFrom(YearEndReportData.previousLabel(fy)) : c === "completed" ? YearEndCopy.completedFy(fy) : YearEndCopy.STILL_IN_PROGRESS;
+  }
+
+  static readonly GRID_EXPLAINER = "Carried in includes projects later closed without being completed. The other columns include projects started this year.";
 
   static completedIn(fy: string): string {
     return `Completed in ${fy}`;
@@ -160,7 +172,7 @@ export class YearEndCopy {
 
 
   static emptyCarried(next: string, toDate = false): string {
-    return toDate ? "No projects still in progress so far." : `No active projects carry into ${next}.`;
+    return toDate ? "No projects are still in progress." : `No projects carried into ${next}.`;
   }
 
   /** "Jul 1, 2026 – Jun 30, 2027" or "Jul 1, 2026 – Sep 27, 2026 (to date)" (en dash, as in the spec). */
@@ -168,14 +180,14 @@ export class YearEndCopy {
     return `${ReportFormat.mediumDate(start)} \u2013 ${ReportFormat.mediumDate(end)}${toDate ? " (to date)" : ""}`;
   }
 
-  /** Reports page list row: "FY27 Year-End Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary". */
-  static listRow(fy: string, generatedAt: Date, by: string): string {
-    return `${YearEndCopy.title(fy)}, generated ${ReportFormat.dateTimeEt(generatedAt)} by ${by}`;
+  /** Reports page list row: "FY26 Year-End Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary" (Mid-Year when to date). */
+  static listRow(fy: string, generatedAt: Date, by: string, toDate = false): string {
+    return `${YearEndCopy.title(fy, toDate)}, generated ${ReportFormat.dateTimeEt(generatedAt)} by ${by}`;
   }
 
-  /** PDF footer: "Generated Sep 27, 2026 by Nick Leary · FY27 Year-End Report" (date only). */
-  static footer(fy: string, generatedOn: string, by: string): string {
-    return `Generated ${ReportFormat.mediumDate(generatedOn)} by ${by} \u00b7 ${YearEndCopy.title(fy)}`;
+  /** PDF footer: "Generated Sep 27, 2026 by Nick Leary · FY26 Year-End Report" (date only; Mid-Year when to date). */
+  static footer(fy: string, generatedOn: string, by: string, toDate = false): string {
+    return `Generated ${ReportFormat.mediumDate(generatedOn)} by ${by} \u00b7 ${YearEndCopy.title(fy, toDate)}`;
   }
 
   /** Dialog option: "FY27 (current)" or "FY26". */
@@ -183,14 +195,54 @@ export class YearEndCopy {
     return fy === current ? `${fy} (current)` : fy;
   }
 
-  /** "fy27-year-end-report-2026-09-27.pdf", or "onc-fy27-year-end-report-2026-09-27.pdf" for another line. */
-  static fileName(fy: string, generatedOn: string, lineShort: string | null): string {
+  /**
+   * "year-end-fy26-2026-09-27.pdf", "mid-year-fy27-2026-09-27.pdf" for the current (to date) year, or
+   * "onc-year-end-fy26-2026-09-27.pdf" for another line. Download only (never written to Drive).
+   */
+  static fileName(fy: string, generatedOn: string, lineShort: string | null, toDate = false): string {
     const prefix = lineShort ? `${lineShort.toLowerCase().replace(/[^a-z0-9]+/g, "")}-` : "";
-    return `${prefix}${fy.toLowerCase()}-year-end-report-${generatedOn}.pdf`;
+    return `${prefix}${toDate ? "mid-year" : "year-end"}-${fy.toLowerCase()}-${generatedOn}.pdf`;
   }
 }
 
 type YearEndProject = ProjectRecord & Pick<CompletableProject, "createdAt"> & { accomplishment?: string | null };
+
+/** A summary total: a grid column and a header total. */
+export type SummaryKey = "carriedIn" | "completed" | "openAtEnd";
+
+/** Current-year run option: which totals the header and grid show. */
+export type YearEndCategory = "carriedIn" | "completed" | "inProgress";
+
+/**
+ * The current-year category option (Generate dialog checkboxes). Any non-empty combination; the order is fixed
+ * (Carried in, Completed, Still in progress). Missing means all three, so older callers keep working. Not saved.
+ */
+export class YearEndCategories {
+  static readonly ALL: readonly YearEndCategory[] = ["carriedIn", "completed", "inProgress"];
+
+  /** Validated selection in the fixed order; undefined/null = all three; anything else invalid or empty = null. */
+  static parse(value: unknown): YearEndCategory[] | null {
+    if (value === undefined || value === null) return [...YearEndCategories.ALL];
+    if (!Array.isArray(value) || value.length === 0 || value.length > 3) return null;
+    if (!value.every((v) => typeof v === "string" && (YearEndCategories.ALL as readonly string[]).includes(v))) return null;
+    if (new Set(value).size !== value.length) return null;
+    return YearEndCategories.ALL.filter((c) => value.includes(c));
+  }
+
+  /**
+   * The totals shown, in order: Carried in, Completed, then Carried into (closed year) or Still in progress
+   * (current year). Only a current-year report takes a selection; a closed year always shows all three.
+   */
+  static columns(toDate: boolean, categories: readonly YearEndCategory[] = YearEndCategories.ALL): SummaryKey[] {
+    const all: SummaryKey[] = ["carriedIn", "completed", "openAtEnd"];
+    if (!toDate) return all;
+    const key = (c: YearEndCategory): SummaryKey => (c === "inProgress" ? "openAtEnd" : c);
+    return all.filter((k) => categories.some((c) => key(c) === k));
+  }
+}
+
+/** A project open at a boundary day, with its status then (unknown: not on record, see YearEndReportData.openOn). */
+type OpenOn = { p: YearEndProject; status: ProjectStatus; unknown?: boolean };
 
 /**
  * Builds the year-end report for one fiscal year of one service line. Report candidates only (not deleted, not
@@ -225,6 +277,8 @@ export class YearEndReportData {
     today: string;
     departments: DepartmentList;
     serviceLineName: string | null;
+    /** Current year only: which totals to show (default all three). */
+    categories?: readonly YearEndCategory[];
   }): YearEndData {
     const fy = FiscalYear.fromLabel(input.fiscalYear);
     if (!fy) throw new Error(`Not a fiscal year: ${input.fiscalYear}`);
@@ -242,26 +296,19 @@ export class YearEndReportData {
     const outTracked = trackedSince !== null && fy.end >= trackedSince;
 
     const completed: { p: YearEndProject; date: string }[] = [];
-    const carried: { p: YearEndProject; status: ProjectStatus; unknown?: boolean }[] = [];
-    const carriedIn: YearEndProject[] = [];
     for (const p of candidates) {
       // Same membership as the dashboard FY sections (ClosedProjects.closedIn): one fiscal year per project.
       const closed = ClosedProjects.closedIn(p, input.history, input.today);
-      if (inTracked && YearEndReportData.openAt(p, inDay, input.history)) carriedIn.push(p);
-      if (closed?.fiscalYear === fy.label) {
-        if (p.status === "Complete") completed.push({ p, date: closed.closedOn });
-        continue;
-      }
-      if (toDate) {
-        if (!ClosedProjects.isClosed(p.status)) carried.push({ p, status: p.status });
-        continue;
-      }
-      if (!outTracked || !YearEndReportData.openAt(p, fy.end, input.history)) continue;
-      // Open by its later close date with no earlier status on record (e.g. a completion date entered by hand):
-      // the status it had then is unknown, and the row says so instead of guessing.
-      const then = ClosedProjects.statusOn(p, fy.end, input.history)!;
-      carried.push({ p, status: then, unknown: ClosedProjects.isClosed(then) });
+      if (closed?.fiscalYear === fy.label && p.status === "Complete") completed.push({ p, date: closed.closedOn });
     }
+    // Carried in (FY N) and Carried into (FY N-1's report) are one computation on the same day, Jun 30 of N-1, so
+    // FY N-1's Carried into always equals FY N's Carried in, in total and per department.
+    const carriedIn = inTracked ? YearEndReportData.openOn(candidates, inDay, input.history) : null;
+    const carried: OpenOn[] = toDate
+      ? candidates.filter((p) => !ClosedProjects.isClosed(p.status)).map((p) => ({ p, status: p.status }))
+      : outTracked
+        ? YearEndReportData.openOn(candidates, fy.end, input.history)
+        : [];
 
     const row = (p: YearEndProject, date: string | null, status: ProjectStatus): YearEndRow => ({
       projectId: p.id,
@@ -278,16 +325,17 @@ export class YearEndReportData {
       YearEndReportData.section(
         "carried",
         YearEndCopy.openAtEnd(next, toDate),
-        !toDate && !outTracked && trackedSince ? `${YearEndCopy.notTrackedBefore(trackedSince)}.` : YearEndCopy.emptyCarried(next, toDate),
+        !toDate && !outTracked && trackedSince ? YearEndCopy.carriedNotTracked(trackedSince) : YearEndCopy.emptyCarried(next, toDate),
         [...carried].sort((a, b) => a.p.name.localeCompare(b.p.name)).map((c) => ({ area: c.p.serviceArea, row: { ...row(c.p, null, c.status), ...(c.unknown ? { statusUnknown: true } : {}) } })),
         input.departments,
       ),
     ];
-    // The current year's middle column is today's open projects: always known.
-    const outNote = toDate || outTracked ? null : YearEndCopy.notTrackedBefore(trackedSince ?? input.today);
-    const inNote = inTracked ? null : YearEndCopy.notTrackedBefore(trackedSince ?? input.today);
+    // Still in progress (current year) is today's open projects: always known.
+    const since = trackedSince ?? input.today;
+    const outNote = toDate || outTracked ? null : YearEndCopy.notTracked(since, YearEndCopy.carriedInto(next));
+    const inNote = inTracked ? null : YearEndCopy.notTracked(since, YearEndCopy.carriedInFrom(prev));
     const carriedOutRows = outNote ? null : carried;
-    const carriedInRows = inNote ? null : carriedIn;
+    const carriedInRows = carriedIn;
     const totals = {
       completed: completed.length,
       carried: carried.length,
@@ -301,19 +349,21 @@ export class YearEndReportData {
       periodEnd: through,
       toDate,
       periodText: YearEndCopy.period(fy.start, through, toDate),
-      title: YearEndCopy.title(fy.label),
+      title: YearEndCopy.title(fy.label, toDate),
       serviceLineName: input.serviceLineName,
       previousFiscalYear: prev,
+      // Departments with a project in a shown column only (a current-year run can leave columns out).
       summary: YearEndReportData.summary(
         input.departments,
         completed.map((c) => c.p.serviceArea),
-        carriedInRows?.map((p) => p.serviceArea) ?? null,
+        carriedInRows?.map((c) => c.p.serviceArea) ?? null,
         carriedOutRows?.map((c) => c.p.serviceArea) ?? null,
         totals,
-      ),
-      carriedInNote: inNote ? YearEndCopy.gridNote(YearEndCopy.carriedInFrom(prev), inNote) : null,
-      openAtEndNote: outNote ? YearEndCopy.gridNote(YearEndCopy.openAtEnd(next, toDate), outNote) : null,
+      ).filter((r) => r.area === "total" || YearEndCategories.columns(toDate, input.categories).some((k) => (r[k] ?? 0) > 0)),
+      carriedInNote: inNote,
+      openAtEndNote: outNote,
       openAtEndLabel: YearEndCopy.openAtEnd(next, toDate),
+      columns: YearEndCategories.columns(toDate, input.categories),
       sections,
       totals,
     };
@@ -376,6 +426,21 @@ export class YearEndReportData {
     if (closedOn && closedOn <= day) return false;
     const known = YearEndReportData.statusChangedBy(p.id, day, history);
     return !(known && ClosedProjects.isClosed(known));
+  }
+
+  /**
+   * The one "carried" computation: report candidates open at the end of `day` (openAt), with the status each had
+   * then. A project open by its later close date with no earlier status on record (a completion date entered by
+   * hand) has an unknown status then, and its row says so instead of guessing.
+   */
+  static openOn(candidates: readonly YearEndProject[], day: string, history: readonly HistoryEntryRecord[]): OpenOn[] {
+    const out: OpenOn[] = [];
+    for (const p of candidates) {
+      if (!YearEndReportData.openAt(p, day, history)) continue;
+      const then = ClosedProjects.statusOn(p, day, history)!;
+      out.push(ClosedProjects.isClosed(then) ? { p, status: then, unknown: true } : { p, status: then });
+    }
+    return out;
   }
 
   /** The last status recorded in ProjectHistory on or before the end of `day`, or null when none was. */

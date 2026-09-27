@@ -153,7 +153,7 @@ describe("Year-end report data", () => {
     const { list, history } = projects();
     const d = Fy.data(list, history, "FY27");
     expect(d.toDate).toBe(true);
-    expect(d.title).toBe("FY27 Year-End Report");
+    expect(d.title).toBe("FY27 Mid-Year Report");
     expect(d.periodText).toBe("Jul 1, 2026 \u2013 Sep 27, 2026 (to date)");
     // No Cancelled section: the report is Completed, then Still in progress.
     expect(d.sections.map((s) => [s.kind, s.heading, s.count])).toEqual([["completed", "Completed in FY27", 1], ["carried", "Still in progress", 1]]);
@@ -186,7 +186,7 @@ describe("Year-end report data", () => {
 
   it("empty past year copy, and the dialog years", () => {
     const d = Fy.data([], [], "FY25");
-    expect(d.sections.map((s) => s.emptyText)).toEqual(["No projects were completed in FY25.", "No active projects carry into FY26."]);
+    expect(d.sections.map((s) => s.emptyText)).toEqual(["No projects were completed in FY25.", "No projects carried into FY26."]);
     const { list, history } = projects();
     expect(YearEndReportData.years(list, history, TODAY)).toEqual(["FY27", "FY26", "FY25"]);
   });
@@ -198,8 +198,11 @@ describe("Year-end report data", () => {
     expect(YearEndCopy.GENERATING).toBe("Generating\u2026");
     expect(YearEndCopy.ERROR).toBe("Couldn't generate the report. Try again.");
     expect(YearEndCopy.listRow("FY27", new Date("2026-09-27T04:34:00Z"), "Nick Leary")).toBe("FY27 Year-End Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary");
-    expect(YearEndCopy.fileName("FY27", "2026-09-27", null)).toBe("fy27-year-end-report-2026-09-27.pdf");
-    expect(YearEndCopy.fileName("FY27", "2026-09-27", "ONC")).toBe("onc-fy27-year-end-report-2026-09-27.pdf");
+    expect(YearEndCopy.fileName("FY26", "2026-09-27", null)).toBe("year-end-fy26-2026-09-27.pdf");
+    expect(YearEndCopy.fileName("FY26", "2026-09-27", "ONC")).toBe("onc-year-end-fy26-2026-09-27.pdf");
+    expect(YearEndCopy.fileName("FY27", "2026-09-27", null, true)).toBe("mid-year-fy27-2026-09-27.pdf");
+    expect(YearEndCopy.fileName("FY27", "2026-09-27", "ONC", true)).toBe("onc-mid-year-fy27-2026-09-27.pdf");
+    expect(YearEndCopy.listRow("FY27", new Date("2026-09-27T04:34:00Z"), "Nick Leary", true)).toBe("FY27 Mid-Year Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary");
     const all = Object.values(YearEndCopy).filter((v) => typeof v === "string").join(" ");
     expect(all).not.toContain("\u2014");
   });
@@ -209,7 +212,7 @@ describe("Year-end report data", () => {
     const d = Fy.data(many, [], "FY27");
     const layout = YearEndLayout.layout(d, new Date("2026-09-27T16:00:00Z"), "Nick Leary");
     expect(layout.pages.length).toBeGreaterThan(1);
-    expect(layout.footerLeft).toBe("Generated Sep 27, 2026 by Nick Leary \u00b7 FY27 Year-End Report");
+    expect(layout.footerLeft).toBe("Generated Sep 27, 2026 by Nick Leary \u00b7 FY27 Mid-Year Report");
     expect(layout.pages[1].blocks.find((b) => b.kind === "dept")).toMatchObject({ label: "Cath", continued: true });
     const pdf = await YearEndRenderer.render(d, new Date("2026-09-27T16:00:00Z"), "Nick Leary");
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
@@ -226,8 +229,8 @@ describe("YearEndReportService", () => {
     const now = new Date("2026-09-27T16:00:00Z");
     await expect(YearEndReportService.generate(Factory.MEMBER, "FY27", scope, db, now)).rejects.toBeInstanceOf(AdminRequiredError);
     const e = await YearEndReportService.generate({ ...Factory.ADMIN, name: "Nick Leary" }, "FY27", scope, db, now);
-    expect(e).toMatchObject({ fiscalYear: "FY27", toDate: true, generatedByName: "Nick Leary", fileName: "fy27-year-end-report-2026-09-27.pdf" });
-    expect(YearEndReportService.listText(e)).toBe("FY27 Year-End Report, generated Sep 27, 2026, 12:00 PM ET by Nick Leary");
+    expect(e).toMatchObject({ fiscalYear: "FY27", toDate: true, generatedByName: "Nick Leary", fileName: "mid-year-fy27-2026-09-27.pdf" });
+    expect(YearEndReportService.listText(e)).toBe("FY27 Mid-Year Report, generated Sep 27, 2026, 12:00 PM ET by Nick Leary");
     expect(fake.writes.map((w) => w.model)).toEqual(["yearEndReport"]);
     expect(fake.state.snapshots).toHaveLength(0);
     expect(fake.state.artifacts).toHaveLength(0);

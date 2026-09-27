@@ -5,7 +5,7 @@ import type { FontWeight } from "@/lib/report/pdf/ReportFonts";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import { CompletedBlockStyle, ReportGeometry, ReportLayout, type BandModel, type OverlineModel, type PillBox } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure, type Measurer } from "@/lib/report/pdf/TextMeasure";
-import { YearEndCopy, type YearEndData, type YearEndRow, type YearEndSectionKind, type YearEndSummaryRow } from "@/lib/report/YearEndReportData";
+import { YearEndCopy, type SummaryKey, type YearEndData, type YearEndRow, type YearEndSectionKind, type YearEndSummaryRow } from "@/lib/report/YearEndReportData";
 
 /** A laid-out table row: pre-wrapped lines per cell. */
 export interface YearEndRowLayout {
@@ -51,7 +51,9 @@ export interface YearEndDocumentLayout {
   runningLead: string;
   runningRest: string;
   footerLeft: string;
-  /** Summary column heads: Carried in from FY26 | Carried into FY27 or Still in progress | Completed FY27. */
+  /** The totals shown, in order, shared by the header and the grid so they always line up (YearEndData.columns). */
+  summaryKeys: SummaryKey[];
+  /** Grid column heads (the labels of summaryKeys). */
   summaryHeads: string[];
   summary: YearEndSummaryRow[];
   /** Notes under the grid for a blank column ("Carried in from FY26: Not tracked before Sep 26, 2026."). */
@@ -66,6 +68,11 @@ export interface YearEndDocumentLayout {
  * The weekly layout (ReportLayout) is only read from, never changed.
  */
 export class YearEndLayout {
+  /** A total's label: "Carried in from FY26", "Completed FY27", "Carried into FY27" / "Still in progress". */
+  static summaryLabel(data: YearEndData, key: SummaryKey): string {
+    return key === "carriedIn" ? YearEndCopy.carriedInFrom(data.previousFiscalYear) : key === "openAtEnd" ? data.openAtEndLabel : YearEndCopy.completedFy(data.fiscalYear);
+  }
+
   /**
    * Table columns (pt, content width 720). Final update was 206 wide (project 206, owner 116, requester 116,
    * date 76); it is now 268 so more of the update shows, with the others trimmed to fit.
@@ -108,10 +115,8 @@ export class YearEndLayout {
       badge: null,
       details: [
         { label: YearEndCopy.PERIOD, value: data.periodText, accent: false },
-        // Same order, labels and dashes as the summary grid.
-        { label: YearEndCopy.carriedInFrom(data.previousFiscalYear), value: YearEndLayout.total(data.totals.carriedIn), accent: false },
-        { label: data.openAtEndLabel, value: YearEndLayout.total(data.totals.openAtEnd), accent: false },
-        { label: YearEndCopy.completedFy(data.fiscalYear), value: String(data.totals.completed), accent: false },
+        // Same totals, order, labels and dashes as the summary grid.
+        ...data.columns.map((k) => ({ label: YearEndLayout.summaryLabel(data, k), value: YearEndLayout.total(data.totals[k]), accent: false })),
       ],
     });
     const firstTop = band.height + g.BAND.ruleW + g.BAND.gapAfter;
@@ -133,7 +138,8 @@ export class YearEndLayout {
       y += b.height;
     };
 
-    const summaryNotes = [data.carriedInNote, data.openAtEndNote].filter((n): n is string => Boolean(n));
+    // Dash notes for shown columns only, then what the columns count.
+    const summaryNotes = [data.columns.includes("carriedIn") ? data.carriedInNote : null, data.columns.includes("openAtEnd") ? data.openAtEndNote : null, YearEndCopy.GRID_EXPLAINER].filter((n): n is string => Boolean(n));
     const summaryH = YearEndLayout.SUMMARY_LABEL_H + YearEndLayout.GRID.headH + data.summary.length * YearEndLayout.GRID.rowH + (summaryNotes.length ? 3 + summaryNotes.length * YearEndLayout.SUMMARY_NOTE_H : 0);
     push({ kind: "summary", height: summaryH });
 
@@ -169,8 +175,9 @@ export class YearEndLayout {
       band,
       runningLead: data.title,
       runningRest: ` \u00b7 ${data.periodText} (continued)`,
-      footerLeft: YearEndCopy.footer(data.fiscalYear, DateOnly.inZone(generatedAt), generatedBy),
-      summaryHeads: [YearEndCopy.carriedInFrom(data.previousFiscalYear), data.openAtEndLabel, YearEndCopy.completedFy(data.fiscalYear)],
+      footerLeft: YearEndCopy.footer(data.fiscalYear, DateOnly.inZone(generatedAt), generatedBy, data.toDate),
+      summaryKeys: data.columns,
+      summaryHeads: data.columns.map((k) => YearEndLayout.summaryLabel(data, k)),
       summary: data.summary,
       summaryNotes,
       pages: pages.map((p) => ({ ...p, total: pages.length })),

@@ -10,7 +10,7 @@ import { ProjectRows } from "@/lib/domain/ProjectRows";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import type { HistoryEntryRecord } from "@/lib/domain/types";
 import { YearEndRenderer } from "@/lib/report/YearEndRenderer";
-import { YearEndCopy, YearEndReportData, type YearEndData } from "@/lib/report/YearEndReportData";
+import { YearEndCategories, YearEndCopy, YearEndReportData, type YearEndCategory, type YearEndData } from "@/lib/report/YearEndReportData";
 
 /** A stored year-end report as the Reports page lists it (no bytes). */
 export interface YearEndEntry {
@@ -54,12 +54,12 @@ export class YearEndReportService {
   }
 
   /** Build the report data (no rendering, no storage). */
-  static async data(scope: ServiceLineScope, fiscalYear: string, db: PrismaClient, now: Date): Promise<YearEndData> {
+  static async data(scope: ServiceLineScope, fiscalYear: string, db: PrismaClient, now: Date, categories: readonly YearEndCategory[] = YearEndCategories.ALL): Promise<YearEndData> {
     const today = DateOnly.inZone(now);
     const fy = FiscalYear.fromLabel(fiscalYear);
     if (!fy || fy.start > today) throw new YearEndFiscalYearError();
     const { projects, history } = await YearEndReportService.load(db, scope);
-    return YearEndReportData.build({ projects, history, fiscalYear: fy.label, today, departments: scope.departments, serviceLineName: scope.name });
+    return YearEndReportData.build({ projects, history, fiscalYear: fy.label, today, departments: scope.departments, serviceLineName: scope.name, categories });
   }
 
   /** Admin only: render and store one year-end report for the line. */
@@ -69,10 +69,11 @@ export class YearEndReportService {
     scope: ServiceLineScope,
     db: PrismaClient = Db.client,
     now: Date = new Date(),
+    categories: readonly YearEndCategory[] = YearEndCategories.ALL,
   ): Promise<YearEndEntry> {
     const name = DisplayName.nameOrNull(viewer.name, viewer.email);
     AdminPolicy.assertAdmin(viewer);
-    const data = await YearEndReportService.data(scope, fiscalYear, db, now);
+    const data = await YearEndReportService.data(scope, fiscalYear, db, now, categories);
     const by = DisplayName.of(name, viewer.email);
     const bytes = await YearEndRenderer.render(data, now, by);
     const generatedOn = DateOnly.inZone(now);
@@ -83,7 +84,7 @@ export class YearEndReportService {
         periodStart: DateOnly.toDbDate(data.periodStart),
         periodEnd: DateOnly.toDbDate(data.periodEnd),
         toDate: data.toDate,
-        fileName: YearEndCopy.fileName(data.fiscalYear, generatedOn, scope.isDefault ? null : scope.shortName),
+        fileName: YearEndCopy.fileName(data.fiscalYear, generatedOn, scope.isDefault ? null : scope.shortName, data.toDate),
         contentType: YearEndRenderer.CONTENT_TYPE,
         bytes: new Uint8Array(bytes),
         byteSize: bytes.byteLength,
@@ -113,9 +114,9 @@ export class YearEndReportService {
     return row ? { fileName: row.fileName, contentType: row.contentType, bytes: Buffer.from(row.bytes) } : null;
   }
 
-  /** "FY27 Year-End Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary" (the email only when there is no name). */
+  /** "FY26 Year-End Report" or "FY27 Mid-Year Report" (to date), "generated Sep 27, 2026, 12:34 AM ET by Nick Leary" (the email only when there is no name). */
   static listText(e: YearEndEntry): string {
-    return YearEndCopy.listRow(e.fiscalYear, e.generatedAt, DisplayName.of(e.generatedByName, e.generatedBy));
+    return YearEndCopy.listRow(e.fiscalYear, e.generatedAt, DisplayName.of(e.generatedByName, e.generatedBy), e.toDate);
   }
 
   private static entry(r: YearEndEntry): YearEndEntry {

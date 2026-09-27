@@ -118,15 +118,15 @@ describe("Review fixes: names, times, PDF copy", () => {
     expect(list.map((e) => e.id)).toEqual([e2.id, e1.id, e3.id]);
     expect(list.map((e) => YearEndReportService.listText(e))).toEqual([
       "FY26 Year-End Report, generated Sep 27, 2026, 10:05 AM ET by admin@example.org",
-      "FY27 Year-End Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary",
-      "FY27 Year-End Report, generated Sep 26, 2026, 4:00 PM ET by Nick Leary",
+      "FY27 Mid-Year Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary",
+      "FY27 Mid-Year Report, generated Sep 26, 2026, 4:00 PM ET by Nick Leary",
     ]);
     const layout = YearEndLayout.layout(
       YearEndReportData.build({ projects: [], history: [], fiscalYear: "FY27", today: TODAY, departments: ServiceAreaInfo.CVPSL, serviceLineName: null }),
       new Date("2026-09-27T04:34:00Z"),
       DisplayName.of("Nick Leary", "nick.leary@example.org"),
     );
-    expect(layout.footerLeft).toBe("Generated Sep 27, 2026 by Nick Leary \u00b7 FY27 Year-End Report");
+    expect(layout.footerLeft).toBe("Generated Sep 27, 2026 by Nick Leary \u00b7 FY27 Mid-Year Report");
   }, 30000);
 
   it("carried table: Status and Latest update; blank updates are a gray en dash; summary head Carried into FY(n+1)", () => {
@@ -135,7 +135,7 @@ describe("Review fixes: names, times, PDF copy", () => {
     const open = R.p({ name: "Open", status: "OnTrack", note: null });
     const d = YearEndReportData.build({ projects: [open], history: [], fiscalYear: "FY26", today: TODAY, departments: ServiceAreaInfo.CVPSL, serviceLineName: null });
     const layout = YearEndLayout.layout(d, new Date("2026-09-27T04:34:00Z"), "Nick Leary");
-    expect(layout.summaryHeads).toEqual(["Carried in from FY25", "Carried into FY27", "Completed FY26"]);
+    expect(layout.summaryHeads).toEqual(["Carried in from FY25", "Completed FY26", "Carried into FY27"]);
     const row = layout.pages.flatMap((p) => p.blocks).find((b) => b.kind === "row");
     expect(row && row.kind === "row" && row.row.update).toEqual(["\u2013"]);
     expect(YearEndCopy.EMPTY_VALUE).toBe("\u2013");

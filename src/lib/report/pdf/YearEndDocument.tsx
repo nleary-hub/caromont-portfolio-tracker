@@ -72,7 +72,7 @@ function ContinuationHeader({ l }: { l: YearEndDocumentLayout }) {
 function Summary({ l, top }: { l: YearEndDocumentLayout; top: number }) {
   const S = YearEndLayout.GRID;
   const els: React.ReactNode[] = [];
-  const width = S.labelW + 3 * S.colW;
+  const width = S.labelW + l.summaryKeys.length * S.colW;
   els.push(
     <Text key="lbl" style={{ position: "absolute", left: 0, top, fontFamily: F, fontSize: G.OVERLINE.size, fontWeight: G.OVERLINE.weight, letterSpacing: G.OVERLINE.tracking, lineHeight: G.SUMMARY.overlineLH / G.OVERLINE.size, color: C.MUTED }}>
       {YearEndCopy.SUMMARY}
@@ -88,7 +88,7 @@ function Summary({ l, top }: { l: YearEndDocumentLayout; top: number }) {
     if (total) els.push(<Rule key="tr" x={0} y={ry} w={width} h={1} />);
     els.push(<Line key={`ga${ri}`} x={0} y={ry + 1.5} w={S.labelW} text={r.label} size={G.SIZE.table} weight={total ? 600 : 500} color={r.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />);
     // Blank (null) carried cells print the gray en dash; the reason is the note under the grid.
-    [r.carriedIn, r.openAtEnd, r.completed].forEach((n, ci) =>
+    l.summaryKeys.map((k) => r[k]).forEach((n, ci) =>
       els.push(
         <Line
           key={`gc${ri}-${ci}`}

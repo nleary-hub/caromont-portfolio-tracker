@@ -9,7 +9,7 @@ import { FreezeService } from "@/lib/services/FreezeService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { ReportOptionsForm, type ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
-import { YearEndCopy } from "@/lib/report/YearEndReportData";
+import { YearEndCategories, YearEndCopy } from "@/lib/report/YearEndReportData";
 
 export type FreezeNowState = { ok: boolean; message: string } | null;
 
@@ -58,13 +58,18 @@ export async function saveReportOptions(_prev: ReportOptionsFormState, form: For
 
 export type YearEndActionResult = { ok: true; id: string; fileName: string } | { ok: false; message: string };
 
-/** Admin "Year-end report": render and store the PDF for the active line (never emailed or scheduled). */
-export async function generateYearEndReport(fiscalYear: string): Promise<YearEndActionResult> {
+/**
+ * Admin "Year-end report": render and store the PDF for the active line (never emailed or scheduled).
+ * `categories` (current year only): the totals to show; missing = all three; invalid or empty is refused.
+ */
+export async function generateYearEndReport(fiscalYear: string, categories?: unknown): Promise<YearEndActionResult> {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) return { ok: false, message: "Not authorized." };
+  const selected = YearEndCategories.parse(categories);
+  if (!selected) return { ok: false, message: YearEndCopy.CATEGORIES_NONE };
   try {
     const scope = await ServiceLineAccess.activeFor(viewer);
-    const entry = await YearEndReportService.generate(viewer, String(fiscalYear), scope);
+    const entry = await YearEndReportService.generate(viewer, String(fiscalYear), scope, undefined, undefined, selected);
     ReportLog.info("year_end.generated", { id: entry.id, fiscalYear: entry.fiscalYear, serviceLineId: scope.id });
     revalidatePath("/reports");
     return { ok: true, id: entry.id, fileName: entry.fileName };
