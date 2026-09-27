@@ -68,7 +68,10 @@ export class PeopleService {
       where: { archivedAt: null, ...ServiceLineAccess.where(scope) },
       select: { owner: true, physicianChampion: true, requesterNotApplicable: true },
     });
-    const blank = (v: string | null) => PeopleDirectory.normalizeName(v) === "";
+    // Built-in options: blank (or legacy "To assign" / "TBD" text) is To assign; Not applicable is the flag (or its text).
+    const blank = (v: string | null) => PeopleDirectory.normalizeName(v) === "" || PeopleDirectory.isToAssignText(v);
+    const na = (r: { physicianChampion: string | null; requesterNotApplicable: boolean }) =>
+      PeopleDirectory.isNotApplicableText(r.physicianChampion) || (PeopleDirectory.normalizeName(r.physicianChampion) === "" && r.requesterNotApplicable);
     const count = (values: (string | null)[], name: string) => values.filter((v) => PeopleListRules.sameName(v, name)).length;
     const owners = rows.map((r) => r.owner);
     const requesters = rows.map((r) => r.physicianChampion);
@@ -78,8 +81,8 @@ export class PeopleService {
         ...PeopleService.sorted(scope.owners).map((name) => ({ name, projects: count(owners, name), locked: false })),
       ],
       requesters: [
-        { name: PeopleListRules.locked("requester")[0], projects: rows.filter((r) => blank(r.physicianChampion) && r.requesterNotApplicable).length, locked: true },
-        { name: PeopleListRules.locked("requester")[1], projects: rows.filter((r) => blank(r.physicianChampion) && !r.requesterNotApplicable).length, locked: true },
+        { name: PeopleListRules.locked("requester")[0], projects: rows.filter(na).length, locked: true },
+        { name: PeopleListRules.locked("requester")[1], projects: rows.filter((r) => !na(r) && blank(r.physicianChampion)).length, locked: true },
         ...PeopleService.sorted(scope.requesters).map((name) => ({ name, projects: count(requesters, name), locked: false })),
       ],
     };

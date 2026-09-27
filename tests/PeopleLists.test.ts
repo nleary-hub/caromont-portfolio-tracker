@@ -129,17 +129,18 @@ describe("PeopleService: Owners and Requesters per line", () => {
     await T.project(db, "A", "Jeff Krause", "Dr. Adams");
     await T.project(db, "B", "jeff  krause", "dr. adams");
     await T.project(db, "C", null, null);
+    await T.project(db, "C2", "To assign", "Not applicable");
     await T.project(db, "D", "Mark Wingard", "Not applicable");
     const gone = await T.project(db, "E", "Jeff Krause");
     await ProjectService.softDelete(gone.id, ADMIN, db);
     const lists = await PeopleService.lists(await T.scope(db), ADMIN, db);
     expect(lists.owners).toEqual([
-      { name: "To assign", projects: 1, locked: true },
+      { name: "To assign", projects: 2, locked: true },
       { name: "Jeff Krause", projects: 2, locked: false },
       { name: "Nicole Smith", projects: 0, locked: false },
     ]);
     expect(lists.requesters).toEqual([
-      { name: "Not applicable", projects: 1, locked: true },
+      { name: "Not applicable", projects: 2, locked: true },
       { name: "To assign", projects: 1, locked: true },
       { name: "Dr. Adams", projects: 2, locked: false },
     ]);
@@ -258,6 +259,7 @@ describe("Pickers read the line's lists", () => {
     expect(off).toContain("text-muted");
     expect(render({ kind: "name", name: "nicole smith" })).not.toContain("Not on list");
     expect(render({ kind: "unset" })).not.toContain("Not on list");
+    expect(render({ kind: "name", name: "To assign" })).not.toContain("Not on list");
     expect(render({ kind: "na" }, "requester")).not.toContain("Not on list");
   });
 });
@@ -309,5 +311,9 @@ describe("#24 follow-up: empty year-end text cells print the gray en dash", () =
     expect(row && row.kind === "row" && row.row.requester).toEqual({ text: YearEndCopy.EMPTY_VALUE, muted: true });
     expect(row && row.kind === "row" && row.row.update).toEqual([YearEndCopy.EMPTY_VALUE]);
     expect(T.src("lib/report/pdf/YearEndDocument.tsx")).not.toContain("{r.requester &&");
+    const legacy = { ...p, owner: "To assign" } as typeof p;
+    const d2 = YearEndReportData.build({ projects: [legacy], history: [], fiscalYear: "FY26", today: "2026-09-27", departments: ServiceAreaInfo.CVPSL, serviceLineName: null });
+    const row2 = YearEndLayout.layout(d2, new Date("2026-09-27T04:34:00Z"), "Nick Leary").pages.flatMap((pg) => pg.blocks).find((b) => b.kind === "row");
+    expect(row2 && row2.kind === "row" && row2.row.owner).toEqual({ text: "To assign", muted: true });
   });
 });
