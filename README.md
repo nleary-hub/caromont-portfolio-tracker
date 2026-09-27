@@ -152,7 +152,8 @@ Notes:
   `department_access_history`. For a limited person, `ServiceLineAccess.activeFor` narrows the scope
   (`DepartmentAccess`): the dashboard, tiles, counts, search and the department filter only include their
   departments (Unassigned projects belong to none, so they don't see them), project History outside them is
-  empty, and report PDFs and year-end PDFs (which cover every department) are not offered and answer 404.
+  empty. Reports are per line: a limited person lists and opens the line's weekly PDFs, archive and year-end
+  reports exactly like someone with all departments (people without the line still get 404, as before).
   `/?project=<id>` opens a project's detail; a project outside their lines or departments, or one that
   doesn't exist, shows "You don't have access to this project" without its name. Deleting a department and
   moving its projects moves people's access with them (Audit log); a new department reaches only people with

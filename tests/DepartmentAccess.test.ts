@@ -59,7 +59,7 @@ describe("Writing Bot copy", () => {
     ]);
     expect(DepartmentAccessCopy.movedAudit("Jane Doe", "Cath Lab", "Invasive Cardiology")).toBe("Jane Doe's Cath Lab access moved to Invasive Cardiology when Cath Lab was deleted.");
     // No em dashes anywhere in the new copy.
-    const all = Object.values(DepartmentAccessCopy).filter((v) => typeof v === "string").join(" ") + DepartmentAccessCopy.reportsLimited("CVPSL");
+    const all = Object.values(DepartmentAccessCopy).filter((v) => typeof v === "string").join(" ");
     expect(all).not.toMatch(/\u2014/);
   });
 });
@@ -147,6 +147,32 @@ describe("DepartmentAccessService: the panel saves as you go (admin-only, logged
     g = await LineAccessService.grid(ADMIN, db, ENV);
     expect(g.users[0].limits).toEqual({ [CVPSL]: ["Echo", "EP", "IR"] });
     expect(AccessGridModel.count(g.users[0], g.lines[0])).toEqual({ granted: 3, total: 7 });
+  });
+
+  it("count rule: no count while All departments is on; 'N of 7' whenever it is off, even with every box checked", async () => {
+    const cell = async () => {
+      const g = await LineAccessService.grid(ADMIN, db, ENV);
+      const model = AccessGridModel.count(g.users[0], g.lines[0]);
+      return { model, text: model ? DepartmentAccessCopy.countText(model.granted, model.total) : null };
+    };
+    // On (the default): plain checkbox, no count.
+    expect(await cell()).toEqual({ model: null, text: null });
+    // Off: every department checked at first, and the count shows "7 of 7".
+    await DepartmentAccessService.setAll(ADMIN, JANE, CVPSL, false, db, ENV);
+    expect(await cell()).toEqual({ model: { granted: 7, total: 7 }, text: "7 of 7" });
+    await DepartmentAccessService.setDepartment(ADMIN, JANE, CVPSL, "Cath", false, db, ENV);
+    expect(await cell()).toEqual({ model: { granted: 6, total: 7 }, text: "6 of 7" });
+    // Checking the last one again keeps the switch off: still a count.
+    await DepartmentAccessService.setDepartment(ADMIN, JANE, CVPSL, "Cath", true, db, ENV);
+    expect(await cell()).toEqual({ model: { granted: 7, total: 7 }, text: "7 of 7" });
+    // Back on: no count.
+    await DepartmentAccessService.setAll(ADMIN, JANE, CVPSL, true, db, ENV);
+    expect(await cell()).toEqual({ model: null, text: null });
+    // The model alone: switched off in the browser with every box checked.
+    const line: AccessLine = { id: "L", shortName: "CVPSL", name: "Cardio", departments: ["a", "b", "c", "d", "e", "f", "g"].map((id) => ({ id, name: id })) };
+    const row: AccessRow = { email: "j@x.org", name: "J", isAdmin: false, lineIds: ["L"], limits: {} };
+    expect(AccessGridModel.count(AccessGridModel.setAll(row, line, false), line)).toEqual({ granted: 7, total: 7 });
+    expect(AccessGridModel.count(AccessGridModel.setAll(AccessGridModel.setAll(row, line, false), line, true), line)).toBeNull();
   });
 
   it("switch off: every open department checked at first; switch on: back to All (rows dropped)", async () => {

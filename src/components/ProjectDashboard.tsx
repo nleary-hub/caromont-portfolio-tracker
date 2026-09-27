@@ -507,7 +507,7 @@ export function ProjectDashboard({
             </select>
           </label>
           <div className="ml-2">
-            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} list={line?.departments} />
+            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} list={line?.departments} limited={Boolean(line?.departmentLimit)} />
           </div>
           {admin && (
             <button

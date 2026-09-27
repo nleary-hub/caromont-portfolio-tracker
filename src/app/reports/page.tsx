@@ -7,8 +7,6 @@ import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { NoAccessCard } from "@/components/NoAccessCard";
 import { LineGate } from "@/lib/access/LineGate";
-import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
-import { DepartmentAccessCopy } from "@/lib/access/DepartmentAccessCopy";
 import { ServiceLineCopy } from "@/lib/domain/ServiceLine";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
@@ -49,14 +47,12 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   if (gate.kind === "none") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} />;
   if (gate.kind === "lacks") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} line={gate.requested} goTo={{ shortName: gate.first.shortName, href: LineGate.href("/reports", gate.first.shortName) }} />;
   const { scope, lines } = gate;
-  // Reports cover every department of the line: a viewer limited to some departments gets none (the routes 404 too).
-  const limited = DepartmentAccess.isLimited(scope);
-  const entries = limited ? [] : await ReportArchiveService.list(viewer, undefined, scope);
+  const entries = await ReportArchiveService.list(viewer, undefined, scope);
   const next = ReportSchedule.nextFreezeOnOrAfter(DateOnly.today());
   const options = viewer.isAdmin ? await ReportOptionsService.get(undefined, scope) : null;
   const today = DateOnly.today();
   const yearEndYears = viewer.isAdmin ? await YearEndReportService.years(viewer, scope).catch(() => [FiscalYear.of(today).label]) : [];
-  const yearEnd = limited ? [] : await YearEndReportService.list(scope).catch(() => []);
+  const yearEnd = await YearEndReportService.list(scope).catch(() => []);
   // Deep link for review and screenshots: ?yearEnd=1 opens the dialog.
   const openYearEnd = params.yearEnd === "1";
 
@@ -80,11 +76,6 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           ? `Frozen every other Tuesday at 5 PM ET. Next scheduled freeze: ${ReportFormat.longDate(next)}.`
           : ServiceLineCopy.onDemandNote(scope.shortName)}
       </p>
-      {limited && (
-        <p className="rounded-card border border-line bg-card px-4 py-3 text-muted type-table" data-testid="reports-limited">
-          {DepartmentAccessCopy.reportsLimited(scope.shortName)}
-        </p>
-      )}
       {viewer.isAdmin && options && (
         <section id="report-admin" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
           <div className="flex flex-wrap items-center gap-4">
@@ -109,7 +100,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </section>
       )}
 
-      <div className="overflow-hidden rounded-card border border-line bg-card" hidden={limited}>
+      <div className="overflow-hidden rounded-card border border-line bg-card">
         <table className="w-full border-separate border-spacing-0 type-table">
           <thead>
             <tr className="text-left text-muted type-label uppercase">

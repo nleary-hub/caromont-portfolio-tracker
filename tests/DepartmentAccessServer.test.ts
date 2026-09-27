@@ -50,6 +50,19 @@ const CVPSL = "00000000-0000-4000-8000-000000000001";
 const MISSING = "00000000-0000-4000-8000-00000000dead";
 const actor = { changedBy: "nick.leary@caromonthealth.org" };
 
+/** A stored year-end report row (Reports > Year-end report). */
+class YearEnd {
+  static add(serviceLineId: string): string {
+    const id = "00000000-0000-4000-8000-0000000ab001";
+    fake.state.yearEndReports.push({
+      id, serviceLineId, fiscalYear: "FY27", periodStart: new Date("2026-07-01"), periodEnd: new Date("2026-09-27"), toDate: true,
+      fileName: "CVPSL FY27 Year-End Report.pdf", contentType: "application/pdf", bytes: new Uint8Array([37, 80, 68, 70]), byteSize: 4,
+      sha256: "x", generatedAt: new Date("2026-09-27T14:00:00Z"), generatedBy: ADMIN.email, generatedByName: "Admin",
+    });
+    return id;
+  }
+}
+
 let fake: FakeDb;
 let ids: Record<string, string>;
 
@@ -123,6 +136,25 @@ describe("limited user: dashboard, tiles, counts, search and the filter only inc
     expect(Page.payload(el)).not.toMatch(/secret|Cath Lab|EP Lab|CardioNeuro/);
   });
 
+  it("the filter button reads 'My departments (N)' for a limited user; admins and users with every department keep 'Departments: All'", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const button = async () => {
+      const html = renderToStaticMarkup(await Page.render(DashboardPage));
+      return /data-testid="departments-select"><button[^>]*>([^<]*)<\/button>/.exec(html)?.[1];
+    };
+    h.viewer = JANE;
+    expect(await button()).toBe("My departments (2)");
+    fake.limit(JANE.email, CVPSL, "Echo", "IR", "EP");
+    expect(await button()).toBe("My departments (3)");
+    // Unit: N is how many departments they can see (the filter's options); a narrower pick keeps the usual text.
+    expect(DepartmentFilter.summary(["Echo", "IR"], 32, ["Echo", "IR"], undefined, true)).toBe("My departments (2)");
+    expect(DepartmentFilter.summary(["Echo", "IR"], 32, ["Echo", "IR"], undefined, false)).toBe("Departments: All");
+    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
+    expect(await button()).toBe("Departments: All");
+    h.viewer = ADMIN;
+    expect(await button()).toBe("Departments: All");
+  });
+
   it("with All departments on, the same person gets the whole line", async () => {
     h.viewer = JANE;
     fake.state.accessGrants[0].allDepartments = true;
@@ -177,25 +209,115 @@ describe("project links", () => {
 });
 
 describe("routes and actions", () => {
-  it("History, report downloads and year-end PDFs: nothing outside their departments", async () => {
-    await FreezeService.run({ trigger: "cron", actor: "cron", now: FREEZE_RUN, env: { ...ENV }, fetch: vi.fn() }, h.db as never);
-    const snap = fake.state.snapshots[0];
-    const req = new Request("https://tracker.example.org/x");
+  it("History: nothing outside their departments", async () => {
     h.viewer = JANE;
     expect((await loadProjectHistory(ids.cath))?.entries).toEqual([]);
     expect(await loadProjectHistory(ids.cath)).toEqual(await loadProjectHistory(MISSING));
     expect((await loadProjectHistory(ids.echo))?.entries.length).toBeGreaterThan(0);
-    // Reports cover every department: a limited viewer gets none.
-    expect((await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) })).status).toBe(404);
-    expect((await yearEndGET(req, { params: Promise.resolve({ id: "any" }) })).status).toBe(404);
-    const page = Page.tree(await Page.render(ReportsPage));
-    expect(page).toContain(DepartmentAccessCopy.reportsLimited("CVPSL"));
-    expect(page).not.toContain(`/reports/${snap.id}/pdf`);
-    fake.state.accessGrants[0].allDepartments = true;
-    expect((await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) })).status).toBe(200);
-    const full = Page.tree(await Page.render(ReportsPage));
-    expect(full).toContain(`/reports/${snap.id}/pdf`);
-    expect(full).not.toContain(DepartmentAccessCopy.reportsLimited("CVPSL"));
+  });
+
+  it("reports: a limited user lists and opens the weekly PDF, the archive and the year-end report of their line, like a user with all departments", async () => {
+    await FreezeService.run({ trigger: "cron", actor: "cron", now: FREEZE_RUN, env: { ...ENV }, fetch: vi.fn() }, h.db as never);
+    const snap = fake.state.snapshots[0];
+    const ye = YearEnd.add(CVPSL);
+    const req = new Request("https://tracker.example.org/x");
+    const open = async () => ({
+      pdf: (await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) })).status,
+      handoff: (await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "handoff" }) })).status,
+      yearEnd: (await yearEndGET(req, { params: Promise.resolve({ id: ye }) })).status,
+    });
+    h.viewer = JANE;
+    expect(fake.state.accessGrants.find((g) => g.email === JANE.email)?.allDepartments).toBe(false);
+    const limited = Page.tree(await Page.render(ReportsPage));
+    expect(limited).toContain(`/reports/${snap.id}/pdf`);
+    expect(limited).toContain(`/reports/year-end/${ye}`);
+    expect(limited).not.toMatch(/shared with people who can see all/);
+    // handoff.json stays admin-only for every non-admin (unchanged).
+    expect(await open()).toEqual({ pdf: 200, handoff: 404, yearEnd: 200 });
+    // The same as with all departments.
+    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
+    expect(Page.tree(await Page.render(ReportsPage))).toEqual(limited);
+    expect(await open()).toEqual({ pdf: 200, handoff: 404, yearEnd: 200 });
+  });
+
+  it("reports: a limited user opens the same full frozen report; opening never renders or saves anything, and Drive only ever gets the freeze job's full report", async () => {
+    const { PdfReportRenderer } = await import("@/lib/report/PdfReportRenderer");
+    const DRIVE_ENV = { ...ENV, GOOGLE_DRIVE_CLIENT_ID: "cid", GOOGLE_DRIVE_CLIENT_SECRET: "csecret", GOOGLE_DRIVE_REFRESH_TOKEN: "rtoken" };
+    const json = (body: unknown) => new Response(JSON.stringify(body), { status: 200, headers: { "Content-Type": "application/json" } });
+    const uploads: Buffer[] = [];
+    const drive = vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.startsWith("https://oauth2.googleapis.com/token")) return json({ access_token: "at" });
+      if (url.startsWith("https://www.googleapis.com/drive/v3/files?")) return json({ files: [{ id: "cvpsl-report-folder" }] });
+      if (url.startsWith("https://www.googleapis.com/upload/drive/v3/files")) {
+        uploads.push(Buffer.from(init?.body as unknown as Uint8Array));
+        return json({ id: `file${uploads.length}`, webViewLink: `https://drive.example/${uploads.length}` });
+      }
+      throw new Error(`unexpected ${url}`);
+    });
+    // The freeze job (no viewer) is the only writer of report storage, with Jane's limits in place.
+    await FreezeService.run({ trigger: "cron", actor: "cron", now: FREEZE_RUN, env: DRIVE_ENV, fetch: drive as never }, h.db as never);
+    const snap = fake.state.snapshots[0];
+    const pdf = fake.state.artifacts.find((a) => a.kind === "pdf")!;
+    const frozen = Buffer.from(pdf.bytes as Uint8Array);
+    // The frozen report is the full line: every department, including ones Jane can't see.
+    const names = (snap.rowsJson as { name: string }[]).map((r) => r.name);
+    expect(names).toEqual(expect.arrayContaining(["Echo visible project", "Cath secret project", "EP secret project"]));
+    // Drive got exactly the freeze's files: the full PDF (same bytes) and handoff.json.
+    expect(uploads).toHaveLength(2);
+    expect(uploads[0].includes(frozen)).toBe(true);
+    const stored = { artifacts: fake.state.artifacts.length, snapshots: fake.state.snapshots.length, yearEnd: fake.state.yearEndReports.length };
+    const writes = fake.writes.length;
+    const driveCalls = drive.mock.calls.length;
+
+    const render = vi.spyOn(PdfReportRenderer, "render");
+    const net = vi.spyOn(globalThis, "fetch");
+    const ye = YearEnd.add(CVPSL);
+    h.viewer = JANE;
+    const req = new Request("https://tracker.example.org/x");
+    await Page.render(ReportsPage);
+    const res = await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) });
+    expect(res.status).toBe(200);
+    // Same bytes everyone gets, not a department-filtered version.
+    expect(Buffer.from(await res.arrayBuffer()).equals(frozen)).toBe(true);
+    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
+    const full = await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) });
+    expect(Buffer.from(await full.arrayBuffer()).equals(frozen)).toBe(true);
+    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = false;
+    expect((await yearEndGET(req, { params: Promise.resolve({ id: ye }) })).status).toBe(200);
+
+    // Nothing rendered, written, uploaded or fetched by opening.
+    expect(render).not.toHaveBeenCalled();
+    expect(net).not.toHaveBeenCalled();
+    // (Opening a page may record the viewer's sign-in; report storage is never written.)
+    const REPORT_STORAGE = ["reportSnapshot", "reportArtifact", "reportDelivery", "yearEndReport"];
+    expect(fake.writes.slice(writes).filter((w) => REPORT_STORAGE.includes(w.model))).toEqual([]);
+    expect(drive.mock.calls.length).toBe(driveCalls);
+    expect({ artifacts: fake.state.artifacts.length, snapshots: fake.state.snapshots.length, yearEnd: fake.state.yearEndReports.length - 1 }).toEqual(stored);
+  });
+
+  it("reports: a user with no access to the line still can't list or open them (as in #29)", async () => {
+    await FreezeService.run({ trigger: "cron", actor: "cron", now: FREEZE_RUN, env: { ...ENV }, fetch: vi.fn() }, h.db as never);
+    const snap = fake.state.snapshots[0];
+    const ye = YearEnd.add(CVPSL);
+    const req = new Request("https://tracker.example.org/x");
+    const open = async () => [
+      (await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) })).status,
+      (await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "handoff" }) })).status,
+      (await yearEndGET(req, { params: Promise.resolve({ id: ye }) })).status,
+    ];
+    // No line at all.
+    h.viewer = { email: "ben.noaccess@caromonthealth.org", isAdmin: false, name: "Ben" };
+    expect((await Page.render(ReportsPage)).type).toBe(NoAccessCard);
+    expect(await open()).toEqual([404, 404, 404]);
+    // Another line only, even limited to some of its departments.
+    const ep = fake.addLine({ name: "Electrophysiology Service Line", shortName: "EP" }).id as string;
+    const abl = fake.addDepartment(ep, { name: "Ablation", shortName: "Abl" }).id as string;
+    fake.grant("ben.noaccess@caromonthealth.org", ep);
+    fake.limit("ben.noaccess@caromonthealth.org", ep, abl);
+    const other = Page.tree(await Page.render(ReportsPage));
+    expect(other).not.toContain(`/reports/${snap.id}/pdf`);
+    expect(other).not.toContain(`/reports/year-end/${ye}`);
+    expect(await open()).toEqual([404, 404, 404]);
   });
 
   it("the panel's actions re-check admin on the server", async () => {
@@ -218,6 +340,20 @@ describe("routes and actions", () => {
 });
 
 describe("Access grid render (Figma Bro)", () => {
+  it("count rule in the rendered grid: none while All departments is on; '7 of 7' when it is off with every box checked", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { AccessAdmin } = await import("@/components/AccessAdmin");
+    const { LineAccessService } = await import("@/lib/services/LineAccessService");
+    fake.state.appUsers.find((u) => u.email === JANE.email)!.name = "Jane Doe";
+    const counts = async () => [...renderToStaticMarkup(createElement(AccessAdmin, { grid: await LineAccessService.grid(ADMIN, h.db as never, ENV) })).matchAll(/data-testid="access-count"[^>]*>([^<]*)</g)].map((m) => m[1]);
+    expect(await counts()).toEqual(["2 of 7"]);
+    fake.limit(JANE.email, CVPSL, "Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR");
+    expect(await counts()).toEqual(["7 of 7"]);
+    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
+    expect(await counts()).toEqual([]);
+  });
+
   it("limited cells show '3 of 7' with the screen reader label; unlimited cells stay a plain checkbox; admins don't expand", async () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { createElement } = await import("react");

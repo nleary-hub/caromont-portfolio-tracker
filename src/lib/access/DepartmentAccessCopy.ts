@@ -10,14 +10,6 @@ export class DepartmentAccessCopy {
   static readonly PROJECT_BODY = "Ask an admin if you need it.";
   static readonly GO_TO_DASHBOARD = "Go to dashboard";
 
-  /**
-   * Report archive for a viewer limited to some departments (reports cover every department of the line).
-   * Not in the Writing Bot list: flagged for review in the PR.
-   */
-  static reportsLimited(shortName: string): string {
-    return `Reports cover every ${shortName} department, so they're shared with people who can see all of ${shortName}.`;
-  }
-
   /** Small gray text under a limited line's checkbox: "3 of 7". */
   static countText(granted: number, total: number): string {
     return `${granted} of ${total}`;
