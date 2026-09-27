@@ -11,7 +11,8 @@ import { Db } from "@/lib/db/Db";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import { ReportSchedule } from "@/lib/report/ReportSchedule";
 import { DateOnly } from "@/lib/domain/DateOnly";
-import { ReportArchiveService, type ArchiveEntry } from "@/lib/services/ReportArchiveService";
+import { ReportArchiveService } from "@/lib/services/ReportArchiveService";
+import { ArchiveDeliveryText } from "@/lib/report/ArchiveDeliveryText";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { YearEndReportButton } from "@/components/YearEndReportButton";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
@@ -19,16 +20,6 @@ import { YearEndCopy } from "@/lib/report/YearEndReportData";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
 
 export const dynamic = "force-dynamic";
-
-class ArchiveView {
-  static delivery(e: ArchiveEntry): string {
-    const d = e.delivery;
-    if (!d) return "Not delivered yet";
-    if (d.status === "drive") return "Uploaded to Google Drive";
-    if (d.status === "signed_link") return `Signed link until ${ReportFormat.dateTimeEt(new Date(d.signedLink!.expiresAt))}`;
-    return "Delivery failed";
-  }
-}
 
 /** Archive of frozen reports. Signed-in users download PDFs; admins also see delivery and can freeze. */
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
@@ -123,10 +114,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                 </td>
                 {viewer.isAdmin && (
                   <>
-                    <td className="border-b border-line px-3 py-2" title={e.delivery?.driveError ?? e.delivery?.signedLinkError ?? ""}>
-                      {ArchiveView.delivery(e)}
-                      {e.delivery?.signedLink && (
-                        <a href={e.delivery.signedLink.pdfUrl} className="ml-2 text-accent">
+                    <td className="border-b border-line px-3 py-2" title={ArchiveDeliveryText.title(e.delivery)} data-testid="archive-delivery">
+                      {ArchiveDeliveryText.label(e.delivery)}
+                      {ArchiveDeliveryText.linkHref(e.delivery) && (
+                        <a href={ArchiveDeliveryText.linkHref(e.delivery)!} className="ml-2 text-accent">
                           link
                         </a>
                       )}
