@@ -44,3 +44,15 @@ export async function addContractsLead(name: string): Promise<AdminListResult> {
 export async function removeContractsLead(name: string): Promise<AdminListResult> {
   return DepartmentRevalidate.after(await DepartmentForms.removeContractsLead(await CurrentViewer.get(), name));
 }
+
+export async function addPeopleOption(role: "owner" | "requester", name: string): Promise<AdminListResult> {
+  return DepartmentRevalidate.after(await DepartmentForms.addPeopleOption(await CurrentViewer.get(), role, name));
+}
+
+export async function renamePeopleOption(role: "owner" | "requester", from: string, name: string): Promise<AdminListResult> {
+  return DepartmentRevalidate.after(await DepartmentForms.renamePeopleOption(await CurrentViewer.get(), role, from, name));
+}
+
+export async function removePeopleOption(role: "owner" | "requester", name: string): Promise<AdminListResult> {
+  return DepartmentRevalidate.after(await DepartmentForms.removePeopleOption(await CurrentViewer.get(), role, name));
+}

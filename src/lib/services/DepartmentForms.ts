@@ -4,6 +4,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
 import { DepartmentCopy, DepartmentValidationError, type DepartmentField } from "@/lib/domain/DepartmentRules";
 import { ContractsLeadRules, ContractsLeadValidationError } from "@/lib/people/ContractsLeadRules";
+import { PeopleListRules, PeopleListValidationError, type PeopleListRole } from "@/lib/people/PeopleListRules";
 import { DepartmentNotFoundError, DepartmentRestoreConflictError, DepartmentService } from "@/lib/services/DepartmentService";
 import { PeopleService } from "@/lib/services/PeopleService";
 
@@ -72,6 +73,24 @@ export class DepartmentForms {
     });
   }
 
+  static async addPeopleOption(viewer: Viewer | null, role: PeopleListRole, name: unknown, db: PrismaClient = Db.client): Promise<AdminListResult> {
+    return DepartmentForms.run(viewer, db, async (v, scope) => ({ ok: true, message: PeopleListRules.addedToast(await PeopleService.addOption(scope, role, name, v, db)) }));
+  }
+
+  static async renamePeopleOption(viewer: Viewer | null, role: PeopleListRole, from: string, name: unknown, db: PrismaClient = Db.client): Promise<AdminListResult> {
+    return DepartmentForms.run(viewer, db, async (v, scope) => {
+      const renamed = await PeopleService.renameOption(scope, role, from, name, v, db);
+      return { ok: true, message: PeopleListRules.renamedToast(renamed.name, renamed.projects) };
+    });
+  }
+
+  static async removePeopleOption(viewer: Viewer | null, role: PeopleListRole, name: string, db: PrismaClient = Db.client): Promise<AdminListResult> {
+    return DepartmentForms.run(viewer, db, async (v, scope) => {
+      await PeopleService.removeOption(scope, role, name, v, db);
+      return { ok: true, message: PeopleListRules.removedToast(name) };
+    });
+  }
+
   private static async run(
     viewer: Viewer | null,
     db: PrismaClient,
@@ -83,6 +102,7 @@ export class DepartmentForms {
     } catch (e) {
       if (e instanceof DepartmentValidationError) return { ok: false, message: Object.values(e.errors)[0] ?? DepartmentForms.FAILED, errors: e.errors };
       if (e instanceof ContractsLeadValidationError) return { ok: false, message: e.error, errors: { name: e.error } };
+      if (e instanceof PeopleListValidationError) return { ok: false, message: e.error, errors: { name: e.error } };
       if (e instanceof DepartmentRestoreConflictError) return { ok: false, message: DepartmentCopy.RESTORE_CONFLICT };
       if (e instanceof DepartmentNotFoundError) return { ok: false, message: DepartmentForms.GONE };
       console.error("Department or people action failed", e);

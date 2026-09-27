@@ -13,13 +13,18 @@ import { PeopleService } from "@/lib/services/PeopleService";
 export const metadata: Metadata = { title: ContractsLeadRules.PAGE_TITLE };
 export const dynamic = "force-dynamic";
 
-/** Admin > People of the active line (this release: Contracts leads). Non-admins get a 404. */
+/** Admin > People of the active line: Owners, Requesters, then Contracts leads. Non-admins get a 404. */
 export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string }> }) {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
-  const [leads, params] = await Promise.all([PeopleService.contractsLeads(scope, viewer), searchParams]);
+  const [owners, requesters, leads, params] = await Promise.all([
+    PeopleService.options(scope, "owner", viewer),
+    PeopleService.options(scope, "requester", viewer),
+    PeopleService.contractsLeads(scope, viewer),
+    searchParams,
+  ]);
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-5 px-6 py-6">
@@ -32,7 +37,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
           </Link>
         </div>
       </div>
-      <PeopleAdmin key={scope.id} lineShort={scope.shortName} leads={leads} initial={{ add: params.add === "1", remove: params.remove ?? null }} />
+      <PeopleAdmin key={scope.id} lineShort={scope.shortName} owners={owners} requesters={requesters} leads={leads} initial={{ add: params.add === "1", remove: params.remove ?? null }} />
     </main>
   );
 }

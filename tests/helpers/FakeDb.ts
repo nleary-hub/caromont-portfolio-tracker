@@ -30,6 +30,8 @@ interface State {
   departments: Row[];
   departmentHistory: Row[];
   yearEndReports: Row[];
+  peopleOptions: Row[];
+  peopleOptionHistory: Row[];
 }
 
 /** Scoped tables: a row stored without serviceLineId (tests that push rows directly) belongs to the default line. */
@@ -69,6 +71,9 @@ export class FakeDb {
     departments: FakeDb.defaultDepartmentRows(),
     departmentHistory: [],
     yearEndReports: [],
+    // Migration 0020 seeds CVPSL owners Nicole Smith and Nick Leary (A to Z). Requesters start empty.
+    peopleOptions: FakeDb.defaultPeopleOptions(),
+    peopleOptionHistory: [],
   };
   writes: { model: string; op: string; inTx: boolean; txId: number | null }[] = [];
   /** Simulate a database without migration 0015 (project_milestones missing). */
@@ -94,6 +99,15 @@ export class FakeDb {
       updatedAt: at,
       updatedBy: "migration 0016",
     };
+  }
+
+  static defaultPeopleOptions(): Row[] {
+    const at = new Date("2026-09-26T00:00:00Z");
+    const line = SCOPED_DEFAULT;
+    return [
+      { id: "00000000-0000-4000-8000-0000000000b1", serviceLineId: line, role: "owner", name: "Nick Leary", position: 1, createdAt: at, updatedAt: at, updatedBy: "migration 0020" },
+      { id: "00000000-0000-4000-8000-0000000000b2", serviceLineId: line, role: "owner", name: "Nicole Smith", position: 2, createdAt: at, updatedAt: at, updatedBy: "migration 0020" },
+    ];
   }
 
   static defaultDepartmentRows(): Row[] {
@@ -163,6 +177,8 @@ export class FakeDb {
       departments: c(state.departments),
       departmentHistory: c(state.departmentHistory),
       yearEndReports: c(state.yearEndReports),
+      peopleOptions: c(state.peopleOptions),
+      peopleOptionHistory: c(state.peopleOptionHistory),
     };
   }
 
@@ -722,6 +738,49 @@ export class FakeDb {
           this.state.serviceLineUserState.push(row);
           return { ...row };
         },
+      },
+      peopleOption: {
+        findMany: async ({ where, select, orderBy }: { where?: Row; select?: Record<string, boolean>; orderBy?: Record<string, "asc" | "desc"> } = {}) =>
+          sortBy(this.state.peopleOptions.filter((r) => matches(r, where)), orderBy).map((r) => pick(r, select)),
+        create: async ({ data }: { data: Row }) => {
+          rec("peopleOption", "create");
+          const name = String(data.name);
+          const clash = this.state.peopleOptions.some(
+            (r) => r.serviceLineId === (data.serviceLineId ?? SCOPED_DEFAULT) && r.role === data.role && String(r.name).toLowerCase() === name.toLowerCase(),
+          );
+          if (clash) throw uniqueViolation();
+          const row = { id: randomUUID(), createdAt: new Date(), updatedAt: new Date(), ...data };
+          this.state.peopleOptions.push(row);
+          return { ...row };
+        },
+        update: async ({ where, data }: { where: { id: string }; data: Row }) => {
+          rec("peopleOption", "update");
+          const r = this.state.peopleOptions.find((o) => o.id === where.id);
+          if (!r) throw new Error("not found");
+          const next = { ...r, ...data };
+          const clash = this.state.peopleOptions.some(
+            (o) => o.id !== r.id && o.serviceLineId === next.serviceLineId && o.role === next.role && String(o.name).toLowerCase() === String(next.name).toLowerCase(),
+          );
+          if (clash) throw uniqueViolation();
+          Object.assign(r, data, { updatedAt: new Date() });
+          return { ...r };
+        },
+        delete: async ({ where }: { where: { id: string } }) => {
+          rec("peopleOption", "delete");
+          const i = this.state.peopleOptions.findIndex((o) => o.id === where.id);
+          if (i < 0) throw new Error("not found");
+          const [row] = this.state.peopleOptions.splice(i, 1);
+          return { ...row };
+        },
+      },
+      peopleOptionHistory: {
+        create: async ({ data }: { data: Row }) => {
+          rec("peopleOptionHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), peopleOptionId: null, oldValue: null, newValue: null, ...data };
+          this.state.peopleOptionHistory.push(row);
+          return { ...row };
+        },
+        findMany: async ({ where }: { where?: Row } = {}) => this.state.peopleOptionHistory.filter((h) => matches(h, where)).map((h) => ({ ...h })),
       },
       recipient: {
         findMany: async ({ where }: { where?: Row } = {}) =>

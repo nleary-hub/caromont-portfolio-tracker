@@ -1,8 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { PeopleRole } from "@/lib/people/PeopleDirectory";
+import { PeopleDirectory, type PeopleRole } from "@/lib/people/PeopleDirectory";
 import { PeopleComboboxModel, type ComboOption, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
+import { PeopleListRules } from "@/lib/people/PeopleListRules";
 import { Chevron, FieldControlStyle } from "./FieldControl";
 
 export interface PeopleComboboxProps {
@@ -36,6 +37,8 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
   const opts = PeopleComboboxModel.options(rows);
   const optionId = (o: ComboOption) => `${id}-opt-${o.key}`;
   const active = open && highlight >= 0 && highlight < opts.length ? opts[highlight] : null;
+  const offListId = `${id}-offlist`;
+  const offList = value.kind === "name" && !PeopleDirectory.find(options, value.name);
 
   useEffect(() => {
     if (active) document.getElementById(optionId(active))?.scrollIntoView({ block: "nearest" });
@@ -99,11 +102,13 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
         aria-controls={listId}
         aria-autocomplete="list"
         aria-activedescendant={active ? optionId(active) : undefined}
+        aria-describedby={offList ? offListId : undefined}
         autoComplete="off"
         spellCheck={false}
         data-testid={`${role}-combobox`}
         value={open ? query : value.kind === "name" ? value.name : ""}
         placeholder={shown.text}
+        style={offList && !open ? { paddingRight: 108 } : undefined}
         onChange={(e) => type(e.target.value)}
         onClick={() => (open ? undefined : openList())}
         onKeyDown={onKeyDown}
@@ -124,6 +129,19 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
       >
         <Chevron open={open} />
       </button>
+      {offList && (
+        <span
+          id={offListId}
+          data-testid="not-on-list"
+          className={
+            open
+              ? "sr-only"
+              : "pointer-events-none absolute top-1/2 right-7 -translate-y-1/2 rounded-full border border-line px-1.5 text-[11px] leading-4 text-muted"
+          }
+        >
+          {PeopleListRules.NOT_ON_LIST}
+        </span>
+      )}
       <ul
         id={listId}
         role="listbox"

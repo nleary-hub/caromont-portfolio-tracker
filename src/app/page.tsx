@@ -12,7 +12,7 @@ import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
 import type { DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
 import { Db } from "@/lib/db/Db";
 import { Assignee } from "@/lib/domain/Assignee";
-import { Requester } from "@/lib/domain/Requester";
+import { PeopleService } from "@/lib/services/PeopleService";
 import { ProjectFormModel, type ProjectFormSource, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { DateOnly } from "@/lib/domain/DateOnly";
@@ -82,7 +82,7 @@ class DashboardData {
     if (!Db.isConfigured()) return DashboardData.empty(viewer, "DATABASE_URL is not configured.", scope);
     try {
       const db = Db.client;
-      const [stored, latest, settings, layout] = await Promise.all([
+      const [stored, latest, settings, layout, ownerNames, requesterNames] = await Promise.all([
         db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(scope) } }).then((rows) => ProjectRows.fromDbAll(rows)),
         db.reportSnapshot.findFirst({
           where: ServiceLineAccess.where(scope),
@@ -91,6 +91,8 @@ class DashboardData {
         }),
         ViewSettingsService.getAll(db),
         LineLayoutService.getOrDefault(db, scope),
+        viewer.isAdmin ? PeopleService.names(scope, "owner", db) : Promise.resolve([] as string[]),
+        viewer.isAdmin ? PeopleService.names(scope, "requester", db) : Promise.resolve([] as string[]),
       ]);
       // Derived next milestone and due date (first step not done); projects without steps keep their legacy fields.
       const steps = await MilestoneService.loadSteps(db, stored.map((p) => p.id));
@@ -158,8 +160,8 @@ class DashboardData {
               viewSettings: settings,
               pickerCounts: DashboardViewModel.adminPickerCounts(projects),
               hiddenFromReportIds: visible.filter((p) => p.hiddenFromReport).map((p) => p.id),
-              ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner), ServiceLineAccess.ownerSeed(scope, Assignee.OWNER_BASE_SUGGESTIONS)),
-              requesterSuggestions: Requester.suggestions(projects.map((p) => p.physicianChampion)),
+              ownerSuggestions: ownerNames,
+              requesterSuggestions: requesterNames,
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
               // The form reads the stored legacy fields; the checklist comes separately.
               formValues: DashboardData.formValues(stored, listedIds),

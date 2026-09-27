@@ -23,6 +23,9 @@ vi.mock("@/app/actions/departments", () => ({
   unarchiveDepartment: async () => ({ ok: true, message: "" }),
   addContractsLead: async () => ({ ok: true, message: "" }),
   removeContractsLead: async () => ({ ok: true, message: "" }),
+  addPeopleOption: async () => ({ ok: true, message: "" }),
+  renamePeopleOption: async () => ({ ok: true, message: "" }),
+  removePeopleOption: async () => ({ ok: true, message: "" }),
 }));
 
 const ADMIN = Factory.ADMIN;

@@ -21,9 +21,9 @@ export interface ProjectPeopleEditorProps {
   requesterNotApplicable: boolean;
   contractsLead: string | null;
   serviceArea: DepartmentKey | null;
-  /** Owner combobox options (PeopleDirectory.owners: built-in owners plus owners in use). */
+  /** Owner combobox options (the line's curated owner list). */
   ownerSuggestions: readonly string[];
-  /** Requester combobox options (PeopleDirectory.requesters: requesters in use). */
+  /** Requester combobox options (the line's curated requester list). */
   requesterSuggestions: readonly string[];
   /** Resolves to an error message, or null on success. */
   saveAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
@@ -160,15 +160,14 @@ function DepartmentSelect({ projectId, serviceArea, departments, saveAction }: P
 }
 
 /**
- * Shared owner and requester combobox wiring: holds the value, saves a pick through the admin server
- * action (reverting on error) and adds a newly added name to the local list right away. The server
- * list catches up on revalidate because options are derived from the names in use.
+ * Shared owner and requester combobox wiring: holds the value and saves a pick through the admin server
+ * action (reverting on error). Options are the line's curated list. A name typed here is saved on this
+ * project only; it is not added to the list, so it shows "Not on list" until People adds it.
  */
 function usePeoplePicker(role: PeopleRole, props: ProjectPeopleEditorProps, initial: PeopleValue, suggestions: readonly string[]) {
   const [value, setValue] = useState<PeopleValue>(initial);
-  const [added, setAdded] = useState<string[]>([]);
   const [state, save] = useFieldState();
-  const options = PeopleDirectory.merge([...suggestions, ...added]);
+  const options = PeopleDirectory.offer(suggestions);
   const onPick = (next: PeopleValue) => {
     const call = PeopleComboboxModel.saveFor(role, next, value);
     if (!call) return;
@@ -178,14 +177,13 @@ function usePeoplePicker(role: PeopleRole, props: ProjectPeopleEditorProps, init
     void save(async () => {
       const err = await props.saveAction(props.projectId, call.field, call.value);
       if (err) setValue(prev);
-      else if (shown.kind === "name") setAdded((a) => [...a, shown.name]);
       return err;
     });
   };
   return { value, options, state, onPick };
 }
 
-/** Owner: combobox of the built-in owners plus owners in use, "Clear (To assign)" pinned, "Add 'X'" for a new name. */
+/** Owner: combobox of the line's owner list, "Clear (To assign)" pinned, "Add 'X'" for a one-off name. */
 export function OwnerPicker(props: ProjectPeopleEditorProps) {
   const { value, options, state, onPick } = usePeoplePicker("owner", props, PeopleComboboxModel.valueOf(props.owner), props.ownerSuggestions);
   const id = `owner-${props.projectId}`;
@@ -197,8 +195,8 @@ export function OwnerPicker(props: ProjectPeopleEditorProps) {
 }
 
 /**
- * Requester (stored as physicianChampion): combobox of the requesters in use with "Not applicable"
- * (prints blank on the dashboard and report) and "Clear (To assign)" pinned, "Add 'X'" for a new name.
+ * Requester (stored as physicianChampion): combobox of the line's requester list with "Not applicable"
+ * (prints blank on the dashboard and report) and "Clear (To assign)" pinned, "Add 'X'" for a one-off name.
  */
 export function RequesterPicker(props: ProjectPeopleEditorProps) {
   const initial = PeopleComboboxModel.valueOf(props.physicianChampion, props.requesterNotApplicable);

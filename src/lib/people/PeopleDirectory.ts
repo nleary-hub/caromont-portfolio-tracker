@@ -10,9 +10,9 @@ export interface NameSegment {
 }
 
 /**
- * The owner and requester pick-lists. Today the lists are derived from the names already in use on
- * projects (plus a small built-in owner seed), so a newly added name shows up once a project uses it.
- * A later managed People table can back these same static methods without touching the UI.
+ * Owner and requester name helpers for the combobox. The names a project is offered come from the line's
+ * curated list (people_option, PeopleService.names). `owners` / `requesters` still merge names already in
+ * use; that is only the no-database fallback and these unit tests.
  */
 export class PeopleDirectory {
   /** Built-in owners (department leaders), merged with the owners in use. Requesters start empty. */
@@ -57,6 +57,23 @@ export class PeopleDirectory {
   /** Requester options: distinct requesters in use. */
   static requesters(inUse: readonly (string | null | undefined)[]): string[] {
     return PeopleDirectory.merge(inUse);
+  }
+
+  /**
+   * A curated list as combobox options: trimmed, case-insensitively deduped, sentinels dropped, order kept
+   * (the People page order). A name the list itself contains is offered, including one the old scrape hid.
+   */
+  static offer(values: readonly (string | null | undefined)[]): string[] {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    for (const raw of values) {
+      const name = PeopleDirectory.normalizeName(raw);
+      const key = name.toLowerCase();
+      if (!name || PeopleDirectory.isSentinel(name) || seen.has(key)) continue;
+      seen.add(key);
+      out.push(name);
+    }
+    return out;
   }
 
   static forRole(role: PeopleRole, inUse: readonly (string | null | undefined)[], seed: readonly string[] = PeopleDirectory.OWNER_SEED): string[] {

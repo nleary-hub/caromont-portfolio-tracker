@@ -100,10 +100,10 @@ class M19 {
 }
 
 describe("0019_year_end_report on production-shaped data (PGlite)", () => {
-  it("is the latest migration and follows 0018", () => {
+  it("follows 0018 and precedes 0020", () => {
     const f = M19.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0018_departments");
+    expect(f[f.indexOf(M) - 1]).toBe("0018_departments");
+    expect(f[f.indexOf(M) + 1]).toBe("0020_people_options");
   });
 
   it("is additive: every existing table, column and value is unchanged", async () => {

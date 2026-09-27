@@ -434,6 +434,8 @@ model ServiceLine {
   departmentRows   Department[]
   departmentLog    DepartmentHistory[]
   yearEndReports   YearEndReport[]
+  peopleOptions    PeopleOption[]
+  peopleOptionLog  PeopleOptionHistory[]
 
   @@map("service_line")
 }
@@ -570,4 +572,43 @@ model YearEndReport {
 
   @@index([serviceLineId, generatedAt])
   @@map("year_end_report")
+}
+
+/// A curated owner or requester name for one service line (migration 0020). The People page and the project
+/// comboboxes offer these names, in position order. Locked built-ins ("To assign", "Not applicable") are not
+/// rows. Removing a name does not change projects that already use it. Name length and the case-insensitive
+/// unique (line, role, name) are DB checks (PeopleListRules is the app check).
+model PeopleOption {
+  id            String      @id @default(uuid()) @db.Uuid
+  serviceLineId String      @db.Uuid
+  /// "owner" | "requester"
+  role          String
+  name          String
+  /// 1-based order on the People page. New names go last.
+  position      Int
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  updatedBy     String
+  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+
+  @@index([serviceLineId, role, position])
+  @@map("people_option")
+}
+
+/// Append-only audit of people-list changes (seeded, added, renamed, removed). DB trigger blocks UPDATE/DELETE.
+/// peopleOptionId is not a foreign key so the trail outlives a removed name.
+model PeopleOptionHistory {
+  id             String      @id @default(uuid()) @db.Uuid
+  serviceLineId  String      @db.Uuid
+  peopleOptionId String?     @db.Uuid
+  role           String
+  action         String
+  oldValue       Json?
+  newValue       Json?
+  changedAt      DateTime    @default(now())
+  changedBy      String
+  serviceLine    ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+
+  @@index([serviceLineId, changedAt])
+  @@map("people_option_history")
 }
