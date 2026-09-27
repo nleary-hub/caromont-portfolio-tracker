@@ -153,7 +153,11 @@ Notes:
   (`DepartmentAccess`): the dashboard, tiles, counts, search and the department filter only include their
   departments (Unassigned projects belong to none, so they don't see them), project History outside them is
   empty. Reports are per line: a limited person lists and opens the line's weekly PDFs, archive and year-end
-  reports exactly like someone with all departments (people without the line still get 404, as before).
+  reports exactly like someone with all departments (people without the line still get 404, as before): the same
+  full frozen files, never a filtered copy. On-demand PDFs are different: "Generate PDF now" (the live draft,
+  `/api/reports/preview`) is also offered to a limited person and covers only their departments, narrowed to the
+  ones their dashboard filter shows (`?departments=`, checked on the server; anything they lack is dropped).
+  It is download only and never stored, delivered or frozen. Admins' draft is unchanged.
   `/?project=<id>` opens a project's detail; a project outside their lines or departments, or one that
   doesn't exist, shows "You don't have access to this project" without its name. Deleting a department and
   moving its projects moves people's access with them (Audit log); a new department reaches only people with

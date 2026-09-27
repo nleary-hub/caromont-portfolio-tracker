@@ -34,6 +34,7 @@ import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardS
 import { LayoutCopy, LineLayout, type ColumnLayoutValue, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentsSelect, TileVisibilityButton } from "./DashboardFilterControls";
+import { OnDemandPdfLink } from "@/lib/report/OnDemandPdfLink";
 import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { Flags, StatusPill } from "./StatusPill";
@@ -427,9 +428,11 @@ export function ProjectDashboard({
         <Link href="/reports" className="shrink-0 whitespace-nowrap type-table-strong text-muted hover:text-fg">
           Reports
         </Link>
-        {admin && (
+        {(admin || line?.departmentLimit) && (
+          // Admins: as before. A viewer limited to some departments: the same draft, only the departments they
+          // are viewing (the server keeps only ones they have; DraftReportService).
           <a
-            href="/api/reports/preview"
+            href={admin ? OnDemandPdfLink.href() : OnDemandPdfLink.href(departments)}
             download
             title="Download a draft PDF from live data. Not an official snapshot; nothing is saved or sent."
             className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"

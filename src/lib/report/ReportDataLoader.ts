@@ -4,6 +4,7 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { CompletedRow, MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
+import type { DepartmentKey } from "@/lib/domain/ServiceAreaInfo";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
 import { ChampionCheck } from "@/lib/report/ChampionCheck";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
@@ -45,9 +46,11 @@ export interface LiveReportData {
 export class ReportDataLoader {
   /**
    * `scope` is the service line to report on; omitted means the scheduled report's line (the default line,
-   * CVPSL), which is what the freeze uses.
+   * CVPSL), which is what the freeze uses. A scope narrowed for a department-limited viewer (DepartmentAccess)
+   * reads only their departments' projects. `departments` (on-demand PDFs of a limited viewer only) replaces the
+   * admin "Departments in report" setting; the freeze never passes it.
    */
-  static async load(db: ReadClient, now: Date, scope?: ServiceLineScope): Promise<LiveReportData> {
+  static async load(db: ReadClient, now: Date, scope?: ServiceLineScope, departments?: readonly DepartmentKey[]): Promise<LiveReportData> {
     const line = scope ?? (await ServiceLineAccess.scheduledReportLine(db));
     const reportDate = DateOnly.inZone(now);
     const previous = await db.reportSnapshot.findFirst({
@@ -55,12 +58,13 @@ export class ReportDataLoader {
       orderBy: { generatedAt: "desc" },
       select: { generatedAt: true },
     });
-    const options = await ReportOptionsService.get(db, line);
+    const saved = await ReportOptionsService.get(db, line);
+    const options: ReportOptionsValue = departments ? { ...saved, departments: [...departments] } : saved;
     const layout = await LineLayoutService.get(db, line);
     // Report department filter (admin setting): excluded departments leave no trace (rows, counts, flags,
     // completed blocks, FY count). All selected = no filter.
     const stored = DepartmentFilter.apply(
-      ProjectRows.fromDbAll(await db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(line) } })),
+      ProjectRows.fromDbAll(await db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.projectWhere(line) } })),
       options.departments,
       DepartmentFilter.optionsFor(line),
     );

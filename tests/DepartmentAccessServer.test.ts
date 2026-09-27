@@ -32,6 +32,7 @@ const { default: DashboardPage } = await import("@/app/page");
 const { default: ReportsPage } = await import("@/app/reports/page");
 const { GET: archiveGET } = await import("@/app/reports/[id]/[file]/route");
 const { GET: yearEndGET } = await import("@/app/reports/year-end/[id]/route");
+const { GET: previewGET } = await import("@/app/api/reports/preview/route");
 const { loadProjectHistory } = await import("@/app/actions/history");
 const { setAllDepartments, setDepartmentAccess } = await import("@/app/actions/access");
 const { NoAccessCard } = await import("@/components/NoAccessCard");
@@ -336,6 +337,103 @@ describe("routes and actions", () => {
     const withLimits = JSON.parse(Buffer.from(fake.state.artifacts.find((a) => a.kind === "handoff")!.bytes as Uint8Array).toString("utf8"));
     expect(withLimits.totals.projects).toBe(4);
     expect(ServiceLine.DEFAULT_ID).toBe(CVPSL);
+  });
+});
+
+describe("on-demand PDFs (Generate PDF now): only the departments a limited user has and is viewing", () => {
+  type DocInput = { rows: readonly unknown[]; departments?: string[]; lineDepartments?: { id: string }[]; draft?: boolean };
+  class Draft {
+    static async get(query = ""): Promise<{ status: number; input: DocInput | null; bytes: Buffer }> {
+      const { PdfReportRenderer } = await import("@/lib/report/PdfReportRenderer");
+      const spy = vi.spyOn(PdfReportRenderer, "renderDocument");
+      const res = await previewGET(new Request(`https://tracker.example.org/api/reports/preview${query}`));
+      const input = (spy.mock.calls[0]?.[0] as unknown as DocInput | undefined) ?? null;
+      spy.mockRestore();
+      return { status: res.status, input, bytes: Buffer.from(await res.arrayBuffer()) };
+    }
+
+    /** Project names in the rendered rows (and "Completed this period"). */
+    static names(input: DocInput | null): string[] {
+      const text = JSON.stringify(input);
+      return ["Echo visible project", "Echo finished project", "Cath secret project", "EP secret project", "Unassigned secret project"].filter((n) => text.includes(n));
+    }
+  }
+
+  it("includes only the departments they have, even when others are requested", async () => {
+    h.viewer = JANE; // Echo and IR in CVPSL
+    const all = await Draft.get();
+    expect(all.status).toBe(200);
+    expect(all.bytes.subarray(0, 5).toString()).toBe("%PDF-");
+    expect(Draft.names(all.input)).toEqual(["Echo visible project", "Echo finished project"]);
+    expect(all.input!.departments).toEqual(["Echo", "IR"]);
+    expect(all.input!.lineDepartments!.map((d) => d.id)).toEqual(["Echo", "IR"]);
+    // Asking for departments they don't have (and junk) changes nothing: the server keeps only theirs.
+    const forged = await Draft.get("?departments=Cath,EP,Echo,IR,CardioNeuro,nope");
+    expect(Draft.names(forged.input)).toEqual(["Echo visible project", "Echo finished project"]);
+    expect(forged.input!.departments).toEqual(["Echo", "IR"]);
+    // Only departments they lack: falls back to all of theirs, never to the others.
+    const onlyOthers = await Draft.get("?departments=Cath,EP");
+    expect(Draft.names(onlyOthers.input)).toEqual(["Echo visible project", "Echo finished project"]);
+  });
+
+  it("narrowing to some of their departments gets only that subset", async () => {
+    const ir = await ProjectService.create({ serviceArea: "IR", owner: "O", status: "OnTrack", nextMilestone: "M", name: "IR visible project" } as never, actor, h.db as never);
+    h.viewer = JANE;
+    const both = await Draft.get("?departments=Echo,IR");
+    expect(JSON.stringify(both.input)).toContain("IR visible project");
+    const irOnly = await Draft.get("?departments=IR");
+    expect(irOnly.input!.departments).toEqual(["IR"]);
+    expect(JSON.stringify(irOnly.input)).toContain("IR visible project");
+    expect(Draft.names(irOnly.input)).toEqual([]);
+    const echoOnly = await Draft.get("?departments=Echo");
+    expect(Draft.names(echoOnly.input)).toEqual(["Echo visible project", "Echo finished project"]);
+    expect(JSON.stringify(echoOnly.input)).not.toContain("IR visible project");
+    expect(ir.id).toBeTruthy();
+  });
+
+  it("writes nothing to report storage (no snapshot, artifact, delivery, year-end row, Drive or network) and never becomes the frozen report", async () => {
+    await FreezeService.run({ trigger: "cron", actor: "cron", now: FREEZE_RUN, env: { ...ENV }, fetch: vi.fn() }, h.db as never);
+    const frozen = Buffer.from(fake.state.artifacts.find((a) => a.kind === "pdf")!.bytes as Uint8Array);
+    const before = JSON.stringify({ s: fake.state.snapshots.map((x) => x.id), a: fake.state.artifacts.map((x) => x.id), d: fake.state.deliveries.length, y: fake.state.yearEndReports.length });
+    const writes = fake.writes.length;
+    const net = vi.spyOn(globalThis, "fetch");
+    h.viewer = JANE;
+    const r = await Draft.get("?departments=Echo");
+    expect(r.status).toBe(200);
+    expect(r.input!.draft).toBe(true);
+    const REPORT_STORAGE = ["reportSnapshot", "reportArtifact", "reportDelivery", "yearEndReport"];
+    expect(fake.writes.slice(writes).filter((w) => REPORT_STORAGE.includes(w.model))).toEqual([]);
+    expect(JSON.stringify({ s: fake.state.snapshots.map((x) => x.id), a: fake.state.artifacts.map((x) => x.id), d: fake.state.deliveries.length, y: fake.state.yearEndReports.length })).toBe(before);
+    expect(net.mock.calls.map((c) => String(c[0])).filter((u) => !u.startsWith("data:"))).toEqual([]);
+    // The frozen report is untouched and still what everyone opens.
+    const res = await archiveGET(new Request("https://tracker.example.org/x"), { params: Promise.resolve({ id: fake.state.snapshots[0].id as string, file: "pdf" }) });
+    expect(Buffer.from(await res.arrayBuffer()).equals(frozen)).toBe(true);
+    expect(r.bytes.equals(frozen)).toBe(false);
+  });
+
+  it("everyone else keeps today's behavior: admins' PDF follows the admin setting (params ignored); other non-admins and no-access users get 404", async () => {
+    h.viewer = ADMIN;
+    const admin = await Draft.get("?departments=Echo");
+    expect(admin.status).toBe(200);
+    expect(Draft.names(admin.input)).toEqual(expect.arrayContaining(["Cath secret project", "EP secret project", "Echo visible project"]));
+    expect(admin.input!.lineDepartments).toHaveLength(7);
+    h.viewer = JANE;
+    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
+    expect((await Draft.get("?departments=Echo")).status).toBe(404);
+    h.viewer = { email: "ben.noaccess@caromonthealth.org", isAdmin: false, name: "Ben" };
+    expect((await Draft.get()).status).toBe(404);
+  });
+
+  it("the dashboard shows the same Generate PDF now button to a limited user, linked to the departments they are viewing", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const link = async () => /href="(\/api\/reports\/preview[^"]*)"[^>]*>Generate PDF now</.exec(renderToStaticMarkup(await Page.render(DashboardPage)))?.[1] ?? null;
+    h.viewer = JANE;
+    expect(await link()).toBe("/api/reports/preview?departments=Echo,IR");
+    h.viewer = ADMIN;
+    expect(await link()).toBe("/api/reports/preview");
+    h.viewer = JANE;
+    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
+    expect(await link()).toBeNull();
   });
 });
 
