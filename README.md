@@ -128,7 +128,22 @@ Notes:
 - `/admin/audit` returns a 404 (not 403) to non-admins so its existence is not revealed.
 - Pages also call `auth()` themselves (defense in depth; do not rely on the proxy alone).
 - Providers are registered in `src/lib/auth/AuthProviders.ts`; add a descriptor there to plug in another.
-- Sessions: JWT, 8 hour max age. No user table.
+- Sessions: JWT, 8 hour max age. Auth.js keeps no user table; `app_user` (below) only lists people for access.
+- **Service line access (item 8, migration 0023).** Sign-in is still `ALLOWED_EMAILS`. After sign-in, admins
+  see every open line; everyone else sees only the lines checked for them on Admin > People > Access
+  (`service_line_access`, keyed by lowercased email, so an admin can "Add user" before their first sign-in).
+  People appear in the grid on their first page load (`app_user`). With no line they get a blank page with
+  the "You don't have access yet" card. `/?line=EP` (or `/reports?line=EP`) opens one of their lines, or a card
+  naming the line they lack with a button to their first line; a line that doesn't exist looks the same.
+  Enforced on the server: `ServiceLineAccess` (`activeFor` / `activeOrNull` / `usableLines`) for every
+  route and Server Action, `LineGate` for the dashboard and report archive. Report downloads, year-end PDFs
+  and project history answer 404 / empty without the line. The switcher shows only the viewer's lines (a
+  plain label for exactly one; "Manage service lines" for admins only). Not affected: the cron freeze,
+  handoff.json and Drive delivery (no viewer; always CVPSL), signed `/api/share` links, and the CSV
+  export (admin web route, or `npm run export:csv` straight from `DATABASE_URL`). Every change is logged
+  to `service_line_access_history`.
+- Migration 0023 grants nobody anything (start with none): on day one only admins (`ADMIN_EMAILS`) see
+  lines; everyone else sees the no-access card until an admin checks their lines.
 
 ## Data model (prisma/schema.prisma)
 

@@ -11,6 +11,8 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   const viewer = await CurrentViewer.get();
   if (!viewer) return ReportHttp.notFound();
   const { id } = await ctx.params;
-  const file = await YearEndReportService.file(id, await ServiceLineAccess.activeOrDefault(viewer));
+  const scope = await ServiceLineAccess.activeOrNull(viewer);
+  if (!scope) return ReportHttp.notFound();
+  const file = await YearEndReportService.file(id, scope);
   return file ? ReportHttp.file(file.bytes, file.contentType, file.fileName, "attachment") : ReportHttp.notFound();
 }

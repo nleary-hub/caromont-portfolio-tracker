@@ -196,10 +196,10 @@ describe("service line isolation", () => {
   it("every server action and line page resolves the service line explicitly", () => {
     const root = join(process.cwd(), "src/app");
     const actions = Lines.files(join(root, "actions")).filter((f) => !/auth|signin/i.test(f));
-    const pages = ["page.tsx", "reports/page.tsx", "admin/import/page.tsx", "admin/import/actions.ts", "admin/import/export/route.ts", "admin/templates/page.tsx", "admin/settings/page.tsx", "admin/audit/page.tsx", "admin/service-lines/page.tsx", "admin/departments/page.tsx", "admin/people/page.tsx", "reports/[id]/[file]/route.ts"].map((p) => join(root, p));
+    const pages = ["page.tsx", "reports/page.tsx", "admin/import/page.tsx", "admin/import/actions.ts", "admin/import/export/route.ts", "admin/templates/page.tsx", "admin/settings/page.tsx", "admin/audit/page.tsx", "admin/service-lines/page.tsx", "admin/departments/page.tsx", "admin/people/page.tsx", "reports/[id]/[file]/route.ts", "reports/year-end/[id]/route.ts"].map((p) => join(root, p));
     const missing = [...actions, ...pages].filter((f) => {
       const src = readFileSync(f, "utf8");
-      return !/ServiceLineAccess|ServiceLineForms|DepartmentForms|ImportActionsSupport|AdminAction|ProjectFormAction/.test(src);
+      return !/ServiceLineAccess|LineAccessService|LineGate|ServiceLineForms|DepartmentForms|ImportActionsSupport|AdminAction|ProjectFormAction/.test(src);
     });
     expect(missing).toEqual([]);
   });

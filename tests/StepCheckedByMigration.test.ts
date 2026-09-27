@@ -67,10 +67,9 @@ class M22 {
 }
 
 describe("0022_step_checked_by on production-shaped data (PGlite)", () => {
-  it("is the latest migration and follows 0021", () => {
+  it("follows 0021", () => {
     const f = M22.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0021_prior_infor_numbers");
+    expect(f[f.indexOf(M) - 1]).toBe("0021_prior_infor_numbers");
   });
 
   it("is additive: two nullable columns on project_milestones, every existing column and value unchanged", async () => {

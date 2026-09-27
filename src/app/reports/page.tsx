@@ -4,7 +4,9 @@ import { redirect } from "next/navigation";
 import { setShowKeyPageForm } from "@/app/actions/reports";
 import { FreezeNowButton } from "@/components/FreezeNowButton";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
-import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { signOut, SIGN_IN_PATH } from "@/auth";
+import { NoAccessCard } from "@/components/NoAccessCard";
+import { LineGate } from "@/lib/access/LineGate";
 import { ServiceLineCopy } from "@/lib/domain/ServiceLine";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
@@ -19,6 +21,11 @@ import { YearEndCopy } from "@/lib/report/YearEndReportData";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
 
 export const dynamic = "force-dynamic";
+
+const signOutAction = async () => {
+  "use server";
+  await signOut({ redirectTo: SIGN_IN_PATH });
+};
 
 class ArchiveView {
   static delivery(e: ArchiveEntry): string {
@@ -35,7 +42,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const viewer = await CurrentViewer.get();
   if (!viewer) redirect("/signin");
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
-  const scope = await ServiceLineAccess.activeOrDefault(viewer);
+  const params = await searchParams;
+  // Per-line access (item 8): the archive of the viewer's line only; the same cards as the dashboard otherwise.
+  const gate = await LineGate.forPage(viewer, params.line, "/reports");
+  if (gate.kind === "switched") redirect(gate.to);
+  if (gate.kind === "none") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} />;
+  if (gate.kind === "lacks") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} line={gate.requested} goTo={{ shortName: gate.first.shortName, href: LineGate.href("/reports", gate.first.shortName) }} />;
+  const { scope, lines } = gate;
   const entries = await ReportArchiveService.list(viewer, undefined, scope);
   const next = ReportSchedule.nextFreezeOnOrAfter(DateOnly.today());
   const options = viewer.isAdmin ? await ReportOptionsService.get(undefined, scope) : null;
@@ -43,13 +56,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const yearEndYears = viewer.isAdmin ? await YearEndReportService.years(viewer, scope).catch(() => [FiscalYear.of(today).label]) : [];
   const yearEnd = await YearEndReportService.list(scope).catch(() => []);
   // Deep link for review and screenshots: ?yearEnd=1 opens the dialog.
-  const openYearEnd = (await searchParams).yearEnd === "1";
+  const openYearEnd = params.yearEnd === "1";
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
       <div className="flex items-center justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          <ServiceLineSlot viewer={viewer} active={scope} />
+          <ServiceLineSlot viewer={viewer} active={scope} lines={lines} />
           <div className="h-6 w-px bg-line" />
           <h1 className="type-title whitespace-nowrap">Report archive</h1>
         </div>

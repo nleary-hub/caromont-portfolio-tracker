@@ -24,6 +24,8 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceLineSwitcher } from "@/components/ServiceLineSwitcher";
+import { NoAccessCard } from "@/components/NoAccessCard";
+import { LineGate } from "@/lib/access/LineGate";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
@@ -183,17 +185,25 @@ class DashboardData {
   }
 }
 
-export default async function DashboardPage() {
-  // Defense in depth: the proxy already gates this route. Admin is re-evaluated on every request.
+const signOutAction = async () => {
+  "use server";
+  await signOut({ redirectTo: SIGN_IN_PATH });
+};
+
+export default async function DashboardPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
+  // Defense in depth: the proxy already gates this route. Admin and line access are re-evaluated on every request.
   const viewer = await CurrentViewer.get();
   if (!viewer) redirect(SIGN_IN_PATH);
 
+  // Per-line access (item 8): no line = the no-access card only; ?line=EP opens one of your lines or names the one you lack.
+  const gate = await LineGate.forPage(viewer, (await searchParams).line, "/");
+  if (gate.kind === "switched") redirect(gate.to);
+  if (gate.kind === "none") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} />;
+  if (gate.kind === "lacks") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} line={gate.requested} goTo={{ shortName: gate.first.shortName, href: LineGate.href("/", gate.first.shortName) }} />;
+
   const today = DateOnly.today();
-  const scope = await ServiceLineAccess.activeOrDefault(viewer);
-  const [{ rows, fiscalYearRows, columns, latestReport, completedFiscalYear, layout, admin, error }, lines] = await Promise.all([
-    DashboardData.load(viewer, today, scope),
-    viewer.isAdmin && Db.isConfigured() ? ServiceLineAccess.usableLines(viewer).catch(() => [scope]) : Promise.resolve([]),
-  ]);
+  const { scope, lines } = gate;
+  const { rows, fiscalYearRows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
 
   return (
     <ProjectDashboard
@@ -211,7 +221,8 @@ export default async function DashboardPage() {
       // Switching lines remounts the dashboard: an open drawer closes and filters reset to the line's own.
       key={scope.id}
       line={scope}
-      switcher={viewer.isAdmin ? <ServiceLineSwitcher lines={lines.length ? lines : [scope]} active={scope} /> : null}
+      // Admins: always the switcher (with Manage service lines). Others: the switcher for 2+ lines, a plain label for one.
+      switcher={viewer.isAdmin || lines.length > 1 ? <ServiceLineSwitcher lines={lines.length ? lines : [scope]} active={scope} manage={viewer.isAdmin} /> : null}
       // Spread so non-admins' payload does not even carry an "admin" key.
       {...(admin
         ? {
@@ -268,10 +279,7 @@ export default async function DashboardPage() {
           }
         : {})}
       historyAction={loadProjectHistory}
-      signOutAction={async () => {
-        "use server";
-        await signOut({ redirectTo: SIGN_IN_PATH });
-      }}
+      signOutAction={signOutAction}
     />
   );
 }

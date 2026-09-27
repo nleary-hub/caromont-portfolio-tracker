@@ -42,6 +42,11 @@ export class EmailAllowlist {
     return null;
   }
 
+  /** The exact-email entries (lowercased, A to Z); "@domain" entries are not listed. */
+  exactEmails(): string[] {
+    return [...this.emails].sort();
+  }
+
   get size(): number {
     return this.emails.size + this.domains.size;
   }

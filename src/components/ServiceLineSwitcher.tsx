@@ -12,12 +12,13 @@ import { Chevron } from "./FieldControl";
 type SwitcherLine = Pick<ServiceLineScope, "id" | "name" | "shortName" | "isDefault">;
 
 /**
- * Admin-only service line switcher in the top bar: a 28px ghost button with the active line's full name (short
- * name below the `topbar` breakpoint) and the shared chevron. The popover lists open lines (default first, then
- * A to Z) with a check on the active one, then "Manage service lines". Non-admins get the plain label instead
- * (the page does not render this for them). The choice is saved per user on the server.
+ * Service line switcher in the top bar: a 28px ghost button with the active line's full name (short name below the
+ * `topbar` breakpoint) and the shared chevron. The popover lists the viewer's lines (admins: every open line; others:
+ * the lines they have access to), default first then A to Z, with a check on the active one, then "Manage service
+ * lines" for admins only (`manage`). Someone with exactly one line gets the plain label instead (the page decides).
+ * The choice is saved per user on the server, which re-checks access.
  */
-export function ServiceLineSwitcher({ lines, active }: { lines: readonly SwitcherLine[]; active: SwitcherLine }) {
+export function ServiceLineSwitcher({ lines, active, manage = true }: { lines: readonly SwitcherLine[]; active: SwitcherLine; manage?: boolean }) {
   const { open, setOpen, rootRef } = usePopover();
   const router = useRouter();
   const pathname = usePathname();
@@ -80,10 +81,14 @@ export function ServiceLineSwitcher({ lines, active }: { lines: readonly Switche
               );
             })}
           </ul>
-          <div className="df-divider" />
-          <Link href="/admin/service-lines" className="sl-manage" onClick={() => setOpen(false)}>
-            {ServiceLineCopy.MANAGE_LINK}
-          </Link>
+          {manage && (
+            <>
+              <div className="df-divider" />
+              <Link href="/admin/service-lines" className="sl-manage" onClick={() => setOpen(false)}>
+                {ServiceLineCopy.MANAGE_LINK}
+              </Link>
+            </>
+          )}
         </div>
       )}
     </div>

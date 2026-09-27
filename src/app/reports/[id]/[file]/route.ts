@@ -11,6 +11,9 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   const viewer = await CurrentViewer.get();
   const { id, file } = await ctx.params;
   if (!viewer || (file !== "pdf" && file !== "handoff")) return ReportHttp.notFound();
-  const artifact = await ReportArchiveService.file(viewer, id, file, undefined, await ServiceLineAccess.activeOrDefault(viewer));
+  // Per-line access: only the viewer's active line (one they may use); no line at all = 404.
+  const scope = await ServiceLineAccess.activeOrNull(viewer);
+  if (!scope) return ReportHttp.notFound();
+  const artifact = await ReportArchiveService.file(viewer, id, file, undefined, scope);
   return artifact ? ReportHttp.artifact(artifact) : ReportHttp.notFound();
 }
