@@ -5,6 +5,9 @@ import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { DepartmentAccessCopy } from "@/lib/access/DepartmentAccessCopy";
+import { DepartmentAccessService } from "@/lib/services/DepartmentAccessService";
+import { LineAccessService } from "@/lib/services/LineAccessService";
 import { ServiceLineHistoryText } from "@/lib/admin/ServiceLineHistoryText";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
@@ -20,7 +23,7 @@ export interface AuditProject {
 }
 
 export interface AuditEvent {
-  kind: "project" | "viewSettings" | "serviceLine" | "template" | "layout" | "department";
+  kind: "project" | "viewSettings" | "serviceLine" | "template" | "layout" | "department" | "access";
   at: Date;
   by: string;
   /** Project name, or the view settings context. */
@@ -95,6 +98,15 @@ export class AdminAuditService {
       db.departmentHistory.findMany({ where: { serviceLineId: scope.id }, orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
       db.department.findMany({ where: { serviceLineId: scope.id, deletedAt: { not: null } }, orderBy: { deletedAt: "desc" } }),
     ]);
+    // Department access that moved when a department was deleted (migration 0024), with people's display names.
+    const accessMoves = await db.departmentAccessHistory.findMany({
+      where: { serviceLineId: scope.id, action: DepartmentAccessService.ACTIONS.moved },
+      orderBy: { changedAt: "desc" },
+      take: AdminAuditService.EVENT_LIMIT,
+    });
+    const people = new Map(
+      (accessMoves.length ? await db.appUser.findMany({ where: { email: { in: [...new Set(accessMoves.map((h) => h.email))] } } }) : []).map((u) => [u.email, LineAccessService.displayName(u)]),
+    );
     const departmentNames = new Map(
       (await db.department.findMany({ where: { serviceLineId: scope.id }, select: { id: true, name: true } })).map((d) => [d.id, d.name]),
     );
@@ -159,6 +171,20 @@ export class AdminAuditService {
         newValue: h.newValue === null ? null : JSON.stringify(h.newValue),
         comment: null,
       })),
+      ...accessMoves.map((h) => {
+        const detail = (h.detail ?? {}) as { from?: string; to?: string };
+        const who = people.get(h.email) ?? LineAccessService.displayName({ email: h.email });
+        return {
+          kind: "access" as const,
+          at: h.changedAt,
+          by: h.changedBy,
+          subject: who,
+          field: `access.${h.action}`,
+          oldValue: detail.from ?? null,
+          newValue: detail.to ?? null,
+          comment: DepartmentAccessCopy.movedAudit(who, detail.from ?? "Department", detail.to ?? "Department"),
+        };
+      }),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, AdminAuditService.EVENT_LIMIT);

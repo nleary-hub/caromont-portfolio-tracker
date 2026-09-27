@@ -36,6 +36,7 @@ import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardS
 import { LayoutCopy, LineLayout, type ColumnLayoutValue, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentsSelect, TileVisibilityButton } from "./DashboardFilterControls";
+import { OnDemandPdfLink } from "@/lib/report/OnDemandPdfLink";
 import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { Flags, StatusPill } from "./StatusPill";
@@ -126,6 +127,8 @@ interface Props {
   signOutAction: () => Promise<void>;
   /** Project detail > History for the signed-in viewer (everyone; the server applies the visibility rules). */
   historyAction?: HistoryLoader;
+  /** A project link (/?project=<id>) the server checked: its detail opens on load. */
+  initialProjectId?: string;
 }
 
 /** Browser localStorage, or null (server render, private mode, or storage blocked). */
@@ -163,9 +166,10 @@ export function ProjectDashboard({
   layout: layoutProp,
   signOutAction,
   historyAction,
+  initialProjectId,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
   const searchRef = useRef<HTMLInputElement>(null);
   // Admin edit mode. Non-admins stay in "view" (there is no way to switch).
   const [mode, setMode] = useState<DrawerMode>("view");
@@ -449,16 +453,16 @@ export function ProjectDashboard({
           />
         )}
         <MainNav active="dashboard" closedQuery={closedQuery} />
-        {admin && (
-          <a
-            href="/api/reports/preview"
-            download
-            title="Download a draft PDF from live data. Not an official snapshot; nothing is saved or sent."
-            className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"
-          >
-            Generate PDF now
-          </a>
-        )}
+        {/* Everyone who can see the dashboard: only the departments they are viewing (the server keeps only ones
+            they can see; an admin viewing every department gets the admin report setting; DraftReportService). */}
+        <a
+          href={OnDemandPdfLink.href(departments)}
+          download
+          title={OnDemandPdfLink.TOOLTIP}
+          className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"
+        >
+          Generate PDF now
+        </a>
         {admin && admin.menuItems.length > 0 && (
           // 12px left of the user block (header gap is 16px).
           <div className="-mr-1">
@@ -529,7 +533,7 @@ export function ProjectDashboard({
             </select>
           </label>
           <div className="ml-2">
-            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} list={line?.departments} />
+            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} list={line?.departments} limited={Boolean(line?.departmentLimit)} />
           </div>
           {admin && (
             <button

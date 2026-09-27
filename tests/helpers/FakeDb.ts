@@ -34,6 +34,8 @@ interface State {
   appUsers: Row[];
   accessGrants: Row[];
   accessHistory: Row[];
+  deptAccess: Row[];
+  deptAccessHistory: Row[];
 }
 
 /** Scoped tables: a row stored without serviceLineId (tests that push rows directly) belongs to the default line. */
@@ -74,6 +76,8 @@ export class FakeDb {
     appUsers: [],
     accessGrants: [],
     accessHistory: [],
+    deptAccess: [],
+    deptAccessHistory: [],
     departmentHistory: [],
     yearEndReports: [],
     priorInforNumbers: [],
@@ -133,6 +137,16 @@ export class FakeDb {
     }
   }
 
+  /** Limit a person's line to some departments ("All departments" off; tests). The line must be granted first. */
+  limit(email: string, serviceLineId: string, ...departmentIds: string[]): void {
+    const e = email.trim().toLowerCase();
+    const g = this.state.accessGrants.find((x) => x.email === e && x.serviceLineId === serviceLineId);
+    if (!g) throw new Error("grant the line first");
+    g.allDepartments = false;
+    this.state.deptAccess = this.state.deptAccess.filter((d) => !(d.email === e && d.serviceLineId === serviceLineId));
+    for (const id of departmentIds) this.state.deptAccess.push({ email: e, serviceLineId, departmentId: id, grantedAt: new Date(), grantedBy: "test" });
+  }
+
   /** Add an open service line (tests). */
   addLine(overrides: Row = {}): Row {
     const at = new Date();
@@ -188,6 +202,8 @@ export class FakeDb {
       appUsers: c(state.appUsers),
       accessGrants: c(state.accessGrants),
       accessHistory: c(state.accessHistory),
+      deptAccess: c(state.deptAccess),
+      deptAccessHistory: c(state.deptAccessHistory),
     };
   }
 
@@ -204,6 +220,7 @@ export class FakeDb {
     };
     const matches = (row: Row, where: Row = {}): boolean =>
       Object.entries(where).every(([k, v]) => {
+        if (k === "OR") return (v as Row[]).some((w) => matches(row, w));
         const rv = value(row, k);
         if (v && typeof v === "object" && !(v instanceof Date)) {
           const cond = v as { in?: unknown[]; notIn?: unknown[]; gt?: Date; not?: unknown };
@@ -354,15 +371,17 @@ export class FakeDb {
           }
           return rows.map((r) => pick(r, select));
         },
-        // Only the shape the pages use: by projectId, latest changedAt.
-        groupBy: async ({ where }: { by: string[]; where?: Row; _max?: Record<string, boolean> }) => {
-          const max = new Map<string, Date>();
+        /** groupBy({ by: ["projectId"], where, _max: { changedAt: true } }): the dashboard's "Updated <date>". */
+        groupBy: async ({ by, where }: { by: string[]; where?: Row; _max?: Record<string, boolean> }) => {
+          const groups = new Map<string, Row>();
           for (const h of this.state.history.filter((x) => matches(x, where))) {
-            const at = h.changedAt as Date;
-            const id = h.projectId as string;
-            if (!max.has(id) || max.get(id)!.getTime() < at.getTime()) max.set(id, at);
+            const k = by.map((b) => String(h[b])).join("|");
+            const g = groups.get(k) ?? { ...Object.fromEntries(by.map((b) => [b, h[b]])), _max: { changedAt: null } };
+            const cur = (g._max as { changedAt: Date | null }).changedAt;
+            if (!cur || (h.changedAt as Date) > cur) (g._max as { changedAt: Date | null }).changedAt = h.changedAt as Date;
+            groups.set(k, g);
           }
-          return [...max].map(([projectId, changedAt]) => ({ projectId, _max: { changedAt } }));
+          return [...groups.values()];
         },
       },
       reportSnapshot: {
@@ -774,8 +793,25 @@ export class FakeDb {
           const r = this.state.appUsers.find((u) => u.email === where.email);
           return r ? { ...r } : null;
         },
-        findMany: async ({ include }: { include?: { access?: boolean } } = {}) =>
-          this.state.appUsers.map((u) => ({ ...u, ...(include?.access ? { access: this.state.accessGrants.filter((g) => g.email === u.email).map((g) => ({ ...g })) } : {}) })),
+        findMany: async ({ where, include }: { where?: Row; include?: { access?: boolean | { include?: { departments?: boolean } } } } = {}) =>
+          this.state.appUsers
+            .filter((u) => matches(u, where))
+            .map((u) => ({
+              ...u,
+              ...(include?.access
+                ? {
+                    access: this.state.accessGrants
+                      .filter((g) => g.email === u.email)
+                      .map((g) => ({
+                        allDepartments: true,
+                        ...g,
+                        ...(typeof include.access === "object" && include.access.include?.departments
+                          ? { departments: this.state.deptAccess.filter((d) => d.email === g.email && d.serviceLineId === g.serviceLineId).map((d) => ({ ...d })) }
+                          : {}),
+                      })),
+                  }
+                : {}),
+            })),
         create: async ({ data }: { data: Row }) => {
           rec("appUser", "create");
           if (this.state.appUsers.some((u) => u.email === data.email)) throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
@@ -796,7 +832,15 @@ export class FakeDb {
         findUnique: async ({ where }: { where: { email_serviceLineId: { email: string; serviceLineId: string } } }) => {
           const k = where.email_serviceLineId;
           const r = this.state.accessGrants.find((g) => g.email === k.email && g.serviceLineId === k.serviceLineId);
-          return r ? { ...r } : null;
+          return r ? { allDepartments: true, ...r } : null;
+        },
+        update: async ({ where, data }: { where: { email_serviceLineId: { email: string; serviceLineId: string } }; data: Row }) => {
+          rec("serviceLineAccessGrant", "update");
+          const k = where.email_serviceLineId;
+          const r = this.state.accessGrants.find((g) => g.email === k.email && g.serviceLineId === k.serviceLineId);
+          if (!r) throw new Error("not found");
+          Object.assign(r, data);
+          return { allDepartments: true, ...r };
         },
         create: async ({ data }: { data: Row }) => {
           rec("serviceLineAccessGrant", "create");
@@ -812,7 +856,57 @@ export class FakeDb {
           const i = this.state.accessGrants.findIndex((g) => g.email === k.email && g.serviceLineId === k.serviceLineId);
           if (i < 0) throw new Error("not found");
           const [r] = this.state.accessGrants.splice(i, 1);
+          // ON DELETE CASCADE: the line's department rows go with it.
+          this.state.deptAccess = this.state.deptAccess.filter((d) => !(d.email === k.email && d.serviceLineId === k.serviceLineId));
           return { ...r };
+        },
+      },
+      departmentAccessGrant: {
+        findMany: async ({ where }: { where?: Row } = {}) => this.state.deptAccess.filter((d) => matches(d, where)).map((d) => ({ ...d })),
+        findUnique: async ({ where }: { where: { email_departmentId: { email: string; departmentId: string } } }) => {
+          const k = where.email_departmentId;
+          const r = this.state.deptAccess.find((d) => d.email === k.email && d.departmentId === k.departmentId);
+          return r ? { ...r } : null;
+        },
+        create: async ({ data }: { data: Row }) => {
+          rec("departmentAccessGrant", "create");
+          const line = this.state.accessGrants.find((g) => g.email === data.email && g.serviceLineId === data.serviceLineId);
+          if (!line) throw new Error("department_access_email_serviceLineId_fkey");
+          const dept = this.state.departments.find((d) => d.id === data.departmentId);
+          if (!dept || (dept.serviceLineId ?? SCOPED_DEFAULT) !== data.serviceLineId) throw new Error("department_access_departmentId_serviceLineId_fkey");
+          if (this.state.deptAccess.some((d) => d.email === data.email && d.departmentId === data.departmentId)) throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+          const row = { grantedAt: new Date(), ...data };
+          this.state.deptAccess.push(row);
+          return { ...row };
+        },
+        createMany: async ({ data }: { data: Row[] }) => {
+          rec("departmentAccessGrant", "createMany");
+          for (const d of data) this.state.deptAccess.push({ grantedAt: new Date(), ...d });
+          return { count: data.length };
+        },
+        delete: async ({ where }: { where: { email_departmentId: { email: string; departmentId: string } } }) => {
+          rec("departmentAccessGrant", "delete");
+          const k = where.email_departmentId;
+          const i = this.state.deptAccess.findIndex((d) => d.email === k.email && d.departmentId === k.departmentId);
+          if (i < 0) throw new Error("not found");
+          const [r] = this.state.deptAccess.splice(i, 1);
+          return { ...r };
+        },
+        deleteMany: async ({ where }: { where?: Row } = {}) => {
+          rec("departmentAccessGrant", "deleteMany");
+          const before = this.state.deptAccess.length;
+          this.state.deptAccess = this.state.deptAccess.filter((d) => !matches(d, where));
+          return { count: before - this.state.deptAccess.length };
+        },
+      },
+      departmentAccessHistory: {
+        findMany: async ({ where, orderBy, take }: { where?: Row; orderBy?: Record<string, "asc" | "desc">; take?: number } = {}) =>
+          sortBy(this.state.deptAccessHistory.filter((h) => matches(h, where)).map((h) => ({ ...h })), orderBy).slice(0, take ?? undefined),
+        create: async ({ data }: { data: Row }) => {
+          rec("departmentAccessHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), departmentId: null, detail: null, ...data };
+          this.state.deptAccessHistory.push(row);
+          return { ...row };
         },
       },
       serviceLineAccessHistory: {

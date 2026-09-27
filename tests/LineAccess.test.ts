@@ -30,7 +30,7 @@ class World {
 describe("Writing Bot copy (item 8)", () => {
   it("is exact and has no em dashes", () => {
     expect(LineAccessCopy.heading(3)).toBe("Access (3)");
-    expect(LineAccessCopy.NOTE).toBe("Covers all service lines. Admins can see every line.");
+    expect(LineAccessCopy.NOTE).toBe("Covers all service lines and departments. Admins can see everything.");
     expect(LineAccessCopy.ALL_LINES).toBe("All lines");
     expect(LineAccessCopy.ADMIN_LOCK_TOOLTIP).toBe("Admins can see every service line.");
     expect(LineAccessCopy.NO_ACCESS_TAG).toBe("No access");
@@ -43,7 +43,7 @@ describe("Writing Bot copy (item 8)", () => {
     expect(LineAccessCopy.removeLastTitle("Jane Doe")).toBe("Remove Jane Doe's last line?");
     expect(LineAccessCopy.REMOVE_LAST_BODY).toBe("They won't see any projects until an admin gives them access again.");
     expect([LineAccessCopy.REMOVE_LAST_BUTTON, LineAccessCopy.CANCEL]).toEqual(["Remove access", "Cancel"]);
-    expect([LineAccessCopy.ADD_FIELD, LineAccessCopy.ADD_HELPER]).toEqual(["Email", "They'll see only the lines you check here."]);
+    expect([LineAccessCopy.ADD_FIELD, LineAccessCopy.ADD_HELPER]).toEqual(["Email", "They'll see only the lines and departments you choose here."]);
     expect([LineAccessCopy.INVALID_EMAIL, LineAccessCopy.DUPLICATE_EMAIL]).toEqual(["Enter a valid email address.", "That email is already on the list."]);
     expect(LineAccessCopy.addedToast("jane.doe@caromonthealth.org")).toBe("jane.doe@caromonthealth.org added.");
     expect([LineAccessCopy.NO_ACCESS_TITLE, LineAccessCopy.NO_ACCESS_BODY]).toEqual(["You don't have access yet", "Ask an admin to add you to a service line."]);

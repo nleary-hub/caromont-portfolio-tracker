@@ -28,7 +28,8 @@ export interface ClosedPageLoad {
 }
 
 /**
- * Server load of the Completed and Cancelled pages, scoped to the viewer's line (the page gate checked access). The
+ * Server load of the Completed and Cancelled pages, scoped to the viewer's line (the page gate checked access) and,
+ * for a department-limited viewer, to their departments plus Unassigned (ServiceLineAccess.projectWhere). The
  * same rows, visibility and closed dates as the dashboard's "Completed FY27 to date" tile (FiscalYearRows): not
  * deleted, not hidden from the dashboard, closed on or before today. Status view settings do not matter here.
  */
@@ -37,7 +38,7 @@ export class ClosedPageData {
     if (!db) return { rows: [], restore: null, error: "DATABASE_URL is not configured." };
     try {
       const [stored, latest] = await Promise.all([
-        db.project.findMany({ where: { archivedAt: null, status, ...ServiceLineAccess.where(scope) } }).then((r) => ProjectRows.fromDbAll(r)),
+        db.project.findMany({ where: { archivedAt: null, status, ...ServiceLineAccess.projectWhere(scope) } }).then((r) => ProjectRows.fromDbAll(r)),
         db.reportSnapshot.findFirst({ where: ServiceLineAccess.where(scope), orderBy: { generatedAt: "desc" }, select: { generatedAt: true } }),
       ]);
       const projects = MilestoneProgress.applyAll(stored, await MilestoneService.loadSteps(db, stored.map((p) => p.id)));

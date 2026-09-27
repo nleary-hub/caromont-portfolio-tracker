@@ -50,6 +50,7 @@ export function ClosedProjectsView({
   initialView,
   options,
   list,
+  limited = false,
   restore,
   restoreAction,
   historyAction,
@@ -65,6 +66,8 @@ export function ClosedProjectsView({
   initialView: ClosedView;
   options: readonly DepartmentKey[];
   list: DepartmentList;
+  /** Viewer limited to some departments (options are only theirs): the filter reads "My departments (N)". */
+  limited?: boolean;
   /** Admins on the Cancelled page only (null otherwise: no menu column, no drawer button). */
   restore: Record<string, RestorePreview> | null;
   restoreAction?: (projectId: string) => Promise<RestoreActionResult>;
@@ -142,7 +145,7 @@ export function ClosedProjectsView({
           </div>
           <div className="flex items-center gap-2">
             <FyPicker years={years} current={current} value={view.fy} onChange={(fy) => setView({ ...view, fy })} initialOpen={demo?.fyOpen} />
-            <DepartmentsSelect value={view.departments} onChange={(departments) => setView({ ...view, departments })} options={options} list={list} />
+            <DepartmentsSelect value={view.departments} onChange={(departments) => setView({ ...view, departments })} options={options} list={list} limited={limited} />
           </div>
         </div>
 
@@ -182,7 +185,7 @@ export function ClosedProjectsView({
                   <td colSpan={span} className="px-3 py-8 text-center" data-testid={`closed-empty-${state.empty}`}>
                     {state.empty === "year" ? (
                       <>
-                        <p className="type-table-strong">{C.emptyYear(kind.status, view.fy, current)}</p>
+                        <p className="type-table-strong">{C.emptyYear(kind.status, view.fy, current, limited)}</p>
                         {C.emptyYearHint(kind.status, view.fy, current) && <p className="mt-1 text-muted type-caption">{C.emptyYearHint(kind.status, view.fy, current)}</p>}
                       </>
                     ) : (

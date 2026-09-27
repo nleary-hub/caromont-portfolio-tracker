@@ -164,6 +164,40 @@ describe("Completed and Cancelled pages: model", () => {
     expect(ClosedPageModel.summary(ep1)).toBe("1 project in 1 department");
   });
 
+  it("summary line names Unassigned only when its group is showing; the department count excludes it", () => {
+    // The copy, every case.
+    expect(ClosedPagesCopy.summary(6, 3, true)).toBe("6 projects in 3 departments and Unassigned");
+    expect(ClosedPagesCopy.summary(1, 1, true)).toBe("1 project in 1 department and Unassigned");
+    expect(ClosedPagesCopy.summary(2, 1, true)).toBe("2 projects in 1 department and Unassigned");
+    expect(ClosedPagesCopy.summary(2, 0, true)).toBe("2 projects in Unassigned");
+    expect(ClosedPagesCopy.summary(1, 0, true)).toBe("1 project in Unassigned");
+    expect(ClosedPagesCopy.summary(6, 3, false)).toBe("6 projects in 3 departments");
+    expect(ClosedPagesCopy.summary(1, 1)).toBe("1 project in 1 department");
+    // Through the page state: an Unassigned row shows its group, and the summary names it.
+    const withNone = [...rows, W.row({ id: "n1", name: "November", serviceArea: null as never, closedOn: "2026-08-15" })];
+    const s = ClosedPageModel.state(withNone, "Complete", all, OPTIONS, LIST);
+    expect(s.groups.map((g) => g.area)).toEqual(["Cath", "EP", "Unassigned"]);
+    expect([s.departmentCount, s.unassigned]).toEqual([2, true]);
+    expect(ClosedPageModel.summary(s)).toBe("4 projects in 2 departments and Unassigned");
+    // Only Unassigned showing (one and two projects): never "0 departments".
+    const only1 = [W.row({ id: "n1", name: "November", serviceArea: null as never, closedOn: "2026-08-15" })];
+    expect(ClosedPageModel.summary(ClosedPageModel.state(only1, "Complete", all, OPTIONS, LIST))).toBe("1 project in Unassigned");
+    const only2 = [...only1, W.row({ id: "n2", name: "Oscar", serviceArea: null as never, closedOn: "2026-08-16" })];
+    expect(ClosedPageModel.summary(ClosedPageModel.state(only2, "Complete", all, OPTIONS, LIST))).toBe("2 projects in Unassigned");
+    // One department plus Unassigned (singular).
+    const one = [W.row({ id: "e1", name: "Echo one", serviceArea: "Echo", closedOn: "2026-08-10" }), only1[0]];
+    expect(ClosedPageModel.summary(ClosedPageModel.state(one, "Complete", all, OPTIONS, LIST))).toBe("2 projects in 1 department and Unassigned");
+    // A narrowed filter hides the Unassigned group (as on the dashboard), so the text is unchanged.
+    const narrowed = ClosedPageModel.state(withNone, "Complete", { ...all, departments: ["EP"] }, OPTIONS, LIST);
+    expect([narrowed.unassigned, ClosedPageModel.summary(narrowed)]).toEqual([false, "1 project in 1 department"]);
+    // No Unassigned group: unchanged text.
+    expect(ClosedPageModel.summary(ClosedPageModel.state(rows, "Complete", all, OPTIONS, LIST))).toBe("3 projects in 2 departments");
+    // Rendered: the line shows with Unassigned; an empty view still has no summary line.
+    expect(W.html(ClosedPageModel.COMPLETED, withNone)).toContain("4 projects in 2 departments and Unassigned");
+    const empty = W.html(ClosedPageModel.COMPLETED, withNone, { fy: "FY25", departments: [...OPTIONS] });
+    expect(empty).not.toMatch(/projects? in /);
+  });
+
   it("empty states: nothing in the year vs filters hiding everything", () => {
     expect(ClosedPageModel.state(rows, "Cancelled", { ...all, fy: "FY26" }, OPTIONS, LIST).empty).toBe("year");
     expect(ClosedPageModel.state(rows, "Complete", { ...all, departments: ["Echo"] }, OPTIONS, LIST).empty).toBe("filtered");

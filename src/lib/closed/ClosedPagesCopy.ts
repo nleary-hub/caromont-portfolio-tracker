@@ -1,4 +1,5 @@
 import type { ClosedStatus } from "@/lib/report/ClosedProjects";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 
 /**
  * Every string of the Completed and Cancelled pages, the main navigation and Restore to active, in one place
@@ -53,15 +54,29 @@ export class ClosedPagesCopy {
     return fy === current ? `${fy} (current)` : fy;
   }
 
-  /** Summary line, dashboard style: "12 projects in 5 departments". */
-  static summary(projects: number, departments: number): string {
-    return `${projects} project${projects === 1 ? "" : "s"} in ${departments} department${departments === 1 ? "" : "s"}`;
+  /**
+   * Summary line, dashboard style: "12 projects in 5 departments". When an Unassigned group is showing it is named
+   * after the departments ("6 projects in 3 departments and Unassigned"; the count stays departments only, like the
+   * filter's "(3)"), or alone when it is the only group ("2 projects in Unassigned", never "0 departments").
+   */
+  static summary(projects: number, departments: number, unassigned = false): string {
+    const what = `${projects} project${projects === 1 ? "" : "s"}`;
+    if (unassigned && departments === 0) return `${what} in ${ClosedPagesCopy.UNASSIGNED}`;
+    const where = `${departments} department${departments === 1 ? "" : "s"}`;
+    return unassigned ? `${what} in ${where} and ${ClosedPagesCopy.UNASSIGNED}` : `${what} in ${where}`;
   }
 
-  /** Empty FY: "No projects completed in FY27 yet." (current) / "No projects were completed in FY26." (past). */
-  static emptyYear(status: ClosedStatus, fy: string, current: string): string {
+  /** The Unassigned group's name in the summary line. */
+  static readonly UNASSIGNED = ServiceAreaInfo.UNASSIGNED;
+
+  /**
+   * Empty FY: "No projects completed in FY27 yet." (current) / "No projects were completed in FY26." (past). A viewer
+   * limited to some departments reads "in your departments": "No projects completed in your departments in FY27 yet."
+   */
+  static emptyYear(status: ClosedStatus, fy: string, current: string, limited = false): string {
     const verb = status === "Complete" ? "completed" : "cancelled";
-    return fy === current ? `No projects ${verb} in ${fy} yet.` : `No projects were ${verb} in ${fy}.`;
+    const where = limited ? "in your departments in" : "in";
+    return fy === current ? `No projects ${verb} ${where} ${fy} yet.` : `No projects were ${verb} ${where} ${fy}.`;
   }
 
   /** The gray line under the current-FY empty state. */

@@ -36,7 +36,7 @@ describe("Generate PDF now (draft preview)", () => {
     h.viewer = Factory.ADMIN;
     const snapshotsBefore = fake.state.snapshots.length;
     const writesBefore = fake.writes.length;
-    const res = await previewGET();
+    const res = await previewGET(new Request("https://tracker.example.org/api/reports/preview"));
     expect(res.status).toBe(200);
     expect(res.headers.get("Content-Type")).toBe("application/pdf");
     expect(res.headers.get("Content-Disposition")).toMatch(/^attachment; filename="cardiac-portfolio-report-draft-\d{4}-\d{2}-\d{2}\.pdf"$/);
@@ -53,9 +53,9 @@ describe("Generate PDF now (draft preview)", () => {
 
   it("answers 404 to a signed-in non-admin and to no session", async () => {
     h.viewer = Factory.MEMBER;
-    expect((await previewGET()).status).toBe(404);
+    expect((await previewGET(new Request("https://tracker.example.org/api/reports/preview"))).status).toBe(404);
     h.viewer = null;
-    expect((await previewGET()).status).toBe(404);
+    expect((await previewGET(new Request("https://tracker.example.org/api/reports/preview"))).status).toBe(404);
     expect(fake.state.snapshots).toHaveLength(0);
   });
 

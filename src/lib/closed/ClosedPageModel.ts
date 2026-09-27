@@ -23,7 +23,10 @@ export interface ClosedView {
 export interface ClosedPageState {
   groups: DashboardGroup<DashboardFyRow>[];
   count: number;
+  /** Departments showing, Unassigned not counted (matches the filter's "(N)"). */
   departmentCount: number;
+  /** An Unassigned group is showing (the summary names it). */
+  unassigned: boolean;
   /** "year": nothing closed in that FY at all. "filtered": the department filter hides everything. */
   empty: "year" | "filtered" | null;
 }
@@ -96,7 +99,8 @@ export class ClosedPageModel {
     const groups = DashboardGroups.group(shown, ClosedPageModel.compare, list);
     const departmentCount = groups.filter((g) => g.area !== ServiceAreaInfo.UNASSIGNED).length;
     const empty = inYear.length === 0 ? "year" : shown.length === 0 ? "filtered" : null;
-    return { groups, count: shown.length, departmentCount, empty };
+    const unassigned = groups.some((g) => g.area === ServiceAreaInfo.UNASSIGNED);
+    return { groups, count: shown.length, departmentCount, unassigned, empty };
   }
 
   /** Newest first by completed (or cancelled) date, then by name. */
@@ -104,7 +108,7 @@ export class ClosedPageModel {
     return b.closedOn.localeCompare(a.closedOn) || a.name.localeCompare(b.name, "en", { sensitivity: "base" });
   }
 
-  static summary(state: Pick<ClosedPageState, "count" | "departmentCount">): string {
-    return ClosedPagesCopy.summary(state.count, state.departmentCount);
+  static summary(state: Pick<ClosedPageState, "count" | "departmentCount"> & Partial<Pick<ClosedPageState, "unassigned">>): string {
+    return ClosedPagesCopy.summary(state.count, state.departmentCount, state.unassigned === true);
   }
 }

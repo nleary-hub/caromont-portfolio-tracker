@@ -1,6 +1,6 @@
 /** Writing Bot copy for per-service-line access (item 8): Admin > People > Access and the no-access cards. */
 export class LineAccessCopy {
-  static readonly NOTE = "Covers all service lines. Admins can see every line.";
+  static readonly NOTE = "Covers all service lines and departments. Admins can see everything.";
   static readonly ALL_LINES = "All lines";
   static readonly ADMIN_LOCK_TOOLTIP = "Admins can see every service line.";
   static readonly NO_ACCESS_TAG = "No access";
@@ -15,7 +15,7 @@ export class LineAccessCopy {
 
   static readonly ADD_USER = "Add user";
   static readonly ADD_FIELD = "Email";
-  static readonly ADD_HELPER = "They'll see only the lines you check here.";
+  static readonly ADD_HELPER = "They'll see only the lines and departments you choose here.";
   static readonly ADD_BUTTON = "Add";
   static readonly INVALID_EMAIL = "Enter a valid email address.";
   static readonly DUPLICATE_EMAIL = "That email is already on the list.";

@@ -39,6 +39,7 @@ class AuditFormat {
   static field(e: AuditEvent): string {
     if (e.kind === "serviceLine") return `Service line: ${ServiceLineHistoryText.action(e.field.replace(/^serviceLine\./, ""))}`;
     if (e.kind === "layout") return `Layout: ${AuditLayoutText.action(e.field.replace(/^layout\./, ""))}`;
+    if (e.kind === "access") return e.comment ?? "Access";
     if (e.kind === "template") return `Template: ${e.field.replace(/^template\./, "").replace(/_/g, " ")}`;
     return AuditFormat.FIELD_LABELS[e.field] ?? e.field;
   }
