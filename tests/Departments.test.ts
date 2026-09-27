@@ -76,7 +76,8 @@ describe("DepartmentRules (validation)", () => {
   });
 
   it("previews the PDF heading and grid label from the short name; copy has no em dashes", () => {
-    expect(DepartmentCopy.previewPdf("Struct")).toBe("PDF heading: STRUCT");
+    expect(DepartmentCopy.previewPdf("Struct")).toBe("PDF heading: Struct");
+    expect(DepartmentCopy.previewDashboard("Struct")).toBe("Dashboard heading: STRUCT");
     expect(DepartmentCopy.previewGrid("Struct")).toBe("Summary grid: Struct");
     const strings = Object.values(DepartmentCopy).filter((v) => typeof v === "string") as string[];
     for (const s of [...strings, DepartmentCopy.archiveBody("Echo", 2), DepartmentCopy.deleteBody("Echo", 1), DepartmentCopy.deletedToast("Echo", 2, "EP Lab")]) expect(s).not.toContain("\u2014");

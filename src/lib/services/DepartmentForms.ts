@@ -16,8 +16,8 @@ export type AdminListResult = { ok: true; message: string } | { ok: false; messa
  */
 export class DepartmentForms {
   static readonly NOT_AUTHORIZED = "Not authorized.";
-  static readonly FAILED = "Could not save the change.";
-  static readonly GONE = "That department is not available.";
+  static readonly FAILED = "Couldn't save the change. Try again.";
+  static readonly GONE = "That department no longer exists. Refresh the page.";
 
   static async save(viewer: Viewer | null, input: { id?: unknown; name?: unknown; shortName?: unknown }, db: PrismaClient = Db.client): Promise<AdminListResult> {
     return DepartmentForms.run(viewer, db, async (v, scope) => {
@@ -35,15 +35,15 @@ export class DepartmentForms {
 
   static async archive(viewer: Viewer | null, id: string, db: PrismaClient = Db.client): Promise<AdminListResult> {
     return DepartmentForms.run(viewer, db, async (v, scope) => {
-      await DepartmentService.archive(scope, id, v, db);
-      return { ok: true, message: "Archived." };
+      const name = await DepartmentService.archive(scope, id, v, db);
+      return { ok: true, message: DepartmentCopy.archivedToast(name) };
     });
   }
 
   static async unarchive(viewer: Viewer | null, id: string, db: PrismaClient = Db.client): Promise<AdminListResult> {
     return DepartmentForms.run(viewer, db, async (v, scope) => {
-      await DepartmentService.unarchive(scope, id, v, db);
-      return { ok: true, message: "Unarchived." };
+      const name = await DepartmentService.unarchive(scope, id, v, db);
+      return { ok: true, message: DepartmentCopy.unarchivedToast(name) };
     });
   }
 
@@ -56,8 +56,8 @@ export class DepartmentForms {
 
   static async restore(viewer: Viewer | null, id: string, db: PrismaClient = Db.client): Promise<AdminListResult> {
     return DepartmentForms.run(viewer, db, async (v) => {
-      await DepartmentService.restore(id, v, db);
-      return { ok: true, message: "Restored." };
+      const name = await DepartmentService.restore(id, v, db);
+      return { ok: true, message: DepartmentCopy.restoredToast(name) };
     });
   }
 

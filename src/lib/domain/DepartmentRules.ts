@@ -76,7 +76,13 @@ export class DepartmentRules {
   }
 
   /** PDF headings print the short name in capitals (the section head style). */
+  /** PDF section heading: the short name in its own casing ("Struct"). */
   static pdfHeading(shortName: string): string {
+    return shortName;
+  }
+
+  /** Dashboard department heading: the short name in uppercase ("STRUCT"). */
+  static dashboardHeading(shortName: string): string {
     return shortName.toUpperCase();
   }
 }
@@ -122,8 +128,24 @@ export class DepartmentCopy {
     return `PDF heading: ${DepartmentRules.pdfHeading(shortName)}`;
   }
 
+  static previewDashboard(shortName: string): string {
+    return `Dashboard heading: ${DepartmentRules.dashboardHeading(shortName)}`;
+  }
+
   static previewGrid(shortName: string): string {
     return `Summary grid: ${shortName}`;
+  }
+
+  static archivedToast(name: string): string {
+    return `${name} archived.`;
+  }
+
+  static unarchivedToast(name: string): string {
+    return `${name} unarchived.`;
+  }
+
+  static restoredToast(name: string): string {
+    return `${name} restored.`;
   }
 
   static archiveTitle(name: string): string {

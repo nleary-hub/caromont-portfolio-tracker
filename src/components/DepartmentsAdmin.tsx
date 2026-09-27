@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { AdminButtonStyles } from "@/lib/admin/AdminButtonStyles";
 import { useEffect, useRef, useState, useTransition, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent } from "react";
 import { archiveDepartment, deleteDepartment, reorderDepartments, saveDepartment, unarchiveDepartment } from "@/app/actions/departments";
 import { DepartmentTable } from "@/lib/admin/DepartmentTable";
@@ -23,7 +24,7 @@ export interface DepartmentRowDto {
 type Editing = { kind: "new" } | { kind: "edit"; dept: DepartmentRowDto } | null;
 type Toast = { id: number; text: string; undo?: () => void };
 
-const DANGER = "h-7 rounded-control bg-(--status-off-track-dark-bg) px-3 text-danger type-table-strong disabled:opacity-50";
+const DANGER = AdminButtonStyles.DANGER;
 const GHOST = "h-7 rounded-control border border-line px-3 text-muted type-table-strong hover:text-fg";
 const PRIMARY = "h-7 rounded-control bg-accent px-3 text-white type-table-strong disabled:opacity-60";
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
@@ -562,6 +563,7 @@ function DepartmentDrawer({
           <span className="mt-2 flex flex-col text-[12px] leading-4 text-(--dark-text-secondary)" data-testid="department-preview">
             <span className="mb-0.5 text-[11px] leading-4 font-medium tracking-[.04em] uppercase">{DepartmentCopy.PREVIEW_LABEL}</span>
             <span>{DepartmentCopy.previewPdf(previewShort)}</span>
+            <span>{DepartmentCopy.previewDashboard(previewShort)}</span>
             <span>{DepartmentCopy.previewGrid(previewShort)}</span>
           </span>
         </label>

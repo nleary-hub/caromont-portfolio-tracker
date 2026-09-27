@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import { AdminButtonStyles } from "@/lib/admin/AdminButtonStyles";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { addContractsLead, removeContractsLead } from "@/app/actions/departments";
 import { ContractsLeadRules } from "@/lib/people/ContractsLeadRules";
@@ -9,7 +10,7 @@ import { usePopover } from "./DashboardFilterControls";
 
 const GHOST = "h-7 rounded-control border border-line px-3 text-muted type-table-strong hover:text-fg";
 const PRIMARY = "h-7 rounded-control bg-accent px-3 text-white type-table-strong disabled:opacity-60";
-const DANGER = "h-7 rounded-control bg-(--status-off-track-dark-bg) px-3 text-danger type-table-strong disabled:opacity-50";
+const DANGER = AdminButtonStyles.DANGER;
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
 
 /**

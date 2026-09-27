@@ -148,13 +148,14 @@ export class DepartmentService {
     });
   }
 
-  static async archive(scope: Scope, id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
-    await DepartmentService.setArchived(scope, id, true, admin, db);
+  /** Returns the department's name (for the toast). */
+  static async archive(scope: Scope, id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<string> {
+    return DepartmentService.setArchived(scope, id, true, admin, db);
   }
 
   /** Back in the active list, at the bottom. */
-  static async unarchive(scope: Scope, id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
-    await DepartmentService.setArchived(scope, id, false, admin, db);
+  static async unarchive(scope: Scope, id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<string> {
+    return DepartmentService.setArchived(scope, id, false, admin, db);
   }
 
   /**
@@ -204,9 +205,9 @@ export class DepartmentService {
   }
 
   /** Audit restore. Blocked (DepartmentRestoreConflictError) when another department of the line now uses its name or short name. */
-  static async restore(id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
+  static async restore(id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<string> {
     AdminPolicy.assertAdmin(admin);
-    await db.$transaction(async (tx) => {
+    return db.$transaction(async (tx) => {
       const row = (await tx.department.findUnique({ where: { id } })) as DepartmentRow | null;
       if (!row || !row.deletedAt) throw new DepartmentNotFoundError();
       const others = await DepartmentService.rows(tx, row.serviceLineId);
@@ -214,6 +215,7 @@ export class DepartmentService {
       const position = others.reduce((m, r) => Math.max(m, r.position), 0) + 1;
       await tx.department.update({ where: { id }, data: { deletedAt: null, deletedBy: null, position, updatedBy: admin.email } });
       await DepartmentService.log(tx, row.serviceLineId, id, DepartmentService.ACTIONS.restored, null, DepartmentService.snapshot(row), admin);
+      return row.name;
     });
   }
 
@@ -231,13 +233,13 @@ export class DepartmentService {
     return rows.map((r) => ({ departmentId: r.departmentId, action: r.action, oldValue: r.oldValue, newValue: r.newValue, changedAt: r.changedAt, changedBy: r.changedBy }));
   }
 
-  private static async setArchived(scope: Scope, id: string, archived: boolean, admin: Viewer, db: PrismaClient): Promise<void> {
+  private static async setArchived(scope: Scope, id: string, archived: boolean, admin: Viewer, db: PrismaClient): Promise<string> {
     AdminPolicy.assertAdmin(admin);
-    await db.$transaction(async (tx) => {
+    return db.$transaction(async (tx) => {
       const rows = await DepartmentService.rows(tx, scope.id);
       const row = rows.find((r) => r.id === id);
       if (!row) throw new DepartmentNotFoundError();
-      if ((row.archivedAt !== null) === archived) return;
+      if ((row.archivedAt !== null) === archived) return row.name;
       const position = archived ? row.position : rows.filter((r) => !r.archivedAt).reduce((m, r) => Math.max(m, r.position), 0) + 1;
       if (!archived) {
         // Make room at the bottom of the active list: archived departments after it shift down one.
@@ -247,6 +249,7 @@ export class DepartmentService {
       }
       await tx.department.update({ where: { id }, data: { archivedAt: archived ? new Date() : null, position, updatedBy: admin.email } });
       await DepartmentService.log(tx, scope.id, id, archived ? DepartmentService.ACTIONS.archived : DepartmentService.ACTIONS.unarchived, null, { name: row.name }, admin);
+      return row.name;
     });
   }
 

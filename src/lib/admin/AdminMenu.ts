@@ -8,7 +8,7 @@ import type { Viewer } from "@/lib/auth/AdminPolicy";
  */
 export type AdminMenuItemKind = "link" | "download" | "action" | "viewSettings";
 
-export type AdminMenuIcon = "upload" | "file" | "download" | "pdf" | "archive" | "snowflake" | "template" | "people" | "audit" | "settings" | "tag" | "departments";
+export type AdminMenuIcon = "upload" | "file" | "download" | "pdf" | "archive" | "snowflake" | "template" | "people" | "audit" | "settings" | "tag" | "departments" | "reportSettings";
 
 /** Display groups, in order, separated by dividers. */
 export type AdminMenuGroup = "work" | "library" | "admin";
@@ -51,6 +51,9 @@ export class AdminMenu {
     { id: "generate-pdf", group: "work", kind: "action", icon: "pdf", label: "Generate PDF", caption: "Draft", href: "/api/reports/preview", shipped: true },
     { id: "reports", group: "work", kind: "link", icon: "archive", label: "Reports", href: "/reports", shipped: true },
     { id: "freeze", group: "work", kind: "link", icon: "snowflake", label: "Freeze and report options", href: "/reports#report-admin", shipped: true },
+    // Report settings of the active line (departments in report, totals grid), right after the freeze options.
+    // Departments and contracts leads have their own pages (Departments, People).
+    { id: "service-line", group: "work", kind: "link", icon: "reportSettings", label: AdminMenu.REPORT_SETTINGS, href: "/admin/settings", shipped: true },
     // Group 2: the active line's lists.
     { id: "departments", group: "library", kind: "link", icon: "departments", label: "Departments", href: "/admin/departments", shipped: true },
     { id: "people", group: "library", kind: "link", icon: "people", label: "People", href: "/admin/people", shipped: true },
@@ -58,10 +61,7 @@ export class AdminMenu {
     { id: "audit", group: "admin", kind: "link", icon: "audit", label: "Audit log", href: "/admin/audit", shipped: true },
     { id: "settings", group: "admin", kind: "viewSettings", icon: "settings", label: "Settings", href: `/${AdminMenu.VIEW_SETTINGS_HASH}`, shipped: true },
     { id: "service-lines", group: "admin", kind: "link", icon: "tag", label: "Service lines", href: "/admin/service-lines", shipped: true },
-    // Report settings of the active line (departments in report, totals grid). Departments and contracts leads
-    // have their own pages (Departments, People).
-    { id: "service-line", group: "admin", kind: "link", icon: "settings", label: AdminMenu.REPORT_SETTINGS, href: "/admin/settings", shipped: true },
-    // Milestone templates, next to Report settings.
+    // Milestone templates.
     { id: "templates", group: "admin", kind: "link", icon: "template", label: "Templates", href: "/admin/templates", shipped: true },
   ];
 

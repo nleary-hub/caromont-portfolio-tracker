@@ -18,12 +18,12 @@ describe("AdminMenu.itemsFor", () => {
       ["work", "Generate PDF", "/api/reports/preview"],
       ["work", "Reports", "/reports"],
       ["work", "Freeze and report options", "/reports#report-admin"],
+      ["work", "Report settings", "/admin/settings"],
       ["library", "Departments", "/admin/departments"],
       ["library", "People", "/admin/people"],
       ["admin", "Audit log", "/admin/audit"],
       ["admin", "Settings", "/#view-settings"],
       ["admin", "Service lines", "/admin/service-lines"],
-      ["admin", "Report settings", "/admin/settings"],
       ["admin", "Templates", "/admin/templates"],
     ]);
     expect(items.find((i) => i.id === "generate-pdf")).toMatchObject({ kind: "action", caption: "Draft" });
@@ -35,10 +35,13 @@ describe("AdminMenu.itemsFor", () => {
     expect(AdminMenu.itemsFor(undefined)).toBeNull();
   });
 
-  it("ships Departments and People in the library group, and Templates next to Report settings", () => {
+  it("ships Departments then People in the library group, and Report settings right after Freeze with its own icon", () => {
     expect(AdminMenu.definitions().filter((d) => !d.shipped)).toEqual([]);
     const labels = AdminMenu.itemsFor(ADMIN)!.map((i) => i.label);
-    expect(labels.indexOf("Templates")).toBe(labels.indexOf("Report settings") + 1);
+    expect(labels.indexOf("Report settings")).toBe(labels.indexOf("Freeze and report options") + 1);
+    const items = AdminMenu.itemsFor(ADMIN)!;
+    expect(items.find((i) => i.label === "Report settings")?.icon).toBe("reportSettings");
+    expect(items.find((i) => i.label === "Settings")?.icon).toBe("settings");
     expect(labels.indexOf("People")).toBe(labels.indexOf("Departments") + 1);
     expect(labels).not.toContain("Line settings");
     expect(AdminMenu.REPORT_SETTINGS).toBe("Report settings");
