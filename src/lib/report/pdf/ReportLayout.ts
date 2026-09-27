@@ -605,12 +605,13 @@ export class ReportLayout {
   }
 
   /**
-   * Fixed flag slots for the Flags column, in FlagSlots order. Each slot is as wide as its own pill and
-   * slots are FLAG_GAP apart, so a flag's x never depends on which other flags apply (empty slots stay blank).
+   * Fixed flag slots for the Flags column, in FlagSlots order, for the given kinds (default: all three). The first
+   * slot starts at the column's x, under the FLAGS header. Each slot is as wide as its own pill and slots are
+   * FLAG_GAP apart, so a flag's x never depends on which other flags the row has (empty slots stay blank).
    */
-  static flagSlots(m: Measurer): { kind: FlagKind; dx: number; width: number }[] {
+  static flagSlots(m: Measurer, kinds: readonly FlagKind[] = FlagSlots.ORDER): { kind: FlagKind; dx: number; width: number }[] {
     let dx = 0;
-    return FlagSlots.ORDER.map((kind) => {
+    return FlagSlots.ORDER.filter((kind) => kinds.includes(kind)).map((kind) => {
       const width = ReportLayout.flag(m, kind).width;
       const slot = { kind, dx, width };
       dx += width + ReportGeometry.FLAG_GAP;
@@ -619,17 +620,23 @@ export class ReportLayout {
   }
 
   /**
-   * A row's flag chips. Default layout: each in its fixed slot (flagSlots; empty slots stay blank). Custom layout:
-   * the chips that apply pack left from the Flags column's x (under the FLAGS header, like the date under DUE),
-   * FLAG_GAP apart, in slot order.
+   * A row's flag chips. Default layout: each in its fixed slot among the report's slot kinds (`kinds`, from
+   * FlagSlots.used over the report's rows), so one kind has one x on every row of the report and the first slot
+   * sits under the FLAGS header. Custom layout: the chips that apply pack left from the Flags column's x, FLAG_GAP
+   * apart, in slot order. `slot` is always the canonical FlagSlots index.
    */
-  static placeFlags(m: Measurer, state: { changed: boolean; overdue: boolean; stale: boolean }, packLeft: boolean): PlacedFlag[] {
-    const slots = ReportLayout.flagSlots(m);
+  static placeFlags(
+    m: Measurer,
+    state: { changed: boolean; overdue: boolean; stale: boolean },
+    packLeft: boolean,
+    kinds: readonly FlagKind[] = FlagSlots.ORDER,
+  ): PlacedFlag[] {
+    const slots = ReportLayout.flagSlots(m, FlagSlots.ORDER.filter((k) => kinds.includes(k) || state[k]));
     let dx = 0;
     return FlagSlots.slots(state).flatMap((kind, slot) => {
       if (!kind) return [];
       const f = ReportLayout.flag(m, kind);
-      const placed = { ...f, slot, dx: packLeft ? dx : slots[slot].dx };
+      const placed = { ...f, slot, dx: packLeft ? dx : slots.find((s) => s.kind === kind)!.dx };
       dx += f.width + ReportGeometry.FLAG_GAP;
       return [placed];
     });
@@ -726,7 +733,8 @@ export class ReportLayout {
     return runs;
   }
 
-  static rowLayout(m: Measurer, row: ReportRow, settings: ViewSettingsValue, reportDate: string): RowLayout {
+  /** `flagKinds`: the report's flag slot kinds (FlagSlots.used over its rows); defaults to all three. */
+  static rowLayout(m: Measurer, row: ReportRow, settings: ViewSettingsValue, reportDate: string, flagKinds: readonly FlagKind[] = FlagSlots.ORDER): RowLayout {
     const g = ReportGeometry;
     const S = g.SIZE;
     const cells: RowCell[] = [];
@@ -799,7 +807,7 @@ export class ReportLayout {
           break;
         }
         case "flags": {
-          const flags = ReportLayout.placeFlags(m, { changed: row.changed, overdue: row.overdue, stale: Boolean(row.stale) }, Boolean((settings as ReportColumnSettings).customLayout));
+          const flags = ReportLayout.placeFlags(m, { changed: row.changed, overdue: row.overdue, stale: Boolean(row.stale) }, Boolean((settings as ReportColumnSettings).customLayout), flagKinds);
           if (flags.length) lineOneH = Math.max(lineOneH, g.PILL_H);
           cells.push({ kind: "flags", x: col.x, w: inner, flags });
           break;
@@ -1492,6 +1500,9 @@ export class ReportLayout {
     const firstH = ReportLayout.firstHeaderHeight(input, model);
     const contH = ReportLayout.continuationHeaderHeight(input, model);
 
+    // One fixed slot per flag kind for the whole report, only for kinds some listed row has (first under FLAGS).
+    const flagKinds = FlagSlots.used(input.rows.map((r) => ({ changed: r.changed, overdue: r.overdue, stale: Boolean(r.stale) })));
+
     const pages: PageLayout[] = [];
     let page!: PageLayout;
     let y = 0;
@@ -1533,7 +1544,7 @@ export class ReportLayout {
       const done = completed.filter((c) => ServiceAreaInfo.groupOf(c.serviceArea) === area);
       if (rows.length === 0 && done.length === 0) continue;
       rows.forEach((row, i) => {
-        const layout = ReportLayout.rowLayout(m, row, input.viewSettings, input.reportDate);
+        const layout = ReportLayout.rowLayout(m, row, input.viewSettings, input.reportDate, flagKinds);
         if (i === 0) {
           // Keep the section head with its first row.
           if (y > 0 && y + sectionH(false) + layout.height > page.bodyHeight) newPage();

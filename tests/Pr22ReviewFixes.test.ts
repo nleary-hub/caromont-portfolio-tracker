@@ -86,7 +86,7 @@ describe("PR #22 review fixes: flags under the FLAGS header (custom layout)", ()
     expect(placed[1].dx).toBeCloseTo(placed[0].width + ReportGeometry.FLAG_GAP, 9);
   });
 
-  it("keeps the fixed slots in the default layout (byte-identical default PDF)", () => {
+  it("default layout, one row on its own: all three fixed slots (a whole report narrows them to the kinds it uses, see PdfFlagsAligned)", () => {
     const l = ReportLayout.rowLayout(m, Fx.row({ changed: false, overdue: false, stale: true }), REPORT, SampleReportData.REPORT_DATE);
     expect(Fx.cell(l.cells, "flags").flags[0].dx).toBe(ReportLayout.flagSlots(m)[2].dx);
     expect(PdfReportLayout.withLayout(REPORT, null)).toBe(REPORT);

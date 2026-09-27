@@ -41,6 +41,14 @@ export class FlagSlots {
     return FlagSlots.ORDER.map((kind) => (state[kind] ? kind : null));
   }
 
+  /**
+   * The flag kinds at least one of the rows has, in canonical order. The PDF gives each of these one fixed slot
+   * for the whole report, starting under the FLAGS header; kinds no row has take no space.
+   */
+  static used(states: readonly FlagState[]): FlagKind[] {
+    return FlagSlots.ORDER.filter((kind) => states.some((s) => s[kind]));
+  }
+
   /** The flags that apply, in canonical order (for counts and legends; layout uses slots()). */
   static present(state: FlagState): FlagKind[] {
     return FlagSlots.ORDER.filter((kind) => state[kind]);

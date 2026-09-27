@@ -225,7 +225,7 @@ function Flag({ flag, x, y }: { flag: FlagBox; x: number; y: number }) {
   );
 }
 
-/** Row flags, each in its fixed slot (ReportLayout.flagSlots): empty slots stay blank. */
+/** Row flags, each in its fixed slot for the report (ReportLayout.placeFlags): empty slots stay blank. */
 function Flags({ flags, x, y }: { flags: PlacedFlag[]; x: number; y: number }) {
   return (
     <>
