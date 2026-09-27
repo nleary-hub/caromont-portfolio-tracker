@@ -2,6 +2,7 @@ import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
+import { loadProjectHistory } from "@/app/actions/history";
 import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
@@ -260,6 +261,7 @@ export default async function DashboardPage() {
             },
           }
         : {})}
+      historyAction={loadProjectHistory}
       signOutAction={async () => {
         "use server";
         await signOut({ redirectTo: SIGN_IN_PATH });

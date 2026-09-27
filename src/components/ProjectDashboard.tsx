@@ -9,6 +9,7 @@ import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboa
 import type { DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
+import { PreviouslyLine, ProjectHistorySection, useProjectTimeline, type HistoryLoader } from "./ProjectHistory";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { InforNumber } from "@/lib/domain/InforNumber";
@@ -121,6 +122,8 @@ interface Props {
   /** The line's shared layout (column widths and order, row order). Everyone gets it; only admins change it. */
   layout?: LineLayoutValue;
   signOutAction: () => Promise<void>;
+  /** Project detail > History for the signed-in viewer (everyone; the server applies the visibility rules). */
+  historyAction?: HistoryLoader;
 }
 
 /** Browser localStorage, or null (server render, private mode, or storage blocked). */
@@ -158,6 +161,7 @@ export function ProjectDashboard({
   admin,
   layout: layoutProp,
   signOutAction,
+  historyAction,
 }: Props) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(null);
@@ -587,6 +591,7 @@ export function ProjectDashboard({
         selected && (
           <ProjectDrawer
             row={selected}
+            historyAction={historyAction}
             departments={line?.departments}
             today={today}
             onClose={requestClose}
@@ -749,9 +754,12 @@ function ProjectDrawer({
   adminControls,
   form,
   departments,
+  historyAction,
 }: {
   /** Null for the New project form. */
   row: DashboardRow | null;
+  /** Loads the History section and the "Previously" Infor numbers (detail view only). */
+  historyAction?: HistoryLoader;
   /** The line's departments (the department's short name in the header and detail). */
   departments?: DepartmentList;
   today: string;
@@ -765,6 +773,7 @@ function ProjectDrawer({
   /** Rendered only for admins. */
   adminControls: ReactNode;
 }) {
+  const history = useProjectTimeline(row?.id ?? "", row, row && !form ? historyAction : undefined);
   const closeButton = (
     <button
       type="button"
@@ -840,8 +849,11 @@ function ProjectDrawer({
             </dd>
           </>
         )}
-        <dt className="text-muted">Infor request #</dt>
-        <dd className="font-mono">{InforNumber.format(row.inforRequestNumber) ?? "–"}</dd>
+        <dt className="text-muted">Infor number</dt>
+        <dd>
+          <span className="font-mono">{InforNumber.format(row.inforRequestNumber) ?? "–"}</span>
+          <PreviouslyLine text={history.timeline?.previously} />
+        </dd>
         <dt className="text-muted">Next milestone</dt>
         <dd>
           {row.nextMilestone ?? ""}
@@ -874,15 +886,8 @@ function ProjectDrawer({
           {row.note ?? <span className="text-muted">No note</span>}
         </p>
       </div>
-      <div>
-        <div className="mb-1.5 flex items-baseline gap-2 uppercase tracking-[.04em] text-muted type-label">
-          History
-          <span className="normal-case tracking-normal type-caption">Append-only · entries can’t be edited</span>
-        </div>
-        {/* STUB: history timeline (ProjectHistory rows) not wired up yet. */}
-        <p className="text-muted type-caption">History timeline coming soon.</p>
-      </div>
       {adminControls}
+      {historyAction && <ProjectHistorySection key={row.id} timeline={history.timeline} loading={history.loading} />}
 
     </aside>
   );

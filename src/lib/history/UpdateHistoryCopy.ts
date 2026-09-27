@@ -10,23 +10,28 @@ export class UpdateHistoryCopy {
   static readonly BEFORE_THIS_TRACKER = "Before this tracker";
   static readonly EMPTY = "No changes yet. Edits to this project will show here.";
   static readonly SHOW_CHANGE = "Show change";
+  /** Provisional: while the timeline loads, and when it could not load. */
+  static readonly LOADING = "Loading history…";
+  static readonly LOAD_FAILED = "History could not load. Close and reopen the project to try again.";
   static readonly BEFORE = "Before";
   static readonly AFTER = "After";
   static readonly PROJECT_CREATED = "Project created.";
   static readonly IMPORTED = "Imported from CSV.";
-  /** Provisional. */
   static readonly REORDERED = "Reordered steps.";
-  /** Provisional (admin only). */
-  static readonly DELETED = "Deleted.";
-  static readonly RESTORED = "Restored.";
+  static readonly ADMIN_TAG = "Admin";
+  /** Admin only. */
+  static readonly DELETED = "Project deleted.";
+  static readonly RESTORED = "Project restored.";
   static readonly HIDDEN_DASHBOARD = "Hidden from the dashboard.";
   static readonly SHOWN_DASHBOARD = "Shown on the dashboard again.";
-  static readonly HIDDEN_REPORT = "Hidden from the report.";
-  static readonly SHOWN_REPORT = "Shown in the report again.";
-  static readonly INCLUDED_IN_REPORT = "Included in the report.";
-  static readonly EXCLUDED_FROM_REPORT = "Left out of the report.";
-  static readonly REQUESTER_NA = "Requester set to Not applicable.";
-  static readonly REQUESTER_NA_CLEARED = "Requester no longer Not applicable.";
+  /** Admin "Hide from report" (Project.hiddenFromReport). */
+  static readonly HIDDEN_REPORT = "Left out of the report.";
+  static readonly SHOWN_REPORT = "Included in the report again.";
+  /** Requester states without a name (Requester.NOT_APPLICABLE and the gray "To assign"). */
+  static readonly NOT_APPLICABLE = "Not applicable";
+  static readonly TO_ASSIGN = "To assign";
+  /** Provisional: the project's own "In report" field (Project.includeInReport), shown in Project detail as Yes / No. */
+  static readonly IN_REPORT_LABEL = "In report";
 
   static title(count: number): string {
     return `History (${count})`;
@@ -77,17 +82,30 @@ export class UpdateHistoryCopy {
     return `Renamed step "${from}" to "${to}".`;
   }
 
-  /** Provisional: a step's due date. */
+  /** A step's due date: "Due date for "Go-live" changed from Oct 15, 2026 to Nov 1, 2026." */
   static stepDue(step: string, from: string | null, to: string | null): string {
-    if (from && to) return `Changed the due date of "${step}" from ${from} to ${to}.`;
-    if (to) return `Set the due date of "${step}" to ${to}.`;
-    return `Cleared the due date of "${step}" (was ${from ?? ""}).`;
+    if (from && to) return `Due date for "${step}" changed from ${from} to ${to}.`;
+    if (to) return `Due date for "${step}" set to ${to}.`;
+    return `Due date for "${step}" cleared (was ${from ?? ""}).`;
   }
 
-  /** Provisional: "Applied template "Device trial" (Add to end, 3 steps)." */
+  /**
+   * "Applied the "Device trial" template and added 3 steps to the end." Stored as "Device trial (Add to end, 3 steps)"
+   * (MilestoneRules). Replace mode is provisional.
+   */
   static templateApplied(detail: string): string {
-    const m = /^(.*) \(([^()]*)\)$/.exec(detail);
-    return m ? `Applied template "${m[1]}" (${m[2]}).` : `Applied template "${detail}".`;
+    const m = /^(.*) \((Add to end|Replace), (\d+) steps?\)$/.exec(detail);
+    if (!m) return `Applied the "${detail}" template.`;
+    const n = Number(m[3]);
+    const steps = `${n} ${n === 1 ? "step" : "steps"}`;
+    return m[2] === "Replace" ? `Applied the "${m[1]}" template and replaced the steps with its ${steps}.` : `Applied the "${m[1]}" template and added ${steps} to the end.`;
+  }
+
+  /** Older saves that changed only Next milestone (no step change in that save). */
+  static nextMilestone(from: string | null, to: string | null): string {
+    if (from && to) return `Next milestone changed from "${from}" to "${to}".`;
+    if (to) return `Next milestone set to "${to}".`;
+    return `Next milestone cleared (was "${from ?? ""}").`;
   }
 
   static movedOnDelete(from: string, to: string): string {

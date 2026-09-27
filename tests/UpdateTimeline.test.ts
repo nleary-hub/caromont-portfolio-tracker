@@ -1,8 +1,12 @@
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
+import { PreviouslyLine, ProjectHistorySection } from "@/components/ProjectHistory";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { DepartmentCopy } from "@/lib/domain/DepartmentRules";
 import { UpdateHistoryCopy } from "@/lib/history/UpdateHistoryCopy";
-import { type TimelineRow, UpdateTimeline } from "@/lib/history/UpdateTimeline";
+import { type TimelineDto, type TimelineRow, UpdateTimeline } from "@/lib/history/UpdateTimeline";
+import { ProjectHistoryForms } from "@/lib/services/ProjectHistoryForms";
 import { DepartmentService } from "@/lib/services/DepartmentService";
 import { ImportService } from "@/lib/import/ImportService";
 import { ProjectHistoryService } from "@/lib/services/ProjectHistoryService";
@@ -32,15 +36,26 @@ describe("UpdateTimeline (Project detail > History)", () => {
       [],
       null,
     );
-    expect(t.title).toBe("History (2)");
-    expect(t.entries.map((e) => e.meta)).toEqual(["Sep 28, 2026, 10:05 AM ET · Tracker", "Sep 27, 2026, 1:20 AM ET · Nick Leary"]);
-    expect(t.entries[1].lines.map((l) => l.text)).toEqual(["Status changed from On track to On hold.", "Owner changed from Nicole Smith to Nick Leary."]);
+    // N counts lines shown: a save that changed two fields shows two entries with the same meta line.
+    expect(t.title).toBe("History (3)");
+    expect(t.entries.map((e) => [e.meta, e.text, e.hollow])).toEqual([
+      ["Sep 28, 2026, 10:05 AM ET · Tracker", "Project created.", true],
+      ["Sep 27, 2026, 1:20 AM ET · Nick Leary", "Status changed from On track to On hold.", false],
+      ["Sep 27, 2026, 1:20 AM ET · Nick Leary", "Owner changed from Nicole Smith to Nick Leary.", false],
+    ]);
   });
 
-  it("names people from their email; an email without a name part shows as saved", () => {
+  it("names people from the People lists when exactly one matches the email, else from the email, else as saved", () => {
+    const people = ["Nick Leary", "Nicole Smith", "Dr. Raj Patel", "Nate Leary"];
     expect(UpdateTimeline.actor("nick.leary@example.org")).toBe("Nick Leary");
     expect(UpdateTimeline.actor("nleary@example.org")).toBe("nleary@example.org");
+    expect(UpdateTimeline.actor("nsmith@example.org", people)).toBe("Nicole Smith");
+    expect(UpdateTimeline.actor("RAJ.PATEL@example.org", people)).toBe("Dr. Raj Patel");
+    expect(UpdateTimeline.actor("nick.leary@example.org", ["NICK LEARY"])).toBe("NICK LEARY");
+    // Two list names fit "nleary": not guessed.
+    expect(UpdateTimeline.actor("nleary@example.org", people)).toBe("nleary@example.org");
     expect(UpdateTimeline.actor("cron")).toBe("Tracker");
+    expect(UpdateTimeline.actor("system (migration 0021)")).toBe("Tracker");
   });
 
   it("steps: checked, unchecked, added, removed, renamed; step names in quotes; Next milestone and due date not logged separately", () => {
@@ -66,6 +81,35 @@ describe("UpdateTimeline (Project detail > History)", () => {
     ]);
   });
 
+  it("Requester and Not applicable read as one normal Requester sentence", () => {
+    expect(texts([row("requesterNotApplicable", "false", "true")])).toEqual(["Requester changed from To assign to Not applicable."]);
+    expect(texts([row("physicianChampion", "Jane Doe", null), row("requesterNotApplicable", "false", "true")])).toEqual(["Requester changed from Jane Doe to Not applicable."]);
+    expect(texts([row("physicianChampion", null, "Jane Doe"), row("requesterNotApplicable", "true", "false")])).toEqual(["Requester changed from Not applicable to Jane Doe."]);
+    expect(texts([row("physicianChampion", null, "Jane Doe")])).toEqual(["Requester set to Jane Doe."]);
+  });
+
+  it("due dates, reorders, templates and older Next milestone saves", () => {
+    expect(texts([row("milestone_due", null, "Go-live: 2026-10-15")])).toEqual(['Due date for "Go-live" set to Oct 15, 2026.']);
+    expect(texts([row("milestone_due", "Go-live: 2026-10-15", "Go-live: 2026-11-01")])).toEqual(['Due date for "Go-live" changed from Oct 15, 2026 to Nov 1, 2026.']);
+    expect(texts([row("milestone_due", "Go-live: 2026-10-15", null)])).toEqual(['Due date for "Go-live" cleared (was Oct 15, 2026).']);
+    expect(texts([row("milestones_reordered", '["A","B"]', '["B","A"]')])).toEqual(["Reordered steps."]);
+    expect(texts([row("milestone_template_applied", null, "Device trial (Add to end, 3 steps)")])).toEqual(['Applied the "Device trial" template and added 3 steps to the end.']);
+    expect(texts([row("milestone_template_applied", null, "Device trial (Add to end, 1 step)")])).toEqual(['Applied the "Device trial" template and added 1 step to the end.']);
+    // No step change in the save: Next milestone gets its own sentence, names in quotes.
+    expect(texts([row("nextMilestone", "Vendor quote", "Contract signed")])).toEqual(['Next milestone changed from "Vendor quote" to "Contract signed".']);
+  });
+
+  it("admin-only events carry the Admin tag; the project's own In report field does not", () => {
+    const lines = UpdateTimeline.lines([row("archivedAt", null, "2026-09-27T05:20:00.000Z"), row("deletedBy", null, NICK)]);
+    expect(lines).toEqual([{ text: "Project deleted.", admin: true }]);
+    expect(UpdateTimeline.lines([row("archivedAt", "2026-09-27T05:20:00.000Z", null)])).toEqual([{ text: "Project restored.", admin: true }]);
+    expect(UpdateTimeline.lines([row("hiddenFromDashboard", "false", "true")])).toEqual([{ text: "Hidden from the dashboard.", admin: true }]);
+    expect(UpdateTimeline.lines([row("hiddenFromDashboard", "true", "false")])).toEqual([{ text: "Shown on the dashboard again.", admin: true }]);
+    expect(UpdateTimeline.lines([row("hiddenFromReport", "false", "true")])).toEqual([{ text: "Left out of the report.", admin: true }]);
+    expect(UpdateTimeline.lines([row("hiddenFromReport", "true", "false")])).toEqual([{ text: "Included in the report again.", admin: true }]);
+    expect(UpdateTimeline.lines([row("includeInReport", "true", "false")])).toEqual([{ text: "In report changed from Yes to No." }]);
+  });
+
   it("long text: one line with Before and After", () => {
     expect(UpdateTimeline.lines([row("note", "Waiting on legal.", "Signed 9/25.")])).toEqual([{ text: "Note updated.", change: { before: "Waiting on legal.", after: "Signed 9/25." } }]);
     expect(UpdateTimeline.lines([row("description", null, "Mapping trial.")])).toEqual([{ text: "Description updated.", change: { before: null, after: "Mapping trial." } }]);
@@ -87,10 +131,10 @@ describe("UpdateTimeline (Project detail > History)", () => {
       [{ number: 4656, recordedAt: null }],
       5120,
     );
-    expect(t.entries.map((e) => [e.meta, e.lines.map((l) => l.text)])).toEqual([
-      ["Sep 27, 2026, 1:20 AM ET · Nick Leary", ["Infor number changed from REQ-5081 to REQ-5120."]],
-      ["Sep 1, 2026, 12:00 PM ET · Nick Leary", ["Infor number changed from REQ-4412 to REQ-5081."]],
-      ["Before this tracker", ["Earlier Infor number: REQ-4656"]],
+    expect(t.entries.map((e) => [e.meta, e.text, e.hollow])).toEqual([
+      ["Sep 27, 2026, 1:20 AM ET · Nick Leary", "Infor number changed from REQ-5081 to REQ-5120.", false],
+      ["Sep 1, 2026, 12:00 PM ET · Nick Leary", "Infor number changed from REQ-4412 to REQ-5081.", false],
+      ["Before this tracker", "Earlier Infor number: REQ-4656", true],
     ]);
     expect(t.entries.at(-1)!.at).toBeNull();
     expect(t.priorInforNumbers).toEqual([5081, 4412, 4656]);
@@ -102,6 +146,22 @@ describe("UpdateTimeline (Project detail > History)", () => {
     expect(affera.entries.map((e) => e.meta)).toEqual(["Before this tracker"]);
   });
 
+  it("the seeded earlier number always stays last, even below the oldest dated entries and dated earlier numbers", () => {
+    const epoch = new Date(0);
+    const rows = [row("created", null, "{}", { changedAt: epoch }), row("note", null, "x", { changedAt: new Date("1999-01-01T00:00:00Z") }), row("status", "OnTrack", "AtRisk")];
+    const prior = [{ number: 4656, recordedAt: null }, { number: 1200, recordedAt: new Date(-1000) }, { number: 3300, recordedAt: null }];
+    for (const order of [prior, [...prior].reverse()]) {
+      const t = UpdateTimeline.build([...rows].reverse(), order, 5081);
+      expect(t.entries.slice(-2).map((e) => [e.meta, e.text])).toEqual([
+        ["Before this tracker", "Earlier Infor number: REQ-4656"],
+        ["Before this tracker", "Earlier Infor number: REQ-3300"],
+      ]);
+      expect(t.entries.findIndex((e) => e.at === null)).toBe(t.entries.length - 2);
+      expect(t.entries.slice(0, -2).every((e) => e.at !== null)).toBe(true);
+      expect(t.entries.at(-3)!.text).toBe("Earlier Infor number: REQ-1200");
+    }
+  });
+
   it("empty history; Show all after 10 entries; no em dashes in any copy", () => {
     const empty = UpdateTimeline.build([], [], null);
     expect([empty.title, empty.entries]).toEqual(["History (0)", []]);
@@ -111,7 +171,8 @@ describe("UpdateTimeline (Project detail > History)", () => {
     const all = [
       ...Object.values(UpdateHistoryCopy).filter((v) => typeof v === "string"),
       UpdateHistoryCopy.stepDue("A", "Oct 1, 2026", null),
-      UpdateHistoryCopy.templateApplied("Device trial (Add to end, 3 steps)"),
+      UpdateHistoryCopy.templateApplied("Device trial (Replace, 3 steps)"),
+      UpdateHistoryCopy.nextMilestone(null, "B"),
     ];
     for (const s of all) expect(s).not.toMatch(/\u2014/);
   });
@@ -134,10 +195,11 @@ describe("ProjectHistoryService.timeline", () => {
     await ProjectService.setHidden(p.id, "report", true, Factory.ADMIN, db);
 
     const member = await ProjectHistoryService.timeline(p.id, Factory.MEMBER, db);
-    expect(member.entries.map((e) => e.lines.map((l) => l.text))).toEqual([["Infor number changed from REQ-5081 to REQ-5120."], ["Project created."], ["Earlier Infor number: REQ-4656"]]);
+    expect(member.entries.map((e) => e.text)).toEqual(["Infor number changed from REQ-5081 to REQ-5120.", "Project created.", "Earlier Infor number: REQ-4656"]);
     expect(member.previously).toBe("Previously REQ-5081, REQ-4656");
     const admin = await ProjectHistoryService.timeline(p.id, Factory.ADMIN, db);
-    expect(admin.entries[0].lines.map((l) => l.text)).toEqual([UpdateHistoryCopy.HIDDEN_REPORT]);
+    expect(admin.entries.filter((e) => e.admin).map((e) => e.text)).toEqual([UpdateHistoryCopy.HIDDEN_REPORT]);
+    expect(UpdateTimeline.toDto(admin).entries.find((e) => e.admin)).toEqual({ key: expect.any(String), meta: expect.stringContaining(" · admin@example.org"), hollow: false, text: "Left out of the report.", admin: true });
 
     await ProjectService.setHidden(p.id, "dashboard", true, Factory.ADMIN, db);
     expect((await ProjectHistoryService.timeline(p.id, Factory.MEMBER, db)).entries).toEqual([]);
@@ -152,8 +214,55 @@ describe("ProjectHistoryService.timeline", () => {
     await db.$transaction((tx) => ProjectService.renamePerson(tx as never, scope, "owner", "Owner A", "Owner B", Factory.ADMIN));
     await DepartmentService.remove(scope, "INU", { confirmName: "INU", moveTo: "EP" }, Factory.ADMIN, db);
     const t = await ProjectHistoryService.timeline(p.id, Factory.MEMBER, db);
-    const lines = t.entries.flatMap((e) => e.lines.map((l) => l.text));
+    const lines = t.entries.map((e) => e.text);
     expect(lines).toContain("Owner renamed from Owner A to Owner B on the People page.");
     expect(lines).toContain("Moved from INU to EP when INU was deleted.");
+  });
+});
+
+describe("History section markup (Figma Bro spec)", () => {
+  const entry = (i: number, extra: Partial<TimelineDto["entries"][number]> = {}) => ({ key: `k${i}`, meta: `Sep 27, 2026, 1:20 AM ET · Nick Leary`, hollow: false, text: `Line ${i}.`, ...extra });
+
+  it("title History (N), ten entries then Show all N changes; hollow dots; Admin tag; Show change link", () => {
+    const entries = [
+      entry(0, { text: "Note updated.", change: { before: "a", after: "b" } }),
+      entry(1, { text: "Left out of the report.", admin: true }),
+      ...Array.from({ length: 11 }, (_, i) => entry(i + 2)),
+      { key: "prior|4656", meta: "Before this tracker", hollow: true, text: "Earlier Infor number: REQ-4656" },
+    ];
+    const html = renderToStaticMarkup(createElement(ProjectHistorySection, { timeline: { title: "History (14)", entries, previously: "Previously REQ-4656" }, loading: false }));
+    expect(html).toContain("History (14)");
+    expect(html.match(/data-testid="history-entry"/g)).toHaveLength(10);
+    expect(html).toContain("Show all 14 changes");
+    expect(html).toContain(">Show change</button>");
+    expect(html).toContain(">Admin</span>");
+    expect(html).not.toContain("Earlier Infor number");
+    expect(html).not.toContain("\u2014");
+  });
+
+  it("empty: only the empty-state line, no rail", () => {
+    const html = renderToStaticMarkup(createElement(ProjectHistorySection, { timeline: { title: "History (0)", entries: [], previously: null }, loading: false }));
+    expect(html).toContain("History (0)");
+    expect(html).toContain("No changes yet. Edits to this project will show here.");
+    expect(html).not.toContain("<ol");
+  });
+
+  it("Previously line only when there is an earlier number", () => {
+    expect(renderToStaticMarkup(createElement(PreviouslyLine, { text: "Previously REQ-4656" }))).toContain("Previously REQ-4656");
+    expect(renderToStaticMarkup(createElement(PreviouslyLine, { text: null }))).toBe("");
+  });
+});
+
+describe("ProjectHistoryForms.load (drawer action)", () => {
+  it("null when signed out; empty for a project on another line; the DTO otherwise", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    const p = await ProjectService.create({ serviceArea: "Cath", owner: "Owner A", status: "OnTrack", nextMilestone: "M1", name: "Alpha" } as never, { changedBy: NICK }, db);
+    const scope = await ServiceLineAccess.defaultLine(db);
+    expect(await ProjectHistoryForms.load(null, p.id, scope, db)).toBeNull();
+    const dto = await ProjectHistoryForms.load(Factory.MEMBER, p.id, scope, db);
+    expect(dto?.entries.map((e) => e.text)).toEqual(["Project created."]);
+    fake.state.projects.find((x) => x.id === p.id)!.serviceLineId = "00000000-0000-4000-8000-0000000000aa";
+    expect((await ProjectHistoryForms.load(Factory.MEMBER, p.id, scope, db))?.entries).toEqual([]);
   });
 });

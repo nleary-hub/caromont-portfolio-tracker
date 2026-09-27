@@ -5,6 +5,7 @@ import type { ProjectStatus } from "@/generated/prisma/enums";
 import { HistoryEntries } from "@/lib/history/HistoryEntries";
 import { UpdateHistoryCopy as C } from "@/lib/history/UpdateHistoryCopy";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
+import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 /** The ProjectHistory columns the timeline reads. */
 export interface TimelineRow {
@@ -24,26 +25,37 @@ export interface PriorInforRow {
 
 export interface TimelineLine {
   text: string;
-  /** Long text ("Note updated."): the "Show change" toggle opens gray Before and After blocks. */
+  /** Long text ("Note updated."): the "Show change" link opens gray Before and After blocks. */
   change?: { before: string | null; after: string | null };
+  /** Hide/delete events: a small gray "Admin" tag at the end of the meta line (admins only ever get these rows). */
+  admin?: boolean;
 }
 
-export interface TimelineEntry {
+/** One line shown: the gray meta line over one sentence. A save that changed three fields shows three entries. */
+export interface TimelineEntry extends TimelineLine {
   key: string;
   /** null for "Before this tracker". */
   at: Date | null;
   /** "Sep 27, 2026, 1:20 AM ET · Nick Leary", or "Before this tracker". */
   meta: string;
-  lines: TimelineLine[];
+  /** System (Tracker) and before-this-tracker entries get a hollow dot. */
+  hollow: boolean;
 }
 
 export interface Timeline {
-  /** Every entry, newest first; undated earlier numbers last. */
+  /** Every line shown, newest first; undated earlier numbers always last. */
   entries: TimelineEntry[];
-  /** "History (N)". */
+  /** "History (N)": N counts lines shown. */
   title: string;
   /** Numbers the project had before its current one, newest first (for "Previously REQ-4656, REQ-4412"). */
   priorInforNumbers: number[];
+  previously: string | null;
+}
+
+/** What the drawer receives (serializable: no Dates). */
+export interface TimelineDto {
+  title: string;
+  entries: (TimelineLine & { key: string; meta: string; hollow: boolean })[];
   previously: string | null;
 }
 
@@ -125,22 +137,40 @@ export class UpdateTimeline {
     "accomplishment",
   ];
 
-  static build(rows: readonly TimelineRow[], prior: readonly PriorInforRow[], currentInfor: number | null): Timeline {
-    const dated = HistoryEntries.group(rows)
-      .map((g) => ({ key: `${g.changedAt.getTime()}|${g.changedBy}`, at: g.changedAt, meta: C.meta(ReportFormat.dateTimeEt(g.changedAt), UpdateTimeline.actor(g.changedBy)), lines: UpdateTimeline.lines(g.rows) }))
-      .filter((e) => e.lines.length > 0);
-    const datedPrior = prior.filter((p) => p.recordedAt).sort((a, b) => b.recordedAt!.getTime() - a.recordedAt!.getTime());
-    const undated = prior.filter((p) => !p.recordedAt).sort((a, b) => b.number - a.number);
-    const priorEntries: TimelineEntry[] = [...datedPrior, ...undated].map((p) => ({
-      key: `prior|${p.number}`,
-      at: p.recordedAt,
-      meta: p.recordedAt ? C.meta(ReportFormat.dateTimeEt(p.recordedAt), C.TRACKER) : C.BEFORE_THIS_TRACKER,
-      lines: [{ text: C.earlierInfor(p.number) }],
-    }));
-    const entries = [...dated, ...priorEntries.filter((e) => e.at)].sort((a, b) => b.at!.getTime() - a.at!.getTime());
-    entries.push(...priorEntries.filter((e) => !e.at));
+  /**
+   * `people` are the line's People list names (owners, requesters, contracts leads): the meta line prefers their spelling
+   * when exactly one of them matches the email.
+   */
+  static build(rows: readonly TimelineRow[], prior: readonly PriorInforRow[], currentInfor: number | null, people: readonly string[] = []): Timeline {
+    const dated: TimelineEntry[] = [];
+    for (const g of HistoryEntries.group(rows)) {
+      const who = UpdateTimeline.actor(g.changedBy, people);
+      const meta = C.meta(ReportFormat.dateTimeEt(g.changedAt), who);
+      UpdateTimeline.lines(g.rows).forEach((line, i) => {
+        dated.push({ ...line, key: `${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, hollow: who === C.TRACKER });
+      });
+    }
+    for (const p of prior) {
+      if (p.recordedAt) dated.push({ key: `prior|${p.number}`, at: p.recordedAt, meta: C.meta(ReportFormat.dateTimeEt(p.recordedAt), C.TRACKER), hollow: true, text: C.earlierInfor(p.number) });
+    }
+    // Stable sort: lines of one save keep their reading order.
+    dated.sort((a, b) => b.at!.getTime() - a.at!.getTime());
+    // Numbers from before this tracker have no date and always come last, below every dated entry.
+    const undated: TimelineEntry[] = prior
+      .filter((p) => !p.recordedAt)
+      .sort((a, b) => b.number - a.number)
+      .map((p) => ({ key: `prior|${p.number}`, at: null, meta: C.BEFORE_THIS_TRACKER, hollow: true, text: C.earlierInfor(p.number) }));
+    const entries = [...dated, ...undated];
     const priorInforNumbers = UpdateTimeline.priorInforNumbers(rows, prior, currentInfor);
     return { entries, title: C.title(entries.length), priorInforNumbers, previously: C.previously(priorInforNumbers) };
+  }
+
+  static toDto(t: Timeline): TimelineDto {
+    return {
+      title: t.title,
+      entries: t.entries.map(({ key, meta, hollow, text, change, admin }) => ({ key, meta, hollow, text, ...(change ? { change } : {}), ...(admin ? { admin } : {}) })),
+      previously: t.previously,
+    };
   }
 
   /** Earlier numbers, newest first: replaced numbers from history, then recorded ones, never the current one. */
@@ -157,19 +187,33 @@ export class UpdateTimeline {
     return out;
   }
 
-  /** Who made the change: "Tracker" for system writes, else the person's name from their email. */
-  static actor(changedBy: string): string {
+  /**
+   * Who made the change: "Tracker" for system writes; else a People list name when exactly one matches the email
+   * ("nick.leary@" or "nleary@" -> "Nick Leary"); else the name read from the email; else the email as saved.
+   */
+  static actor(changedBy: string, people: readonly string[] = []): string {
     const by = changedBy.trim();
     if (!by || /^(system|cron|migration)\b/i.test(by)) return C.TRACKER;
     if (!by.includes("@")) return by;
-    const local = by.split("@")[0];
+    const local = by.split("@")[0].toLowerCase();
+    const letters = (v: string) => v.toLowerCase().replace(/[^a-z]/g, "");
+    const key = letters(local);
+    const hits = new Set<string>();
+    for (const name of people) {
+      const words = name.replace(/^dr\.?\s+/i, "").split(/\s+/).map(letters).filter(Boolean);
+      if (words.length < 2) continue;
+      const full = words.join("");
+      const initialLast = words[0][0] + words[words.length - 1];
+      if (key && (key === full || key === initialLast)) hits.add(name);
+    }
+    if (hits.size === 1) return [...hits][0];
     return /[._-]/.test(local) ? DisplayName.fromEmail(by) : by;
   }
 
   /** The lines for one save, in reading order. */
   static lines(rows: readonly TimelineRow[]): TimelineLine[] {
-    const fields = new Set(rows.map((r) => r.field));
-    const hasSteps = [...fields].some((f) => f.startsWith("milestone"));
+    const byField = new Map(rows.map((r) => [r.field, r]));
+    const hasSteps = rows.some((r) => r.field.startsWith("milestone"));
     const rank = (f: string) => {
       const i = UpdateTimeline.ORDER.indexOf(f);
       return i < 0 ? UpdateTimeline.ORDER.length : i;
@@ -178,12 +222,24 @@ export class UpdateTimeline {
     for (const row of [...rows].sort((a, b) => rank(a.field) - rank(b.field))) {
       if (UpdateTimeline.SILENT.has(row.field)) continue;
       if (hasSteps && UpdateTimeline.STEP_MIRRORS.has(row.field)) continue;
-      // Naming a requester clears Not applicable in the same save; the name line says it.
-      if (row.field === "requesterNotApplicable" && row.newValue !== "true" && fields.has("physicianChampion")) continue;
-      const line = UpdateTimeline.line(row);
-      if (line) out.push(line);
+      // Requester and its Not applicable flag read as one Requester sentence.
+      if (row.field === "requesterNotApplicable" && byField.has("physicianChampion")) continue;
+      const na = byField.get("requesterNotApplicable");
+      const line =
+        (row.field === "physicianChampion" || row.field === "requesterNotApplicable") && na && row.comment !== UpdateTimeline.PEOPLE_RENAME_COMMENT
+          ? UpdateTimeline.requesterLine(byField.get("physicianChampion") ?? null, na)
+          : UpdateTimeline.line(row);
+      if (line) out.push(VisibilityPolicy.ADMIN_ONLY_HISTORY_FIELDS.includes(row.field) ? { ...line, admin: true } : line);
     }
     return out;
+  }
+
+  /** "Requester changed from To assign to Not applicable." / "Requester changed from Not applicable to Jane Doe." */
+  private static requesterLine(name: TimelineRow | null, na: TimelineRow): TimelineLine | null {
+    const state = (n: string | null | undefined, flag: string | null) => (n ? n : flag === "true" ? C.NOT_APPLICABLE : C.TO_ASSIGN);
+    const before = state(name?.oldValue, na.oldValue);
+    const after = state(name?.newValue, na.newValue);
+    return before === after ? null : { text: C.changed(UpdateTimeline.label("physicianChampion"), before, after) };
   }
 
   static line(row: TimelineRow): TimelineLine | null {
@@ -221,9 +277,7 @@ export class UpdateTimeline {
       case "hiddenFromReport":
         return { text: after === "true" ? C.HIDDEN_REPORT : C.SHOWN_REPORT };
       case "includeInReport":
-        return { text: after === "true" ? C.INCLUDED_IN_REPORT : C.EXCLUDED_FROM_REPORT };
-      case "requesterNotApplicable":
-        return { text: after === "true" ? C.REQUESTER_NA : C.REQUESTER_NA_CLEARED };
+        return { text: C.changed(C.IN_REPORT_LABEL, before === "false" ? "No" : "Yes", after === "false" ? "No" : "Yes") };
     }
     if (field === "serviceArea" && row.comment && UpdateTimeline.DEPARTMENT_DELETED.test(row.comment) && before && after) {
       return { text: C.movedOnDelete(before, after) };
@@ -231,6 +285,7 @@ export class UpdateTimeline {
     if (row.comment === UpdateTimeline.PEOPLE_RENAME_COMMENT && before && after) {
       return { text: C.renamedOnPeoplePage(label, before, after) };
     }
+    if (field === "nextMilestone") return before || after ? { text: C.nextMilestone(before || null, after || null) } : null;
     if (UpdateTimeline.LONG_TEXT.has(field)) return { text: C.updated(label), change: { before, after } };
     const b = UpdateTimeline.value(field, before);
     const a = UpdateTimeline.value(field, after);
