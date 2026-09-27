@@ -10,7 +10,7 @@ import {
 } from "@/lib/dashboard/DashboardColumnModel";
 import { CompletedBlockCopy, DashboardGroups, type DashboardGroup } from "@/lib/dashboard/DashboardGroups";
 import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardSort";
-import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import type { AreaGroup, DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ColumnShares, LayoutCopy, LineLayout, RowOrder, type ColumnLayoutValue, type LayoutKey, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import type { DashboardCompletedRow, DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { PeopleStack, type PeopleLine } from "@/lib/dashboard/PeopleStack";
@@ -39,6 +39,8 @@ export interface DashboardTableProps {
   renderMeta: (row: DashboardRow) => ReactNode;
   /** The line's shared layout and, for admins, the controls that change it. Absent = default layout, read only. */
   layout?: DashboardLayoutControl;
+  /** The line's departments (headings, order, announcement names). Absent = ServiceAreaInfo.LEGACY. */
+  departments?: DepartmentList;
 }
 
 /** Layout input of the table: the line's layout, who may change it, the active sort, and where changes go. */
@@ -153,7 +155,7 @@ class TableMeasure {
  * flexible column. Admins resize from each header's right edge, drag headers (Project stays first) and drag
  * rows within their department; everyone else sees the same layout with no handles or grips.
  */
-export function DashboardTable({ rows, completed, settings, selectedId, flashId = null, onSelect, today, emptyText, renderMeta, layout }: DashboardTableProps) {
+export function DashboardTable({ rows, completed, settings, selectedId, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments }: DashboardTableProps) {
   const value = layout?.value ?? LineLayout.defaults();
   const effective = value.columns ? LineLayout.orderedSettings("dashboard", settings, value.columns.order) : settings;
   const columns = DashboardColumnModel.columns(effective);
@@ -168,7 +170,7 @@ export function DashboardTable({ rows, completed, settings, selectedId, flashId 
   const dueFlags = DashboardColumnModel.dueFlagsVisibility(settings);
   const showInfor = settings.columnOrder.includes("inforNumber") && !settings.hiddenColumns.includes("inforNumber");
   const ordered = manual ? RowOrder.apply(rows, value.rows) : rows;
-  const groups = DashboardGroups.group(ordered, completed, layout ? DashboardSort.comparator(layout.sort) : undefined);
+  const groups = DashboardGroups.group(ordered, completed, layout ? DashboardSort.comparator(layout.sort) : undefined, departments);
   const span = columns.length;
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -522,10 +524,10 @@ export function DashboardTable({ rows, completed, settings, selectedId, flashId 
                       <RowGrip
                         name={r.name}
                         active={rowDrag?.id === r.id}
-                        onPointerDown={(e) => onGripDown(e, r.id, g.area, g.label)}
+                        onPointerDown={(e) => onGripDown(e, r.id, g.area, g.name)}
                         onPointerMove={onGripMove}
                         onPointerUp={onGripUp}
-                        onKeyDown={(e) => onGripKey(e, r.id, g.area, g.label)}
+                        onKeyDown={(e) => onGripKey(e, r.id, g.area, g.name)}
                         onBlur={() => rowDrag?.id === r.id && rowDrag.dy === null && setRowDrag(null)}
                       />
                     ) : null
@@ -572,7 +574,7 @@ export function DashboardTable({ rows, completed, settings, selectedId, flashId 
 }
 
 /** Six-dot row grip in the gutter (admins, manual order): secondary gray, primary on hover; Space to pick up. */
-function RowGrip({
+export function RowGrip({
   name,
   active,
   onPointerDown,

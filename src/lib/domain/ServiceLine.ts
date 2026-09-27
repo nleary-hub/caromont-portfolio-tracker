@@ -1,5 +1,4 @@
-import type { ServiceArea } from "@/generated/prisma/enums";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type DepartmentInfo } from "@/lib/domain/ServiceAreaInfo";
 
 /** Service line name shown in the top bar and the report header (frozen into snapshots). */
 export interface ServiceLineValue {
@@ -17,8 +16,11 @@ export interface ServiceLineScope extends ServiceLineValue {
   id: string;
   /** The default line (CVPSL): holds everything from before service lines, can't be archived or deleted. */
   isDefault: boolean;
-  /** Departments the line uses, in report order. */
-  departments: ServiceArea[];
+  /**
+   * The line's departments (migration 0018) that are not deleted, in report order: open ones plus archived ones
+   * (flagged). Filters and pick-lists offer the open ones (ServiceAreaInfo.all).
+   */
+  departments: DepartmentInfo[];
   /** Contracts lead pick-list. */
   contractsLeads: string[];
 }
@@ -77,7 +79,7 @@ export class ServiceLine {
       id: ServiceLine.DEFAULT_ID,
       ...ServiceLine.SEED,
       isDefault: true,
-      departments: [...ServiceAreaInfo.all()],
+      departments: ServiceAreaInfo.LEGACY.map((d) => ({ ...d })),
       contractsLeads: [...ServiceLine.CVPSL_CONTRACTS_LEADS],
     };
   }
@@ -209,10 +211,6 @@ export class ServiceLine {
     return out;
   }
 
-  /** Departments as saved: valid values only, deduped, in report order. */
-  static parseDepartments(raw: readonly unknown[]): ServiceArea[] {
-    return ServiceAreaInfo.all().filter((a) => raw.includes(a));
-  }
 }
 
 /** Copy for the service line admin UI (one place, so tests and the page agree). */

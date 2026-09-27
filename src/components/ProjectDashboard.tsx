@@ -12,7 +12,7 @@ import type { FiscalYearCount } from "@/lib/domain/types";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import type { AdminMenuItem } from "@/lib/admin/AdminMenu";
@@ -33,7 +33,6 @@ import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentsSelect, TileVisibilityButton } from "./DashboardFilterControls";
 import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
-import type { ServiceArea } from "@/generated/prisma/enums";
 import { Flags, StatusPill } from "./StatusPill";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
@@ -213,7 +212,7 @@ export function ProjectDashboard({
   // so the server render and the first client render agree.
   // The line's filter options (the #20 four for the default line) and its own saved prefs.
   const deptOptions = useMemo(() => DashboardPrefs.options(line), [line]);
-  const [departments, setDepartmentsState] = useState<ServiceArea[]>(() => DepartmentFilter.all(deptOptions));
+  const [departments, setDepartmentsState] = useState<DepartmentKey[]>(() => DepartmentFilter.all(deptOptions));
   const [hiddenTiles, setHiddenTilesState] = useState<DashboardTile[]>([]);
   useEffect(() => {
     const storage = DashboardPrefsBrowser.storage();
@@ -221,7 +220,7 @@ export function ProjectDashboard({
     setDepartmentsState(DashboardPrefs.readDepartments(storage, userEmail, line));
     setHiddenTilesState(DashboardPrefs.readHiddenTiles(storage, userEmail, line));
   }, [userEmail, line]);
-  const setDepartments = (next: ServiceArea[]) => {
+  const setDepartments = (next: DepartmentKey[]) => {
     setDepartmentsState(next);
     DashboardPrefs.writeDepartments(DashboardPrefsBrowser.storage(), userEmail, next, line);
   };
@@ -496,7 +495,7 @@ export function ProjectDashboard({
             </select>
           </label>
           <div className="ml-2">
-            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} />
+            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} list={line?.departments} />
           </div>
           {admin && (
             <button
@@ -530,6 +529,7 @@ export function ProjectDashboard({
               emptyText={rows.length === 0 && completed.length === 0 ? "No projects yet." : "No projects match the current filter."}
               renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
               layout={layoutControl}
+              departments={line?.departments}
             />
           </div>
           <div className="flex justify-between border-t border-line px-3 py-2.5 text-muted type-caption">
@@ -545,6 +545,7 @@ export function ProjectDashboard({
       {mode === "new" && admin ? (
         <ProjectDrawer
           row={null}
+          departments={line?.departments}
           today={today}
           onClose={requestClose}
           peopleEditor={null}
@@ -574,6 +575,7 @@ export function ProjectDashboard({
         selected && (
           <ProjectDrawer
             row={selected}
+            departments={line?.departments}
             today={today}
             onClose={requestClose}
             onEdit={admin && mode === "view" && admin.formValues[selected.id] ? () => setMode("edit") : undefined}
@@ -734,9 +736,12 @@ function ProjectDrawer({
   peopleEditor,
   adminControls,
   form,
+  departments,
 }: {
   /** Null for the New project form. */
   row: DashboardRow | null;
+  /** The line's departments (the department's short name in the header and detail). */
+  departments?: DepartmentList;
   today: string;
   onClose: () => void;
   /** Admins only: shows the Edit button left of close. */
@@ -767,7 +772,7 @@ function ProjectDrawer({
       >
         <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
           <div className="min-w-0">
-            {row && <div className="text-muted type-caption">{ServiceAreaInfo.label(row.serviceArea)} · Edit project</div>}
+            {row && <div className="text-muted type-caption">{ServiceAreaInfo.label(row.serviceArea, departments)} · Edit project</div>}
             <h2 className="mt-1 type-heading text-base">{row ? row.name : "New project"}</h2>
           </div>
           {closeButton}
@@ -784,7 +789,7 @@ function ProjectDrawer({
     >
       <div className="flex items-start justify-between gap-3">
         <div>
-          <div className="text-muted type-caption">{ServiceAreaInfo.label(row.serviceArea)} · Project detail</div>
+          <div className="text-muted type-caption">{ServiceAreaInfo.label(row.serviceArea, departments)} · Project detail</div>
           <h2 className="mt-1 type-heading text-base">{row.name}</h2>
         </div>
         {onEdit ? (
@@ -807,7 +812,7 @@ function ProjectDrawer({
         {!peopleEditor && (
           <>
             <dt className="text-muted">Department</dt>
-            <dd>{ServiceAreaInfo.label(row.serviceArea)}</dd>
+            <dd>{ServiceAreaInfo.label(row.serviceArea, departments)}</dd>
             <dt className="text-muted">Owner</dt>
             <dd>
               <AssigneeText value={row.owner} />
@@ -879,15 +884,18 @@ function EmptyLineState({ line, admin, onNew }: { line: ServiceLineScope; admin:
       <div>
         <h2 className="type-heading">No projects in {line.name} yet</h2>
         <p className="mt-1 text-muted type-table">
-          {line.departments.length === 0
-            ? "Start by choosing its departments. Then add projects one at a time or import a CSV."
+          {ServiceAreaInfo.all(line.departments).length === 0
+            ? "Start by adding its departments. Then add projects one at a time or import a CSV."
             : "Add projects one at a time or import a CSV."}
         </p>
       </div>
       {admin && (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <Link href="/admin/settings" className={link}>
-            Departments and contracts leads
+          <Link href="/admin/departments" className={link}>
+            Departments
+          </Link>
+          <Link href="/admin/people" className={link}>
+            Contracts leads
           </Link>
           <Link href="/admin/templates" className={link}>
             Milestone templates

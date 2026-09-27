@@ -1,8 +1,8 @@
-import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import type { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord, ReportHeader, ReportRow, StatusCounts } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
@@ -16,6 +16,8 @@ export interface ReportBuildInput {
   previousSnapshotGeneratedAt: Date | null;
   /** Report date, "YYYY-MM-DD" (America/New_York calendar date of generation). */
   reportDate: string;
+  /** The line's departments (report order and group keys). Absent = ServiceAreaInfo.LEGACY. */
+  departments?: DepartmentList;
   /** Report-context view settings in effect (frozen into the snapshot alongside the result). */
   viewSettings: ViewSettingsValue;
 }
@@ -34,7 +36,7 @@ export interface RowFlags {
 
 /** Anything sortable in report order. */
 export interface SortableRow {
-  serviceArea: ServiceArea | null;
+  serviceArea: DepartmentKey | null;
   status: ProjectStatus;
   /** YYYY-MM-DD or null */
   dueDate: string | null;
@@ -51,14 +53,14 @@ export class ReportBuilder {
    * Header computed from the listed rows only (every area present, zeros included), so the
    * counts always add up to the rows in the report. Hidden items leave no trace here.
    */
-  static header(rows: readonly ReportRow[]): ReportHeader {
+  static header(rows: readonly ReportRow[], departments: DepartmentList = ServiceAreaInfo.LEGACY): ReportHeader {
     const totals = ReportBuilder.emptyStatusCounts();
     const byArea = Object.fromEntries(
-      ServiceAreaInfo.groups().map((a) => [a, ReportBuilder.emptyStatusCounts()]),
+      ServiceAreaInfo.groups(departments, rows.map((r) => r.serviceArea)).map((a) => [a, ReportBuilder.emptyStatusCounts()]),
     ) as Record<AreaGroup, StatusCounts>;
     for (const r of rows) {
       totals[r.status] += 1;
-      byArea[ServiceAreaInfo.groupOf(r.serviceArea)][r.status] += 1;
+      (byArea[ServiceAreaInfo.groupOf(r.serviceArea)] ??= ReportBuilder.emptyStatusCounts())[r.status] += 1;
     }
     return {
       totalProjects: rows.length,
@@ -114,8 +116,8 @@ export class ReportBuilder {
   }
 
   /** Service area order → status severity → due date asc (nulls last) → name (stable tiebreak). */
-  static compare(a: SortableRow, b: SortableRow): number {
-    const area = ServiceAreaInfo.rank(a.serviceArea) - ServiceAreaInfo.rank(b.serviceArea);
+  static compare(a: SortableRow, b: SortableRow, departments: DepartmentList = ServiceAreaInfo.LEGACY): number {
+    const area = ServiceAreaInfo.rank(a.serviceArea, departments) - ServiceAreaInfo.rank(b.serviceArea, departments);
     if (area !== 0) return area;
     const sev = ProjectStatusInfo.severityRank(a.status) - ProjectStatusInfo.severityRank(b.status);
     if (sev !== 0) return sev;
@@ -127,16 +129,17 @@ export class ReportBuilder {
     return a.name.localeCompare(b.name, "en", { sensitivity: "base" });
   }
 
-  static sort<T extends SortableRow>(rows: readonly T[]): T[] {
-    return [...rows].sort((a, b) => ReportBuilder.compare(a, b));
+  static sort<T extends SortableRow>(rows: readonly T[], departments: DepartmentList = ServiceAreaInfo.LEGACY): T[] {
+    return [...rows].sort((a, b) => ReportBuilder.compare(a, b, departments));
   }
 
   /** Sort raw project records (DB dates) in report order. */
-  static sortProjects<T extends ProjectRecord>(projects: readonly T[]): T[] {
+  static sortProjects<T extends ProjectRecord>(projects: readonly T[], departments: DepartmentList = ServiceAreaInfo.LEGACY): T[] {
     return [...projects].sort((a, b) =>
       ReportBuilder.compare(
         { ...a, dueDate: DateOnly.fromDbDate(a.dueDate) },
         { ...b, dueDate: DateOnly.fromDbDate(b.dueDate) },
+        departments,
       ),
     );
   }
@@ -226,7 +229,8 @@ export class ReportBuilder {
           overdue: ReportBuilder.isOverdue(p, input.reportDate),
         }, ReportBuilder.details(p, history, input.previousSnapshotGeneratedAt, input.reportDate)),
       ),
+      input.departments,
     );
-    return { rows, header: ReportBuilder.header(rows) };
+    return { rows, header: ReportBuilder.header(rows, input.departments) };
   }
 }

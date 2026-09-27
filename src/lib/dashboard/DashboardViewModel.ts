@@ -1,4 +1,5 @@
-import type { ProjectStatus, ServiceArea, ViewContext } from "@/generated/prisma/enums";
+import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
+import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import type { MilestoneCount } from "@/lib/domain/MilestoneProgress";
 import { InforNumber } from "@/lib/domain/InforNumber";
@@ -14,7 +15,7 @@ export interface DashboardRow {
   id: string;
   name: string;
   /** Null = Unassigned. */
-  serviceArea: ServiceArea | null;
+  serviceArea: DepartmentKey | null;
   owner: string | null;
   physicianChampion: string | null;
   requesterNotApplicable: boolean;
@@ -71,12 +72,14 @@ export class DashboardViewModel {
      * `history`; the dashboard page passes one latest entry per project.
      */
     latestUpdates: readonly HistoryEntryRecord[] = history,
+    /** The line's departments (report order). */
+    departments: DepartmentList = ServiceAreaInfo.LEGACY,
   ): DashboardRow[] {
     const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings);
     const ids = visible.map((p) => p.id);
     const publicHistory = VisibilityPolicy.publicHistory(history, ids);
     const publicUpdates = VisibilityPolicy.publicHistory(latestUpdates, ids);
-    return ReportBuilder.sortProjects(visible).map((p) => DashboardViewModel.toRow(p, publicHistory, publicUpdates, previousSnapshotGeneratedAt, today));
+    return ReportBuilder.sortProjects(visible, departments).map((p) => DashboardViewModel.toRow(p, publicHistory, publicUpdates, previousSnapshotGeneratedAt, today));
   }
 
   /**
@@ -92,10 +95,11 @@ export class DashboardViewModel {
     /** Ids of the regular dashboard rows. */
     rowIds: readonly string[];
     now: Date;
+    departments?: DepartmentList;
   }): CompletedRow[] {
     const allowed = new Set(VisibilityPolicy.candidates(input.projects, "dashboard").map((p) => p.id));
     const listed = new Set(input.rowIds);
-    return CompletedThisPeriod.select({ projects: input.projects, history: input.history, viewSettings: input.reportSettings, cutoff: input.now }).filter(
+    return CompletedThisPeriod.select({ projects: input.projects, history: input.history, viewSettings: input.reportSettings, cutoff: input.now, departments: input.departments }).filter(
       (c) => allowed.has(c.projectId) && !listed.has(c.projectId),
     );
   }

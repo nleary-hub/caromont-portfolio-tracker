@@ -34,7 +34,16 @@ describe("ServiceLine (pure rules)", () => {
   it("the default scope keeps all seven CVPSL departments in their current order and the current contracts leads", () => {
     const s = ServiceLine.defaultScope();
     expect(s).toMatchObject({ id: ServiceLine.DEFAULT_ID, isDefault: true, ...SEED });
-    expect(s.departments).toEqual(["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
+    expect(s.departments.map((d) => d.id)).toEqual(["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
+    expect(s.departments.map((d) => [d.name, d.shortName])).toEqual([
+      ["Cath Lab", "Cath"],
+      ["EP Lab", "EP"],
+      ["Echo", "Echo"],
+      ["CVSS", "CVSS"],
+      ["INU", "INU"],
+      ["CardioNeuro", "CardioNeuro"],
+      ["IR", "IR"],
+    ]);
     expect(s.contractsLeads).toEqual(["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"]);
   });
 
@@ -89,10 +98,9 @@ describe("ServiceLine (pure rules)", () => {
     expect(ServiceLine.normalize({ name: "Heart", shortName: "" })).toEqual({ name: "Heart", shortName: "CVPSL" });
   });
 
-  it("contracts leads and departments parse as saved", () => {
+  it("contracts leads parse as saved", () => {
     expect(ServiceLine.parseContractsLeads([" Pat  Lee ", "", "pat lee", "Sam Roe"])).toEqual(["Pat Lee", "Sam Roe"]);
     expect(() => ServiceLine.parseContractsLeads(["x".repeat(201)])).toThrow(ServiceLineValidationError);
-    expect(ServiceLine.parseDepartments(["IR", "Cath", "Bogus", "Cath"])).toEqual(["Cath", "IR"]);
   });
 });
 
@@ -217,16 +225,15 @@ describe("ServiceLineService", () => {
     expect(fake.state.serviceLines[0]).toMatchObject({ archivedAt: null, deletedAt: null });
   });
 
-  it("departments are editable for new lines only; contracts leads for every line", async () => {
+  it("contracts leads are editable for every line (departments now live on the Departments page)", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const onc = await ServiceLineService.create({ name: "Oncology Service Line", shortName: "ONC" }, ADMIN, db);
-    expect((await ServiceLineService.setDepartments(onc.id, ["IR", "Cath"], ADMIN, db)).departments).toEqual(["Cath", "IR"]);
-    await expect(ServiceLineService.setDepartments(ServiceLine.DEFAULT_ID, ["Cath"], ADMIN, db)).rejects.toThrow(ServiceLineValidationError);
+    expect("setDepartments" in ServiceLineService).toBe(false);
     expect(fake.state.serviceLines[0].departments).toEqual(["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
     expect((await ServiceLineService.setContractsLeads(onc.id, ["Pat Lee"], ADMIN, db)).contractsLeads).toEqual(["Pat Lee"]);
     expect(fake.state.serviceLines[0].contractsLeads).toEqual(ServiceLine.CVPSL_CONTRACTS_LEADS);
-    expect(fake.state.serviceLineHistory.filter((h) => h.serviceLineId === onc.id).map((h) => h.action)).toEqual(["created", "departments_changed", "contracts_leads_changed"]);
+    expect(fake.state.serviceLineHistory.filter((h) => h.serviceLineId === onc.id).map((h) => h.action)).toEqual(["created", "contracts_leads_changed"]);
   });
 
   it("rejects non-admins and writes nothing", async () => {

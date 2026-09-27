@@ -133,6 +133,40 @@ export default async function AuditPage() {
         )}
       </section>
 
+      <section className="flex flex-col gap-2" id="deleted-departments">
+        <h2 className="type-heading">Deleted departments</h2>
+        {data.deletedDepartments.length === 0 ? (
+          <p className="text-muted type-caption">No deleted departments.</p>
+        ) : (
+          <div className="overflow-hidden rounded-card border border-line bg-card">
+            <table className="w-full border-separate border-spacing-0 type-table">
+              <thead>
+                <tr className="text-left text-muted type-label uppercase">
+                  {["Department", "Short name", "Deleted", "Deleted by", ""].map((h, i) => (
+                    <th key={i} className="border-b border-line px-3 py-2">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.deletedDepartments.map((d) => (
+                  <tr key={d.id}>
+                    <td className="border-b border-line px-3 py-2 type-table-strong">{d.name}</td>
+                    <td className="border-b border-line px-3 py-2">{d.shortName}</td>
+                    <td className="border-b border-line px-3 py-2">{AuditFormat.when(d.deletedAt)}</td>
+                    <td className="border-b border-line px-3 py-2">{d.deletedBy ?? "–"}</td>
+                    <td className="border-b border-line px-3 py-2">
+                      <RestoreServiceLineButton id={d.id} name={d.name} kind="department" />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+
       <section className="flex flex-col gap-2">
         <h2 className="type-heading">Hidden by view settings</h2>
         <ul className="rounded-card border border-line bg-card px-3 py-2 type-table">

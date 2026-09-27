@@ -175,7 +175,7 @@ describe("0016_service_lines on production-shaped data (PGlite)", () => {
         deletedAt: null,
       },
     ]);
-    expect(r.rows[0].departments).toEqual(ServiceLine.defaultScope().departments);
+    expect(r.rows[0].departments).toEqual(ServiceLine.defaultScope().departments.map((d) => d.id));
     expect(r.rows[0].contractsLeads).toEqual(ServiceLine.CVPSL_CONTRACTS_LEADS);
     const h = await db.query<{ action: string; changedBy: string }>(`select action, "changedBy" from service_line_history order by "changedAt", action`);
     expect(h.rows.map((x) => x.action)).toEqual(["renamed", "renamed", "migrated"]);

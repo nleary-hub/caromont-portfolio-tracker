@@ -24,6 +24,7 @@ import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceLineSwitcher } from "@/components/ServiceLineSwitcher";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
+import { ProjectRows } from "@/lib/domain/ProjectRows";
 
 interface DashboardLoad {
   rows: DashboardRow[];
@@ -81,7 +82,7 @@ class DashboardData {
     try {
       const db = Db.client;
       const [stored, latest, settings, layout] = await Promise.all([
-        db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(scope) } }),
+        db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(scope) } }).then((rows) => ProjectRows.fromDbAll(rows)),
         db.reportSnapshot.findFirst({
           where: ServiceLineAccess.where(scope),
           orderBy: { generatedAt: "desc" },
@@ -108,6 +109,7 @@ class DashboardData {
         reportSettings: settings.report,
         rowIds: visible.map((p) => p.id),
         now: new Date(),
+        departments: scope.departments,
       });
       const listedIds = [...visible.map((p) => p.id), ...completedThisPeriod.map((c) => c.projectId)];
       const history = await db.projectHistory.findMany({
@@ -139,6 +141,7 @@ class DashboardData {
           latest?.generatedAt ?? null,
           today,
           latestUpdates,
+          scope.departments,
         ),
         completed: DashboardViewModel.completedRows(projects, completedThisPeriod, history, latest?.generatedAt ?? null, today, latestUpdates),
         columns: ViewSettings.visibleColumns(settings.dashboard),

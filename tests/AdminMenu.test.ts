@@ -18,10 +18,12 @@ describe("AdminMenu.itemsFor", () => {
       ["work", "Generate PDF", "/api/reports/preview"],
       ["work", "Reports", "/reports"],
       ["work", "Freeze and report options", "/reports#report-admin"],
+      ["work", "Report settings", "/admin/settings"],
+      ["library", "Departments", "/admin/departments"],
+      ["library", "People", "/admin/people"],
       ["admin", "Audit log", "/admin/audit"],
       ["admin", "Settings", "/#view-settings"],
       ["admin", "Service lines", "/admin/service-lines"],
-      ["admin", "Line settings", "/admin/settings"],
       ["admin", "Templates", "/admin/templates"],
     ]);
     expect(items.find((i) => i.id === "generate-pdf")).toMatchObject({ kind: "action", caption: "Draft" });
@@ -33,16 +35,20 @@ describe("AdminMenu.itemsFor", () => {
     expect(AdminMenu.itemsFor(undefined)).toBeNull();
   });
 
-  it("ships Templates next to Line settings and keeps People hidden until it ships", () => {
-    const unshipped = AdminMenu.definitions().filter((d) => !d.shipped);
-    expect(unshipped.map((d) => [d.label, d.group])).toEqual([["People", "library"]]);
+  it("ships Departments then People in the library group, and Report settings right after Freeze with its own icon", () => {
+    expect(AdminMenu.definitions().filter((d) => !d.shipped)).toEqual([]);
     const labels = AdminMenu.itemsFor(ADMIN)!.map((i) => i.label);
-    expect(labels.indexOf("Templates")).toBe(labels.indexOf("Line settings") + 1);
-    expect(labels).not.toContain("People");
+    expect(labels.indexOf("Report settings")).toBe(labels.indexOf("Freeze and report options") + 1);
+    const items = AdminMenu.itemsFor(ADMIN)!;
+    expect(items.find((i) => i.label === "Report settings")?.icon).toBe("reportSettings");
+    expect(items.find((i) => i.label === "Settings")?.icon).toBe("settings");
+    expect(labels.indexOf("People")).toBe(labels.indexOf("Departments") + 1);
+    expect(labels).not.toContain("Line settings");
+    expect(AdminMenu.REPORT_SETTINGS).toBe("Report settings");
   });
 
-  it("drops empty groups (no library group while nothing in it has shipped)", () => {
-    expect(AdminMenu.grouped(AdminMenu.itemsFor(ADMIN)!).map((g) => g.group)).toEqual(["work", "admin"]);
+  it("shows the three groups in order (work, library, admin)", () => {
+    expect(AdminMenu.grouped(AdminMenu.itemsFor(ADMIN)!).map((g) => g.group)).toEqual(["work", "library", "admin"]);
   });
 
   it("marks the current admin page only for exact plain-link matches", () => {
@@ -52,6 +58,8 @@ describe("AdminMenu.itemsFor", () => {
     expect(AdminMenu.currentId(items, "/reports")).toBe("reports");
     expect(AdminMenu.currentId(items, "/admin/settings")).toBe("service-line");
     expect(AdminMenu.currentId(items, "/admin/service-lines")).toBe("service-lines");
+    expect(AdminMenu.currentId(items, "/admin/departments")).toBe("departments");
+    expect(AdminMenu.currentId(items, "/admin/people")).toBe("people");
     expect(AdminMenu.currentId(items, "/")).toBeNull();
     expect(AdminMenu.currentId(items, "/admin/import/template")).toBeNull();
     expect(AdminMenu.currentId(items, null)).toBeNull();
@@ -96,17 +104,17 @@ describe("AdminMenuSlot (server-side gate)", () => {
 describe("AdminMenuButton (open)", () => {
   const html = renderToStaticMarkup(createElement(AdminMenuButton, { items: AdminMenu.itemsFor(ADMIN)!, initialOpen: true }));
 
-  it("renders every shipped item as a menuitem, with one divider between the two non-empty groups", () => {
-    expect(html.match(/role="menuitem"/g)).toHaveLength(11);
-    expect(html.match(/role="separator"/g)).toHaveLength(1);
-    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "Audit log", "Settings", "Service lines", "Line settings", "Templates"]) {
+  it("renders every shipped item as a menuitem, with a divider between each of the three groups", () => {
+    expect(html.match(/role="menuitem"/g)).toHaveLength(13);
+    expect(html.match(/role="separator"/g)).toHaveLength(2);
+    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "Departments", "People", "Audit log", "Settings", "Service lines", "Report settings", "Templates"]) {
       expect(html).toContain(`>${label}<`);
     }
     expect(html).toContain('<span class="am-caption">Draft</span>');
   });
 
   it("never renders unshipped placeholders or disabled coming-soon items", () => {
-    expect(html).not.toContain("People");
+    expect(html).not.toContain("Line settings");
     expect(html).not.toContain("aria-disabled");
     expect(html).not.toMatch(/coming soon/i);
   });

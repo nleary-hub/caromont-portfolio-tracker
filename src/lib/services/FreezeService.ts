@@ -170,6 +170,7 @@ export class FreezeService {
         reportRecipient,
         serviceLineName: input.serviceLine?.name,
         departments: input.options.departments,
+        departmentList: input.departmentList,
       });
       handoff = await ReportArtifactService.store(
         {

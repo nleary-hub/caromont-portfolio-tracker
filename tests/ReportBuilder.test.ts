@@ -121,7 +121,7 @@ describe("ReportBuilder.build", () => {
     for (const hidden of [[], ["AtRisk"], ["OnTrack", "Complete"], ["Complete", "Cancelled"]] as const) {
       const r = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings([...hidden]) });
       const sum = Object.values(r.header.totals).reduce((s, n) => s + n, 0);
-      const areaSum = Object.values(r.header.byArea).reduce((s, m) => s + Object.values(m).reduce((t, n) => t + n, 0), 0);
+      const areaSum = Object.values(r.header.byArea).reduce((s, m) => s + Object.values(m ?? {}).reduce((t: number, n) => t + (n ?? 0), 0), 0);
       expect(sum).toBe(r.rows.length);
       expect(areaSum).toBe(r.rows.length);
       expect(r.header.totalProjects).toBe(r.rows.length);

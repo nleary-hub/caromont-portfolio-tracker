@@ -9,6 +9,8 @@ import type { ProjectRecord } from "@/lib/domain/types";
 import { ProjectService, type Actor, type Tx } from "@/lib/services/ProjectService";
 import { ProjectValidator, type ProjectInput } from "@/lib/validation/ProjectValidator";
 import { ProjectCsv, type CsvColumn, type CsvRow, type ParsedCsv } from "./ProjectCsv";
+import { ProjectRows } from "@/lib/domain/ProjectRows";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 
 export type RowErrors = Partial<Record<CsvColumn | "_row", string[]>>;
 
@@ -134,9 +136,9 @@ export class ImportService {
     if (parsed.fileErrors.length === 0) {
       const existing = await db.project.findMany({
         where: { archivedAt: null, ...ServiceLineAccess.where(scope) },
-        select: { name: true, serviceArea: true },
+        select: { name: true, serviceArea: true, departmentId: true },
       });
-      const existingKeys = new Set(existing.map((p) => ImportService.duplicateKey(p.name, p.serviceArea)));
+      const existingKeys = new Set(ProjectRows.fromDbAll(existing).map((p) => ImportService.duplicateKey(p.name, p.serviceArea)));
       const seenInFile = new Map<string, number>();
 
       for (const row of parsed.rows) {
@@ -158,7 +160,7 @@ export class ImportService {
         if (existingKeys.has(key)) {
           result.status = "skipped";
           result.warnings.push(
-            `A project named "${String(input.name).trim()}" already exists in ${String(input.serviceArea)}. Skipped; the existing project is not changed.`,
+            `A project named "${String(input.name).trim()}" already exists in ${ServiceAreaInfo.label(input.serviceArea ?? null, scope.departments)}. Skipped; the existing project is not changed.`,
           );
           result.input = null;
           continue;
@@ -225,7 +227,7 @@ export class ImportService {
       const ids = [...new Set(parsed.rows.map((r) => (r.cells.id ?? "").trim().toLowerCase()))].filter((id) =>
         ImportService.UUID_RE.test(id),
       );
-      const found = ids.length ? await db.project.findMany({ where: { id: { in: ids }, ...ServiceLineAccess.where(scope) } }) : [];
+      const found = ids.length ? ProjectRows.fromDbAll(await db.project.findMany({ where: { id: { in: ids }, ...ServiceLineAccess.where(scope) } })) : [];
       const byId = new Map<string, ProjectRecord>(found.map((p) => [p.id.toLowerCase(), p]));
       const seenIds = new Map<string, number>();
 
@@ -275,8 +277,10 @@ export class ImportService {
         const dbInput = ProjectValidator.toInput(existing);
         // A stored lead that has since left the line's list still matches (grandfathered).
         const leads = PickList.withCurrent(scope.contractsLeads, dbInput.contractsLead ?? null);
-        const { input: fileInput, errors: conversionErrors } = ProjectCsv.toInput(row, { contractsLeads: leads });
-        const dbCells = ProjectCsv.toCells(existing);
+        // The project's own department still matches when it has since been archived (like a grandfathered lead).
+        const departments = scope.departments.map((d) => (d.id === dbInput.serviceArea ? { ...d, archived: false, deleted: false } : d));
+        const { input: fileInput, errors: conversionErrors } = ProjectCsv.toInput(row, { contractsLeads: leads, departments });
+        const dbCells = ProjectCsv.toCells(existing, scope.departments);
         for (const [col, messages] of Object.entries(conversionErrors)) {
           for (const m of messages ?? []) reject(col as CsvColumn, m);
         }
@@ -336,7 +340,7 @@ export class ImportService {
 
   /** Convert a row and run ProjectValidator, returning errors keyed by CSV column. */
   private static validateRow(row: CsvRow, scope: ServiceLineScope): { input: Partial<ProjectInput>; errors: RowErrors } {
-    const { input, errors: conversionErrors } = ProjectCsv.toInput(row, { blankStatus: "OnTrack", contractsLeads: scope.contractsLeads });
+    const { input, errors: conversionErrors } = ProjectCsv.toInput(row, { blankStatus: "OnTrack", contractsLeads: scope.contractsLeads, departments: scope.departments });
     const errors: RowErrors = { ...conversionErrors };
     const validation = ProjectValidator.validate(input, ProjectValidator.rulesOf(scope));
     if (!validation.ok) {

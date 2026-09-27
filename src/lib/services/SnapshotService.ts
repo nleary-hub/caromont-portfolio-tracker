@@ -3,6 +3,8 @@ import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import type { Prisma, PrismaClient, ReportSnapshot } from "@/generated/prisma/client";
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
+import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { ReportDataLoader } from "@/lib/report/ReportDataLoader";
 import { ProjectService } from "@/lib/services/ProjectService";
 
@@ -63,11 +65,13 @@ export class SnapshotService {
               headerJson: data.header as unknown as Prisma.InputJsonValue,
               viewSettingsJson: data.viewSettings as unknown as Prisma.InputJsonValue,
               // Excluded departments, like the admin setting (ReportOptionsService.normalize reads it back).
-              optionsJson: ReportOptionsService.toStored(data.options) as unknown as Prisma.InputJsonValue,
+              optionsJson: ReportOptionsService.toStored(data.options, DepartmentFilter.optionsFor(line)) as unknown as Prisma.InputJsonValue,
               completedJson: data.completed as unknown as Prisma.InputJsonValue,
               serviceLineJson: data.serviceLine as unknown as Prisma.InputJsonValue,
               // The line's layout at freeze (columns and row order), like optionsJson: the PDF always rebuilds with it.
               layoutJson: data.layout as unknown as Prisma.InputJsonValue,
+              // The line's departments at freeze (ids, names, short names, order): headings never follow a later rename.
+              departmentsJson: ServiceAreaInfo.freeze(line.departments) as unknown as Prisma.InputJsonValue,
             },
           });
         },

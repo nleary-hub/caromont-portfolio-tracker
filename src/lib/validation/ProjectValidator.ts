@@ -1,11 +1,11 @@
 import { Requester } from "@/lib/domain/Requester";
 import { z } from "zod";
-import { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectRecord } from "@/lib/domain/types";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
 
@@ -17,7 +17,7 @@ export interface ProjectInput {
   /** Optional Infor request number: whole number 1 to 99999 (a digits-only string is accepted). Blank = null. */
   inforRequestNumber?: number | string | null;
   /** Blank, null or "Unassigned" = no department. */
-  serviceArea?: ServiceArea | string | null;
+  serviceArea?: DepartmentKey | string | null;
   /** Optional; blank = null ("To assign"). */
   owner?: string | null;
   physicianChampion?: string | null;
@@ -43,7 +43,7 @@ export interface ProjectData {
   name: string;
   description: string | null;
   inforRequestNumber: number | null;
-  serviceArea: ServiceArea | null;
+  serviceArea: DepartmentKey | null;
   owner: string | null;
   physicianChampion: string | null;
   physicianChampionEmail: string | null;
@@ -100,11 +100,13 @@ export interface FormValidationOptions {
  */
 export interface LineRules {
   contractsLeads: readonly string[];
-  departments: readonly ServiceArea[];
+  /** The line's departments not deleted (archived ones flagged): only open ones can be newly chosen. */
+  departments: DepartmentList;
 }
 
 export class ProjectValidator {
   static readonly DEPARTMENT_NOT_IN_LINE_MESSAGE = "Department must be one of this service line's departments";
+  static readonly DEPARTMENT_INVALID_MESSAGE = "Service area must be one of the defined areas (or Unassigned)";
 
   /** The default line's rules (all seven departments, CVPSL's contracts leads). */
   static defaultRules(): LineRules {
@@ -113,7 +115,7 @@ export class ProjectValidator {
   }
 
   /** Rules of a service line scope. */
-  static rulesOf(scope: { contractsLeads: readonly string[]; departments: readonly ServiceArea[] }): LineRules {
+  static rulesOf(scope: { contractsLeads: readonly string[]; departments: DepartmentList }): LineRules {
     return { contractsLeads: scope.contractsLeads, departments: scope.departments };
   }
 
@@ -130,8 +132,14 @@ export class ProjectValidator {
       else if (stored !== null && stored.trim().replace(/\s+/g, " ").toLowerCase() === out.contractsLead.trim().replace(/\s+/g, " ").toLowerCase()) out.contractsLead = stored;
       else (errors.contractsLead ??= []).push(ContractsLead.invalidMessage(out.contractsLead, rules.contractsLeads));
     }
-    if (out.serviceArea !== null && !rules.departments.includes(out.serviceArea) && existing?.serviceArea !== out.serviceArea) {
-      (errors.serviceArea ??= []).push(ProjectValidator.DEPARTMENT_NOT_IN_LINE_MESSAGE);
+    if (out.serviceArea !== null) {
+      // A department id (or an old enum value, read as the department that replaced it). Unchanged stored values
+      // are kept even when the department was archived since; a new choice must be an open department.
+      const dept = ServiceAreaInfo.find(rules.departments, out.serviceArea);
+      if (dept) out.serviceArea = dept.id;
+      const stored = existing?.serviceArea ?? null;
+      if (!dept && stored !== out.serviceArea) (errors.serviceArea ??= []).push(ProjectValidator.DEPARTMENT_INVALID_MESSAGE);
+      else if (dept && !ServiceAreaInfo.isOpen(dept) && stored !== dept.id) (errors.serviceArea ??= []).push(ProjectValidator.DEPARTMENT_NOT_IN_LINE_MESSAGE);
     }
     return out;
   }
@@ -359,7 +367,7 @@ export class ProjectValidator {
         ),
         serviceArea: z.preprocess(
           (v) => (v === undefined || v === null || (typeof v === "string" && (v.trim() === "" || ServiceAreaInfo.isUnassignedText(v))) ? null : v),
-          z.enum(ServiceArea, { error: "Service area must be one of the defined areas (or Unassigned)" }).nullable(),
+          z.string({ error: ProjectValidator.DEPARTMENT_INVALID_MESSAGE }).transform((v) => v.trim()).nullable(),
         ),
         owner: ProjectValidator.optionalText({ label: "Owner", length: ProjectValidator.NAME_MAX }),
         physicianChampion: ProjectValidator.optionalText(),

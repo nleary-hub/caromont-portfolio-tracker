@@ -68,16 +68,6 @@ export class ServiceLineForms {
     });
   }
 
-  static async departments(viewer: Viewer | null, id: string, departments: readonly unknown[], db: PrismaClient = Db.client): Promise<ServiceLineActionResult> {
-    return ServiceLineForms.run(viewer, async (v) => ({ ok: true, message: "Saved.", line: await ServiceLineService.setDepartments(id, departments, v, db) }));
-  }
-
-  static async contractsLeads(viewer: Viewer | null, id: string, text: unknown, db: PrismaClient = Db.client): Promise<ServiceLineActionResult> {
-    // One name per line in the textarea.
-    const leads = String(text ?? "").split(/\r?\n/);
-    return ServiceLineForms.run(viewer, async (v) => ({ ok: true, message: "Saved.", line: await ServiceLineService.setContractsLeads(id, leads, v, db) }));
-  }
-
   private static async isActive(viewer: Viewer, id: string, db: PrismaClient): Promise<boolean> {
     return (await ServiceLineAccess.activeFor(viewer, db)).id === id;
   }

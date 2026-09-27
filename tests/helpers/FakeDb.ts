@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 
 type Row = Record<string, unknown>;
 
@@ -26,6 +27,8 @@ interface State {
   serviceLineUserState: Row[];
   lineLayouts: Row[];
   lineLayoutHistory: Row[];
+  departments: Row[];
+  departmentHistory: Row[];
 }
 
 /** Scoped tables: a row stored without serviceLineId (tests that push rows directly) belongs to the default line. */
@@ -60,6 +63,10 @@ export class FakeDb {
     serviceLineUserState: [],
     lineLayouts: [],
     lineLayoutHistory: [],
+    // Migration 0018 seeds the default line's seven departments. Here their ids are the old ServiceArea values, so
+    // rows pushed with serviceArea "Cath" belong to them (the real ids are ServiceAreaInfo.CVPSL_IDS).
+    departments: FakeDb.defaultDepartmentRows(),
+    departmentHistory: [],
   };
   writes: { model: string; op: string; inTx: boolean; txId: number | null }[] = [];
   /** Simulate a database without migration 0015 (project_milestones missing). */
@@ -76,7 +83,7 @@ export class FakeDb {
       name: s.name,
       shortName: s.shortName,
       isDefault: true,
-      departments: [...s.departments],
+      departments: s.departments.map((d) => d.id),
       contractsLeads: [...s.contractsLeads],
       archivedAt: null,
       deletedAt: null,
@@ -85,6 +92,24 @@ export class FakeDb {
       updatedAt: at,
       updatedBy: "migration 0016",
     };
+  }
+
+  static defaultDepartmentRows(): Row[] {
+    const at = new Date("2026-09-26T00:00:00Z");
+    return ServiceAreaInfo.LEGACY.map((d, i) => FakeDb.departmentRow(SCOPED_DEFAULT, { id: d.id, name: d.name, shortName: d.shortName, legacyKey: d.id, position: i + 1, createdAt: at, updatedAt: at, updatedBy: "migration 0018" }));
+  }
+
+  static departmentRow(serviceLineId: string, over: Row): Row {
+    const at = new Date();
+    return { id: randomUUID(), serviceLineId, legacyKey: null, archivedAt: null, deletedAt: null, deletedBy: null, createdAt: at, updatedAt: at, updatedBy: "admin@example.org", ...over };
+  }
+
+  /** Add a department to a line (tests); goes to the bottom of the line's order unless `position` is given. */
+  addDepartment(serviceLineId: string, over: Row = {}): Row {
+    const last = this.state.departments.filter((d) => d.serviceLineId === serviceLineId).reduce((m, d) => Math.max(m, d.position as number), 0);
+    const row = FakeDb.departmentRow(serviceLineId, { position: last + 1, ...over });
+    this.state.departments.push(row);
+    return row;
   }
 
   /** Add an open service line (tests). */
@@ -133,6 +158,8 @@ export class FakeDb {
       serviceLineUserState: c(state.serviceLineUserState),
       lineLayouts: c(state.lineLayouts),
       lineLayoutHistory: c(state.lineLayoutHistory),
+      departments: c(state.departments),
+      departmentHistory: c(state.departmentHistory),
     };
   }
 
@@ -142,7 +169,11 @@ export class FakeDb {
 
   private api(txId: number | null) {
     const rec = (model: string, op: string) => this.writes.push({ model, op, inTx: txId !== null, txId });
-    const value = (row: Row, k: string) => (k === "serviceLineId" && row[k] === undefined ? SCOPED_DEFAULT : row[k]);
+    const value = (row: Row, k: string) => {
+      if (k === "serviceLineId" && row[k] === undefined) return SCOPED_DEFAULT;
+      if (k === "departmentId" && row[k] === undefined) return row.serviceArea ?? null;
+      return row[k];
+    };
     const matches = (row: Row, where: Row = {}): boolean =>
       Object.entries(where).every(([k, v]) => {
         const rv = value(row, k);
@@ -157,16 +188,46 @@ export class FakeDb {
         if (v === null) return rv === null || rv === undefined;
         return rv === v;
       });
-    const withLine = (row: Row): Row => (row.serviceLineId === undefined ? { ...row, serviceLineId: SCOPED_DEFAULT } : { ...row });
+    // Migration 0018: Project.departmentId mirrors serviceArea here (the default scope's departments are keyed by
+    // their old values, so the two are equal); the real database keeps them in step with a trigger.
+    const withDept = (row: Row): Row => ("serviceArea" in row && !("departmentId" in row) ? { ...row, departmentId: row.serviceArea ?? null } : row);
+    const withLine = (row: Row): Row => withDept(row.serviceLineId === undefined ? { ...row, serviceLineId: SCOPED_DEFAULT } : { ...row });
+    const syncDept = (data: Row): Row => {
+      if (!("departmentId" in data)) return data;
+      const { departmentId, ...rest } = data;
+      return { ...rest, serviceArea: departmentId ?? null };
+    };
     const uniqueViolation = () => Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
-    const sortBy = (rows: Row[], orderBy?: Record<string, "asc" | "desc">) => {
+    const sortBy = (rows: Row[], orderBy?: Record<string, "asc" | "desc"> | Record<string, "asc" | "desc">[]) => {
       if (!orderBy) return rows;
-      const [[key, dir]] = Object.entries(orderBy);
+      const keys = (Array.isArray(orderBy) ? orderBy : [orderBy]).flatMap((o) => Object.entries(o));
+      const num = (v: unknown) => (v instanceof Date ? v.getTime() : (v as number));
       return [...rows].sort((a, b) => {
-        const x = a[key] instanceof Date ? (a[key] as Date).getTime() : (a[key] as number);
-        const y = b[key] instanceof Date ? (b[key] as Date).getTime() : (b[key] as number);
-        return dir === "desc" ? y - x : x - y;
+        for (const [key, dir] of keys) {
+          const d = dir === "desc" ? num(b[key]) - num(a[key]) : num(a[key]) - num(b[key]);
+          if (d) return d;
+        }
+        return 0;
       });
+    };
+    type Include = { departmentRows?: unknown };
+    // A line with no department rows reads without them, so ServiceLineAccess.toScope falls back to its legacy
+    // `departments` list (tests that add a line with departments: ["Cath"] keep the old keys).
+    const withDepartments = (line: Row, include?: Include): Row => {
+      const rows = this.state.departments.filter((d) => d.serviceLineId === line.id);
+      if (!include?.departmentRows || rows.length === 0) return { ...line };
+      return { ...line, departmentRows: sortBy(rows, [{ position: "asc" }, { createdAt: "asc" }]).map((d) => ({ ...d })) };
+    };
+    const deptUnique = (row: Row) => {
+      const clash = this.state.departments.some(
+        (d) =>
+          d.id !== row.id &&
+          d.serviceLineId === row.serviceLineId &&
+          !d.deletedAt &&
+          !row.deletedAt &&
+          (String(d.name).toLowerCase() === String(row.name).toLowerCase() || String(d.shortName).toLowerCase() === String(row.shortName).toLowerCase()),
+      );
+      if (clash) throw uniqueViolation();
     };
     const pick = (row: Row, select?: Record<string, boolean>) =>
       select ? Object.fromEntries(Object.keys(select).map((k) => [k, row[k]])) : { ...row };
@@ -217,10 +278,10 @@ export class FakeDb {
             hiddenFromReport: false,
             createdAt: now,
             updatedAt: now,
-            ...data,
+            ...syncDept(data),
           };
           this.state.projects.push(row);
-          return { ...row };
+          return withDept({ ...row });
         },
         findUnique: async ({ where }: { where: { id: string } }) => {
           const r = this.state.projects.find((p) => p.id === where.id);
@@ -236,8 +297,8 @@ export class FakeDb {
           rec("project", "update");
           const r = this.state.projects.find((p) => p.id === where.id);
           if (!r) throw new Error("not found");
-          Object.assign(r, data, { updatedAt: new Date() });
-          return { ...r };
+          Object.assign(r, syncDept(data), { updatedAt: new Date() });
+          return withDept({ ...r });
         },
       },
       projectHistory: {
@@ -544,17 +605,58 @@ export class FakeDb {
         findMany: async ({ where }: { where?: Row } = {}) =>
           this.state.viewSettingsHistory.filter((h) => matches(h, where)).map((h) => ({ ...h })),
       },
-      serviceLine: {
-        findFirst: async ({ where }: { where?: Row } = {}) => {
-          const r = this.state.serviceLines.find((l) => matches(l, where));
-          return r ? { ...r } : null;
-        },
+      department: {
         findUnique: async ({ where }: { where: { id: string } }) => {
-          const r = this.state.serviceLines.find((l) => l.id === where.id);
+          const r = this.state.departments.find((d) => d.id === where.id);
           return r ? { ...r } : null;
         },
-        findMany: async ({ where, orderBy }: { where?: Row; orderBy?: Record<string, "asc" | "desc"> } = {}) =>
-          sortBy(this.state.serviceLines.filter((l) => matches(l, where)), orderBy).map((l) => ({ ...l })),
+        findMany: async ({ where, orderBy, select }: { where?: Row; orderBy?: Record<string, "asc" | "desc"> | Record<string, "asc" | "desc">[]; select?: Record<string, boolean> } = {}) =>
+          sortBy(this.state.departments.filter((d) => matches(d, where)), orderBy).map((d) => pick(d, select)),
+        create: async ({ data }: { data: Row }) => {
+          rec("department", "create");
+          const row = FakeDb.departmentRow(String(data.serviceLineId), data);
+          deptUnique(row);
+          this.state.departments.push(row);
+          return { ...row };
+        },
+        update: async ({ where, data }: { where: { id: string }; data: Row }) => {
+          rec("department", "update");
+          const r = this.state.departments.find((d) => d.id === where.id);
+          if (!r) throw new Error("not found");
+          deptUnique({ ...r, ...data });
+          Object.assign(r, data, { updatedAt: new Date() });
+          return { ...r };
+        },
+        delete: async () => {
+          // department_no_delete trigger (migration 0018): departments are only soft-deleted.
+          throw new Error("department rows are never deleted");
+        },
+      },
+      departmentHistory: {
+        create: async ({ data }: { data: Row }) => {
+          rec("departmentHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), departmentId: null, oldValue: null, newValue: null, ...data };
+          this.state.departmentHistory.push(row);
+          return { ...row };
+        },
+        findMany: async ({ where, take }: { where?: Row; orderBy?: unknown; take?: number } = {}) =>
+          [...this.state.departmentHistory.filter((h) => matches(h, where))]
+            .reverse()
+            .sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime())
+            .slice(0, take ?? undefined)
+            .map((r) => ({ ...r })),
+      },
+      serviceLine: {
+        findFirst: async ({ where, include }: { where?: Row; include?: Include } = {}) => {
+          const r = this.state.serviceLines.find((l) => matches(l, where));
+          return r ? withDepartments(r, include) : null;
+        },
+        findUnique: async ({ where, include }: { where: { id: string }; include?: Include }) => {
+          const r = this.state.serviceLines.find((l) => l.id === where.id);
+          return r ? withDepartments(r, include) : null;
+        },
+        findMany: async ({ where, orderBy, include }: { where?: Row; orderBy?: Record<string, "asc" | "desc">; include?: Include } = {}) =>
+          sortBy(this.state.serviceLines.filter((l) => matches(l, where)), orderBy).map((l) => withDepartments(l, include)),
         create: async ({ data }: { data: Row }) => {
           rec("serviceLine", "create");
           const now = new Date();

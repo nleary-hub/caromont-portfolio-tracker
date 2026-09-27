@@ -3,8 +3,7 @@
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
-import type { ServiceArea } from "@/generated/prisma/enums";
+import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { PickList } from "@/lib/people/PickList";
 import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
 import { MilestoneEditorModel } from "@/lib/projects/MilestoneEditorModel";
@@ -26,8 +25,8 @@ export type ProjectFormSubmit = (
 
 export interface ProjectEditFormProps {
   mode: "edit" | "new";
-  /** The service line's departments (default: all). A stored department not in the list stays selectable. */
-  departments?: readonly ServiceArea[];
+  /** The service line's departments (default: ServiceAreaInfo.LEGACY). Open ones are offered; a stored archived one stays selectable. */
+  departments?: DepartmentList;
   /** Stored values (ProjectFormModel.empty() for a new project). */
   original: ProjectFormValues;
   /** Stored checklist steps ([] for a new project or one without steps). */
@@ -109,10 +108,10 @@ export function ProjectEditForm({
   const checkedValues = useMemo(() => ({ ...values, nextMilestone: derivedNext }), [values, derivedNext]);
   const checkedOriginal = useMemo(() => ({ ...original, nextMilestone: msOriginal.steps.find((s) => !s.done)?.name ?? msOriginal.steps.at(-1)?.name ?? "" }), [original, msOriginal]);
   const clientErrors = useMemo(() => {
-    const e = ProjectFormModel.errors(checkedValues, checkedOriginal, isNew);
+    const e = ProjectFormModel.errors(checkedValues, checkedOriginal, isNew, departments);
     if (Object.keys(msStepErrors).length) e.milestones = ["Fix the highlighted milestones"];
     return e;
-  }, [checkedValues, checkedOriginal, isNew, msStepErrors]);
+  }, [checkedValues, checkedOriginal, isNew, msStepErrors, departments]);
   const shown = (f: FormField): string[] => {
     const client = attempted || touched[f] || values[f] !== original[f] ? (clientErrors[f] ?? []) : [];
     return [...client, ...(serverErrors[f] ?? [])].filter((m, i, all) => all.indexOf(m) === i);
@@ -190,9 +189,9 @@ export function ProjectEditForm({
           <Field field="serviceArea" label="Department" errors={shown("serviceArea")}>
             <select id="pf-serviceArea" className={INPUT} value={values.serviceArea} onChange={(e) => set("serviceArea", e.target.value)} onBlur={() => touch("serviceArea")}>
               {(isNew || values.serviceArea === "") && <option value="">{isNew ? "Select a department" : ServiceAreaInfo.UNASSIGNED}</option>}
-              {PickList.withCurrent(departments ?? ServiceAreaInfo.all(), (originalProp.serviceArea || null) as ServiceArea | null).map((a) => (
+              {PickList.withCurrent(ServiceAreaInfo.all(departments), (originalProp.serviceArea || null) as DepartmentKey | null).map((a) => (
                 <option key={a} value={a}>
-                  {ServiceAreaInfo.label(a)}
+                  {ServiceAreaInfo.fullName(a, departments)}
                 </option>
               ))}
               {!isNew && values.serviceArea !== "" && <option value="">{ServiceAreaInfo.UNASSIGNED}</option>}

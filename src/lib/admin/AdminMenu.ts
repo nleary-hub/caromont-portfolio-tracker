@@ -8,7 +8,7 @@ import type { Viewer } from "@/lib/auth/AdminPolicy";
  */
 export type AdminMenuItemKind = "link" | "download" | "action" | "viewSettings";
 
-export type AdminMenuIcon = "upload" | "file" | "download" | "pdf" | "archive" | "snowflake" | "template" | "people" | "audit" | "settings" | "tag";
+export type AdminMenuIcon = "upload" | "file" | "download" | "pdf" | "archive" | "snowflake" | "template" | "people" | "audit" | "settings" | "tag" | "departments" | "reportSettings";
 
 /** Display groups, in order, separated by dividers. */
 export type AdminMenuGroup = "work" | "library" | "admin";
@@ -40,6 +40,8 @@ export class AdminMenu {
   /** Window event the dashboard picker listens for (fired when the menu is used on "/"). */
   static readonly OPEN_VIEW_SETTINGS_EVENT = "admin-menu:open-view-settings";
   static readonly GROUPS: readonly AdminMenuGroup[] = ["work", "library", "admin"];
+  /** Menu item, page heading and metadata title of /admin/settings (was "Line settings"). */
+  static readonly REPORT_SETTINGS = "Report settings";
 
   private static readonly DEFINITIONS: readonly AdminMenuDefinition[] = [
     // Group 1: day-to-day work.
@@ -49,15 +51,17 @@ export class AdminMenu {
     { id: "generate-pdf", group: "work", kind: "action", icon: "pdf", label: "Generate PDF", caption: "Draft", href: "/api/reports/preview", shipped: true },
     { id: "reports", group: "work", kind: "link", icon: "archive", label: "Reports", href: "/reports", shipped: true },
     { id: "freeze", group: "work", kind: "link", icon: "snowflake", label: "Freeze and report options", href: "/reports#report-admin", shipped: true },
-    // Group 2: libraries (not built yet; hidden until shipped).
-    { id: "people", group: "library", kind: "link", icon: "people", label: "People", href: "/admin/people", shipped: false },
+    // Report settings of the active line (departments in report, totals grid), right after the freeze options.
+    // Departments and contracts leads have their own pages (Departments, People).
+    { id: "service-line", group: "work", kind: "link", icon: "reportSettings", label: AdminMenu.REPORT_SETTINGS, href: "/admin/settings", shipped: true },
+    // Group 2: the active line's lists.
+    { id: "departments", group: "library", kind: "link", icon: "departments", label: "Departments", href: "/admin/departments", shipped: true },
+    { id: "people", group: "library", kind: "link", icon: "people", label: "People", href: "/admin/people", shipped: true },
     // Group 3: oversight and settings.
     { id: "audit", group: "admin", kind: "link", icon: "audit", label: "Audit log", href: "/admin/audit", shipped: true },
     { id: "settings", group: "admin", kind: "viewSettings", icon: "settings", label: "Settings", href: `/${AdminMenu.VIEW_SETTINGS_HASH}`, shipped: true },
     { id: "service-lines", group: "admin", kind: "link", icon: "tag", label: "Service lines", href: "/admin/service-lines", shipped: true },
-    // Settings of the active line: report options, departments, contracts leads.
-    { id: "service-line", group: "admin", kind: "link", icon: "settings", label: "Line settings", href: "/admin/settings", shipped: true },
-    // Milestone templates, next to the line settings.
+    // Milestone templates.
     { id: "templates", group: "admin", kind: "link", icon: "template", label: "Templates", href: "/admin/templates", shipped: true },
   ];
 

@@ -1,5 +1,5 @@
 import { DateOnly } from "@/lib/domain/DateOnly";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { CompletedRow, HistoryEntryRecord, ProjectRecord } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
@@ -53,6 +53,8 @@ export class CompletedThisPeriod {
     viewSettings: ViewSettingsValue;
     /** Freeze (or draft) time. */
     cutoff: Date;
+    /** The line's departments (report order). Absent = ServiceAreaInfo.LEGACY. */
+    departments?: DepartmentList;
   }): CompletedRow[] {
     if (ViewSettings.isStatusVisible(input.viewSettings, "Complete")) return [];
     const rows: (CompletedRow & { at: number })[] = [];
@@ -78,7 +80,7 @@ export class CompletedThisPeriod {
     }
     rows.sort(
       (a, b) =>
-        ServiceAreaInfo.rank(a.serviceArea) - ServiceAreaInfo.rank(b.serviceArea) ||
+        ServiceAreaInfo.rank(a.serviceArea, input.departments) - ServiceAreaInfo.rank(b.serviceArea, input.departments) ||
         a.at - b.at ||
         a.name.localeCompare(b.name, "en", { sensitivity: "base" }),
     );

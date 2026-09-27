@@ -20,7 +20,7 @@ export interface AuditProject {
 }
 
 export interface AuditEvent {
-  kind: "project" | "viewSettings" | "serviceLine" | "template" | "layout";
+  kind: "project" | "viewSettings" | "serviceLine" | "template" | "layout" | "department";
   at: Date;
   by: string;
   /** Project name, or the view settings context. */
@@ -38,6 +38,8 @@ export interface AuditData {
   events: AuditEvent[];
   /** Soft-deleted service lines (any line; restorable here). */
   deletedLines: DeletedLine[];
+  /** Soft-deleted departments of the active line (restorable here). */
+  deletedDepartments: DeletedLine[];
 }
 
 export interface DeletedLine {
@@ -82,7 +84,7 @@ export class AdminAuditService {
       .sort(byName);
 
     const names = new Map(projects.map((p) => [p.id, p.name]));
-    const [projectEvents, settingsEvents, viewSettings, lineEvents, templateEvents, deletedLines, layoutEvents] = await Promise.all([
+    const [projectEvents, settingsEvents, viewSettings, lineEvents, templateEvents, deletedLines, layoutEvents, departmentEvents, deletedDepartments] = await Promise.all([
       db.projectHistory.findMany({ where: { projectId: { in: projects.map((p) => p.id) }, field: { in: [...VisibilityPolicy.ADMIN_ONLY_HISTORY_FIELDS] } } }),
       db.viewSettingsHistory.findMany({}),
       ViewSettingsService.getAll(db),
@@ -90,7 +92,12 @@ export class AdminAuditService {
       db.milestoneTemplateHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
       db.serviceLine.findMany({ where: { deletedAt: { not: null } }, orderBy: { deletedAt: "desc" } }),
       db.lineLayoutHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
+      db.departmentHistory.findMany({ where: { serviceLineId: scope.id }, orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
+      db.department.findMany({ where: { serviceLineId: scope.id, deletedAt: { not: null } }, orderBy: { deletedAt: "desc" } }),
     ]);
+    const departmentNames = new Map(
+      (await db.department.findMany({ where: { serviceLineId: scope.id }, select: { id: true, name: true } })).map((d) => [d.id, d.name]),
+    );
     const events: AuditEvent[] = [
       ...projectEvents.map((h) => ({
         kind: "project" as const,
@@ -142,6 +149,16 @@ export class AdminAuditService {
         newValue: h.newValue === null ? null : JSON.stringify(h.newValue),
         comment: null,
       })),
+      ...departmentEvents.map((h) => ({
+        kind: "department" as const,
+        at: h.changedAt,
+        by: h.changedBy,
+        subject: h.departmentId ? (departmentNames.get(h.departmentId) ?? "Department") : "Departments",
+        field: `department.${h.action}`,
+        oldValue: h.oldValue === null ? null : JSON.stringify(h.oldValue),
+        newValue: h.newValue === null ? null : JSON.stringify(h.newValue),
+        comment: null,
+      })),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, AdminAuditService.EVENT_LIMIT);
@@ -152,6 +169,7 @@ export class AdminAuditService {
       viewSettings,
       events,
       deletedLines: deletedLines.map((l) => ({ id: l.id, name: l.name, shortName: l.shortName, deletedAt: l.deletedAt, deletedBy: l.deletedBy })),
+      deletedDepartments: deletedDepartments.map((d) => ({ id: d.id, name: d.name, shortName: d.shortName, deletedAt: d.deletedAt, deletedBy: d.deletedBy })),
     };
   }
 }

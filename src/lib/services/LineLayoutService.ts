@@ -2,10 +2,11 @@ import { Prisma, type PrismaClient } from "@/generated/prisma/client";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import { ProjectRows } from "@/lib/domain/ProjectRows";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { LineLayout, RowOrder, type ColumnLayoutValue, type LineLayoutValue, type RowOrderValue } from "@/lib/layout/LineLayout";
 
-type Scope = Pick<ServiceLineScope, "id">;
+type Scope = Pick<ServiceLineScope, "id"> & Partial<Pick<ServiceLineScope, "departments">>;
 type Reader = Pick<Prisma.TransactionClient, "lineLayout">;
 type Writer = Pick<Prisma.TransactionClient, "lineLayout" | "lineLayoutHistory" | "project">;
 
@@ -25,7 +26,8 @@ export class LineLayoutService {
   static async get(db: Reader = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<LineLayoutValue> {
     const row = await db.lineLayout.findUnique({ where: { serviceLineId: scope.id } });
     if (!row) return LineLayout.defaults();
-    return LineLayout.normalize({ columns: row.columnsJson, rows: row.rowOrderJson });
+    const value = LineLayout.normalize({ columns: row.columnsJson, rows: row.rowOrderJson });
+    return { ...value, rows: LineLayout.resolveRows(value.rows, scope.departments) };
   }
 
   /** Like get(), but a missing table (a Preview database without migration 0017) reads as the default layout. */
@@ -56,11 +58,13 @@ export class LineLayoutService {
    */
   static async setRowOrder(area: string, ids: unknown, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<LineLayoutValue> {
     AdminPolicy.assertAdmin(admin);
-    if (!(ServiceAreaInfo.groups() as readonly string[]).includes(area)) throw new Error("Unknown department");
+    if (!(ServiceAreaInfo.groups(scope.departments ?? ServiceAreaInfo.LEGACY) as readonly string[]).includes(area)) throw new Error("Unknown department");
     const group = area as AreaGroup;
     const wanted = Array.isArray(ids) ? [...new Set(ids.filter((x): x is string => typeof x === "string"))] : [];
     return db.$transaction(async (tx) => {
-      const projects = await tx.project.findMany({ where: { id: { in: wanted }, serviceLineId: scope.id }, select: { id: true, serviceArea: true } });
+      const projects = ProjectRows.fromDbAll(
+        await tx.project.findMany({ where: { id: { in: wanted }, serviceLineId: scope.id }, select: { id: true, serviceArea: true, departmentId: true } }),
+      );
       const ok = new Set(projects.filter((p) => ServiceAreaInfo.groupOf(p.serviceArea) === group).map((p) => p.id));
       const list = wanted.filter((id) => ok.has(id));
       return LineLayoutService.writeIn(tx, scope, admin, "rows", (before) => {
@@ -90,7 +94,7 @@ export class LineLayoutService {
   private static async placeIn(tx: Writer, scope: Scope, by: string, change: (rows: RowOrderValue) => RowOrderValue): Promise<void> {
     const row = await tx.lineLayout.findUnique({ where: { serviceLineId: scope.id } });
     if (!row) return;
-    const before = LineLayout.normalizeRows(row.rowOrderJson);
+    const before = LineLayout.resolveRows(LineLayout.normalizeRows(row.rowOrderJson), scope.departments);
     const after = change(before);
     if (JSON.stringify(after) === JSON.stringify(before)) return;
     await tx.lineLayout.update({ where: { serviceLineId: scope.id }, data: { rowOrderJson: after as unknown as Prisma.InputJsonValue, updatedBy: by } });

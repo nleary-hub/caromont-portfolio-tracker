@@ -1,7 +1,7 @@
-import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import type { ProjectStatus } from "@/generated/prisma/enums";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type AreaGroup, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
@@ -27,19 +27,27 @@ export interface HandoffInput {
    * output is byte-identical to before the filter existed). Otherwise byArea and every flag list cover
    * only the included departments; the structure never changes.
    */
-  departments?: readonly ServiceArea[];
+  departments?: readonly DepartmentKey[];
+  /**
+   * The line's departments frozen with the snapshot (ReportSnapshot.departmentsJson). Absent = ServiceAreaInfo.LEGACY
+   * (snapshots before migration 0018). The file names departments by short name (`area`, `serviceArea`), never by id,
+   * so with the seeded departments it is byte-identical to before; a renamed short name shows its new text.
+   */
+  departmentList?: DepartmentList;
 }
 
 export interface HandoffFlagged {
   name: string;
-  serviceArea: ServiceArea | null;
+  /** The department's short name ("Cath"), null for Unassigned. */
+  serviceArea: string | null;
   status: string;
   dueDate: string | null;
 }
 
 export interface HandoffCompleted {
   name: string;
-  serviceArea: ServiceArea | null;
+  /** The department's short name, null for Unassigned. */
+  serviceArea: string | null;
   /** YYYY-MM-DD shown in the report (completedOn when set, else the in-app completion date). */
   completedOn: string;
   accomplishment: string | null;
@@ -56,7 +64,8 @@ export interface Handoff {
   frozenAtEt: string;
   reportRecipient?: string;
   totals: { projects: number; byStatus: Partial<Record<ProjectStatus, number>> };
-  byArea: { area: AreaGroup; label: string; projects: number; byStatus: Partial<Record<ProjectStatus, number>> }[];
+  /** `area` is the department's short name (the old ServiceArea value for seeded departments), or "Unassigned". */
+  byArea: { area: string; label: string; projects: number; byStatus: Partial<Record<ProjectStatus, number>> }[];
   flags: {
     changed: { count: number; projects: HandoffFlagged[] };
     overdue: { count: number; projects: HandoffFlagged[] };
@@ -90,21 +99,28 @@ export class HandoffBuilder {
     return Object.fromEntries(ProjectStatusInfo.all().filter((s) => counts[s] > 0).map((s) => [s, counts[s]]));
   }
 
-  private static flagged(rows: readonly ReportRow[]): HandoffFlagged[] {
-    return rows.map((r) => ({ name: r.name, serviceArea: r.serviceArea, status: ProjectStatusInfo.label(r.status), dueDate: r.dueDate }));
+  private static flagged(rows: readonly ReportRow[], list: DepartmentList): HandoffFlagged[] {
+    return rows.map((r) => ({ name: r.name, serviceArea: HandoffBuilder.areaText(r.serviceArea, list), status: ProjectStatusInfo.label(r.status), dueDate: r.dueDate }));
+  }
+
+  /** A department key as the file names it: its short name; null stays null. */
+  private static areaText(key: DepartmentKey | null, list: DepartmentList): string | null {
+    return key === null ? null : ServiceAreaInfo.label(key, list);
   }
 
   static build(input: HandoffInput): Handoff {
-    const filtered = Boolean(input.departments) && !DepartmentFilter.isAll(input.departments!);
+    const list = input.departmentList ?? ServiceAreaInfo.LEGACY;
+    const options = ServiceAreaInfo.all(list);
+    const filtered = Boolean(input.departments) && !DepartmentFilter.isAll(input.departments!, options);
     if (filtered) {
       // Snapshot rows are already filtered at freeze; filtering again keeps the file safe for any input.
       const departments = input.departments!;
-      const rows = DepartmentFilter.apply(input.rows, departments);
-      const completed = input.completed ? DepartmentFilter.apply(input.completed, departments) : undefined;
-      const header = { ...ReportBuilder.header(rows), completedFiscalYear: input.header?.completedFiscalYear };
+      const rows = DepartmentFilter.apply(input.rows, departments, options);
+      const completed = input.completed ? DepartmentFilter.apply(input.completed, departments, options) : undefined;
+      const header = { ...ReportBuilder.header(rows, list), completedFiscalYear: input.header?.completedFiscalYear };
       input = { ...input, rows, header, ...(completed ? { completed } : {}) };
     }
-    const header = input.header ?? ReportBuilder.header(input.rows);
+    const header = input.header ?? ReportBuilder.header(input.rows, list);
     const changed = input.rows.filter((r) => r.changed);
     const overdue = input.rows.filter((r) => r.overdue);
     const stale = input.rows.filter((r) => r.stale);
@@ -119,25 +135,25 @@ export class HandoffBuilder {
       ...(input.reportRecipient ? { reportRecipient: input.reportRecipient } : {}),
       totals: { projects: input.rows.length, byStatus: HandoffBuilder.nonZero(header.totals) },
       // Every department, then Unassigned only when it has projects.
-      byArea: HandoffBuilder.areas(input.rows, input.departments).map((a) => {
+      byArea: HandoffBuilder.areas(input.rows, list, input.departments).map((a) => {
         const counts = ReportBuilder.areaCounts(header, a);
         return {
-          area: a,
-          label: ServiceAreaInfo.label(a),
+          area: ServiceAreaInfo.label(a, list),
+          label: ServiceAreaInfo.label(a, list),
           projects: ProjectStatusInfo.all().reduce((s, st) => s + counts[st], 0),
           byStatus: HandoffBuilder.nonZero(counts),
         };
       }),
       flags: {
-        changed: { count: changed.length, projects: HandoffBuilder.flagged(changed) },
-        overdue: { count: overdue.length, projects: HandoffBuilder.flagged(overdue) },
-        stale: { count: stale.length, projects: HandoffBuilder.flagged(stale) },
+        changed: { count: changed.length, projects: HandoffBuilder.flagged(changed, list) },
+        overdue: { count: overdue.length, projects: HandoffBuilder.flagged(overdue, list) },
+        stale: { count: stale.length, projects: HandoffBuilder.flagged(stale, list) },
       },
       completedThisPeriod: {
         count: input.completed?.length ?? 0,
         projects: (input.completed ?? []).map((c) => ({
           name: c.name,
-          serviceArea: c.serviceArea,
+          serviceArea: HandoffBuilder.areaText(c.serviceArea, list),
           completedOn: c.completedOn,
           accomplishment: c.accomplishment,
         })),
@@ -155,10 +171,11 @@ export class HandoffBuilder {
   }
 
   /** Departments in order, then "Unassigned" only when some listed row has no department. */
-  private static areas(rows: readonly ReportRow[], departments?: readonly ServiceArea[]): AreaGroup[] {
+  private static areas(rows: readonly ReportRow[], list: DepartmentList, departments?: readonly DepartmentKey[]): AreaGroup[] {
     const unassigned = rows.some((r) => r.serviceArea === null);
-    return ServiceAreaInfo.groups()
+    const options = ServiceAreaInfo.all(list);
+    return ServiceAreaInfo.groups(list, rows.map((r) => r.serviceArea))
       .filter((a) => a !== ServiceAreaInfo.UNASSIGNED || unassigned)
-      .filter((a) => !departments || DepartmentFilter.includesGroup(departments, a));
+      .filter((a) => !departments || DepartmentFilter.includesGroup(departments, a, options));
   }
 }

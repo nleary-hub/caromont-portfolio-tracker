@@ -1,8 +1,8 @@
+import type { DepartmentKey } from "@/lib/domain/ServiceAreaInfo";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
-import type { ServiceArea } from "@/generated/prisma/enums";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
@@ -14,7 +14,7 @@ export class ReportOptionsForm {
   static readonly NOT_AUTHORIZED = "Not authorized.";
 
   /** Form fields to a patch: every checked "departments" value (at least one; none means all) and "totalsGrid". */
-  static parse(input: { departments: unknown[]; totalsGrid: unknown }, options: readonly ServiceArea[] = DepartmentFilter.OPTIONS): Pick<ReportOptionsValue, "departments" | "totalsGrid"> {
+  static parse(input: { departments: unknown[]; totalsGrid: unknown }, options: readonly DepartmentKey[] = DepartmentFilter.OPTIONS): Pick<ReportOptionsValue, "departments" | "totalsGrid"> {
     return { departments: DepartmentFilter.normalize(input.departments, options), totalsGrid: TotalsGridPlacement.normalize(input.totalsGrid) };
   }
 

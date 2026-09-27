@@ -36,11 +36,3 @@ export async function restoreServiceLine(id: string): Promise<ServiceLineActionR
 export async function switchServiceLine(id: string): Promise<ServiceLineActionResult> {
   return ServiceLineRevalidate.after(await ServiceLineForms.switchTo(await CurrentViewer.get(), id));
 }
-
-export async function saveLineDepartments(id: string, departments: string[]): Promise<ServiceLineActionResult> {
-  return ServiceLineRevalidate.after(await ServiceLineForms.departments(await CurrentViewer.get(), id, departments));
-}
-
-export async function saveContractsLeads(id: string, text: string): Promise<ServiceLineActionResult> {
-  return ServiceLineRevalidate.after(await ServiceLineForms.contractsLeads(await CurrentViewer.get(), id, text));
-}

@@ -3,6 +3,7 @@ import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { DepartmentRules, type DepartmentRow } from "@/lib/domain/DepartmentRules";
 
 type Reader = Pick<Prisma.TransactionClient, "serviceLine" | "serviceLineUserState">;
 
@@ -25,14 +26,25 @@ export class ServiceLineAccess {
   /** Short name of the default line in copy that must not depend on a database read. */
   static readonly DEFAULT_SHORT_NAME = ServiceLine.SEED.shortName;
 
-  /** Row to scope. Departments come back in report order, so the default line lists all seven as before. */
-  static toScope(row: Pick<ServiceLineRow, "id" | "name" | "shortName" | "isDefault" | "departments" | "contractsLeads">): ServiceLineScope {
+  /** Include for every service line read that becomes a scope: all of the line's departments (deleted ones too, so old keys keep their names), in report order. */
+  static readonly INCLUDE = { departmentRows: { orderBy: [{ position: "asc" as const }, { createdAt: "asc" as const }] } };
+
+  /**
+   * Row to scope. Departments come from the department table (read with INCLUDE), in report order. A row read
+   * without them (no department table yet) falls back to the legacy list: all seven for the default line, the
+   * listed ones otherwise.
+   */
+  static toScope(
+    row: Pick<ServiceLineRow, "id" | "name" | "shortName" | "isDefault" | "departments" | "contractsLeads"> & { departmentRows?: readonly DepartmentRow[] },
+  ): ServiceLineScope {
     return {
       id: row.id,
       name: row.name,
       shortName: row.shortName,
       isDefault: row.isDefault,
-      departments: ServiceAreaInfo.all().filter((a) => (row.departments ?? []).includes(a)),
+      departments: row.departmentRows
+        ? row.departmentRows.map((d) => DepartmentRules.toInfo(d))
+        : ServiceAreaInfo.LEGACY.filter((d) => row.isDefault || (row.departments ?? []).includes(d.id as never)).map((d) => ({ ...d })),
       contractsLeads: [...(row.contractsLeads ?? [])],
     };
   }
@@ -50,7 +62,7 @@ export class ServiceLineAccess {
 
   /** The default line (CVPSL). Falls back to the built-in values if the row is missing (before migration 0016). */
   static async defaultLine(db: Pick<Prisma.TransactionClient, "serviceLine"> = Db.client): Promise<ServiceLineScope> {
-    const row = await db.serviceLine.findFirst({ where: { isDefault: true } });
+    const row = await db.serviceLine.findFirst({ where: { isDefault: true }, include: ServiceLineAccess.INCLUDE });
     return row ? ServiceLineAccess.toScope(row) : ServiceLine.defaultScope();
   }
 
@@ -67,7 +79,7 @@ export class ServiceLineAccess {
     if (viewer.isAdmin) {
       const state = await db.serviceLineUserState.findUnique({ where: { email: viewer.email } });
       if (state) {
-        const row = await db.serviceLine.findUnique({ where: { id: state.serviceLineId } });
+        const row = await db.serviceLine.findUnique({ where: { id: state.serviceLineId }, include: ServiceLineAccess.INCLUDE });
         if (row && ServiceLineAccess.mayUse(viewer, row)) return ServiceLineAccess.toScope(row);
       }
     }
@@ -88,14 +100,14 @@ export class ServiceLineAccess {
   /** Lines this viewer may switch to, in switcher order (default first, then A to Z). Empty for non-admins. */
   static async usableLines(viewer: Viewer, db: Pick<Prisma.TransactionClient, "serviceLine"> = Db.client): Promise<ServiceLineScope[]> {
     if (!viewer.isAdmin) return [];
-    const rows = await db.serviceLine.findMany({ where: { archivedAt: null, deletedAt: null } });
+    const rows = await db.serviceLine.findMany({ where: { archivedAt: null, deletedAt: null }, include: ServiceLineAccess.INCLUDE });
     return ServiceLine.sortForSwitcher(rows.filter((r) => ServiceLineAccess.mayUse(viewer, r)).map((r) => ServiceLineAccess.toScope(r)));
   }
 
   /** Save the viewer's active line (admins only; the line must be usable). */
   static async setActive(viewer: Viewer, serviceLineId: string, db: PrismaClient = Db.client): Promise<ServiceLineScope> {
     AdminPolicy.assertAdmin(viewer);
-    const row = await db.serviceLine.findUnique({ where: { id: serviceLineId } });
+    const row = await db.serviceLine.findUnique({ where: { id: serviceLineId }, include: ServiceLineAccess.INCLUDE });
     if (!row || !ServiceLineAccess.mayUse(viewer, row)) throw new ServiceLineAccessError();
     await db.serviceLineUserState.upsert({
       where: { email: viewer.email },

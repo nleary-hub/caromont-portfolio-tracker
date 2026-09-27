@@ -85,10 +85,10 @@ class M17 {
 }
 
 describe("0017_line_layout on production-shaped data (PGlite)", () => {
-  it("is the latest migration and follows 0016", () => {
+  it("follows 0016 (0018_departments comes after it)", () => {
     const f = M17.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0016_service_lines");
+    expect(f[f.indexOf(M) - 1]).toBe("0016_service_lines");
+    expect(f[f.indexOf(M) + 1]).toBe("0018_departments");
   });
 
   it("keeps every row of every table unchanged, adds two tables, seeds nothing, and leaves existing snapshots at layoutJson NULL", async () => {

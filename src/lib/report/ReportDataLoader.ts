@@ -4,6 +4,7 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { CompletedRow, MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
+import { ProjectRows } from "@/lib/domain/ProjectRows";
 import { ChampionCheck } from "@/lib/report/ChampionCheck";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import { CompletedThisPeriod } from "@/lib/report/CompletedThisPeriod";
@@ -59,7 +60,7 @@ export class ReportDataLoader {
     // Report department filter (admin setting): excluded departments leave no trace (rows, counts, flags,
     // completed blocks, FY count). All selected = no filter.
     const stored = DepartmentFilter.apply(
-      await db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(line) } }),
+      ProjectRows.fromDbAll(await db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(line) } })),
       options.departments,
       DepartmentFilter.optionsFor(line),
     );
@@ -82,13 +83,14 @@ export class ReportDataLoader {
       previousSnapshotGeneratedAt,
       reportDate,
       viewSettings,
+      departments: line.departments,
     });
     // Only visible rows: the list names projects, so hidden/deleted ones must not appear in it.
     const missingChampions = ChampionCheck.findMissing(
       VisibilityPolicy.visibleProjects(projects, "report", viewSettings),
       recipients,
     );
-    const completed = CompletedThisPeriod.select({ projects, history, viewSettings, cutoff: now });
+    const completed = CompletedThisPeriod.select({ projects, history, viewSettings, cutoff: now, departments: line.departments });
     // Frozen with the header (headerJson), so a frozen report keeps its count.
     header.completedFiscalYear = CompletedFiscalYear.count({ projects, history, reportDate });
     return { rows, header, missingChampions, completed, viewSettings, options, layout, serviceLine, scope: line, reportDate, previousSnapshotGeneratedAt };

@@ -1,7 +1,7 @@
 "use client";
 
+import type { DepartmentKey, DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { useEffect, useRef, useState, type ReactNode } from "react";
-import type { ServiceArea } from "@/generated/prisma/enums";
 import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { Chevron, FieldControlStyle } from "./FieldControl";
@@ -50,13 +50,16 @@ export function DepartmentChecklist({
   onChange,
   name,
   options = DepartmentFilter.OPTIONS,
+  list,
 }: {
-  value: readonly ServiceArea[];
-  onChange: (next: ServiceArea[]) => void;
+  value: readonly DepartmentKey[];
+  onChange: (next: DepartmentKey[]) => void;
   /** Form field name (admin form posts the checked departments). */
   name?: string;
-  /** The service line's filter options (DepartmentFilter.OPTIONS for the default line). */
-  options?: readonly ServiceArea[];
+  /** The service line's filter options (its open departments, DepartmentFilter.optionsFor). */
+  options?: readonly DepartmentKey[];
+  /** The line's departments, for the labels (full names). Absent = ServiceAreaInfo.LEGACY. */
+  list?: DepartmentList;
 }) {
   const locked = DepartmentFilter.lockedOption(value);
   return (
@@ -79,7 +82,7 @@ export function DepartmentChecklist({
               {/* A disabled checkbox is not posted; keep the value in the form. */}
               {disabled && name && <input type="hidden" name={name} value={a} />}
               <SmallCheck on={on} disabled={disabled} />
-              <span className="vp-lbl">{DepartmentFilter.optionLabel(a)}</span>
+              <span className="vp-lbl">{DepartmentFilter.optionLabel(a, list)}</span>
             </label>
           </li>
         );
@@ -93,10 +96,13 @@ export function DepartmentsSelect({
   value,
   onChange,
   options = DepartmentFilter.OPTIONS,
+  list,
 }: {
-  value: readonly ServiceArea[];
-  onChange: (next: ServiceArea[]) => void;
-  options?: readonly ServiceArea[];
+  value: readonly DepartmentKey[];
+  onChange: (next: DepartmentKey[]) => void;
+  options?: readonly DepartmentKey[];
+  /** The line's departments (labels). Absent = ServiceAreaInfo.LEGACY. */
+  list?: DepartmentList;
 }) {
   const { open, setOpen, rootRef } = usePopover();
   const all = DepartmentFilter.isAll(value, options);
@@ -109,7 +115,7 @@ export function DepartmentsSelect({
         onClick={() => setOpen(!open)}
         className={`${FieldControlStyle.BOX} text-left text-fg ${open ? "border-accent" : ""}`}
       >
-        {DepartmentFilter.summary(value, DepartmentFilter.SUMMARY_MAX_CHARS, options)}
+        {DepartmentFilter.summary(value, DepartmentFilter.SUMMARY_MAX_CHARS, options, list)}
       </button>
       <span aria-hidden="true" className={`pointer-events-none ${FieldControlStyle.CHEVRON_SLOT}`}>
         <Chevron open={open} />
@@ -127,7 +133,7 @@ export function DepartmentsSelect({
           </ul>
           <div className="df-divider" />
           <div className="df-scroll">
-            <DepartmentChecklist value={value} onChange={onChange} options={options} />
+            <DepartmentChecklist value={value} onChange={onChange} options={options} list={list} />
           </div>
         </div>
       )}

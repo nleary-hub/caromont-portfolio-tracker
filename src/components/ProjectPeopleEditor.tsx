@@ -1,11 +1,10 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import type { ServiceArea } from "@/generated/prisma/enums";
 import { Assignee } from "@/lib/domain/Assignee";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { Requester } from "@/lib/domain/Requester";
-import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { PickList } from "@/lib/people/PickList";
 import { PeopleComboboxModel, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
 import { PeopleDirectory, type PeopleRole } from "@/lib/people/PeopleDirectory";
@@ -21,7 +20,7 @@ export interface ProjectPeopleEditorProps {
   physicianChampion: string | null;
   requesterNotApplicable: boolean;
   contractsLead: string | null;
-  serviceArea: ServiceArea | null;
+  serviceArea: DepartmentKey | null;
   /** Owner combobox options (PeopleDirectory.owners: built-in owners plus owners in use). */
   ownerSuggestions: readonly string[];
   /** Requester combobox options (PeopleDirectory.requesters: requesters in use). */
@@ -30,8 +29,8 @@ export interface ProjectPeopleEditorProps {
   saveAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
   /** The service line's contracts leads (default: the CVPSL list). A stored name not in the list stays selectable. */
   contractsLeads?: readonly string[];
-  /** The service line's departments (default: all). A stored department not in the list stays selectable. */
-  departments?: readonly ServiceArea[];
+  /** The service line's departments (default: ServiceAreaInfo.LEGACY). Open ones are offered; a stored archived one stays selectable. */
+  departments?: DepartmentList;
   /** Edit form: Department is edited in the Project section, so the panel omits it and its outer rule. */
   inForm?: boolean;
 }
@@ -149,9 +148,9 @@ function DepartmentSelect({ projectId, serviceArea, departments, saveAction }: P
           });
         }}
       >
-        {PickList.withCurrent(departments ?? ServiceAreaInfo.all(), serviceArea).map((a) => (
+        {PickList.withCurrent(ServiceAreaInfo.all(departments), serviceArea).map((a) => (
           <option key={a} value={a}>
-            {ServiceAreaInfo.label(a)}
+            {ServiceAreaInfo.fullName(a, departments)}
           </option>
         ))}
         <option value="">{ServiceAreaInfo.UNASSIGNED}</option>
