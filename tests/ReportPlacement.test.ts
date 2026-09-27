@@ -8,6 +8,7 @@ import { SampleReportData } from "@/lib/report/SampleReportData";
 import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { ReportColors } from "@/lib/report/pdf/ReportDocument";
+import { ReportColorScheme } from "@/lib/report/ReportColorScheme";
 import { ReportGeometry as G, ReportLayout, type DocumentLayout, type PageLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 
@@ -70,14 +71,16 @@ describe("header cleanup (all modes)", () => {
     expect(src).not.toContain("draftLine");
   });
 
-  it("department heading bars use --light-section-bg-strong; the lighter token stays for everything else", () => {
+  it("--light-section-bg-strong is still the classic bar fill (frozen reports before Report colors); the lighter token stays for everything else", () => {
     const tokens = readFileSync(new URL("../src/styles/tokens.css", import.meta.url), "utf8");
     expect(tokens).toMatch(/--light-section-bg-strong:\s*#E1E5EB;/);
     expect(tokens).toMatch(/--light-section-bg:\s*#F4F5F7;/);
     expect(ReportColors.SECTION_BG_STRONG).toBe("#E1E5EB");
     expect(ReportColors.SECTION_BG).toBe("#F4F5F7");
     const src = readFileSync(new URL("../src/lib/report/pdf/ReportDocument.tsx", import.meta.url), "utf8");
-    expect(src).toContain("backgroundColor: C.SECTION_BG_STRONG");
+    // Bars are drawn from the Report colors palette (0027); the classic palette keeps the token's color.
+    expect(src).toContain("backgroundColor: bar.fill");
+    expect(ReportColorScheme.CLASSIC_BAR.fill).toBe(ReportColors.SECTION_BG_STRONG);
   });
 });
 

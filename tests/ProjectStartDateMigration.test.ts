@@ -61,10 +61,11 @@ class M26 {
 }
 
 describe("0026_project_start_date on production-shaped data (PGlite)", () => {
-  it("is the latest migration and follows 0025_password_sign_in", () => {
+  it("follows 0025_password_sign_in; 0027_report_colors comes right after it", () => {
     const f = M26.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0025_password_sign_in");
+    const i = f.indexOf(M);
+    expect(f[i - 1]).toBe("0025_password_sign_in");
+    expect(f[i + 1]).toBe("0027_report_colors");
   });
 
   it("backfills every existing project with its createdAt as an ET day and the default flag; nothing else changes", async () => {

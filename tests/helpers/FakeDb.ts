@@ -519,6 +519,10 @@ export class FakeDb {
           this.state.reportOptionsHistory.push(row);
           return { ...row };
         },
+        findMany: async ({ where, orderBy, take }: { where?: Row; orderBy?: Record<string, "asc" | "desc">; take?: number } = {}) =>
+          sortBy(this.state.reportOptionsHistory.filter((h) => matches(h, where)), orderBy)
+            .slice(0, take ?? Number.POSITIVE_INFINITY)
+            .map((h) => ({ ...h })),
       },
       serviceLineSettings: {
         findUnique: async ({ where }: { where: { id: string } }) => {

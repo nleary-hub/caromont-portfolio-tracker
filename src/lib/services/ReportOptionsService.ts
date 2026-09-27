@@ -6,6 +6,7 @@ import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { TotalsGridPlacement, type TotalsGridMode } from "@/lib/domain/TotalsGridPlacement";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
+import { ReportColorScheme, type ReportColorsValue } from "@/lib/report/ReportColorScheme";
 
 type Scope = Pick<ServiceLineScope, "id" | "isDefault" | "departments">;
 
@@ -14,6 +15,8 @@ export interface StoredReportOptions {
   showKeyPage: boolean;
   excludedDepartments: DepartmentKey[];
   totalsGrid: TotalsGridMode;
+  /** Weekly PDF colors (migration 0027). Absent in history rows and snapshots saved before it (defaults). */
+  colors: ReportColorsValue;
 }
 
 /** Admin report options frozen into each snapshot (ReportSnapshot.optionsJson, as StoredReportOptions). */
@@ -27,13 +30,18 @@ export interface ReportOptionsValue {
   departments: DepartmentKey[];
   /** Where the totals grid goes: top of page 1 (today's layout), hidden, or after the last project. */
   totalsGrid: TotalsGridMode;
+  /**
+   * Department bar color and page 1 title band (ReportColorScheme). Saved in report_options (barColor, headerBand)
+   * and, like the rest, in each history row and snapshot. Snapshots frozen before 0027 read as the defaults.
+   */
+  colors: ReportColorsValue;
 }
 
 type Reader = Pick<Prisma.TransactionClient, "reportOptions" | "reportOptionsHistory">;
 
 /**
- * The only read/write path for report options. No migration: the report_options row keeps its one column
- * (showKeyPage), and every effective change appends the FULL value to report_options_history in the same
+ * The only read/write path for report options. The report_options row holds showKeyPage and, since
+ * migration 0027, the PDF colors (barColor, headerBand); every effective change appends the FULL value to report_options_history in the same
  * transaction, so the newest history row is always the current value. Reads take showKeyPage from the row
  * and the newer keys (departments, totalsGrid) from the newest history row; missing keys take defaults.
  *
@@ -44,7 +52,7 @@ export class ReportOptionsService {
   static readonly ID = "report";
 
   static defaults(options: readonly DepartmentKey[] = DepartmentFilter.OPTIONS): ReportOptionsValue {
-    return { showKeyPage: true, departments: DepartmentFilter.all(options), totalsGrid: TotalsGridPlacement.DEFAULT };
+    return { showKeyPage: true, departments: DepartmentFilter.all(options), totalsGrid: TotalsGridPlacement.DEFAULT, colors: { ...ReportColorScheme.DEFAULTS } };
   }
 
   /**
@@ -64,6 +72,7 @@ export class ReportOptionsService {
       showKeyPage: typeof r.showKeyPage === "boolean" ? r.showKeyPage : ReportOptionsService.defaults().showKeyPage,
       departments,
       totalsGrid: TotalsGridPlacement.normalize(r.totalsGrid),
+      colors: ReportColorScheme.normalize(r.colors),
     };
   }
 
@@ -73,16 +82,27 @@ export class ReportOptionsService {
       showKeyPage: typeof patch.showKeyPage === "boolean" ? patch.showKeyPage : before.showKeyPage,
       departments: patch.departments !== undefined ? DepartmentFilter.normalize(patch.departments, options) : before.departments,
       totalsGrid: patch.totalsGrid !== undefined ? TotalsGridPlacement.normalize(patch.totalsGrid) : before.totalsGrid,
+      colors: patch.colors !== undefined ? ReportColorScheme.normalize({ ...before.colors, ...patch.colors }) : before.colors,
     };
   }
 
   /** What is written to history and frozen into snapshots: excluded departments, never the included list. */
   static toStored(value: ReportOptionsValue, options: readonly DepartmentKey[] = DepartmentFilter.OPTIONS): StoredReportOptions {
-    return { showKeyPage: value.showKeyPage, excludedDepartments: DepartmentFilter.toStored(value.departments, options).excluded, totalsGrid: value.totalsGrid };
+    return {
+      showKeyPage: value.showKeyPage,
+      excludedDepartments: DepartmentFilter.toStored(value.departments, options).excluded,
+      totalsGrid: value.totalsGrid,
+      colors: { bar: value.colors.bar, band: value.colors.band },
+    };
   }
 
   static equals(a: ReportOptionsValue, b: ReportOptionsValue, options: readonly DepartmentKey[] = DepartmentFilter.OPTIONS): boolean {
-    return a.showKeyPage === b.showKeyPage && a.totalsGrid === b.totalsGrid && DepartmentFilter.equals(a.departments, b.departments, options);
+    return (
+      a.showKeyPage === b.showKeyPage &&
+      a.totalsGrid === b.totalsGrid &&
+      DepartmentFilter.equals(a.departments, b.departments, options) &&
+      ReportColorScheme.equals(a.colors, b.colors)
+    );
   }
 
   /** Row id: "report" for the default line (unchanged), the line id for others. */
@@ -94,7 +114,8 @@ export class ReportOptionsService {
     const row = await db.reportOptions.findUnique({ where: ServiceLineAccess.where(scope) });
     const latest = await db.reportOptionsHistory.findFirst({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" } });
     const fromHistory = latest && latest.newValue && typeof latest.newValue === "object" ? (latest.newValue as Record<string, unknown>) : {};
-    return ReportOptionsService.normalize({ ...fromHistory, ...(row ? { showKeyPage: row.showKeyPage } : {}) }, DepartmentFilter.optionsFor(scope), scope.departments);
+    const fromRow = row ? { showKeyPage: row.showKeyPage, ...(row.barColor !== undefined ? { colors: { bar: row.barColor, band: row.headerBand } } : {}) } : {};
+    return ReportOptionsService.normalize({ ...fromHistory, ...fromRow }, DepartmentFilter.optionsFor(scope), scope.departments);
   }
 
   static async update(patch: Partial<ReportOptionsValue>, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<ReportOptionsValue> {
@@ -106,8 +127,15 @@ export class ReportOptionsService {
       if (ReportOptionsService.equals(before, after, options)) return before;
       await tx.reportOptions.upsert({
         where: ServiceLineAccess.where(scope),
-        create: { id: ReportOptionsService.rowId(scope), serviceLineId: scope.id, showKeyPage: after.showKeyPage, updatedBy: admin.email },
-        update: { showKeyPage: after.showKeyPage, updatedBy: admin.email },
+        create: {
+          id: ReportOptionsService.rowId(scope),
+          serviceLineId: scope.id,
+          showKeyPage: after.showKeyPage,
+          barColor: after.colors.bar,
+          headerBand: after.colors.band,
+          updatedBy: admin.email,
+        },
+        update: { showKeyPage: after.showKeyPage, barColor: after.colors.bar, headerBand: after.colors.band, updatedBy: admin.email },
       });
       await tx.reportOptionsHistory.create({
         data: {

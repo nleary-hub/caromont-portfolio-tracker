@@ -14,6 +14,7 @@ import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { AdminAuditService, type AuditEvent, type AuditProject } from "@/lib/services/AdminAuditService";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
+import { ReportColorScheme } from "@/lib/report/ReportColorScheme";
 import { StartDate } from "@/lib/projects/StartDate";
 
 
@@ -42,6 +43,7 @@ class AuditFormat {
     if (e.kind === "serviceLine") return `Service line: ${ServiceLineHistoryText.action(e.field.replace(/^serviceLine\./, ""))}`;
     if (e.kind === "layout") return `Layout: ${AuditLayoutText.action(e.field.replace(/^layout\./, ""))}`;
     if (e.kind === "access") return e.comment ?? "Access";
+    if (e.kind === "reportColors") return e.field === AdminAuditService.COLOR_FIELDS.band ? ReportColorScheme.COPY.auditBand : ReportColorScheme.COPY.auditBar;
     if (e.kind === "template") return `Template: ${e.field.replace(/^template\./, "").replace(/_/g, " ")}`;
     // Start date: private audit only (never in the drawer History). OLD / NEW show the dates.
     if (AuditFormat.isStartDate(e)) return StartDate.AUDIT_CHANGE;

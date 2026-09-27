@@ -283,7 +283,7 @@ describe("report options (key page)", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const { ReportOptionsService } = await import("@/lib/services/ReportOptionsService");
     const { fake, db } = await Setup.db();
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top" });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top", colors: { bar: "navy", band: "none" } });
     await expect(ReportOptionsService.update({ showKeyPage: false }, Factory.MEMBER, db)).rejects.toThrow();
     await ReportOptionsService.update({ showKeyPage: false }, Factory.ADMIN, db);
     expect(fake.state.reportOptionsHistory).toHaveLength(1);
@@ -291,7 +291,7 @@ describe("report options (key page)", () => {
     expect(fake.state.reportOptionsHistory).toHaveLength(1);
     await FreezeService.run(Setup.opts(), db);
     // Frozen in the saved form: excluded departments (none).
-    expect(fake.state.snapshots[0].optionsJson).toEqual({ showKeyPage: false, excludedDepartments: [], totalsGrid: "top" });
+    expect(fake.state.snapshots[0].optionsJson).toEqual({ showKeyPage: false, excludedDepartments: [], totalsGrid: "top", colors: { bar: "navy", band: "none" } });
   });
 });
 
@@ -301,18 +301,18 @@ describe("report options (departments and totals grid), no migration", () => {
     const { fake, db } = await Setup.db();
     await expect(ReportOptionsService.update({ departments: ["Cath"] }, Factory.MEMBER, db)).rejects.toThrow();
     await ReportOptionsService.update({ departments: ["EP", "Cath"], totalsGrid: "lastPage" }, Factory.ADMIN, db);
-    // Only the existing column (and the row's service line, 0016) is written to the row; the full value is in the audit row.
-    expect(Object.keys(fake.state.reportOptions[0]).sort()).toEqual(["id", "serviceLineId", "showKeyPage", "updatedAt", "updatedBy"]);
+    // Only the existing columns (the row's service line, 0016; the PDF colors, 0027) are written to the row; the full value is in the audit row.
+    expect(Object.keys(fake.state.reportOptions[0]).sort()).toEqual(["barColor", "headerBand", "id", "serviceLineId", "showKeyPage", "updatedAt", "updatedBy"]);
     expect(fake.state.reportOptions[0]).toMatchObject({ id: "report", serviceLineId: ServiceLine.DEFAULT_ID });
     // Saved as the EXCLUDED departments, so a department added later starts included.
-    expect(fake.state.reportOptionsHistory.at(-1)!.newValue).toEqual({ showKeyPage: true, excludedDepartments: ["Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "lastPage" });
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP"], totalsGrid: "lastPage" });
+    expect(fake.state.reportOptionsHistory.at(-1)!.newValue).toEqual({ showKeyPage: true, excludedDepartments: ["Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "lastPage", colors: { bar: "navy", band: "none" } });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP"], totalsGrid: "lastPage", colors: { bar: "navy", band: "none" } });
     // Changing the key page later keeps the other keys.
     await ReportOptionsService.update({ showKeyPage: false }, Factory.ADMIN, db);
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP"], totalsGrid: "lastPage" });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP"], totalsGrid: "lastPage", colors: { bar: "navy", band: "none" } });
     // Invalid input falls back: an empty list is every department, an unknown mode is Top.
     await ReportOptionsService.update({ departments: [], totalsGrid: "sideways" as never }, Factory.ADMIN, db);
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top" });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top", colors: { bar: "navy", band: "none" } });
   });
 
   it("a filtered freeze lists only the included departments in the snapshot and handoff.json (same structure)", async () => {

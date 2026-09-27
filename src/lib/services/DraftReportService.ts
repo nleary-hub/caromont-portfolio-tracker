@@ -61,6 +61,7 @@ export class DraftReportService {
       showKeyPage: data.options.showKeyPage,
       departments: data.options.departments,
       totalsGrid: data.options.totalsGrid,
+      colors: data.options.colors,
       lineDepartments: line.departments,
       serviceLine: data.serviceLine,
       layout: data.layout,

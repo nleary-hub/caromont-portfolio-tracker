@@ -7,7 +7,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { FreezeService } from "@/lib/services/FreezeService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
-import { ReportOptionsForm, type ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
+import { ReportColorsForm, ReportOptionsForm, type ReportColorsFormState, type ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
 import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
 import { YearEndCategories, YearEndCopy } from "@/lib/report/YearEndReportData";
@@ -60,6 +60,19 @@ export async function saveReportOptions(_prev: ReportOptionsFormState, form: For
   if (!viewer?.isAdmin) return { ok: false, message: ReportOptionsForm.NOT_AUTHORIZED };
   const scope = await ServiceLineAccess.activeFor(viewer);
   const state = await ReportOptionsForm.submit(viewer, { departments: form.getAll("departments"), totalsGrid: form.get("totalsGrid") }, undefined, scope);
+  if (state?.ok) {
+    revalidatePath("/admin/settings");
+    revalidatePath("/reports");
+  }
+  return state;
+}
+
+/** Admin Report colors (department bars and the page 1 title band) of the active line. */
+export async function saveReportColors(_prev: ReportColorsFormState, form: FormData): Promise<ReportColorsFormState> {
+  const viewer = await CurrentViewer.get();
+  if (!viewer?.isAdmin) return { ok: false, message: ReportOptionsForm.NOT_AUTHORIZED };
+  const scope = await ServiceLineAccess.activeFor(viewer);
+  const state = await ReportColorsForm.submit(viewer, { bar: form.get("bar"), barHex: form.get("barHex"), band: form.get("band"), bandHex: form.get("bandHex") }, undefined, scope);
   if (state?.ok) {
     revalidatePath("/admin/settings");
     revalidatePath("/reports");

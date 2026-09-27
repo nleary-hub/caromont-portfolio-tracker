@@ -5,6 +5,7 @@ import { PeopleLabel } from "@/lib/domain/PeopleLabel";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { StatusShapes, type ShapePart } from "@/lib/domain/StatusShapes";
 import { ReportFonts } from "@/lib/report/pdf/ReportFonts";
+import { ReportColorScheme, type BandPalette, type BarPalette, type ResolvedReportColors } from "@/lib/report/ReportColorScheme";
 import {
   ReportGeometry as G,
   ReportLayout,
@@ -32,7 +33,7 @@ export class ReportColors {
   static readonly DIVIDER = "#D9DCE1";
   /** --light-section-bg: kept for anything else that uses the lighter tint. */
   static readonly SECTION_BG = "#F4F5F7";
-  /** --light-section-bg-strong: department heading bars (clearly visible in print; text contrast stays high). */
+  /** --light-section-bg-strong: the department bar fill before Report colors (0027); bars now use ReportColorScheme. */
   static readonly SECTION_BG_STRONG = "#E1E5EB";
   static readonly BG = "#FFFFFF";
   static readonly STATUS: Record<ProjectStatus, { bg: string; fg: string }> = {
@@ -237,7 +238,7 @@ function Flags({ flags, x, y }: { flags: PlacedFlag[]; x: number; y: number }) {
   );
 }
 
-function Badge({ text, right, left, top }: { text: string; right?: number; left?: number; top: number }) {
+function Badge({ text, right, left, top, onBand = false }: { text: string; right?: number; left?: number; top: number; onBand?: boolean }) {
   return (
     <View
       style={{
@@ -247,6 +248,8 @@ function Badge({ text, right, left, top }: { text: string; right?: number; left?
         borderWidth: 0.75,
         borderColor: C.DIVIDER,
         borderRadius: 3,
+        // On a title band the tag keeps its white page background, so it reads exactly as it does without a band.
+        ...(onBand ? { backgroundColor: C.BG } : {}),
         paddingHorizontal: 5,
         paddingVertical: 1.5,
       }}
@@ -260,7 +263,8 @@ function Rule({ y, h, color = C.TEXT, x = 0, w = G.CONTENT_W }: { y: number; h: 
   return <View style={{ position: "absolute", left: x, top: y, width: w, height: h, backgroundColor: color }} />;
 }
 
-function FirstHeader({ h }: { h: HeaderModel }) {
+function FirstHeader({ h, band }: { h: HeaderModel; band: BandPalette | null }) {
+  // The title band applies to the standard header only (summary grid at the top); the one-band header is unchanged.
   if (h.band) return <BandHeader h={h} />;
   const S = G.SIZE;
   const els: React.ReactNode[] = [];
@@ -323,9 +327,23 @@ function FirstHeader({ h }: { h: HeaderModel }) {
 
   els.push(<GridView key="grid" h={h} x={G.CONTENT_W - h.grid.width} top={top} />);
 
+  const bleed = ReportColorScheme.BAND_BLEED;
   return (
     <>
-      <Overline h={h} top={0} />
+      {band && (
+        // Band behind the eyebrow and title: 6 pt above the eyebrow down to the rule, 6 pt into each side margin.
+        <View
+          style={{
+            position: "absolute",
+            left: -bleed,
+            top: -ReportColorScheme.BAND_TOP,
+            width: G.CONTENT_W + 2 * bleed,
+            height: ReportColorScheme.BAND_TOP + h.titleBarHeight - 1.5,
+            backgroundColor: band.fill,
+          }}
+        />
+      )}
+      <Overline h={h} top={0} color={band?.eyebrow} />
       <Text
         style={{
           position: "absolute",
@@ -335,20 +353,21 @@ function FirstHeader({ h }: { h: HeaderModel }) {
           fontSize: S.title,
           fontWeight: 700,
           lineHeight: G.TITLE_H / S.title,
-          color: C.TEXT,
+          color: band?.title ?? C.TEXT,
         }}
       >
         {h.title}
       </Text>
-      {h.badge && <Badge text={h.badge} right={0} top={h.overline ? 0 : 2} />}
-      <Rule y={h.titleBarHeight - 1.5} h={1.5} />
+      {h.badge && <Badge text={h.badge} right={0} top={h.overline ? 0 : 2} onBand={Boolean(band)} />}
+      {/* With a band the rule is as wide as the band (square bottom corners, no notch) and takes its rule color. */}
+      {band ? <Rule y={h.titleBarHeight - 1.5} h={1.5} x={-bleed} w={G.CONTENT_W + 2 * bleed} color={band.rule} /> : <Rule y={h.titleBarHeight - 1.5} h={1.5} />}
       {els}
     </>
   );
 }
 
 /** Page 1 service line overline (uppercase, secondary). */
-function Overline({ h, top }: { h: HeaderModel; top: number }) {
+function Overline({ h, top, color = C.MUTED }: { h: HeaderModel; top: number; color?: string }) {
   return (
     <>
       {h.overline?.lines.map((line, i) => (
@@ -364,7 +383,7 @@ function Overline({ h, top }: { h: HeaderModel; top: number }) {
             fontWeight: G.OVERLINE.weight,
             letterSpacing: h.overline!.tracking,
             lineHeight: G.OVERLINE.lineH / h.overline!.size,
-            color: C.MUTED,
+            color,
             maxLines: 1,
           }}
         >
@@ -842,7 +861,7 @@ function SummaryBlock({ h, block, top }: { h: HeaderModel; block: Extract<BodyBl
   );
 }
 
-function Block({ block, top, h }: { block: BodyBlock; top: number; h: HeaderModel }) {
+function Block({ block, top, h, bar }: { block: BodyBlock; top: number; h: HeaderModel; bar: BarPalette }) {
   const S = G.SIZE;
   if (block.kind === "summary") return <SummaryBlock h={h} block={block} top={top} />;
   if (block.kind === "row") return <Row row={block.row} y={top + block.y} />;
@@ -850,13 +869,16 @@ function Block({ block, top, h }: { block: BodyBlock; top: number; h: HeaderMode
   if (block.kind === "empty") return <Line x={0} y={top + block.y + 6} w={G.CONTENT_W} text={block.text} size={S.body} color={C.MUTED} lh={12} />;
   const sy = top + block.y + block.height - G.SECTION_H;
   const count = ReportLayout.sectionCountText(block.count, block.completedCount);
-  // Unassigned: same section head, name and left border in the secondary gray (no amber, no italics).
-  const ink = block.area === ServiceAreaInfo.UNASSIGNED ? C.MUTED : C.TEXT;
+  // Colors from the Report colors setting (ReportColorScheme). Unassigned: name and left stripe in the bar's
+  // secondary color (no amber, no italics).
+  const unassigned = block.area === ServiceAreaInfo.UNASSIGNED;
+  const ink = unassigned ? bar.unassigned : bar.text;
+  const stripe = unassigned ? bar.unassigned : bar.stripe;
   return (
-    <View style={{ position: "absolute", left: 0, top: sy, width: G.CONTENT_W, height: G.SECTION_H, backgroundColor: C.SECTION_BG_STRONG }}>
-      <View style={{ position: "absolute", left: 0, top: 0, width: 2, height: G.SECTION_H, backgroundColor: ink }} />
+    <View style={{ position: "absolute", left: 0, top: sy, width: G.CONTENT_W, height: G.SECTION_H, backgroundColor: bar.fill }}>
+      <View style={{ position: "absolute", left: 0, top: 0, width: 2, height: G.SECTION_H, backgroundColor: stripe }} />
       <Line x={7} y={2} w={300} text={`${block.label}${block.continued ? " (continued)" : ""}`} size={S.section} weight={600} color={ink} lh={12} />
-      <Line x={G.CONTENT_W - 205} y={4} w={200} text={count} size={S.small} color={C.MUTED} lh={G.SMALL_LH} align="right" />
+      <Line x={G.CONTENT_W - 205} y={4} w={200} text={count} size={S.small} color={bar.count} lh={G.SMALL_LH} align="right" />
     </View>
   );
 }
@@ -909,20 +931,20 @@ function KeyPage({ k, h, top, summary, summaryOnly = false }: { k: KeyModel; h: 
   return <>{els}</>;
 }
 
-function PageView({ layout, page }: { layout: DocumentLayout; page: PageLayout }) {
+function PageView({ layout, page, colors }: { layout: DocumentLayout; page: PageLayout; colors: ResolvedReportColors }) {
   const h = layout.header;
   const footY = G.CONTENT_H - G.FOOTER_H;
   return (
     <Page size={{ width: G.PAGE_W, height: G.PAGE_H }} style={{ backgroundColor: C.BG }}>
       <View style={{ position: "absolute", left: G.MARGIN, top: G.MARGIN, width: G.CONTENT_W, height: G.CONTENT_H }}>
-        {page.first ? <FirstHeader h={h} /> : <ContinuationHeader h={h} showStrip={!page.keyNoStrip} />}
+        {page.first ? <FirstHeader h={h} band={colors.band} /> : <ContinuationHeader h={h} showStrip={!page.keyNoStrip} />}
         {page.kind === "key" && layout.key ? (
           <KeyPage k={layout.key} h={h} top={page.bodyTop} summary={page.summaryOnKeyPage} summaryOnly={page.keySummaryOnly} />
         ) : (
           <>
             {page.columnHead !== false && <ColumnHead h={h} y={page.headerHeight} />}
             {page.blocks.map((b, i) => (
-              <Block key={i} block={b} top={page.bodyTop} h={h} />
+              <Block key={i} block={b} top={page.bodyTop} h={h} bar={colors.bar} />
             ))}
           </>
         )}
@@ -944,11 +966,11 @@ function PageView({ layout, page }: { layout: DocumentLayout; page: PageLayout }
 }
 
 /** The report PDF, drawn from a precomputed DocumentLayout (no layout decisions happen here). */
-export function ReportDocument({ layout, title }: { layout: DocumentLayout; title: string }) {
+export function ReportDocument({ layout, title, colors = ReportColorScheme.resolve(null) }: { layout: DocumentLayout; title: string; colors?: ResolvedReportColors }) {
   return (
     <Document title={title} author="Cardiac Procedure Services" creator="Cardiac portfolio tracker" producer="Cardiac portfolio tracker">
       {layout.pages.map((p) => (
-        <PageView key={p.number} layout={layout} page={p} />
+        <PageView key={p.number} layout={layout} page={p} colors={colors} />
       ))}
     </Document>
   );

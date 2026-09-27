@@ -12,6 +12,7 @@ import { ReportLayout, type DocumentLayout, type ReportDocInput } from "@/lib/re
 import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
 import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
+import { ReportColorScheme } from "@/lib/report/ReportColorScheme";
 
 /** Everything the renderer needs, all taken from the frozen snapshot. */
 export interface ReportRenderInput {
@@ -61,7 +62,11 @@ export class PdfReportRenderer {
       header: (snapshot.headerJson as unknown as ReportHeader | null) ?? null,
       ...(snapshot.completedJson ? { completed: snapshot.completedJson as unknown as CompletedRow[] } : {}),
       viewSettings: ViewSettings.normalize("report", snapshot.viewSettingsJson ?? undefined),
-      options: ReportOptionsService.normalize(snapshot.optionsJson, ServiceAreaInfo.all(departmentList), departmentList),
+      options: {
+        ...ReportOptionsService.normalize(snapshot.optionsJson, ServiceAreaInfo.all(departmentList), departmentList),
+        // Colors it was frozen with; snapshots from before Report colors (0027) keep their light gray bars.
+        colors: ReportColorScheme.frozen((snapshot.optionsJson as { colors?: unknown } | null)?.colors),
+      },
       departmentList,
       serviceLine: ServiceLine.fromSnapshot(snapshot.serviceLineJson),
       layout: LineLayout.normalize(snapshot.layoutJson ?? null),
@@ -81,6 +86,7 @@ export class PdfReportRenderer {
       showKeyPage: input.options.showKeyPage,
       departments: input.options.departments,
       totalsGrid: input.options.totalsGrid,
+      colors: input.options.colors,
       ...(input.departmentList ? { lineDepartments: input.departmentList } : {}),
       serviceLine: input.serviceLine,
       ...(input.layout ? { layout: input.layout } : {}),
@@ -113,6 +119,7 @@ export class PdfReportRenderer {
     const element = createElement(ReportDocument, {
       layout,
       title: PdfReportLayout.title(doc.serviceLine?.name),
+      colors: ReportColorScheme.resolve(doc.colors),
     }) as unknown as ReactElement<DocumentProps>;
     return renderToBuffer(element);
   }

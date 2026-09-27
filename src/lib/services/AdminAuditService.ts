@@ -11,6 +11,7 @@ import { LineAccessService } from "@/lib/services/LineAccessService";
 import { ServiceLineHistoryText } from "@/lib/admin/ServiceLineHistoryText";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
+import { ReportColorScheme } from "@/lib/report/ReportColorScheme";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 export interface AuditProject {
@@ -23,7 +24,7 @@ export interface AuditProject {
 }
 
 export interface AuditEvent {
-  kind: "project" | "viewSettings" | "serviceLine" | "template" | "layout" | "department" | "access";
+  kind: "project" | "viewSettings" | "serviceLine" | "template" | "layout" | "department" | "access" | "reportColors";
   at: Date;
   by: string;
   /** Project name, or the view settings context. */
@@ -60,6 +61,34 @@ export interface DeletedLine {
 export class AdminAuditService {
   static readonly EVENT_LIMIT = 200;
 
+  /** Audit field of each Report colors change (AuditFormat labels them "Bar color changed" / "Header band changed"). */
+  static readonly COLOR_FIELDS = { bar: "reportColors.bar", band: "reportColors.band" } as const;
+
+  /**
+   * Recent changes rows for one report_options_history row: one per color that changed, OLD and NEW as labels
+   * ("Navy solid", "Custom #2B4C7E", "None"). Rows saved before migration 0027 carry no colors on either side, and
+   * other report option changes keep the colors equal, so neither adds a row.
+   */
+  static colorEvents(h: { changedAt: Date; changedBy: string; oldValue: unknown; newValue: unknown }): AuditEvent[] {
+    const colorsOf = (v: unknown) => (v && typeof v === "object" ? (v as { colors?: unknown }).colors : undefined);
+    const oldRaw = colorsOf(h.oldValue);
+    const newRaw = colorsOf(h.newValue);
+    if (oldRaw === undefined && newRaw === undefined) return [];
+    const before = ReportColorScheme.normalize(oldRaw);
+    const after = ReportColorScheme.normalize(newRaw);
+    const row = (key: "bar" | "band"): AuditEvent => ({
+      kind: "reportColors",
+      at: h.changedAt,
+      by: h.changedBy,
+      subject: ReportColorScheme.COPY.auditSubject,
+      field: AdminAuditService.COLOR_FIELDS[key],
+      oldValue: ReportColorScheme.label(before[key]),
+      newValue: ReportColorScheme.label(after[key]),
+      comment: null,
+    });
+    return [...(before.bar !== after.bar ? [row("bar")] : []), ...(before.band !== after.band ? [row("band")] : [])];
+  }
+
   /**
    * The audit log of one service line (the admin's active line): its projects and their admin-only history,
    * its template and service line changes. View settings are shared by every line. Deleted lines are listed
@@ -87,7 +116,7 @@ export class AdminAuditService {
       .sort(byName);
 
     const names = new Map(projects.map((p) => [p.id, p.name]));
-    const [projectEvents, settingsEvents, viewSettings, lineEvents, templateEvents, deletedLines, layoutEvents, departmentEvents, deletedDepartments] = await Promise.all([
+    const [projectEvents, settingsEvents, viewSettings, lineEvents, templateEvents, deletedLines, layoutEvents, departmentEvents, deletedDepartments, optionsEvents] = await Promise.all([
       db.projectHistory.findMany({ where: { projectId: { in: projects.map((p) => p.id) }, field: { in: [...VisibilityPolicy.ADMIN_ONLY_HISTORY_FIELDS] } } }),
       db.viewSettingsHistory.findMany({}),
       ViewSettingsService.getAll(db),
@@ -97,6 +126,7 @@ export class AdminAuditService {
       db.lineLayoutHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
       db.departmentHistory.findMany({ where: { serviceLineId: scope.id }, orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
       db.department.findMany({ where: { serviceLineId: scope.id, deletedAt: { not: null } }, orderBy: { deletedAt: "desc" } }),
+      db.reportOptionsHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
     ]);
     // Department access that moved when a department was deleted (migration 0024), with people's display names.
     const accessMoves = await db.departmentAccessHistory.findMany({
@@ -185,6 +215,7 @@ export class AdminAuditService {
           comment: DepartmentAccessCopy.movedAudit(who, detail.from ?? "Department", detail.to ?? "Department"),
         };
       }),
+      ...optionsEvents.flatMap((h) => AdminAuditService.colorEvents(h)),
     ]
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, AdminAuditService.EVENT_LIMIT);

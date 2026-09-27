@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { ReportSettingsForm } from "@/components/ReportSettingsForm";
+import { ReportColorsForm } from "@/components/ReportColorsForm";
+import { ReportColorScheme } from "@/lib/report/ReportColorScheme";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLineHistoryText } from "@/lib/admin/ServiceLineHistoryText";
@@ -65,6 +67,13 @@ export default async function AdminSettingsPage() {
           Report
         </h2>
         <ReportSettingsForm departments={reportOptions.departments} totalsGrid={reportOptions.totalsGrid} options={options} list={scope.departments} scheduled={scope.isDefault} />
+      </section>
+
+      <section id="report-colors" className={section} aria-labelledby="report-colors-heading">
+        <h2 id="report-colors-heading" className="type-heading">
+          {ReportColorScheme.COPY.heading}
+        </h2>
+        <ReportColorsForm colors={reportOptions.colors} />
       </section>
 
       {/* Contracts leads moved to Admin > People (temporary pointer, for a release or two). */}
