@@ -39,7 +39,7 @@ describe("Writing Bot copy (item 8)", () => {
     expect(LineAccessCopy.grantedToast("Jane Doe", "CVPSL")).toBe("Jane Doe can now see CVPSL.");
     expect(LineAccessCopy.revokedToast("Jane Doe", "CVPSL")).toBe("Jane Doe can no longer see CVPSL.");
     expect(LineAccessCopy.SAVE_ERROR).toBe("Couldn't save access. Try again.");
-    expect(LineAccessCopy.EMPTY).toBe("No other users yet. People show up here after their first sign-in.");
+    expect(LineAccessCopy.EMPTY).toBe("No other users yet. Add someone by email, or they'll show up here after their first sign-in.");
     expect(LineAccessCopy.removeLastTitle("Jane Doe")).toBe("Remove Jane Doe's last line?");
     expect(LineAccessCopy.REMOVE_LAST_BODY).toBe("They won't see any projects until an admin gives them access again.");
     expect([LineAccessCopy.REMOVE_LAST_BUTTON, LineAccessCopy.CANCEL]).toEqual(["Remove access", "Cancel"]);

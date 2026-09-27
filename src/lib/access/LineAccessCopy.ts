@@ -6,7 +6,7 @@ export class LineAccessCopy {
   static readonly NO_ACCESS_TAG = "No access";
   static readonly NO_ACCESS_TOOLTIP = "Can't see any service line yet.";
   static readonly SAVE_ERROR = "Couldn't save access. Try again.";
-  static readonly EMPTY = "No other users yet. People show up here after their first sign-in.";
+  static readonly EMPTY = "No other users yet. Add someone by email, or they'll show up here after their first sign-in.";
   static readonly COLUMNS = { name: "Name", email: "Email" } as const;
 
   static readonly REMOVE_LAST_BODY = "They won't see any projects until an admin gives them access again.";
@@ -19,7 +19,6 @@ export class LineAccessCopy {
   static readonly ADD_BUTTON = "Add";
   static readonly INVALID_EMAIL = "Enter a valid email address.";
   static readonly DUPLICATE_EMAIL = "That email is already on the list.";
-  /** Provisional (not in Writing Bot's list): the email is valid but not on ALLOWED_EMAILS, so it could never sign in. */
   static readonly NOT_ALLOWED_EMAIL = "That email can't sign in to this tracker.";
 
   static readonly NO_ACCESS_TITLE = "You don't have access yet";
