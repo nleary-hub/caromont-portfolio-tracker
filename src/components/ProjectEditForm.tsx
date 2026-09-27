@@ -12,7 +12,9 @@ import { ProjectFormModel, type FormField, type ProjectFormValues } from "@/lib/
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { FieldErrors } from "@/lib/validation/ProjectValidator";
+import { StartDate } from "@/lib/projects/StartDate";
 import { MilestonesEditor } from "./MilestonesEditor";
+import { StartDateDefaultTag } from "./StartDateDefaultTag";
 
 /**
  * Resolves to the saved project's id, or a message plus per-field errors from ProjectValidator. `milestones`
@@ -35,8 +37,10 @@ export interface ProjectEditFormProps {
   templates: readonly TemplateDto[];
   /** The signed-in admin's display name, for the checked-by tooltip of a check not saved yet. */
   checkerName?: string;
-  /** YYYY-MM-DD in America/New_York (Completed on prefill). */
+  /** YYYY-MM-DD in America/New_York (Completed on prefill, Start date checks). */
   today: string;
+  /** Edit: the stored start date is still the import default (shows the "Default" tag until changed). */
+  startDateIsDefault?: boolean;
   /** The People editor (saves on pick). Null for a new project. */
   people: ReactNode;
   /** Delete project with its confirmation. Null for a new project. */
@@ -71,6 +75,7 @@ export function ProjectEditForm({
   templates,
   checkerName,
   today,
+  startDateIsDefault,
   people,
   adminDelete,
   onSubmit,
@@ -111,10 +116,10 @@ export function ProjectEditForm({
   const checkedValues = useMemo(() => ({ ...values, nextMilestone: derivedNext }), [values, derivedNext]);
   const checkedOriginal = useMemo(() => ({ ...original, nextMilestone: msOriginal.steps.find((s) => !s.done)?.name ?? msOriginal.steps.at(-1)?.name ?? "" }), [original, msOriginal]);
   const clientErrors = useMemo(() => {
-    const e = ProjectFormModel.errors(checkedValues, checkedOriginal, isNew, departments);
+    const e = ProjectFormModel.errors(checkedValues, checkedOriginal, isNew, departments, { today, isDefault: startDateIsDefault });
     if (Object.keys(msStepErrors).length) e.milestones = ["Fix the highlighted milestones"];
     return e;
-  }, [checkedValues, checkedOriginal, isNew, msStepErrors, departments]);
+  }, [checkedValues, checkedOriginal, isNew, msStepErrors, departments, today, startDateIsDefault]);
   const shown = (f: FormField): string[] => {
     const client = attempted || touched[f] || values[f] !== original[f] ? (clientErrors[f] ?? []) : [];
     return [...client, ...(serverErrors[f] ?? [])].filter((m, i, all) => all.indexOf(m) === i);
@@ -208,7 +213,7 @@ export function ProjectEditForm({
               onChange={(e) => {
                 const next = ProjectFormModel.withStatus(values, e.target.value, original, today);
                 setValues(next);
-                setServerErrors((prev) => ({ ...prev, status: undefined, completedOn: undefined }));
+                setServerErrors((prev) => ({ ...prev, status: undefined, completedOn: undefined, startDate: undefined }));
               }}
             >
               {ProjectStatusInfo.all().map((s) => (
@@ -218,11 +223,48 @@ export function ProjectEditForm({
               ))}
             </select>
           </Field>
-          {ProjectFormModel.showsCompletedOn(values) && (
-            <Field field="completedOn" label="Completed on" errors={shown("completedOn")}>
-              <input id="pf-completedOn" type="date" className={INPUT} value={values.completedOn} onChange={(e) => set("completedOn", e.target.value)} />
+          {/* The dates row: Start date first, then Completed on while the status is Complete (same width each). */}
+          <div className="grid grid-cols-2 gap-3" data-testid="dates-row">
+            <Field
+              field="startDate"
+              label={StartDate.LABEL}
+              errors={shown("startDate")}
+              tag={ProjectFormModel.showsStartDateDefault(values, original, startDateIsDefault) ? <StartDateDefaultTag /> : null}
+            >
+              <input
+                id="pf-startDate"
+                type="date"
+                className={INPUT}
+                value={values.startDate}
+                max={today}
+                onChange={(e) => {
+                  set("startDate", e.target.value);
+                  touch("startDate");
+                }}
+                onBlur={() => touch("startDate")}
+              />
             </Field>
-          )}
+            {ProjectFormModel.showsCompletedOn(values) && (
+              <Field field="completedOn" label="Completed on" errors={shown("completedOn")}>
+                <input
+                  id="pf-completedOn"
+                  type="date"
+                  className={INPUT}
+                  value={values.completedOn}
+                  onChange={(e) => {
+                    set("completedOn", e.target.value);
+                    setServerErrors((prev) => (prev.startDate ? { ...prev, startDate: undefined } : prev));
+                  }}
+                />
+              </Field>
+            )}
+            {/* Help text spans the whole row (both columns), not just the date input; hidden while an error shows. */}
+            {shown("startDate").length === 0 && (
+              <p className="col-span-2 -mt-2 text-muted type-table" data-testid="start-date-help">
+                {StartDate.HELP}
+              </p>
+            )}
+          </div>
           <Field field="inforRequestNumber" label="Infor number" errors={shown("inforRequestNumber")}>
             <div className="flex h-8 items-center rounded-control border border-line bg-input pl-2.5 focus-within:border-accent">
               <span className="font-mono text-muted type-table" aria-hidden>
@@ -396,10 +438,13 @@ function Field({
   value,
   hint,
   grandfathered,
+  tag,
   children,
 }: {
   field: FormField;
   label: string;
+  /** Small tag after the label (Start date "Default"). */
+  tag?: ReactNode;
   errors: string[];
   /** Pass for a field with a counter. */
   value?: string;
@@ -412,9 +457,12 @@ function Field({
   const hasLine = errors.length > 0 || counter || hint;
   return (
     <div data-field={field} className="flex min-w-0 flex-col gap-1">
-      <label htmlFor={`pf-${field}`} className="text-muted type-caption">
-        {label}
-      </label>
+      <div className="flex items-center">
+        <label htmlFor={`pf-${field}`} className="text-muted type-caption">
+          {label}
+        </label>
+        {tag}
+      </div>
       {children}
       {hasLine && (
         <div className="flex items-start gap-3 type-table">

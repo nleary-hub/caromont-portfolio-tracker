@@ -10,7 +10,7 @@ import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { ReportColorsForm, ReportOptionsForm, type ReportColorsFormState, type ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
 import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
-import { YearEndCopy } from "@/lib/report/YearEndReportData";
+import { YearEndCategories, YearEndCopy } from "@/lib/report/YearEndReportData";
 
 export type FreezeNowState = { ok: boolean; message: string } | null;
 
@@ -82,13 +82,18 @@ export async function saveReportColors(_prev: ReportColorsFormState, form: FormD
 
 export type YearEndActionResult = { ok: true; id: string; fileName: string } | { ok: false; message: string };
 
-/** Admin "Year-end report": render and store the PDF for the active line (never emailed or scheduled). */
-export async function generateYearEndReport(fiscalYear: string): Promise<YearEndActionResult> {
+/**
+ * Admin "Year-end report": render and store the PDF for the active line (never emailed or scheduled).
+ * `categories`: the categories to include, each as a section, header total and grid column (any fiscal year); missing = all three; invalid or empty is refused.
+ */
+export async function generateYearEndReport(fiscalYear: string, categories?: unknown): Promise<YearEndActionResult> {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) return { ok: false, message: "Not authorized." };
+  const selected = YearEndCategories.parse(categories);
+  if (!selected) return { ok: false, message: YearEndCopy.CATEGORIES_NONE };
   try {
     const scope = await ServiceLineAccess.activeFor(viewer);
-    const entry = await YearEndReportService.generate(viewer, String(fiscalYear), scope);
+    const entry = await YearEndReportService.generate(viewer, String(fiscalYear), scope, undefined, undefined, selected);
     ReportLog.info("year_end.generated", { id: entry.id, fiscalYear: entry.fiscalYear, serviceLineId: scope.id });
     revalidatePath("/reports");
     return { ok: true, id: entry.id, fileName: entry.fileName };

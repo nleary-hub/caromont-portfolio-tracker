@@ -100,8 +100,11 @@ export class UpdateTimeline {
   private static readonly DATES: ReadonlySet<string> = new Set(["dueDate", "targetCompletion", "completedOn"]);
   /** Mirrors of the next open step, covered by the step lines in the same save. */
   private static readonly STEP_MIRRORS: ReadonlySet<string> = new Set(["nextMilestone", "dueDate"]);
-  /** Written alongside another row that already says it. */
-  private static readonly SILENT: ReadonlySet<string> = new Set(["deletedBy"]);
+  /**
+   * Not shown: deletedBy is written alongside another row that already says it; start date changes are listed only
+   * on the admin audit page (Admin > Audit), never in Project detail > History.
+   */
+  private static readonly SILENT: ReadonlySet<string> = new Set(["deletedBy", "startDate"]);
   private static readonly MILESTONE_COMPLETED = "milestone_completed";
 
   /** Reading order inside one save. */

@@ -282,10 +282,10 @@ class M27 {
 }
 
 describe("0027_report_colors on production-shaped data (PGlite)", () => {
-  it("is the latest migration and comes after 0025/0026", () => {
+  it("is the latest migration and follows 0026_project_start_date (applied on top of it)", () => {
     const f = M27.folders();
     expect(f.at(-1)).toBe(M);
-    expect(["0025_password_sign_in", "0026_project_start_date"]).toContain(f.at(-2));
+    expect(f.at(-2)).toBe("0026_project_start_date");
   });
 
   it("is additive: two defaulted columns on report_options; every other table, column and row unchanged", async () => {

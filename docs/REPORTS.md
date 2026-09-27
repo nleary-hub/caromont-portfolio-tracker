@@ -208,3 +208,107 @@ signed link, handoff.json downloads, Freeze now, the key-page toggle and Generat
 | `ADMIN_EMAILS` | Freeze now, draft PDF, delivery status | From PR #1. |
 | `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | Drive upload | Needs a Google Cloud OAuth client (Nick's approval). Unset = fallback link. |
 | `GOOGLE_DRIVE_FOLDER_ID` | Drive upload | Optional; see the drive.file caveat above. |
+
+## Year-end report: summary grid and table
+
+**Name.** A closed fiscal year is the "FY26 Year-End Report" (file `year-end-fy26-<date>.pdf`). The current, unfinished
+fiscal year is the "FY27 Mid-Year Report" (file `mid-year-fy27-<date>.pdf`, runs through today). The title, file name,
+PDF footer and Reports list row all use that name. The Generate dialog is still "Year-end report".
+
+**Download only.** `YearEndReportService.generate` stores the PDF in the `year_end_report` table and the browser
+downloads it from `/reports/year-end/<id>`. It never writes to Google Drive, never writes a handoff.json, never creates a
+report artifact and never emails. The Wednesday email reads only what the weekly freeze delivers; the only Drive
+upload is `ReportDeliveryService` (weekly). A test pins this.
+
+**No Cancelled anywhere.** There's no Cancelled header total, grid column or section. The carried counts treat
+Cancelled as closed, as before: a project cancelled on or before a boundary isn't counted there, and a currently
+cancelled project is never Still in progress. (A project cancelled later was open at an earlier boundary, so it can be
+in that year's Carried in, where its row shows the Cancelled status.) Cancelled projects are still on the Cancelled page
+in the app. The report is the header, the summary grid, then one section per included category, in column order:
+"Carried in from FY N-1", "Completed in FY N", then "Carried into FY N+1" (closed year) or "Still in progress" (current
+year).
+
+**Header totals and the summary grid** show the same totals in the same order (one list drives both):
+
+| Report | Column 1 | Column 2 | Column 3 |
+| --- | --- | --- | --- |
+| Closed year (e.g. FY26) | Carried in from FY25 | Completed FY26 | Carried into FY27 |
+| Current year (e.g. FY27) | Carried in from FY26 | Completed FY27 | Still in progress |
+
+For every fiscal year, the Generate dialog has "Include in report" checkboxes: Carried in from FY26, Completed FY27,
+Still in progress (current year), or Carried in from FY25, Completed FY26, Carried into FY27 (closed year). All are
+checked by default and at least one is required; with none checked, Generate is disabled and the hint reads "Pick at
+least one." A checked category gets its body section, header total and grid column; an unchecked one is left out
+of all three. The rest keep the order above. The Total
+row sums each column over departments. There is no sum across columns: the categories overlap (a carried-in project
+can also be completed, carried out or still in progress). The selection is passed to the server action, validated,
+and not saved; a missing selection means all three. There is no Cancelled option.
+
+**Sections.** Each included category's section lists exactly the projects its column counts, grouped by department in
+the fixed order with the same row layout (Completed rows keep the completed shading). A project in more than one
+category (for example carried in and completed) is listed in each included section it belongs to, so every section's
+row count per department equals its grid column (a test pins this for all 7 combinations in both report types). The
+Carried in section shows each project's status the same way the Carried into section does: for a closed year, its
+status at the end of the year (Jun 30); for the current year, its status today. So a carried-in project that was later
+completed or cancelled shows that status there. When a carried boundary predates tracking, its section reads "Tracking
+started Sep 26, 2026, so this list isn't available." (Carried in and Carried into alike).
+
+Rows: one per department that has a project in any shown column, in the line's department order (for CVPSL: Cath, EP,
+Echo, CVSS, INU, CardioNeuro, IR), Unassigned last, plus Total. Empty departments are left out, as in the weekly
+report; sections list only departments with projects, in the same order.
+
+All counts use report candidates only (projects hidden from reports are left out), the same set as the tables.
+
+- **Completed FY N**: unchanged. Complete with a completion date in the fiscal year (to date for the current year).
+  Reopened projects aren't Complete, so they don't count.
+- **Carried in from FY N-1**: projects open (not Complete or Cancelled) at the end of Jun 30 before the fiscal year.
+- **Carried into FY N+1** (closed year): projects open at the end of Jun 30 of the fiscal year.
+- **Still in progress** (current year): projects open today.
+
+Carried in and Carried into are one shared computation (`YearEndReportData.openOn`) on the same day, so FY26's
+"Carried into FY27" equals FY27's "Carried in from FY26", in total and per department (a test pins this).
+
+"Open at the end of day D" is rebuilt as of D, so edits after D don't change it:
+
+1. The project existed: created on or before D.
+2. Closed now: open at D if its official close date (the completion date, or for a cancelled project the last
+   Cancelled date in history) is after D, unless a status change on or before D shows it was already closed then.
+3. Open now: its status at D rebuilt from project history was open. A project closed at D and reopened later counts
+   as closed at D.
+
+In the Carried into and Carried in tables, a past year's row shows the status it had at D. When a project was only closed later by an
+entered completion date and no status was on record for that day, the status cell says "Open" in gray, not a guessed chip. A
+Carried in or Carried into row whose status was Complete by that day shows the project's final update (the Completed
+section's text) in the update column instead of the latest note; the column header stays "Latest update". When the
+Completed section is also included and lists that project, the row shows a short pointer instead: "Completed Aug 15,
+2026. Its final update is under Completed in FY27." The heading part comes from the same function as the Completed
+section heading (`YearEndCopy.completedIn`), and the date is the completion date. The row keeps its Complete chip and
+plain update style. With Completed unchecked, or a project not listed there (for example Complete on Jun 30 but
+reopened since), the full final update shows.
+
+**Notes under the grid** (small gray text, left-aligned under the Total row), for the shown columns only, in both
+report types:
+
+1. **Tracking line.** Project history only goes back to the first tracked day: the earliest project creation or
+   history entry (Sep 26, 2026 in production, when the tracker's data was imported; imports don't set creation dates).
+   Both reports get it from one place: `YearEndReportData.build` calls `trackedSince` once over the projects and
+   history that `YearEndReportService.load` reads for the line. A shown carried total whose boundary is before that
+   prints a dash, in the grid and the header, never 0. One dashed column: "Tracking started Sep 26, 2026, so Carried
+   in from FY26 isn't available." Both dashed: "Tracking started Sep 26, 2026, so Carried in from FY25 and Carried
+   into FY27 aren't available." An empty Carried section then reads "Tracking started Sep 26, 2026, so this list isn't
+   available." Still in progress is always known.
+2. **What the columns count**, one line with the sentences that apply: "Carried in includes projects later closed
+   without being completed." only when Carried in is shown with a real number (not a dash). Then, when any other column
+   is shown: "The other columns include projects started in FY26." if Carried in is on the page (number or dash), or
+   "These totals include projects started in FY26." if it isn't (the report's fiscal year).
+3. **Overlap line**, last, only when two or more columns are shown: "A project can be counted in more than one
+   column."
+
+Empty lines: "No projects carried in from FY26.", "No projects are still in progress." (current year) and "No projects
+carried into FY27." (closed year).
+
+**Table columns (landscape Letter, 720 pt wide):** Project 206 to 184, Owner 116 to 100, Requester 116 to 100, Date or
+Status 76 to 68, Final or Latest update 206 to 268. The update column wraps with no fixed line cap; the only guard is a
+page-height limit (a single update longer than a full page is cut with an ellipsis, which only an imported update of
+thousands of characters could reach). Rows never split across pages. Completed rows use the weekly report's completed
+block shading (`CompletedBlockStyle`: fill, border and green left edge).

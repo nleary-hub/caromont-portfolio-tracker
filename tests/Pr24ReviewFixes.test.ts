@@ -78,14 +78,18 @@ describe("CHECK: one fiscal year per closed project, dashboard and PDF agree", (
     });
   });
 
-  it("dashboard sections and year-end PDF sections list the same projects for every year (same visibility inputs)", () => {
+  it("dashboard Completed sections and year-end PDF Completed sections list the same projects for every year; the PDF has no Cancelled section", () => {
     const rows = FiscalYearRows.build({ projects: list, closedHistory: history, history: [], latestUpdates: [], previousSnapshotGeneratedAt: null, today: TODAY });
     for (const fy of ["FY27", "FY26", "FY25"]) {
       const pdf = YearEndReportData.build({ projects: list, history, fiscalYear: fy, today: TODAY, departments: ServiceAreaInfo.CVPSL, serviceLineName: null });
       const pdfIds = (kind: string) => pdf.sections.find((s) => s.kind === kind)!.groups.flatMap((g) => g.rows.map((r) => [r.projectId, r.date]));
       const dash = (s: "Complete" | "Cancelled") => FiscalYearSections.section(rows, fy, s).map((r) => [r.id, r.closedOn]);
       expect(pdfIds("completed").sort()).toEqual(dash("Complete").sort());
-      expect(pdfIds("cancelled").sort()).toEqual(dash("Cancelled").sort());
+      expect(pdf.sections.map((s) => s.kind)).toEqual(["carriedIn", "completed", "carried"]);
+      const cancelledIds = dash("Cancelled").map(([id]) => id);
+      // Cancelled projects are never listed as Completed, Still in progress or Carried into. (Carried in lists every
+      // project open at the start, including ones later cancelled, with that status; there's no Cancelled section.)
+      for (const s of pdf.sections.filter((x) => x.kind !== "carriedIn")) for (const g of s.groups) for (const r of g.rows) expect(cancelledIds).not.toContain(r.projectId);
     }
     // Both read the one shared method.
     expect(R.src("lib/dashboard/FiscalYearRows.ts")).toContain("ClosedProjects.closedIn(");
@@ -116,25 +120,24 @@ describe("Review fixes: names, times, PDF copy", () => {
     expect(list.map((e) => e.id)).toEqual([e2.id, e1.id, e3.id]);
     expect(list.map((e) => YearEndReportService.listText(e))).toEqual([
       "FY26 Year-End Report, generated Sep 27, 2026, 10:05 AM ET by admin@example.org",
-      "FY27 Year-End Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary",
-      "FY27 Year-End Report, generated Sep 26, 2026, 4:00 PM ET by Nick Leary",
+      "FY27 Mid-Year Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary",
+      "FY27 Mid-Year Report, generated Sep 26, 2026, 4:00 PM ET by Nick Leary",
     ]);
     const layout = YearEndLayout.layout(
       YearEndReportData.build({ projects: [], history: [], fiscalYear: "FY27", today: TODAY, departments: ServiceAreaInfo.CVPSL, serviceLineName: null }),
       new Date("2026-09-27T04:34:00Z"),
       DisplayName.of("Nick Leary", "nick.leary@example.org"),
     );
-    expect(layout.footerLeft).toBe("Generated Sep 27, 2026 by Nick Leary \u00b7 FY27 Year-End Report");
+    expect(layout.footerLeft).toBe("Generated Sep 27, 2026 by Nick Leary \u00b7 FY27 Mid-Year Report");
   }, 30000);
 
   it("carried table: Status and Latest update; blank updates are a gray en dash; summary head Carried into FY(n+1)", () => {
     expect(YearEndLayout.columnLabels("carried")).toEqual(["Project", "Owner", "Requester", "Status", "Latest update"]);
     expect(YearEndLayout.columnLabels("completed")).toEqual(["Project", "Owner", "Requester", "Completed", "Final update"]);
-    expect(YearEndLayout.columnLabels("cancelled")).toEqual(["Project", "Owner", "Requester", "Cancelled", "Final update"]);
     const open = R.p({ name: "Open", status: "OnTrack", note: null });
     const d = YearEndReportData.build({ projects: [open], history: [], fiscalYear: "FY26", today: TODAY, departments: ServiceAreaInfo.CVPSL, serviceLineName: null });
     const layout = YearEndLayout.layout(d, new Date("2026-09-27T04:34:00Z"), "Nick Leary");
-    expect(layout.summaryHeads).toEqual(["Completed", "Cancelled", "Carried into FY27"]);
+    expect(layout.summaryHeads).toEqual(["Carried in from FY25", "Completed FY26", "Carried into FY27"]);
     const row = layout.pages.flatMap((p) => p.blocks).find((b) => b.kind === "row");
     expect(row && row.kind === "row" && row.row.update).toEqual(["\u2013"]);
     expect(YearEndCopy.EMPTY_VALUE).toBe("\u2013");

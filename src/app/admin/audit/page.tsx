@@ -15,6 +15,7 @@ import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { AdminAuditService, type AuditEvent, type AuditProject } from "@/lib/services/AdminAuditService";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { ReportColorScheme } from "@/lib/report/ReportColorScheme";
+import { StartDate } from "@/lib/projects/StartDate";
 
 
 class AuditFormat {
@@ -34,6 +35,7 @@ class AuditFormat {
     hiddenFromDashboard: "Hidden from dashboard",
     hiddenFromReport: "Hidden from report",
     viewSettings: "Dashboard view",
+    [StartDate.HISTORY_FIELD]: StartDate.LABEL,
     ...MilestoneRules.FIELD_LABELS,
   };
 
@@ -43,7 +45,18 @@ class AuditFormat {
     if (e.kind === "access") return e.comment ?? "Access";
     if (e.kind === "reportColors") return e.field === AdminAuditService.COLOR_FIELDS.band ? ReportColorScheme.COPY.auditBand : ReportColorScheme.COPY.auditBar;
     if (e.kind === "template") return `Template: ${e.field.replace(/^template\./, "").replace(/_/g, " ")}`;
+    // Start date: private audit only (never in the drawer History). OLD / NEW show the dates.
+    if (AuditFormat.isStartDate(e)) return StartDate.AUDIT_CHANGE;
     return AuditFormat.FIELD_LABELS[e.field] ?? e.field;
+  }
+
+  static isStartDate(e: AuditEvent): boolean {
+    return e.kind === "project" && e.field === StartDate.HISTORY_FIELD;
+  }
+
+  /** Old/New cells: start dates read "Mar 3, 2026"; other values as stored. */
+  static value(e: AuditEvent, v: string | null): string | null {
+    return AuditFormat.isStartDate(e) ? StartDate.auditValue(v) : v;
   }
 }
 
@@ -214,10 +227,10 @@ export default async function AuditPage() {
                   <td className="border-b border-line px-3 py-2">{e.subject}</td>
                   <td className="border-b border-line px-3 py-2">{AuditFormat.field(e)}</td>
                   <td className="max-w-[220px] truncate border-b border-line px-3 py-2 text-muted" title={e.oldValue ?? ""}>
-                    {e.oldValue ?? "–"}
+                    {AuditFormat.value(e, e.oldValue) ?? "–"}
                   </td>
                   <td className="max-w-[220px] truncate border-b border-line px-3 py-2" title={e.newValue ?? ""}>
-                    {e.newValue ?? "–"}
+                    {AuditFormat.value(e, e.newValue) ?? "–"}
                   </td>
                 </tr>
               ))}

@@ -4,6 +4,7 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { FieldErrors, ProjectInput } from "@/lib/validation/ProjectValidator";
+import { StartDate } from "@/lib/projects/StartDate";
 
 /**
  * The drawer edit form's values, all as strings (what the inputs hold). People fields are not here:
@@ -27,6 +28,8 @@ export interface ProjectFormValues {
   description: string;
   /** YYYY-MM-DD or "". Shown only while the status is Complete. */
   completedOn: string;
+  /** YYYY-MM-DD (America/New_York day). New project: pre-filled with today. */
+  startDate: string;
 }
 
 export type FormField = keyof ProjectFormValues;
@@ -44,6 +47,8 @@ export interface ProjectFormSource {
   accomplishment: string | null;
   description: string | null;
   completedOn: Date | string | null;
+  /** Absent on sources read without it (the form then starts blank). */
+  startDate?: Date | string | null;
 }
 
 export interface FieldCounter {
@@ -94,6 +99,7 @@ export class ProjectFormModel {
     accomplishment: "Accomplishment",
     description: "Description",
     completedOn: "Completed on",
+    startDate: StartDate.LABEL,
   };
 
   /** Fields in on-screen order (first error scrolls into view). */
@@ -101,8 +107,9 @@ export class ProjectFormModel {
     "name",
     "serviceArea",
     "status",
-    "inforRequestNumber",
+    "startDate",
     "completedOn",
+    "inforRequestNumber",
     "nextMilestone",
     "dueDate",
     "percentComplete",
@@ -111,7 +118,8 @@ export class ProjectFormModel {
     "description",
   ];
 
-  static empty(): ProjectFormValues {
+  /** A new project's values; `today` (YYYY-MM-DD, America/New_York) pre-fills Start date. */
+  static empty(today: string = ""): ProjectFormValues {
     return {
       name: "",
       serviceArea: "",
@@ -124,6 +132,7 @@ export class ProjectFormModel {
       accomplishment: "",
       description: "",
       completedOn: "",
+      startDate: today,
     };
   }
 
@@ -141,6 +150,7 @@ export class ProjectFormModel {
       accomplishment: p.accomplishment ?? "",
       description: p.description ?? "",
       completedOn: date(p.completedOn),
+      startDate: date(p.startDate ?? null),
     };
   }
 
@@ -162,6 +172,8 @@ export class ProjectFormModel {
     if (v.accomplishment !== undefined) out.accomplishment = text(v.accomplishment);
     if (v.description !== undefined) out.description = text(v.description);
     if (v.completedOn !== undefined) out.completedOn = text(v.completedOn) || null;
+    // Blank stays "" so the server reports "Start date is required." (it is never the import default from a form).
+    if (v.startDate !== undefined) out.startDate = String(v.startDate).trim();
     return out;
   }
 
@@ -217,7 +229,13 @@ export class ProjectFormModel {
    * Instant client checks (the server repeats all of them through ProjectValidator). A stored value
    * already over a hard cap is flagged only once that field is edited.
    */
-  static errors(values: ProjectFormValues, original: ProjectFormValues, isNew: boolean, departments: DepartmentList = ServiceAreaInfo.LEGACY): FieldErrors {
+  static errors(
+    values: ProjectFormValues,
+    original: ProjectFormValues,
+    isNew: boolean,
+    departments: DepartmentList = ServiceAreaInfo.LEGACY,
+    start: { today: string; isDefault?: boolean } = { today: DateOnly.today() },
+  ): FieldErrors {
     const e: Record<string, string[]> = {};
     const add = (f: FormField, msg: string) => (e[f] ??= []).push(msg);
     if (values.name.trim() === "") add("name", "Name is required");
@@ -238,7 +256,25 @@ export class ProjectFormModel {
       const edited = isNew || values[field] !== original[field];
       if (edited && values[field].trim().length > limit) add(field, `${ProjectFormModel.LABELS[field]} must be at most ${limit} characters`);
     }
+    for (const m of ProjectFormModel.startDateErrors(values, original, isNew, start)) add("startDate", m);
     return e as FieldErrors;
+  }
+
+  /**
+   * Start date checks (same rule as ProjectService.startDateErrors): an edited start date, or a stored real one when
+   * the status or completed date changes. A stored import default that is not edited is never checked against the
+   * completed date, so an old Complete project stays editable.
+   */
+  static startDateErrors(values: ProjectFormValues, original: ProjectFormValues, isNew: boolean, start: { today: string; isDefault?: boolean }): string[] {
+    const edited = isNew || values.startDate !== original.startDate;
+    const closeChanged = values.status !== original.status || values.completedOn !== original.completedOn;
+    if (!edited && (!closeChanged || start.isDefault || original.startDate === "")) return [];
+    return StartDate.errors(values.startDate, { status: values.status, completedOn: values.completedOn, today: start.today });
+  }
+
+  /** The "Default" tag: the stored start date is still the import default and has not been changed in this edit. */
+  static showsStartDateDefault(values: ProjectFormValues, original: ProjectFormValues, isDefault: boolean | undefined): boolean {
+    return Boolean(isDefault) && original.startDate !== "" && values.startDate === original.startDate;
   }
 
   static hasErrors(errors: FieldErrors): boolean {

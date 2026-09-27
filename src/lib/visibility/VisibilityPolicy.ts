@@ -31,12 +31,14 @@ export interface HistoryLike {
  * - The frozen view settings on a snapshot are admin-only.
  */
 export class VisibilityPolicy {
-  /** History fields whose rows record hide/unhide/delete/restore events. Admin-only. */
+  /** History fields whose rows record hide/unhide/delete/restore events and start date changes. Admin-only. */
   static readonly ADMIN_ONLY_HISTORY_FIELDS: readonly string[] = [
     "archivedAt",
     "deletedBy",
     "hiddenFromDashboard",
     "hiddenFromReport",
+    // Start date changes (migration 0026): audited, never a public update (no Changed, Stale or "Updated" date).
+    "startDate",
   ];
 
   static isDeleted(project: Pick<ProjectRecord, "archivedAt">): boolean {
