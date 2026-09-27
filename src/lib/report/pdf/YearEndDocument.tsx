@@ -79,9 +79,9 @@ function Summary({ l, top }: { l: YearEndDocumentLayout; top: number }) {
     </Text>,
   );
   const gt = top + YearEndLayout.SUMMARY_LABEL_H;
-  const heads = [YearEndCopy.COMPLETED, YearEndCopy.CANCELLED, YearEndCopy.CARRIED_OVER];
+  const heads = l.summaryHeads;
   els.push(<Line key="gh" x={0} y={gt + 2} w={S.labelW} text={YearEndCopy.DEPARTMENT} size={G.SIZE.small} weight={500} lh={G.SMALL_LH} />);
-  heads.forEach((h, i) => els.push(<Line key={`gh${i}`} x={S.labelW + i * S.colW} y={gt + 2} w={S.colW} text={h} size={G.SIZE.small} weight={500} lh={G.SMALL_LH} align="center" />));
+  heads.forEach((h, i) => els.push(<Line key={`gh${i}`} x={S.labelW + i * S.colW} y={gt + 2} w={S.colW} text={h} size={G.SIZE.small} weight={500} lh={G.SMALL_LH} align="right" />));
   l.summary.forEach((r, ri) => {
     const ry = gt + S.headH + ri * S.rowH;
     const total = r.area === "total";
@@ -89,7 +89,7 @@ function Summary({ l, top }: { l: YearEndDocumentLayout; top: number }) {
     els.push(<Line key={`ga${ri}`} x={0} y={ry + 1.5} w={S.labelW} text={r.label} size={G.SIZE.table} weight={total ? 600 : 500} color={r.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />);
     [r.completed, r.cancelled, r.carried].forEach((n, ci) =>
       els.push(
-        <Line key={`gc${ri}-${ci}`} x={S.labelW + ci * S.colW} y={ry + 1.5} w={S.colW} text={n === 0 ? "\u00b7" : String(n)} size={G.SIZE.table} weight={total ? 600 : 400} color={n === 0 || r.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} align="center" />,
+        <Line key={`gc${ri}-${ci}`} x={S.labelW + ci * S.colW} y={ry + 1.5} w={S.colW} text={n === 0 ? "\u00b7" : String(n)} size={G.SIZE.table} weight={total ? 600 : 400} color={n === 0 || r.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} align="right" />,
       ),
     );
     if (!total) els.push(<Rule key={`gb${ri}`} x={0} y={ry + S.rowH - 0.5} w={width} h={0.5} color={C.DIVIDER} />);

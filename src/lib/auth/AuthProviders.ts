@@ -1,3 +1,4 @@
+import { DisplayName } from "@/lib/auth/DisplayName";
 import type { Provider } from "next-auth/providers";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
@@ -51,7 +52,7 @@ export class AuthProviders {
           credentials: { email: { label: "Email", type: "email" } },
           authorize: async (creds) => {
             const email = typeof creds?.email === "string" ? creds.email.trim().toLowerCase() : "";
-            return email ? { id: email, email, name: email } : null;
+            return email ? { id: email, email, name: DisplayName.fromEmail(email) } : null;
           },
         }),
     },

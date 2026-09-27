@@ -1,3 +1,5 @@
+import { createHash } from "node:crypto";
+import { DisplayName } from "@/lib/auth/DisplayName";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
@@ -9,7 +11,6 @@ import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import type { HistoryEntryRecord } from "@/lib/domain/types";
 import { YearEndRenderer } from "@/lib/report/YearEndRenderer";
 import { YearEndCopy, YearEndReportData, type YearEndData } from "@/lib/report/YearEndReportData";
-import { ReportArtifactService } from "@/lib/services/ReportArtifactService";
 
 /** A stored year-end report as the Reports page lists it (no bytes). */
 export interface YearEndEntry {
@@ -69,10 +70,10 @@ export class YearEndReportService {
     db: PrismaClient = Db.client,
     now: Date = new Date(),
   ): Promise<YearEndEntry> {
-    const name = viewer.name?.trim() || null;
+    const name = DisplayName.nameOrNull(viewer.name, viewer.email);
     AdminPolicy.assertAdmin(viewer);
     const data = await YearEndReportService.data(scope, fiscalYear, db, now);
-    const by = name ?? viewer.email;
+    const by = DisplayName.of(name, viewer.email);
     const bytes = await YearEndRenderer.render(data, now, by);
     const generatedOn = DateOnly.inZone(now);
     const row = await db.yearEndReport.create({
@@ -86,7 +87,7 @@ export class YearEndReportService {
         contentType: YearEndRenderer.CONTENT_TYPE,
         bytes: new Uint8Array(bytes),
         byteSize: bytes.byteLength,
-        sha256: ReportArtifactService.sha256(bytes),
+        sha256: createHash("sha256").update(bytes).digest("hex"),
         generatedAt: now,
         generatedBy: viewer.email,
         generatedByName: name,
@@ -99,7 +100,7 @@ export class YearEndReportService {
   static async list(scope: Pick<ServiceLineScope, "id">, db: PrismaClient = Db.client): Promise<YearEndEntry[]> {
     const rows = await db.yearEndReport.findMany({
       where: { serviceLineId: scope.id },
-      orderBy: { generatedAt: "desc" },
+      orderBy: [{ generatedAt: "desc" }, { id: "desc" }],
       select: { id: true, fiscalYear: true, toDate: true, generatedAt: true, generatedBy: true, generatedByName: true, fileName: true },
     });
     return rows.map((r) => YearEndReportService.entry(r));
@@ -112,9 +113,9 @@ export class YearEndReportService {
     return row ? { fileName: row.fileName, contentType: row.contentType, bytes: Buffer.from(row.bytes) } : null;
   }
 
-  /** "FY27 Year-End Report, generated Sep 27, 2026 by Nick Leary" */
+  /** "FY27 Year-End Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary" (the email only when there is no name). */
   static listText(e: YearEndEntry): string {
-    return YearEndCopy.listRow(e.fiscalYear, DateOnly.inZone(e.generatedAt), e.generatedByName ?? e.generatedBy);
+    return YearEndCopy.listRow(e.fiscalYear, e.generatedAt, DisplayName.of(e.generatedByName, e.generatedBy));
   }
 
   private static entry(r: YearEndEntry): YearEndEntry {

@@ -1,7 +1,7 @@
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import { FiscalYear, type FiscalYearRange } from "@/lib/domain/FiscalYear";
+import { FiscalYear } from "@/lib/domain/FiscalYear";
 import type { HistoryEntryRecord } from "@/lib/domain/types";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import type { CompletableProject } from "@/lib/report/CompletedThisPeriod";
@@ -32,6 +32,15 @@ export class ClosedProjects {
     if (project.status !== "Cancelled") return null;
     const at = ClosedProjects.becameAt(project, "Cancelled", history);
     return at ? DateOnly.inZone(at) : null;
+  }
+
+  /**
+   * The one fiscal year a closed project counts in, shared by the dashboard FY sections and the year-end PDF:
+   * its closed date (closedOn) and that date's fiscal year. Null when it is not closed, or closed after `today`.
+   */
+  static closedIn(project: ClosableProject, history: readonly HistoryEntryRecord[], today: string): { closedOn: string; fiscalYear: string } | null {
+    const closedOn = ClosedProjects.closedOn(project, history);
+    return closedOn && closedOn <= today ? { closedOn, fiscalYear: FiscalYear.of(closedOn).label } : null;
   }
 
   /** The latest time the status became `status` in the app (status change, else created with it, else createdAt). */
@@ -83,10 +92,6 @@ export class ClosedProjects {
     return text?.trim() ? text.trim() : null;
   }
 
-  /** Whether a closed date falls in a fiscal year, counting only up to `through` (today for the current year). */
-  static inYear(closedOn: string, fy: FiscalYearRange, through: string): boolean {
-    return FiscalYear.contains(fy, closedOn, fy.end < through ? fy.end : through);
-  }
 
   static isStatus(value: string | null | undefined): value is ProjectStatus {
     return typeof value === "string" && (ProjectStatusInfo.all() as string[]).includes(value);

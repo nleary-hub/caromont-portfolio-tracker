@@ -1,3 +1,4 @@
+import { DateOnly } from "@/lib/domain/DateOnly";
 import { Assignee } from "@/lib/domain/Assignee";
 import type { FontWeight } from "@/lib/report/pdf/ReportFonts";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
@@ -44,6 +45,8 @@ export interface YearEndDocumentLayout {
   runningLead: string;
   runningRest: string;
   footerLeft: string;
+  /** Summary column heads: Completed, Cancelled, Carried into FY28. */
+  summaryHeads: string[];
   summary: YearEndSummaryRow[];
   pages: YearEndPage[];
 }
@@ -133,7 +136,6 @@ export class YearEndLayout {
       });
     }
 
-    const generated = ReportFormat.dateTimeEt(generatedAt);
     return {
       title: data.title,
       overline,
@@ -141,7 +143,8 @@ export class YearEndLayout {
       band,
       runningLead: data.title,
       runningRest: ` \u00b7 ${data.periodText} (continued)`,
-      footerLeft: `Generated ${generated} by ${generatedBy} \u00b7 ${data.title}`,
+      footerLeft: YearEndCopy.footer(data.fiscalYear, DateOnly.inZone(generatedAt), generatedBy),
+      summaryHeads: [YearEndCopy.COMPLETED, YearEndCopy.CANCELLED, YearEndCopy.carriedInto(data.nextFiscalYear)],
       summary: data.summary,
       pages: pages.map((p) => ({ ...p, total: pages.length })),
     };
@@ -154,7 +157,7 @@ export class YearEndLayout {
     const size = g.SIZE.table;
     const wrap = (text: string, w: number, weight: FontWeight, max: number) => TextMeasure.wrap(m, text, w - pad, size, weight, max);
     const name = wrap(r.name, C.project.w, 600, YearEndLayout.MAX_NAME_LINES);
-    const update = r.finalUpdate ? wrap(r.finalUpdate, C.update.w, 400, YearEndLayout.MAX_UPDATE_LINES) : [];
+    const update = r.finalUpdate ? wrap(r.finalUpdate, C.update.w, 400, YearEndLayout.MAX_UPDATE_LINES) : [YearEndCopy.EMPTY_VALUE];
     const owner = Assignee.isAssigned(r.owner) ? { text: TextMeasure.fitLine(m, r.owner.trim(), C.owner.w - pad, size, 400), muted: false } : { text: Assignee.TO_ASSIGN, muted: true };
     const requester = r.requester ? { text: TextMeasure.fitLine(m, r.requester.text, C.requester.w - pad, size, 400), muted: r.requester.muted } : null;
     const lines = Math.max(1, name.length, update.length);
@@ -169,9 +172,10 @@ export class YearEndLayout {
     };
   }
 
-  /** Column labels of a section's table ("Completed", "Cancelled", or "Status" for carried projects). */
+  /** Column labels of a section's table: "Completed" / "Cancelled" and "Final update", or "Status" and "Latest update" for carried projects. */
   static columnLabels(section: YearEndSectionKind): string[] {
     const date = section === "completed" ? YearEndCopy.COMPLETED : section === "cancelled" ? YearEndCopy.CANCELLED : YearEndCopy.STATUS;
-    return [YearEndCopy.PROJECT, YearEndCopy.OWNER, YearEndCopy.REQUESTER, date, YearEndCopy.FINAL_UPDATE];
+    const update = section === "carried" ? YearEndCopy.LATEST_UPDATE : YearEndCopy.FINAL_UPDATE;
+    return [YearEndCopy.PROJECT, YearEndCopy.OWNER, YearEndCopy.REQUESTER, date, update];
   }
 }

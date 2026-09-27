@@ -24,8 +24,8 @@ export class FiscalYearRows {
   }): DashboardFyRow[] {
     const closed = VisibilityPolicy.candidates(input.projects, "dashboard").flatMap((p) => {
       if (!ClosedProjects.isClosed(p.status)) return [];
-      const closedOn = ClosedProjects.closedOn(p, input.closedHistory);
-      return closedOn && closedOn <= input.today ? [{ p, closedOn }] : [];
+      const closed = ClosedProjects.closedIn(p, input.closedHistory, input.today);
+      return closed ? [{ p, ...closed }] : [];
     });
     const rows = DashboardViewModel.rowsFor(
       closed.map((c) => c.p),
@@ -35,8 +35,8 @@ export class FiscalYearRows {
       input.latestUpdates,
     );
     return rows.map((row, i) => {
-      const { p, closedOn } = closed[i];
-      return { ...row, closedOn, fiscalYear: FiscalYear.of(closedOn).label, finalUpdate: ClosedProjects.finalUpdate(p) };
+      const { p, closedOn, fiscalYear } = closed[i];
+      return { ...row, closedOn, fiscalYear, finalUpdate: ClosedProjects.finalUpdate(p) };
     });
   }
 

@@ -80,12 +80,15 @@ export class YearEndCopy {
   static readonly CANCELLED = "Cancelled";
   static readonly SUMMARY = "SUMMARY";
   static readonly DEPARTMENT = "Department";
-  static readonly CARRIED_OVER = "Carried over";
   static readonly TOTAL = "Total";
   static readonly PROJECT = "Project";
   static readonly OWNER = "Owner";
   static readonly REQUESTER = Requester.LABEL;
   static readonly FINAL_UPDATE = "Final update";
+  /** Carried-into table: still-open projects have a latest, not a final, update. */
+  static readonly LATEST_UPDATE = "Latest update";
+  /** Gray placeholder for an empty update cell, like the dashboard's empty values. */
+  static readonly EMPTY_VALUE = "\u2013";
   static readonly STATUS = "Status";
   static readonly PERIOD = "Period";
 
@@ -124,9 +127,14 @@ export class YearEndCopy {
     return `${ReportFormat.mediumDate(start)} \u2013 ${ReportFormat.mediumDate(end)}${toDate ? " (to date)" : ""}`;
   }
 
-  /** Reports page list row: "FY27 Year-End Report, generated Sep 27, 2026 by Nick Leary". */
-  static listRow(fy: string, generatedOn: string, by: string): string {
-    return `${YearEndCopy.title(fy)}, generated ${ReportFormat.mediumDate(generatedOn)} by ${by}`;
+  /** Reports page list row: "FY27 Year-End Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary". */
+  static listRow(fy: string, generatedAt: Date, by: string): string {
+    return `${YearEndCopy.title(fy)}, generated ${ReportFormat.dateTimeEt(generatedAt)} by ${by}`;
+  }
+
+  /** PDF footer: "Generated Sep 27, 2026 by Nick Leary · FY27 Year-End Report" (date only). */
+  static footer(fy: string, generatedOn: string, by: string): string {
+    return `Generated ${ReportFormat.mediumDate(generatedOn)} by ${by} \u00b7 ${YearEndCopy.title(fy)}`;
   }
 
   /** Dialog option: "FY27 (current)" or "FY26". */
@@ -161,8 +169,8 @@ export class YearEndReportData {
     const current = FiscalYear.of(today).label;
     const set = new Set<string>();
     for (const p of VisibilityPolicy.candidates(projects, "report")) {
-      const d = ClosedProjects.closedOn(p, history);
-      if (d && d <= today) set.add(FiscalYear.of(d).label);
+      const closed = ClosedProjects.closedIn(p, history, today);
+      if (closed) set.add(closed.fiscalYear);
     }
     set.delete(current);
     return [current, ...[...set].sort((a, b) => b.localeCompare(a))];
@@ -187,9 +195,10 @@ export class YearEndReportData {
     const cancelled: { p: YearEndProject; date: string }[] = [];
     const carried: { p: YearEndProject; status: ProjectStatus }[] = [];
     for (const p of candidates) {
-      const closedOn = ClosedProjects.closedOn(p, input.history);
-      if (closedOn && ClosedProjects.inYear(closedOn, fy, through)) {
-        (p.status === "Complete" ? completed : cancelled).push({ p, date: closedOn });
+      // Same membership as the dashboard FY sections (ClosedProjects.closedIn): one fiscal year per project.
+      const closed = ClosedProjects.closedIn(p, input.history, input.today);
+      if (closed?.fiscalYear === fy.label) {
+        (p.status === "Complete" ? completed : cancelled).push({ p, date: closed.closedOn });
         continue;
       }
       const status = toDate ? p.status : ClosedProjects.statusOn(p, fy.end, input.history);
