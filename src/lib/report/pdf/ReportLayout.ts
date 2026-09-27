@@ -1,4 +1,5 @@
 import type { ProjectStatus } from "@/generated/prisma/enums";
+import type { ReportColorsValue } from "@/lib/report/ReportColorScheme";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { TotalsGridPlacement, type TotalsGridMode } from "@/lib/domain/TotalsGridPlacement";
 import { AppConfig } from "@/lib/config/AppConfig";
@@ -58,6 +59,11 @@ export interface ReportDocInput {
   departments?: readonly DepartmentKey[];
   /** Totals grid placement (admin setting). Absent = "top", today's layout. */
   totalsGrid?: TotalsGridMode;
+  /**
+   * PDF colors (department bars, page 1 title band). Drawing only: never read by the layout, so pagination, geometry,
+   * layout.json and handoff.json do not depend on it. Absent = ReportColorScheme.DEFAULTS (navy bars, no band).
+   */
+  colors?: ReportColorsValue;
   /**
    * The line's column layout and manual row order (live for drafts, frozen layoutJson for snapshots). Absent,
    * null or the default layout: today's columns and the report order, exactly as before.

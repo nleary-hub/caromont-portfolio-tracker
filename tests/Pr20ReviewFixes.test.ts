@@ -173,7 +173,7 @@ describe("Saved department selections store the EXCLUDED departments", () => {
     const value = ReportOptionsService.merge(ReportOptionsService.defaults(), { departments: ["IR", "Cath"] });
     expect(value.departments).toEqual(["Cath", "IR"]);
     const stored = ReportOptionsService.toStored(value);
-    expect(stored).toEqual({ showKeyPage: true, excludedDepartments: ["EP", "Echo", "CVSS", "INU", "CardioNeuro"], totalsGrid: "top" });
+    expect(stored).toEqual({ showKeyPage: true, excludedDepartments: ["EP", "Echo", "CVSS", "INU", "CardioNeuro"], totalsGrid: "top", colors: { bar: "navy", band: "none" } });
     expect(ReportOptionsService.normalize(stored)).toEqual(value);
     expect(ReportOptionsService.normalize({ showKeyPage: true, departments: ["Cath", "IR"], totalsGrid: "top" }).departments).toEqual(["Cath", "Echo", "CVSS", "INU", "IR"]);
     expect(ReportOptionsService.normalize(null).departments).toEqual(DepartmentFilter.all());

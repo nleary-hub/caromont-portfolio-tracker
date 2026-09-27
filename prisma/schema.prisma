@@ -270,6 +270,10 @@ model ReportOptions {
   serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
   /// Last page with the status and flag key. Default on.
   showKeyPage   Boolean     @default(true)
+  /// Weekly PDF department bar color (migration 0027): navy (default), deeper-plum, plum or a custom "#RRGGBB".
+  barColor      String      @default("navy")
+  /// Band behind the page 1 title: none (default), a preset key or a custom "#RRGGBB".
+  headerBand    String      @default("none")
   updatedAt     DateTime    @updatedAt
   updatedBy     String
 
