@@ -121,10 +121,12 @@ Notes:
   request, so removing someone from `ALLOWED_EMAILS` locks them out without waiting for session expiry.
 - `signIn` callback (`SignInGate.allowSignInWithAccounts`) enforces `ALLOWED_EMAILS` for every provider
   (`EmailAllowlist`); for Google an active admin-created account (`AccountSignInService`) also counts, checked only when
-  the allowlist says no, and such a session re-checks the account every 5 minutes.
-  For Google it also requires `email_verified === true` from Google. Microsoft Entra ID and the local dev
-  login are unchanged. A denied sign-in only shows "This account is not on the access list."
-  (`SignInMessages`), never which check failed.
+  the allowlist says no. Someone an admin turned off (`sign_in_block`, Admin > People > Access row menu) is refused
+  for every provider, even on `ALLOWED_EMAILS` or `ADMIN_EMAILS`, and their open sessions end at the next check
+  (every Google and password session re-checks the database every 5 minutes).
+  For Google it also requires `email_verified === true` from Google. A denied Google sign-in only shows
+  "That email can't sign in to this tracker." and a refused password sign-in shows the generic wrong-credentials line
+  (`SignInMessages`), never which check failed or whether an account exists.
 - Admin role: `AdminPolicy` reads `ADMIN_EMAILS` on every request (`CurrentViewer.get()` in pages and
   Server Actions; services assert admin again). Only admins can change view settings, hide projects, or
   delete/restore projects. The View picker, its badge, the Audit link and every hide/delete control are

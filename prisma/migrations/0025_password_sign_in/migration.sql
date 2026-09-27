@@ -1,10 +1,11 @@
--- Email and password sign-in (second option next to Google). Accounts are created only by admins on Admin > People;
--- there is no self sign-up, and sign-in still requires ALLOWED_EMAILS (plus ADMIN_EMAILS and line access as before).
--- Passwords an admin sets are temporary: the person must choose their own at first sign-in ("mustChange").
--- Additive: four new tables, nothing existing changes. Numbered 0025 so 0024 stays free for the open department
--- access PR (#33); neither depends on the other.
+-- Email and password sign-in (second option next to Google), and turning a person's sign-in off. Accounts are created
+-- only by admins on Admin > People; there is no self sign-up. An admin-created account counts as being on the access
+-- list (for a password, and for Google when the email isn't on ALLOWED_EMAILS). Passwords an admin sets are temporary:
+-- the person must choose their own at first sign-in ("mustChange").
+-- Additive: five new tables, nothing existing changes. Runs after 0024_department_access; neither depends on the other.
 --
 -- Rollback (in this order; each step is one line):
+--   DROP TABLE "sign_in_block";
 --   DROP TABLE "password_rate_limit";
 --   DROP TABLE "password_credential_history";
 --   DROP TABLE "password_sign_in_attempt";
@@ -13,8 +14,7 @@
 
 -- One password per person (argon2id PHC string, never the password). Removed with the person's app_user row.
 -- "mustChange" is true for a password an admin set (temporary) and false once the person has chosen their own.
--- "disabledAt" set = password sign-in turned off by an admin ("Off"); the hash is kept so it can be turned back on.
--- A row here (not turned off) is what lets someone sign in with a password: it counts as being on the access list.
+-- A row here is what lets someone sign in with a password (unless their sign-in is turned off, see sign_in_block).
 CREATE TABLE "password_credential" (
     "email" TEXT NOT NULL,
     "passwordHash" TEXT NOT NULL,
@@ -22,8 +22,6 @@ CREATE TABLE "password_credential" (
     "passwordSetBy" TEXT NOT NULL,
     "lastSignInAt" TIMESTAMP(3),
     "mustChange" BOOLEAN NOT NULL DEFAULT true,
-    "disabledAt" TIMESTAMP(3),
-    "disabledBy" TEXT,
 
     CONSTRAINT "password_credential_pkey" PRIMARY KEY ("email"),
     CONSTRAINT "password_credential_argon2id" CHECK ("passwordHash" LIKE '$argon2id$%')
@@ -71,3 +69,17 @@ CREATE TABLE "password_rate_limit" (
     CONSTRAINT "password_rate_limit_key_length" CHECK (length("key") <= 300)
 );
 CREATE INDEX "password_rate_limit_windowStart_idx" ON "password_rate_limit"("windowStart");
+
+-- Sign-in turned off by an admin ("Off" in the Access grid): blocks every way of signing in (password, Google and any
+-- other provider), even for emails on ALLOWED_EMAILS or ADMIN_EMAILS, and ends existing sessions at their next check
+-- (every 5 minutes). Keyed by email with no foreign key, so Google-only people and allow-listed people without an
+-- app_user row can be turned off too. Deleting the row turns sign-in back on. Changes are logged in
+-- password_credential_history ("disabled" / "enabled").
+CREATE TABLE "sign_in_block" (
+    "email" TEXT NOT NULL,
+    "blockedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    "blockedBy" TEXT NOT NULL,
+
+    CONSTRAINT "sign_in_block_pkey" PRIMARY KEY ("email"),
+    CONSTRAINT "sign_in_block_email_normalized" CHECK ("email" = lower(btrim("email")) AND length("email") <= 254)
+);

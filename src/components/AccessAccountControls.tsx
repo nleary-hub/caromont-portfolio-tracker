@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { addUserAccount, resetUserPassword, setPasswordSignIn, unlockUser } from "@/app/actions/accounts";
+import { addUserAccount, resetUserPassword, setSignIn, unlockUser } from "@/app/actions/accounts";
 import { usePopover } from "@/components/DashboardFilterControls";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
@@ -13,7 +13,7 @@ const PRIMARY = "h-7 rounded-control bg-accent px-3 text-white type-table-strong
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
 const TAG = "flex-none rounded-[4px] px-1.5 py-px type-label font-semibold";
 
-/** Password tags after a person's name in the Access grid: Password, Must change password, Off, and Locked. */
+/** Tags after a person's name in the Access grid: Google, Password or Must change password, then Off and Locked. */
 export function PasswordTags({ status }: { status?: PasswordStatus }) {
   if (!status) return null;
   const tags: Array<{ label: string; tip: string; cls: string; id: string }> = [];
@@ -22,7 +22,7 @@ export function PasswordTags({ status }: { status?: PasswordStatus }) {
   if (status.state === "none") tags.push({ id: "google", label: PasswordCopy.TAG_GOOGLE, tip: PasswordCopy.TAG_GOOGLE_TIP, cls: PASSWORD_CLS });
   if (status.state === "active") tags.push({ id: "password", label: PasswordCopy.TAG_PASSWORD, tip: PasswordCopy.TAG_PASSWORD_TIP, cls: PASSWORD_CLS });
   if (status.state === "mustChange") tags.push({ id: "must-change", label: PasswordCopy.TAG_MUST_CHANGE, tip: PasswordCopy.TAG_MUST_CHANGE_TIP, cls: "bg-(--flag-changed-dark-bg) text-(--flag-changed-dark-fg)" });
-  if (status.state === "off") tags.push({ id: "off", label: PasswordCopy.TAG_OFF, tip: PasswordCopy.TAG_OFF_TIP, cls: "bg-(--status-cancelled-dark-bg) text-(--status-cancelled-dark-fg)" });
+  if (status.off) tags.push({ id: "off", label: PasswordCopy.TAG_OFF, tip: PasswordCopy.TAG_OFF_TIP, cls: "bg-(--status-cancelled-dark-bg) text-(--status-cancelled-dark-fg)" });
   if (status.locked) tags.push({ id: "locked", label: PasswordCopy.TAG_LOCKED, tip: PasswordCopy.TAG_LOCKED_TIP, cls: "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)" });
   return (
     <>
@@ -35,17 +35,23 @@ export function PasswordTags({ status }: { status?: PasswordStatus }) {
   );
 }
 
-/** The row's ⋯ menu: create or reset a temporary password, unlock, turn password sign-in off or on. */
+/**
+ * The row's ⋯ menu: create or reset a temporary password, unlock, turn sign-in off (red) or on. Turn off is left out
+ * of the signed-in admin's own row.
+ */
 export function AccountRowMenu({
   name,
   email,
   status,
+  isSelf = false,
   initialOpen = false,
   onResult,
 }: {
   name: string;
   email: string;
   status?: PasswordStatus;
+  /** This row is the signed-in admin: no Turn off item. */
+  isSelf?: boolean;
   initialOpen?: boolean;
   onResult: (r: AccountResult, name: string) => void;
 }) {
@@ -82,8 +88,8 @@ export function AccountRowMenu({
     { label: state === "none" ? PasswordCopy.MENU_CREATE : PasswordCopy.MENU_RESET, act: () => resetUserPassword(email) },
   ];
   if (status?.locked) items.push({ label: PasswordCopy.MENU_UNLOCK, act: () => unlockUser(email) });
-  if (state === "off") items.push({ label: PasswordCopy.MENU_TURN_ON, act: () => setPasswordSignIn(email, true) });
-  else if (state !== "none") items.push({ label: PasswordCopy.MENU_TURN_OFF, act: () => setPasswordSignIn(email, false), danger: true });
+  if (status?.off) items.push({ label: PasswordCopy.MENU_TURN_ON, act: () => setSignIn(email, true) });
+  else if (!isSelf) items.push({ label: PasswordCopy.MENU_TURN_OFF, act: () => setSignIn(email, false), danger: true });
   return (
     <div ref={rootRef} className="relative inline-block">
       <button ref={btnRef} type="button" className="df-icon-btn" aria-haspopup="menu" aria-expanded={open} aria-label={`${PasswordCopy.MENU_LABEL} for ${name}`} onClick={() => setOpen(!open)} data-testid="access-row-menu">
@@ -95,6 +101,11 @@ export function AccountRowMenu({
       </button>
       {open && (
         <ul role="menu" className="vp-pop vp-list w-[210px] p-1 text-left" style={pos ? { position: "fixed", top: pos.top, right: pos.right, left: "auto", zIndex: 60 } : { visibility: "hidden" }}>
+          {status?.off && (
+            <li role="presentation" className="px-2 pt-1 pb-1.5 text-muted type-caption" data-testid="access-row-status">
+              {PasswordCopy.TAG_OFF_TIP}
+            </li>
+          )}
           {items.map((i) => (
             <li
               key={i.label}

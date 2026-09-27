@@ -42,6 +42,7 @@ export async function unlockUser(email: string): Promise<AccountResult> {
   return AdminAction.run((viewer) => UserAccountService.unlock(viewer, email), PasswordCopy.SAVE_ERROR);
 }
 
-export async function setPasswordSignIn(email: string, on: boolean): Promise<AccountResult> {
+/** Turn someone's sign-in off or on (every provider). */
+export async function setSignIn(email: string, on: boolean): Promise<AccountResult> {
   return AdminAction.run((viewer) => UserAccountService.setEnabled(viewer, email, on === true), PasswordCopy.SAVE_ERROR);
 }

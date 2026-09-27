@@ -64,7 +64,7 @@ describe("SignInGate.allowSignIn: other providers are unchanged", () => {
 
 describe("SignInMessages", () => {
   it("uses the generic access-denied text and never echoes the code", () => {
-    expect(SignInMessages.forCode("AccessDenied")).toBe("This account is not on the access list.");
+    expect(SignInMessages.forCode("AccessDenied")).toBe("That email can't sign in to this tracker.");
     expect(SignInMessages.forCode("Configuration")).toBe(SignInMessages.CONFIGURATION);
     expect(SignInMessages.forCode("OAuthCallbackError")).toBe(SignInMessages.GENERIC);
     expect(SignInMessages.forCode("<script>")).toBe(SignInMessages.GENERIC);

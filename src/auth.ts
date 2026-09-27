@@ -14,10 +14,13 @@ const passwordSessionCheck: PasswordSessionCheck = async (email, pwdVersion) => 
   return PasswordSignInService.sessionState(email, pwdVersion);
 };
 
-const accountActive = async (email: unknown): Promise<boolean> => {
-  const { AccountSignInService } = await import("@/lib/services/AccountSignInService");
-  return AccountSignInService.isActive(email);
+const accounts = async () => (await import("@/lib/services/AccountSignInService")).AccountSignInService;
+const signInChecks = {
+  isBlocked: async (email: string) => (await accounts()).isBlocked(email),
+  accountActive: async (email: string) => (await accounts()).isActive(email),
 };
+// Every non-password session: not turned off; one that got in through an account needs the account still active.
+const sessionCheck = async (email: unknown, viaAccount: boolean): Promise<boolean> => (await accounts()).sessionStillAllowed(email, viaAccount);
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: AuthProviders.fromEnv(),
@@ -26,10 +29,11 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: { signIn: SIGN_IN_PATH, error: SIGN_IN_PATH },
   callbacks: {
     // Allowlist gate for Google and the other providers on every sign-in (Google also needs email_verified === true).
-    // Google is also allowed for an admin-created account that isn't turned off (ALLOWED_EMAILS OR account).
+    // Google is also allowed for an admin-created account that isn't turned off (ALLOWED_EMAILS OR account), and
+    // anyone an admin turned off is refused, whatever the provider or list.
     // Password sign-ins were checked against the admin-created account in authorize().
     signIn({ user, account, profile }) {
-      return SignInGate.allowSignInWithAccounts({ user, account, profile }, accountActive);
+      return SignInGate.allowSignInWithAccounts({ user, account, profile }, signInChecks);
     },
     // Sign-in stamps the provider and time; later requests end the session per SessionPolicy (null clears the cookie).
     async jwt({ token, user, account, profile }) {
@@ -37,7 +41,7 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         token.email = EmailAllowlist.candidateEmail(user, profile) ?? token.email;
         return SessionPolicy.start(token, account?.provider, user, new Date(), SignInGate.needsAccount({ user, account, profile }));
       }
-      return SessionPolicy.continue(token, passwordSessionCheck, new Date(), accountActive);
+      return SessionPolicy.continue(token, passwordSessionCheck, new Date(), sessionCheck);
     },
     session({ session, token }) {
       if (session.user && SessionPolicy.isAccountAccess(token)) session.user.accountAccess = true;

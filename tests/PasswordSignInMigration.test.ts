@@ -8,7 +8,7 @@ import { SignInRateLimit, type SqlRunner } from "@/lib/auth/SignInRateLimit";
 const DIR = path.resolve(__dirname, "../prisma/migrations");
 const M = "0025_password_sign_in";
 const FIXTURE = readFileSync(path.resolve(__dirname, "fixtures/prod-shape-0015.sql"), "utf8");
-const NEW_TABLES = ["password_credential", "password_credential_history", "password_rate_limit", "password_sign_in_attempt"];
+const NEW_TABLES = ["password_credential", "password_credential_history", "password_rate_limit", "password_sign_in_attempt", "sign_in_block"];
 
 class M25 {
   static folders(): string[] {
@@ -82,7 +82,7 @@ describe("0025_password_sign_in on production-shaped data (PGlite)", () => {
     expect(f.at(-2)).toBe("0024_department_access");
   });
 
-  it("is additive: four new tables; every existing table, column and row unchanged", async () => {
+  it("is additive: five new tables; every existing table, column and row unchanged", async () => {
     const db = await M25.before();
     const cols = await M25.tables(db);
     const before = await M25.snapshot(db, Object.keys(cols));
@@ -101,7 +101,11 @@ describe("0025_password_sign_in on production-shaped data (PGlite)", () => {
     await expect(db.query(`insert into password_credential (email, "passwordHash", "passwordSetBy") values ('pat@example.org', 'plaintext', 'x')`)).rejects.toThrow(/password_credential_argon2id/);
     await expect(db.query(`insert into password_credential (email, "passwordHash", "passwordSetBy") values ('ghost@example.org', $1, 'x')`, [hash])).rejects.toThrow(/password_credential_email_fkey/);
     await db.query(`insert into password_credential (email, "passwordHash", "passwordSetBy") values ('pat@example.org', $1, 'nick@example.org')`, [hash]);
-    expect((await db.query<{ mustChange: boolean; disabledAt: null }>(`select "mustChange", "disabledAt" from password_credential`)).rows).toEqual([{ mustChange: true, disabledAt: null }]);
+    expect((await db.query<{ mustChange: boolean }>(`select "mustChange" from password_credential`)).rows).toEqual([{ mustChange: true }]);
+    // Turned off lives in sign_in_block (no FK: it can block an ALLOWED_EMAILS person with no app_user row).
+    await db.exec(`insert into sign_in_block (email, "blockedBy") values ('allowlisted.only@example.org', 'nick@example.org')`);
+    await expect(db.exec(`insert into sign_in_block (email, "blockedBy") values ('Mixed@Example.org', 'x')`)).rejects.toThrow(/sign_in_block_email_normalized/);
+    expect((await db.query(`select column_name from information_schema.columns where table_name = 'password_credential' and column_name like 'disabled%'`)).rows).toEqual([]);
     await db.exec(`insert into password_credential_history (id, email, action, "changedBy") values (gen_random_uuid(), 'pat@example.org', 'set', 'nick@example.org')`);
     await expect(db.exec(`insert into password_credential_history (id, email, action, "changedBy") values (gen_random_uuid(), 'pat@example.org', 'viewed', 'x')`)).rejects.toThrow(/password_credential_history_action/);
     await expect(db.exec(`update password_credential_history set action = 'reset'`)).rejects.toThrow(/not allowed/);
@@ -147,6 +151,7 @@ describe("0025_password_sign_in on production-shaped data (PGlite)", () => {
     await db.exec(`insert into password_sign_in_attempt (email, "failedCount") values ('pat@example.org', 2)`);
     const steps = M25.downSteps();
     expect(steps).toEqual([
+      `DROP TABLE "sign_in_block";`,
       `DROP TABLE "password_rate_limit";`,
       `DROP TABLE "password_credential_history";`,
       `DROP TABLE "password_sign_in_attempt";`,

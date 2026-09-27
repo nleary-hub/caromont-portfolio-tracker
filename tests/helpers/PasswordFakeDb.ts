@@ -76,6 +76,8 @@ export class PasswordFakeDb {
   passwordCredential = new Table((r) => r.email as string);
   passwordCredentialHistory = new Table(() => `p${++seq}`);
   passwordSignInAttempt = new Table((r) => r.email as string);
+  /** sign_in_block: an admin turned this person's sign-in off (every provider). */
+  signInBlock = new Table((r) => r.email as string);
   /** password_rate_limit rows: key -> { windowStart, count } */
   rateLimit = new Map<string, { windowStart: Date; count: number }>();
   failNextTransaction = false;
@@ -87,7 +89,7 @@ export class PasswordFakeDb {
       const row = await include(args);
       return row && args.include?.user ? { ...row, user: await this.appUser.findUnique({ where: { email: row.email } }) } : row;
     };
-    this.passwordCredential.defaults = () => ({ mustChange: true, disabledAt: null, disabledBy: null, lastSignInAt: null, passwordSetAt: new Date() });
+    this.passwordCredential.defaults = () => ({ mustChange: true, lastSignInAt: null, passwordSetAt: new Date() });
     this.passwordSignInAttempt.defaults = () => ({ failedCount: 0, lastFailedAt: null, lockedUntil: null });
     this.appUser.defaults = () => ({ name: null, firstSignInAt: null, addedBy: null, createdAt: new Date() });
   }
@@ -104,7 +106,7 @@ export class PasswordFakeDb {
 
   /** Runs the callback on a snapshot; any throw (or a returned ok:false) keeps the old state only on throw, like Postgres. */
   $transaction = async <T>(fn: (tx: this) => Promise<T>): Promise<T> => {
-    const tables = [this.appUser, this.serviceLineAccessGrant, this.serviceLineAccessHistory, this.passwordCredential, this.passwordCredentialHistory, this.passwordSignInAttempt];
+    const tables = [this.appUser, this.serviceLineAccessGrant, this.serviceLineAccessHistory, this.passwordCredential, this.passwordCredentialHistory, this.passwordSignInAttempt, this.signInBlock];
     const snap = tables.map((t) => new Map(t.rows));
     try {
       return await fn(this);

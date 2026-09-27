@@ -617,12 +617,19 @@ model PasswordCredential {
   lastSignInAt  DateTime?
   /// True for a temporary password an admin set; the person must choose their own at first sign-in.
   mustChange    Boolean   @default(true)
-  /// Set when an admin turns password sign-in off for this person ("Off").
-  disabledAt    DateTime?
-  disabledBy    String?
   user          AppUser   @relation(fields: [email], references: [email], onDelete: Cascade)
 
   @@map("password_credential")
+}
+
+/// Sign-in turned off by an admin ("Off", migration 0025): blocks password and Google (and any provider), even for
+/// ALLOWED_EMAILS or ADMIN_EMAILS. Keyed by email, no foreign key, so Google-only people can be turned off too.
+model SignInBlock {
+  email     String   @id
+  blockedAt DateTime @default(now())
+  blockedBy String
+
+  @@map("sign_in_block")
 }
 
 /// Failed password attempts per typed email (with or without an account): 5 failures lock it for 15 minutes.

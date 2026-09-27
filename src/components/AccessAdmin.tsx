@@ -38,6 +38,7 @@ export function AccessAdmin({
   initialExpanded = null,
   passwords = {},
   initialMenu = null,
+  viewerEmail = null,
 }: {
   grid: AccessGrid;
   initialAdd?: boolean;
@@ -46,6 +47,8 @@ export function AccessAdmin({
   passwords?: Record<string, PasswordStatus>;
   /** Email whose ⋯ menu starts open (screenshots). */
   initialMenu?: string | null;
+  /** The signed-in admin (lowercase): their own row has no Turn off sign-in. */
+  viewerEmail?: string | null;
 }) {
   const router = useRouter();
   const [users, setUsers] = useState(grid.users);
@@ -171,7 +174,7 @@ export function AccessAdmin({
                   </td>
                 )}
                 <td className="border-b border-line px-1 py-1 text-center">
-                  <AccountRowMenu name={r.name} email={r.email} status={passwords[r.email]} initialOpen={initialMenu === r.email} onResult={accountResult(r.email)} />
+                  <AccountRowMenu name={r.name} email={r.email} status={passwords[r.email]} isSelf={viewerEmail === r.email.toLowerCase()} initialOpen={initialMenu === r.email} onResult={accountResult(r.email)} />
                 </td>
               </tr>
             ))}
@@ -249,7 +252,7 @@ export function AccessAdmin({
                             <CaretIcon open={open} />
                           </button>
                         )}
-                        <AccountRowMenu name={r.name} email={r.email} status={passwords[r.email]} initialOpen={initialMenu === r.email} onResult={accountResult(r.email)} />
+                        <AccountRowMenu name={r.name} email={r.email} status={passwords[r.email]} isSelf={viewerEmail === r.email.toLowerCase()} initialOpen={initialMenu === r.email} onResult={accountResult(r.email)} />
                       </span>
                     </td>
                   </tr>

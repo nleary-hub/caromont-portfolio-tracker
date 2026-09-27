@@ -39,9 +39,9 @@ class Fx {
           mustChange: opts.mustChange ?? false,
           passwordSetAt: new Date("2026-09-27T12:00:00Z"),
           passwordSetBy: "boss@example.org",
-          disabledAt: opts.disabled ? new Date() : null,
         },
       });
+      if (opts.disabled) await db.signInBlock.create({ data: { email: opts.email, blockedAt: new Date(), blockedBy: "boss@example.org" } });
     }
     return db;
   }
@@ -360,9 +360,10 @@ describe("Google sign-in is unaffected", () => {
     expect(SignInGate.allowSignIn(g("member@example.org", false), env)).toBe(false);
     // The env-only check says no for NICK; the account check (signIn callback) is what lets his account in.
     expect(SignInGate.allowSignIn(g(NICK, true), env)).toBe(false);
-    expect(await SignInGate.allowSignInWithAccounts(g(NICK, true), async () => true, env)).toBe(true);
-    expect(await SignInGate.allowSignInWithAccounts(g(NICK, true), async () => false, env)).toBe(false);
-    expect(await SignInGate.allowSignInWithAccounts(g(NICK, false), async () => true, env)).toBe(false);
+    const checks = (accountActive: boolean) => ({ isBlocked: async () => false, accountActive: async () => accountActive });
+    expect(await SignInGate.allowSignInWithAccounts(g(NICK, true), checks(true), env)).toBe(true);
+    expect(await SignInGate.allowSignInWithAccounts(g(NICK, true), checks(false), env)).toBe(false);
+    expect(await SignInGate.allowSignInWithAccounts(g(NICK, false), checks(true), env)).toBe(false);
     expect(SignInGate.allowSignIn({ user: { email: NICK }, account: { provider: "password" }, profile: null }, env)).toBe(true);
     expect(SignInGate.allowSignIn({ user: { email: null }, account: { provider: "password" }, profile: null }, env)).toBe(false);
   });
@@ -420,17 +421,21 @@ describe("admin-only account management", () => {
     expect(db.passwordCredential.all().length).toBe(1);
   });
 
-  it("reset gives a new temporary password, clears the lockout, turns sign-in back on and ends old sessions", async () => {
+  it("reset gives a new temporary password, clears the lockout and ends old sessions, but does not turn sign-in back on", async () => {
     const db = await Fx.db({ email: "pat@example.org", disabled: true });
     for (let i = 0; i < 5; i++) await Fx.auth(db, "pat@example.org", "wrong password x", at(i));
     const oldVersion = new Date("2026-09-27T12:00:00Z").getTime();
     const r = await UserAccountService.resetPassword(admin, "pat@example.org", Fx.tx(db), env, at(MIN));
     expect(r.ok && r.temporaryPassword).toBeTruthy();
     const cred = (await db.passwordCredential.findUnique({ where: { email: "pat@example.org" } }))!;
-    expect(cred).toMatchObject({ mustChange: true, disabledAt: null, passwordSetBy: "boss@example.org" });
+    expect(cred).toMatchObject({ mustChange: true, passwordSetBy: "boss@example.org" });
     expect(db.passwordSignInAttempt.all()).toEqual([]);
     expect(db.passwordCredentialHistory.all().map((h) => h.action)).toEqual(["reset"]);
     expect(await PasswordSignInService.sessionState("pat@example.org", oldVersion, db as never)).toBeNull();
+    // Still turned off: the new temporary password doesn't work until an admin turns sign-in back on.
+    expect(await PasswordSignInService.sessionState("pat@example.org", at(MIN).getTime(), db as never)).toBeNull();
+    expect(await Fx.auth(db, "pat@example.org", r.ok ? r.temporaryPassword! : "", at(2 * MIN))).toEqual({ ok: false, reason: "invalid" });
+    await UserAccountService.setEnabled(admin, "pat@example.org", true, Fx.tx(db), at(3 * MIN));
     expect(await PasswordSignInService.sessionState("pat@example.org", at(MIN).getTime(), db as never)).toEqual({ mustChange: true });
   });
 
@@ -455,20 +460,22 @@ describe("admin-only account management", () => {
   it("turn off blocks sign-in and ends sessions; turn on restores; unlock clears the lock; statuses show the tags", async () => {
     const db = await Fx.db({ email: "pat@example.org" });
     const v = new Date("2026-09-27T12:00:00Z").getTime();
-    await UserAccountService.setEnabled(admin, "pat@example.org", false, Fx.tx(db), T0);
+    expect(await UserAccountService.setEnabled(admin, "pat@example.org", false, Fx.tx(db), T0)).toEqual({ ok: true, message: "Pat Lee can't sign in now. Their sessions have ended." });
     expect(await Fx.auth(db, "pat@example.org", "correct horse battery", at(1))).toEqual({ ok: false, reason: "invalid" });
     expect(await PasswordSignInService.sessionState("pat@example.org", v, db as never)).toBeNull();
     expect((await UserAccountService.statuses(admin, ["pat@example.org", "member@example.org"], db as never, at(2)))).toEqual({
-      "pat@example.org": { state: "off", locked: false },
-      "member@example.org": { state: "none", locked: false },
+      "pat@example.org": { state: "active", off: true, locked: false },
+      "member@example.org": { state: "none", off: false, locked: false },
     });
-    await UserAccountService.setEnabled(admin, "pat@example.org", true, Fx.tx(db), at(3));
+    expect(await UserAccountService.setEnabled(admin, "pat@example.org", true, Fx.tx(db), at(3))).toEqual({ ok: true, message: "Pat Lee can sign in again." });
     for (let i = 0; i < 5; i++) await Fx.auth(db, "pat@example.org", "wrong password x", at(10 + i));
-    expect((await UserAccountService.statuses(admin, ["pat@example.org"], db as never, at(20)))["pat@example.org"]).toEqual({ state: "active", locked: true });
+    expect((await UserAccountService.statuses(admin, ["pat@example.org"], db as never, at(20)))["pat@example.org"]).toEqual({ state: "active", off: false, locked: true });
     await UserAccountService.unlock(admin, "pat@example.org", Fx.tx(db), at(21));
     expect((await Fx.auth(db, "pat@example.org", "correct horse battery", at(22))).ok).toBe(true);
     expect(db.passwordCredentialHistory.all().map((h) => h.action)).toEqual(["disabled", "enabled", "unlocked"]);
-    expect(await UserAccountService.setEnabled(admin, "member@example.org", false, Fx.tx(db))).toEqual({ ok: false, message: PasswordCopy.NO_PASSWORD });
+    // Someone with no password (Google only) can be turned off too; the toast falls back to a name from the email.
+    expect(await UserAccountService.setEnabled(admin, "member@example.org", false, Fx.tx(db))).toMatchObject({ ok: true });
+    expect((await UserAccountService.statuses(admin, ["member@example.org"], db as never))["member@example.org"]).toEqual({ state: "none", off: true, locked: false });
   });
 });
 
@@ -505,7 +512,7 @@ describe("Access grid: ADMIN_EMAILS with a password shows as an admin", () => {
   it("moves a listed admin with an active or temporary password into the admin rows; others stay", () => {
     const row = (email: string, name: string) => ({ email, name, isAdmin: false, lineIds: ["line-cv"] });
     const grid = { lines: [], canAdd: true, admins: [], users: [row(NICK, "Nick Leary"), row("pat@example.org", "Pat Lee"), row("boss@example.org", "Boss")] };
-    const out = UserAccountService.withPasswordAdmins(grid, { [NICK]: { state: "active", locked: false }, "pat@example.org": { state: "active", locked: false }, "boss@example.org": { state: "off", locked: false } }, env);
+    const out = UserAccountService.withPasswordAdmins(grid, { [NICK]: { state: "active", off: false, locked: false }, "pat@example.org": { state: "active", off: false, locked: false }, "boss@example.org": { state: "active", off: true, locked: false } }, env);
     expect(out.admins).toEqual([{ email: NICK, name: "Nick Leary", isAdmin: true, lineIds: [] }]);
     expect(out.users.map((r) => r.email)).toEqual(["pat@example.org", "boss@example.org"]);
   });

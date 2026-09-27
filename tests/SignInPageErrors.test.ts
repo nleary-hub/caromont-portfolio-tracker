@@ -87,3 +87,19 @@ describe("/signin messages", () => {
     expect(html.indexOf('data-testid="signin-error"')).toBeLessThan(html.indexOf("Sign in with Google"));
   });
 });
+
+describe("/signin for someone whose sign-in is turned off", () => {
+  it("Google: the refusal says \"That email can't sign in to this tracker.\" (the same line for every Google refusal)", async () => {
+    const html = await Page.html({ error: "AccessDenied" });
+    expect(html).toContain(esc("That email can't sign in to this tracker."));
+    expect(html).not.toContain("access list");
+    expect(html).not.toMatch(/turned off/i);
+  });
+
+  it("password: the generic wrong-credentials line, exactly like a wrong password (no hint the account exists)", async () => {
+    h.cookie = "kim.test@example.org";
+    const html = await Page.html({ error: "CredentialsSignin", code: "invalid" });
+    expect(html).toContain(esc(PasswordCopy.INVALID));
+    expect(html).not.toMatch(/turned off/i);
+  });
+});

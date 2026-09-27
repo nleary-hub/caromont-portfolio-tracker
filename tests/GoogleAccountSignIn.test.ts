@@ -35,6 +35,8 @@ const { DepartmentAccess } = await import("@/lib/access/DepartmentAccess");
 const { DepartmentAccessCopy } = await import("@/lib/access/DepartmentAccessCopy");
 const { PasswordCopy } = await import("@/lib/auth/PasswordCopy");
 const { addUserAccount } = await import("@/app/actions/accounts");
+const { PasswordSignInService } = await import("@/lib/services/PasswordSignInService");
+const { PasswordHasher } = await import("@/lib/auth/PasswordHasher");
 
 const CVPSL = "00000000-0000-4000-8000-000000000001";
 const ADMIN = { ...Factory.ADMIN, name: "Admin" };
@@ -55,14 +57,20 @@ class Accounts {
     await db.appUser.create({ data: { email: "casey.new@elsewhere.org", name: "Casey New", addedBy: "admin@example.org" } });
     await db.appUser.create({ data: { email: "off.person@elsewhere.org", name: "Off Person", addedBy: "admin@example.org" } });
     await db.passwordCredential.create({
-      data: { email: "off.person@elsewhere.org", passwordHash: "$argon2id$v=19$m=19456,t=2,p=1$x$y", mustChange: false, passwordSetAt: T0, passwordSetBy: "admin@example.org", disabledAt: T0 },
+      data: { email: "off.person@elsewhere.org", passwordHash: "$argon2id$v=19$m=19456,t=2,p=1$x$y", mustChange: false, passwordSetAt: T0, passwordSetBy: "admin@example.org" },
     });
+    await db.signInBlock.create({ data: { email: "off.person@elsewhere.org", blockedAt: T0, blockedBy: "admin@example.org" } });
     await db.appUser.create({ data: { email: "self.recorded@elsewhere.org", name: null, addedBy: null } });
     return db;
   }
 
   static check(db: PasswordFakeDb) {
-    return (email: string) => AccountSignInService.isActive(email, db as never);
+    return { isBlocked: (email: string) => AccountSignInService.isBlocked(email, db as never), accountActive: (email: string) => AccountSignInService.isActive(email, db as never) };
+  }
+
+  /** Checks with a fixed answer; `accountActive` is a spy so tests can see whether the account was looked up. */
+  static fixed(accountActive: boolean, isBlocked = false) {
+    return { isBlocked: vi.fn(async () => isBlocked), accountActive: vi.fn(async () => accountActive) };
   }
 }
 
@@ -104,19 +112,20 @@ describe("Google sign-in: ALLOWED_EMAILS OR an admin-created account", () => {
 
   it("the account never skips Google's email_verified check, and a database error refuses (fails closed)", async () => {
     const db = await Accounts.db();
-    const check = vi.fn(Accounts.check(db));
+    const check = { isBlocked: vi.fn(Accounts.check(db).isBlocked), accountActive: vi.fn(Accounts.check(db).accountActive) };
     expect(await SignInGate.allowSignInWithAccounts(Google.attempt("casey.new@elsewhere.org", false), check, ENV)).toBe(false);
     expect(await SignInGate.allowSignInWithAccounts(Google.attempt("casey.new@elsewhere.org", "true"), check, ENV)).toBe(false);
-    expect(check).not.toHaveBeenCalled();
+    expect(check.accountActive).not.toHaveBeenCalled();
     vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("casey.new@elsewhere.org"), async () => Promise.reject(new Error("db down")), ENV)).toBe(false);
+    const down = async () => Promise.reject(new Error("db down"));
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("casey.new@elsewhere.org"), { isBlocked: async () => false, accountActive: down }, ENV)).toBe(false);
   });
 
   it("only Google uses accounts: Microsoft and dev login stay ALLOWED_EMAILS only", async () => {
-    const yes = vi.fn(async () => true);
+    const yes = Accounts.fixed(true);
     expect(await SignInGate.allowSignInWithAccounts({ user: { email: "casey.new@elsewhere.org" }, account: { provider: "microsoft-entra-id" }, profile: {} }, yes, ENV)).toBe(false);
     expect(await SignInGate.allowSignInWithAccounts({ user: { email: "casey.new@elsewhere.org" }, account: { provider: "dev-login" }, profile: {} }, yes, ENV)).toBe(false);
-    expect(yes).not.toHaveBeenCalled();
+    expect(yes.accountActive).not.toHaveBeenCalled();
   });
 
   it("the account session: allowed without ALLOWED_EMAILS, admin per ADMIN_EMAILS, re-checked every 5 minutes", async () => {
@@ -134,7 +143,7 @@ describe("Google sign-in: ALLOWED_EMAILS OR an admin-created account", () => {
     expect(soon).not.toBeNull();
     expect(check).not.toHaveBeenCalled();
     const later = await SessionPolicy.continue(soon!, undefined, new Date(T0.getTime() + 6 * MIN), check);
-    expect(check).toHaveBeenCalledWith("casey.new@elsewhere.org");
+    expect(check).toHaveBeenCalledWith("casey.new@elsewhere.org", true);
     expect(later).toMatchObject({ accountAccess: true });
     // Removed or turned off: the next check ends the session.
     expect(await SessionPolicy.continue(later!, undefined, new Date(T0.getTime() + 12 * MIN), async () => false)).toBeNull();
@@ -144,17 +153,20 @@ describe("Google sign-in: ALLOWED_EMAILS OR an admin-created account", () => {
 });
 
 describe("regressions: everyone on today's ALLOWED_EMAILS signs in exactly as before", () => {
-  it("(a) a Google user on ALLOWED_EMAILS with NO account row signs in without any account lookup and keeps their line and department access", async () => {
-    const lookup = vi.fn(async () => false);
+  it("(a) a Google user on ALLOWED_EMAILS with NO account row signs in (no account lookup) and keeps their line and department access", async () => {
+    const db = await Accounts.db();
+    const lookup = { isBlocked: vi.fn(Accounts.check(db).isBlocked), accountActive: vi.fn(async () => false) };
     const attempt = Google.attempt("Jane.Doe@CaroMontHealth.org");
     expect(await SignInGate.allowSignInWithAccounts(attempt, lookup, ENV)).toBe(true);
-    expect(lookup).not.toHaveBeenCalled();
+    expect(lookup.accountActive).not.toHaveBeenCalled();
+    expect(lookup.isBlocked).toHaveBeenCalledWith("jane.doe@caromonthealth.org");
     expect(SignInGate.needsAccount(attempt, ENV)).toBe(false);
     const token = SessionPolicy.start({ email: "jane.doe@caromonthealth.org" } as JWT, "google", {}, T0, SignInGate.needsAccount(attempt, ENV));
     expect(token.accountAccess).toBeUndefined();
-    const recheck = vi.fn(async () => false);
+    // Their session is only checked for "turned off" (no row: keeps going).
+    const recheck = vi.fn((email: unknown, viaAccount: boolean) => AccountSignInService.sessionStillAllowed(email, viaAccount, db as never));
     expect(await SessionPolicy.continue(token, undefined, new Date(T0.getTime() + 60 * MIN), recheck)).not.toBeNull();
-    expect(recheck).not.toHaveBeenCalled();
+    expect(recheck).toHaveBeenCalledWith("jane.doe@caromonthealth.org", false);
 
     // Their access rows (keyed by email) are untouched: CVPSL limited to Echo and IR, as before.
     fake.grant("jane.doe@caromonthealth.org", CVPSL);
@@ -167,11 +179,11 @@ describe("regressions: everyone on today's ALLOWED_EMAILS signs in exactly as be
   });
 
   it("(b) an ADMIN_EMAILS admin on ALLOWED_EMAILS (NLeary@gmail.com, mixed case) signs in with Google and is an admin", async () => {
-    const lookup = vi.fn(async () => false);
+    const lookup = Accounts.fixed(false);
     for (const email of ["NLeary@gmail.com", "nleary@GMAIL.com", "nleary@gmail.com"]) {
       expect(await SignInGate.allowSignInWithAccounts(Google.attempt(email), lookup, ENV)).toBe(true);
     }
-    expect(lookup).not.toHaveBeenCalled();
+    expect(lookup.accountActive).not.toHaveBeenCalled();
     const session = { user: { email: "NLeary@gmail.com" } };
     expect(SessionAccess.allowed(session, ENV)).toBe(true);
     expect(SessionAccess.viewer(session, ENV)).toEqual({ email: "nleary@gmail.com", isAdmin: true });
@@ -179,8 +191,8 @@ describe("regressions: everyone on today's ALLOWED_EMAILS signs in exactly as be
 
   it("the rule is never account only: removing someone from ALLOWED_EMAILS without an account still refuses them", async () => {
     const env = { ...ENV, ALLOWED_EMAILS: "" };
-    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("nleary@gmail.com"), async () => false, env)).toBe(false);
-    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("jane.doe@caromonthealth.org"), async () => false, env)).toBe(false);
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("nleary@gmail.com"), Accounts.fixed(false), env)).toBe(false);
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("jane.doe@caromonthealth.org"), Accounts.fixed(false), env)).toBe(false);
   });
 });
 
@@ -193,7 +205,7 @@ describe("Add user: Google-only accounts, lines and departments in one save", ()
     expect(r).toMatchObject({ ok: true, email: "casey.new@elsewhere.org" });
     expect(r.ok && r.temporaryPassword).toBeFalsy();
     // FakeDb has no password tables: no credential row, so nothing is turned off.
-    const db = { appUser: (h.db as { appUser: unknown }).appUser, passwordCredential: { findUnique: async () => null } };
+    const db = { appUser: (h.db as { appUser: unknown }).appUser, signInBlock: { findUnique: async () => null } };
     expect(await AccountSignInService.isActive("casey.new@elsewhere.org", db as never)).toBe(true);
     expect(PasswordCopy.ADD_TEMP_HELP).toBe("Leave this off for people who sign in with Google.");
     expect(Object.keys(PasswordCopy)).not.toContain("NEEDS_ALLOW_LIST");
@@ -260,7 +272,7 @@ describe("Add user: Google-only accounts, lines and departments in one save", ()
     fake.grant("pat.sample@elsewhere.org", CVPSL);
     const grid = await LineAccessService.grid(ADMIN, h.db as never, ENV);
     const html = renderToStaticMarkup(
-      createElement(AccessAdmin, { grid, passwords: { "casey.new@elsewhere.org": { state: "none", locked: false }, "pat.sample@elsewhere.org": { state: "active", locked: false } } }),
+      createElement(AccessAdmin, { grid, passwords: { "casey.new@elsewhere.org": { state: "none", off: false, locked: false }, "pat.sample@elsewhere.org": { state: "active", off: false, locked: false } } }),
     );
     const cls = (tag: string) => new RegExp(`<span class="([^"]+)" title="[^"]*" data-password-tag="${tag}">([^<]+)<`).exec(html);
     expect(cls("google")?.[2]).toBe("Google");
@@ -284,5 +296,135 @@ describe("UserAccountService.addUser keeps working without the department hook",
     const db = new PasswordFakeDb();
     const r = await UserAccountService.addUser(ADMIN, { email: "google-only@elsewhere.org", createPassword: false }, db as never, ENV);
     expect(r).toMatchObject({ ok: true, temporaryPassword: undefined });
+  });
+});
+
+describe("Turn off sign-in blocks every way in, even ALLOWED_EMAILS and ADMIN_EMAILS", () => {
+  const JANE = "jane.doe@caromonthealth.org";
+  const PASSWORD = "jane own password";
+  const pwd = (email: string) => ({ user: { email }, account: { provider: "password" }, profile: null });
+
+  /** Jane is on ALLOWED_EMAILS (no account row needed for Google) and also has a password. */
+  async function janeDb(): Promise<PasswordFakeDb> {
+    const db = await Accounts.db();
+    await db.appUser.create({ data: { email: JANE, name: "Jane Doe", addedBy: "admin@example.org" } });
+    await db.passwordCredential.create({ data: { email: JANE, passwordHash: await PasswordHasher.hash(PASSWORD), mustChange: false, passwordSetAt: T0, passwordSetBy: "admin@example.org" } });
+    return db;
+  }
+  const off = (db: PasswordFakeDb, email: string, on = false) => UserAccountService.setEnabled(ADMIN, email, on, db as never, T0);
+
+  it("an ALLOWED_EMAILS person who is turned off is refused for Google and for password (generic 'invalid')", async () => {
+    const db = await janeDb();
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("Jane.Doe@CaroMontHealth.org"), Accounts.check(db), ENV)).toBe(true);
+    expect(await off(db, JANE)).toEqual({ ok: true, message: "Jane Doe can't sign in now. Their sessions have ended." });
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("Jane.Doe@CaroMontHealth.org"), Accounts.check(db), ENV)).toBe(false);
+    // Password: the right password gives the same result as a wrong one (no hint the account exists), and the gate refuses too.
+    const right = await PasswordSignInService.authenticate(JANE, PASSWORD, "10.0.0.1", db as never, T0);
+    const wrong = await PasswordSignInService.authenticate(JANE, "not the password", "10.0.0.2", db as never, T0);
+    expect(right).toEqual({ ok: false, reason: "invalid" });
+    expect(wrong).toEqual(right);
+    expect(await SignInGate.allowSignInWithAccounts(pwd(JANE), Accounts.check(db), ENV)).toBe(false);
+  });
+
+  it("an ADMIN_EMAILS admin (NLeary@gmail.com) who is turned off by another admin is refused; Microsoft and dev login too", async () => {
+    const db = await Accounts.db();
+    expect((await off(db, "NLeary@gmail.com")).ok).toBe(true);
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("NLeary@gmail.com"), Accounts.check(db), ENV)).toBe(false);
+    for (const provider of ["microsoft-entra-id", "dev-login"]) {
+      expect(await SignInGate.allowSignInWithAccounts({ user: { email: "nleary@gmail.com" }, account: { provider }, profile: {} }, Accounts.check(db), ENV)).toBe(false);
+    }
+  });
+
+  it("an admin-created Google-only account (no password) that is turned off is refused", async () => {
+    const db = await Accounts.db();
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("casey.new@elsewhere.org"), Accounts.check(db), ENV)).toBe(true);
+    expect(await off(db, "casey.new@elsewhere.org")).toEqual({ ok: true, message: "Casey New can't sign in now. Their sessions have ended." });
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("casey.new@elsewhere.org"), Accounts.check(db), ENV)).toBe(false);
+    expect((await UserAccountService.statuses(ADMIN, ["casey.new@elsewhere.org"], db as never))["casey.new@elsewhere.org"]).toEqual({ state: "none", off: true, locked: false });
+  });
+
+  it("open sessions end at the next check (within 5 minutes): Google on ALLOWED_EMAILS, Google via account, and password", async () => {
+    const db = await janeDb();
+    const check = (email: unknown, viaAccount: boolean) => AccountSignInService.sessionStillAllowed(email, viaAccount, db as never);
+    const google = SessionPolicy.start({ email: JANE } as JWT, "google", {}, T0, false);
+    const account = SessionPolicy.start({ email: "casey.new@elsewhere.org" } as JWT, "google", {}, T0, true);
+    expect(google).toMatchObject({ checkedAt: Math.floor(T0.getTime() / 1000) });
+    const version = T0.getTime();
+    expect(await PasswordSignInService.sessionState(JANE, version, db as never)).toEqual({ mustChange: false });
+
+    await off(db, JANE);
+    await off(db, "casey.new@elsewhere.org");
+    // Before the 5 minute mark nothing is asked; at the next check both Google sessions end.
+    expect(await SessionPolicy.continue(google, undefined, new Date(T0.getTime() + 4 * MIN), check)).not.toBeNull();
+    expect(await SessionPolicy.continue(google, undefined, new Date(T0.getTime() + 6 * MIN), check)).toBeNull();
+    expect(await SessionPolicy.continue(account, undefined, new Date(T0.getTime() + 6 * MIN), check)).toBeNull();
+    expect(await PasswordSignInService.sessionState(JANE, version, db as never)).toBeNull();
+    // Choosing a new password is refused too.
+    expect((await PasswordSignInService.changeOwnPassword(JANE, "a brand new password", "a brand new password", db as never, T0)).ok).toBe(false);
+  });
+
+  it("turning sign-in back on restores Google, password and the session check", async () => {
+    const db = await janeDb();
+    await off(db, JANE);
+    expect(await off(db, JANE, true)).toEqual({ ok: true, message: "Jane Doe can sign in again." });
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt(JANE), Accounts.check(db), ENV)).toBe(true);
+    expect(await PasswordSignInService.authenticate(JANE, PASSWORD, "10.0.0.1", db as never, T0)).toMatchObject({ ok: true, email: JANE });
+    expect(await AccountSignInService.sessionStillAllowed(JANE, false, db as never)).toBe(true);
+    expect(db.passwordCredentialHistory.all().map((x) => x.action)).toEqual(["disabled", "enabled"]);
+  });
+
+  it("an admin can't turn off their own sign-in (any case), and nothing is saved", async () => {
+    const db = await Accounts.db();
+    expect(await UserAccountService.setEnabled(ADMIN, ADMIN.email.toUpperCase(), false, db as never, T0)).toEqual({ ok: false, message: "You can't turn off your own sign-in." });
+    expect(db.signInBlock.all().map((b) => b.email)).toEqual(["off.person@elsewhere.org"]);
+    expect(await UserAccountService.setEnabled({ email: "jane.doe@caromonthealth.org", isAdmin: false }, "casey.new@elsewhere.org", false, db as never, T0).catch(() => "refused")).toBe("refused");
+  });
+
+  it("a database error on the turned-off lookup refuses every provider (fails closed); an error during a session re-check keeps it", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const down = { isBlocked: async () => Promise.reject(new Error("db down")), accountActive: async () => true };
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt(JANE), down, ENV)).toBe(false);
+    expect(await SignInGate.allowSignInWithAccounts(pwd(JANE), down, ENV)).toBe(false);
+    const t = SessionPolicy.start({ email: JANE } as JWT, "google", {}, T0, false);
+    expect(await SessionPolicy.continue(t, undefined, new Date(T0.getTime() + 6 * MIN), async () => Promise.reject(new Error("db down")))).not.toBeNull();
+  });
+
+  it("the row menu: 'Turn on sign-in' in normal text on a turned-off row, red 'Turn off sign-in' otherwise, none on your own row", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { AccountRowMenu, PasswordTags } = await import("@/components/AccessAccountControls");
+    const menu = (status: { state: "none" | "active" | "mustChange"; off: boolean; locked: boolean }, isSelf = false) =>
+      renderToStaticMarkup(createElement(AccountRowMenu, { name: "Kim Test", email: "kim.test@example.org", status, isSelf, initialOpen: true, onResult: () => {} }));
+    const items = (html: string) => [...html.matchAll(/<li role="menuitem" tabindex="0" class="([^"]*)">([^<]+)<\/li>/g)].map((m) => [m[2], m[1].includes("text-danger")]);
+    // A turned-off row's menu starts with the status line.
+    expect(menu({ state: "none", off: true, locked: false })).toMatch(/data-testid="access-row-status">Sign-in is turned off for this person\.</);
+    expect(menu({ state: "active", off: false, locked: false })).not.toContain("access-row-status");
+    expect(items(menu({ state: "none", off: true, locked: false }))).toEqual([
+      [PasswordCopy.MENU_CREATE, false],
+      ["Turn on sign-in", false],
+    ]);
+    expect(items(menu({ state: "active", off: false, locked: false }))).toEqual([
+      [PasswordCopy.MENU_RESET, false],
+      ["Turn off sign-in", true],
+    ]);
+    expect(items(menu({ state: "none", off: false, locked: false }))).toContainEqual(["Turn off sign-in", true]);
+    // Your own row: Turn off is left out entirely (not shown disabled).
+    const self = menu({ state: "active", off: false, locked: false }, true);
+    expect(items(self)).toEqual([[PasswordCopy.MENU_RESET, false]]);
+    expect(self).not.toContain("Turn off");
+    // Tags: the sign-in method plus Off, with the status line as its tooltip.
+    const tags = renderToStaticMarkup(createElement(PasswordTags, { status: { state: "none", off: true, locked: false } }));
+    expect([...tags.matchAll(/title="([^"]*)" data-password-tag="([^"]+)">([^<]+)</g)].map((m) => [m[2], m[3], m[1]])).toEqual([
+      ["google", "Google", "Signs in with Google."],
+      ["off", "Off", "Sign-in is turned off for this person."],
+    ]);
+  });
+
+  it("the copy: exact wording, no em dashes, and no 'password' wording around turning sign-in off or on", () => {
+    const copy = [PasswordCopy.MENU_TURN_OFF, PasswordCopy.MENU_TURN_ON, PasswordCopy.TAG_OFF_TIP, PasswordCopy.NOT_SELF, PasswordCopy.turnedOffToast("Kim Test"), PasswordCopy.turnedOnToast("Kim Test")];
+    expect(copy).toEqual(["Turn off sign-in", "Turn on sign-in", "Sign-in is turned off for this person.", "You can't turn off your own sign-in.", "Kim Test can't sign in now. Their sessions have ended.", "Kim Test can sign in again."]);
+    for (const s of copy) {
+      expect(s).not.toMatch(/\u2014|password/i);
+    }
+    expect(Object.keys(PasswordCopy)).not.toEqual(expect.arrayContaining(["TURNED_OFF_TOAST", "TURNED_ON_TOAST", "NO_PASSWORD"]));
   });
 });

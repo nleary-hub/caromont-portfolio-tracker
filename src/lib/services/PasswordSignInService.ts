@@ -7,7 +7,7 @@ import { SignInLockout } from "@/lib/auth/SignInLockout";
 import { SignInRateLimit, type SqlRunner } from "@/lib/auth/SignInRateLimit";
 import { Db } from "@/lib/db/Db";
 
-export type AuthDb = Pick<PrismaClient, "passwordCredential" | "passwordSignInAttempt" | "passwordCredentialHistory" | "$queryRawUnsafe">;
+export type AuthDb = Pick<PrismaClient, "passwordCredential" | "passwordSignInAttempt" | "passwordCredentialHistory" | "signInBlock" | "$queryRawUnsafe">;
 
 export type PasswordAuthResult =
   | { ok: true; email: string; name: string; mustChange: boolean; pwdVersion: number }
@@ -64,7 +64,9 @@ export class PasswordSignInService {
     const credential = await db.passwordCredential.findUnique({ where: { email }, include: { user: true } });
     const matches = credential ? await PasswordHasher.verify(credential.passwordHash, passwordIn) : await PasswordHasher.verifyNothing(passwordIn);
 
-    if (matches && credential && !credential.disabledAt) {
+    // Turned off: the same generic failure as a wrong password (never says the account exists).
+    const blocked = matches && credential ? Boolean(await db.signInBlock.findUnique({ where: { email } })) : false;
+    if (matches && credential && !blocked) {
       await db.passwordSignInAttempt.deleteMany({ where: { email } });
       await db.passwordCredential.update({ where: { email }, data: { lastSignInAt: now } });
       const name = DisplayName.nameOrNull(credential.user?.name, email) ?? DisplayName.fromEmail(email);
@@ -103,11 +105,12 @@ export class PasswordSignInService {
    * A password session is still good while the password it signed in with is unchanged (an admin reset ends it) and
    * not turned off. Null = end the session.
    */
-  static async sessionState(emailIn: unknown, pwdVersion: unknown, db: Pick<AuthDb, "passwordCredential"> = Db.client): Promise<PasswordSessionState | null> {
+  static async sessionState(emailIn: unknown, pwdVersion: unknown, db: Pick<AuthDb, "passwordCredential" | "signInBlock"> = Db.client): Promise<PasswordSessionState | null> {
     const email = PasswordSignInService.normalize(emailIn);
     if (!email || typeof pwdVersion !== "number") return null;
     const c = await db.passwordCredential.findUnique({ where: { email } });
-    if (!c || c.disabledAt || c.passwordSetAt.getTime() !== pwdVersion) return null;
+    if (!c || c.passwordSetAt.getTime() !== pwdVersion) return null;
+    if (await db.signInBlock.findUnique({ where: { email } })) return null;
     return { mustChange: c.mustChange };
   }
 
@@ -116,14 +119,14 @@ export class PasswordSignInService {
     emailIn: unknown,
     password: unknown,
     confirm: unknown,
-    db: Pick<AuthDb, "passwordCredential" | "passwordCredentialHistory"> = Db.client,
+    db: Pick<AuthDb, "passwordCredential" | "passwordCredentialHistory" | "signInBlock"> = Db.client,
     now: Date = new Date(),
   ): Promise<PasswordChangeResult> {
     const email = PasswordSignInService.normalize(emailIn);
     const problem = PasswordPolicy.problem(password, confirm, email);
     if (problem) return { ok: false, message: problem };
     const c = await db.passwordCredential.findUnique({ where: { email } });
-    if (!c || c.disabledAt) return { ok: false, message: PasswordCopy.SAVE_ERROR };
+    if (!c || (await db.signInBlock.findUnique({ where: { email } }))) return { ok: false, message: PasswordCopy.SAVE_ERROR };
     if (await PasswordHasher.verify(c.passwordHash, password as string)) return { ok: false, message: PasswordCopy.SAME_AS_TEMPORARY };
     const passwordHash = await PasswordHasher.hash(password as string);
     await db.passwordCredential.update({ where: { email }, data: { passwordHash, mustChange: false, passwordSetAt: now, passwordSetBy: email } });

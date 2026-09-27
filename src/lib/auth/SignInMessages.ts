@@ -1,3 +1,4 @@
+import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 
 export interface SignInPanel {
@@ -8,7 +9,8 @@ export interface SignInPanel {
 
 /** Sign-in page error text. Deliberately generic: never reveal which check failed or what the lists contain. */
 export class SignInMessages {
-  static readonly ACCESS_DENIED = "This account is not on the access list.";
+  /** Every refused Google sign-in (not on the list, turned off, unverified): same words as LineAccessCopy.NOT_ALLOWED_EMAIL. */
+  static readonly ACCESS_DENIED = LineAccessCopy.NOT_ALLOWED_EMAIL;
   static readonly CONFIGURATION = "Sign-in is misconfigured on the server.";
   static readonly GENERIC = "Sign-in failed. Please try again.";
 

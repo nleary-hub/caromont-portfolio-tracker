@@ -45,13 +45,13 @@ export class PasswordCopy {
   static readonly TAG_PASSWORD_TIP = "Can sign in with email and password.";
   static readonly TAG_MUST_CHANGE_TIP = "Has a temporary password. They'll choose their own at their next sign-in.";
   static readonly TAG_LOCKED_TIP = "Too many wrong passwords. Unlocks by itself after 15 minutes.";
-  static readonly TAG_OFF_TIP = "Password sign-in is turned off for this person.";
+  static readonly TAG_OFF_TIP = "Sign-in is turned off for this person.";
   static readonly MENU_LABEL = "More actions";
   static readonly MENU_CREATE = "Create temporary password";
   static readonly MENU_RESET = "Reset password";
   static readonly MENU_UNLOCK = "Unlock";
-  static readonly MENU_TURN_OFF = "Turn off password sign-in";
-  static readonly MENU_TURN_ON = "Turn on password sign-in";
+  static readonly MENU_TURN_OFF = "Turn off sign-in";
+  static readonly MENU_TURN_ON = "Turn on sign-in";
 
   static readonly ADD_TITLE = "Add user";
   static readonly ADD_NAME = "Name (optional)";
@@ -69,9 +69,16 @@ export class PasswordCopy {
   static readonly DONE = "Done";
 
   static readonly UNLOCKED_TOAST = "Unlocked. They can try again now.";
-  static readonly TURNED_OFF_TOAST = "Password sign-in turned off.";
-  static readonly TURNED_ON_TOAST = "Password sign-in turned on.";
-  static readonly NO_PASSWORD = "This person doesn't have a password yet.";
+  static readonly NOT_SELF = "You can't turn off your own sign-in.";
+
+  /** After Turn off sign-in (every provider, sessions end at their next check). */
+  static turnedOffToast(name: string): string {
+    return `${name} can't sign in now. Their sessions have ended.`;
+  }
+
+  static turnedOnToast(name: string): string {
+    return `${name} can sign in again.`;
+  }
 
   static tempFor(name: string): string {
     return `Temporary password for ${name}`;

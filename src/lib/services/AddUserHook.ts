@@ -14,6 +14,7 @@ export type AccountTx = Pick<
   | "passwordCredential"
   | "passwordCredentialHistory"
   | "passwordSignInAttempt"
+  | "signInBlock"
 >;
 
 /**

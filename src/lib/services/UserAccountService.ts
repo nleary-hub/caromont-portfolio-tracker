@@ -14,10 +14,12 @@ type Env = Record<string, string | undefined>;
 export { AddUserRejected, type AccountTx, type AddUserGrantHook };
 type AccountDb = Pick<PrismaClient, "passwordCredential" | "passwordSignInAttempt"> & { $transaction<T>(fn: (tx: AccountTx) => Promise<T>): Promise<T> };
 
-/** Password state shown as tags in the Access grid. */
+/** Sign-in state shown as tags in the Access grid. */
 export interface PasswordStatus {
-  /** none = no password; active = their own; mustChange = temporary; off = turned off by an admin. */
-  state: "none" | "active" | "mustChange" | "off";
+  /** none = no password (Google); active = their own password; mustChange = temporary password. */
+  state: "none" | "active" | "mustChange";
+  /** An admin turned their sign-in off (sign_in_block): no provider lets them in. */
+  off: boolean;
   locked: boolean;
 }
 
@@ -34,20 +36,22 @@ export type AccountResult = { ok: true; message: string; temporaryPassword?: str
 
 /**
  * Admin-only account management for Admin > People > Access: Add user (with line access and an optional temporary
- * password, all in one transaction), and the row menu (reset password, unlock, turn password sign-in off or on).
+ * password, all in one transaction), and the row menu (reset password, unlock, turn sign-in off or on).
  * Temporary passwords are returned once to the admin and stored only as argon2id hashes.
  */
 export class UserAccountService {
-  static async statuses(viewer: Viewer | null, emails: string[], db: Pick<PrismaClient, "passwordCredential" | "passwordSignInAttempt"> = Db.client, now: Date = new Date()): Promise<Record<string, PasswordStatus>> {
+  static async statuses(viewer: Viewer | null, emails: string[], db: Pick<PrismaClient, "passwordCredential" | "passwordSignInAttempt" | "signInBlock"> = Db.client, now: Date = new Date()): Promise<Record<string, PasswordStatus>> {
     AdminPolicy.assertAdmin(viewer);
-    const [creds, attempts] = await Promise.all([
+    const [creds, attempts, blocks] = await Promise.all([
       db.passwordCredential.findMany({ where: { email: { in: emails } } }),
       db.passwordSignInAttempt.findMany({ where: { email: { in: emails } } }),
+      db.signInBlock.findMany({ where: { email: { in: emails } } }),
     ]);
     const locked = new Set(attempts.filter((a) => SignInLockout.isLocked(a, now)).map((a) => a.email));
+    const off = new Set(blocks.map((b) => b.email));
     const out: Record<string, PasswordStatus> = {};
-    for (const email of emails) out[email] = { state: "none", locked: locked.has(email) };
-    for (const c of creds) out[c.email] = { state: c.disabledAt ? "off" : c.mustChange ? "mustChange" : "active", locked: locked.has(c.email) };
+    for (const email of emails) out[email] = { state: "none", off: off.has(email), locked: locked.has(email) };
+    for (const c of creds) out[c.email] = { state: c.mustChange ? "mustChange" : "active", off: off.has(c.email), locked: locked.has(c.email) };
     return out;
   }
 
@@ -61,7 +65,7 @@ export class UserAccountService {
     env: Env = process.env,
   ): G {
     const admins = AdminPolicy.fromEnv(env);
-    const promote = (r: R) => !r.isAdmin && admins.allows(r.email) && ["active", "mustChange"].includes(statuses[r.email]?.state ?? "none");
+    const promote = (r: R) => !r.isAdmin && admins.allows(r.email) && !statuses[r.email]?.off && ["active", "mustChange"].includes(statuses[r.email]?.state ?? "none");
     const moved = grid.users.filter(promote).map((r) => ({ ...r, isAdmin: true, lineIds: [] }));
     if (!moved.length) return grid;
     const byName = (a: R, b: R) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || a.email.localeCompare(b.email);
@@ -119,7 +123,7 @@ export class UserAccountService {
 
   /**
    * New temporary password for someone on the list (creates their first one, or resets). Ends their current password
-   * sessions, clears any lockout and turns password sign-in back on. Admins listed by exact email in ADMIN_EMAILS get
+   * sessions and clears any lockout. It does not turn sign-in back on for someone who is turned off. Admins listed by exact email in ADMIN_EMAILS get
    * an app_user row if they have none yet.
    */
   static async resetPassword(viewer: Viewer | null, emailIn: unknown, db: AccountDb = Db.client as unknown as AccountDb, env: Env = process.env, now: Date = new Date()): Promise<AccountResult> {
@@ -136,7 +140,7 @@ export class UserAccountService {
         user = await tx.appUser.create({ data: { email, addedBy: viewer.email } });
       }
       const existing = await tx.passwordCredential.findUnique({ where: { email } });
-      const data = { passwordHash, mustChange: true, passwordSetAt: now, passwordSetBy: viewer.email, disabledAt: null, disabledBy: null };
+      const data = { passwordHash, mustChange: true, passwordSetAt: now, passwordSetBy: viewer.email };
       await tx.passwordCredential.upsert({ where: { email }, create: { email, ...data }, update: data });
       await tx.passwordCredentialHistory.create({ data: { email, action: existing ? "reset" : "set", changedAt: now, changedBy: viewer.email } });
       await tx.passwordSignInAttempt.deleteMany({ where: { email } });
@@ -155,16 +159,23 @@ export class UserAccountService {
     });
   }
 
-  /** Turn password sign-in off (keeps the hash; ends their password sessions within minutes) or back on. */
+  /**
+   * Turn someone's sign-in off or back on, for every provider (sign_in_block): password, Google, even an email on
+   * ALLOWED_EMAILS or ADMIN_EMAILS. Their open sessions end at the next check (within 5 minutes). Password hashes and
+   * line access are kept. Works for anyone in the grid, with or without a password. You can't turn yourself off.
+   */
   static async setEnabled(viewer: Viewer | null, emailIn: unknown, on: boolean, db: AccountDb = Db.client as unknown as AccountDb, now: Date = new Date()): Promise<AccountResult> {
     AdminPolicy.assertAdmin(viewer);
     const email = PasswordSignInService.normalize(emailIn);
+    if (!PasswordSignInService.isValidEmail(email)) return { ok: false, message: LineAccessCopy.INVALID_EMAIL };
+    if (!on && email === PasswordSignInService.normalize(viewer.email)) return { ok: false, message: PasswordCopy.NOT_SELF };
     return db.$transaction(async (tx) => {
-      const c = await tx.passwordCredential.findUnique({ where: { email } });
-      if (!c) return { ok: false as const, message: PasswordCopy.NO_PASSWORD };
-      await tx.passwordCredential.update({ where: { email }, data: on ? { disabledAt: null, disabledBy: null } : { disabledAt: now, disabledBy: viewer.email } });
+      if (on) await tx.signInBlock.deleteMany({ where: { email } });
+      else await tx.signInBlock.upsert({ where: { email }, create: { email, blockedAt: now, blockedBy: viewer.email }, update: {} });
       await tx.passwordCredentialHistory.create({ data: { email, action: on ? "enabled" : "disabled", changedAt: now, changedBy: viewer.email } });
-      return { ok: true as const, message: on ? PasswordCopy.TURNED_ON_TOAST : PasswordCopy.TURNED_OFF_TOAST };
+      const user = await tx.appUser.findUnique({ where: { email } });
+      const name = DisplayName.nameOrNull(user?.name ?? null, email) ?? DisplayName.fromEmail(email);
+      return { ok: true as const, message: on ? PasswordCopy.turnedOnToast(name) : PasswordCopy.turnedOffToast(name) };
     });
   }
 }
