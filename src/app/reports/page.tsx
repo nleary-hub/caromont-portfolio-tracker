@@ -111,7 +111,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         </section>
       )}
 
-      <div className="overflow-hidden rounded-card border border-line bg-card">
+      <div className="overflow-hidden rounded-card border border-line bg-card" hidden={limited}>
         <table className="w-full border-separate border-spacing-0 type-table">
           <thead>
             <tr className="text-left text-muted type-label uppercase">
