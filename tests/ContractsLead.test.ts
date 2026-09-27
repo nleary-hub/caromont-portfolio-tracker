@@ -135,6 +135,14 @@ describe("ContractsLead", () => {
     const longest = Math.max(...ContractsLead.options().map((lead) => m.width(`Contracts: ${lead}`, 7, 400)));
     expect(ownerColumn.w - ReportGeometry.CELL_PAD_R).toBeGreaterThanOrEqual(longest);
     expect(ownerColumn.w - ReportGeometry.CELL_PAD_R - longest).toBeGreaterThan(8);
+    const people = ReportLayout.rowLayout(
+      m,
+      { ...row, owner: "Nicole Smith", physicianChampion: "Mellisa Gonzales", contractsLead: "Mellisa Gonzales" },
+      settings,
+      SampleReportData.REPORT_DATE,
+    ).cells.find((x): x is OwnerCell => x.kind === "owner")!;
+    expect(people.ownerMore).toEqual([]);
+    expect(people.championMore).toEqual([]);
     for (const lead of [...ContractsLead.options(), null]) {
       const c = ReportLayout.rowLayout(m, { ...row, contractsLead: lead }, settings, SampleReportData.REPORT_DATE).cells.find((x): x is OwnerCell => x.kind === "owner")!;
       expect(c.contracts?.lines, String(lead)).toHaveLength(1);
