@@ -54,7 +54,11 @@ model Project {
   /// Infor request number: optional whole number 1 to 99999 (shown as "REQ-5081"). Range enforced in app
   /// validation (AppConfig.INFOR_REQUEST_NUMBER_MIN/MAX); DB check constraint as backstop.
   inforRequestNumber     Int?          @map("infor_request_number")
+  /// LEGACY (kept in step with departmentId by the Project_department_sync trigger, migration 0018, so the previous
+  /// deployment keeps working during the deploy window). The app reads and writes departmentId only.
   serviceArea            ServiceArea?
+  /// The project's department (null = Unassigned, grouped last). Migration 0018.
+  departmentId           String?       @db.Uuid
   owner                  String?
   physicianChampion      String?
   physicianChampionEmail String?
@@ -99,8 +103,10 @@ model Project {
   history     ProjectHistory[]
   milestones  ProjectMilestone[]
   serviceLine ServiceLine        @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  department  Department?        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
 
   @@index([serviceArea, status])
+  @@index([departmentId])
   @@index([archivedAt])
   @@index([serviceLineId, archivedAt])
 }
@@ -161,6 +167,9 @@ model ReportSnapshot {
   /// LineLayoutValue (column order and width shares, row order per department) of the line at freeze. Immutable.
   /// Null before migration 0017 (those reports render with the default columns and order).
   layoutJson           Json?
+  /// DepartmentInfo[]: the line's departments at freeze (id, name, short name, in report order), so a frozen report
+  /// keeps the names it was frozen with. Immutable. Null before migration 0018 (those use the legacy labels).
+  departmentsJson      Json?
 
   artifacts   ReportArtifact[]
   deliveries  ReportDelivery[]
@@ -401,7 +410,7 @@ model ServiceLine {
   /// Short name, e.g. "CVPSL". 2 to 12 uppercase letters and digits; unique among lines not deleted.
   shortName      String
   isDefault      Boolean       @default(false)
-  /// Departments this line uses, in report order (the default line has all of them).
+  /// LEGACY (read by migration 0018 only): the departments a line used before the department table.
   departments    ServiceArea[] @default([])
   /// Contracts lead pick-list (exact spelling; stored canonical on projects).
   contractsLeads String[]      @default([])
@@ -422,6 +431,8 @@ model ServiceLine {
   activeFor        ServiceLineUserState[]
   layout           LineLayout?
   layoutLog        LineLayoutHistory[]
+  departmentRows   Department[]
+  departmentLog    DepartmentHistory[]
 
   @@map("service_line")
 }
@@ -483,4 +494,49 @@ model LineLayoutHistory {
 
   @@index([serviceLineId, changedAt])
   @@map("line_layout_history")
+}
+
+/// A department of one service line (migration 0018). Only DepartmentService writes it; every change is appended
+/// to department_history in the same transaction. Position is the PDF and dashboard order (Unassigned always
+/// comes last and is not a department). Archive hides it from filters, pick-lists and new projects; delete is soft
+/// and restorable from /admin/audit. Name (1 to 40) and short name (1 to 12) are unique per line among departments
+/// not deleted, ignoring case (DB unique indexes as backstop).
+model Department {
+  id            String      @id @default(uuid()) @db.Uuid
+  serviceLineId String      @db.Uuid
+  /// Full name, shown in the filter and project pick-lists (e.g. "Cath Lab").
+  name          String
+  /// Shown in PDF headings and the summary grid (e.g. "Cath").
+  shortName     String
+  position      Int
+  /// The ServiceArea value a seeded department replaced (maps pre-0018 data); null for departments added since.
+  legacyKey     ServiceArea?
+  archivedAt    DateTime?
+  deletedAt     DateTime?
+  deletedBy     String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+  updatedBy     String
+  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  projects      Project[]
+
+  @@index([serviceLineId, position])
+  @@map("department")
+}
+
+/// Append-only audit trail of department changes (created, renamed, moved, archived, unarchived, deleted, restored).
+/// DB trigger blocks UPDATE/DELETE. departmentId is not a foreign key so the trail outlives anything.
+model DepartmentHistory {
+  id            String      @id @default(uuid()) @db.Uuid
+  serviceLineId String      @db.Uuid
+  departmentId  String?     @db.Uuid
+  action        String
+  oldValue      Json?
+  newValue      Json?
+  changedAt     DateTime    @default(now())
+  changedBy     String
+  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+
+  @@index([serviceLineId, changedAt])
+  @@map("department_history")
 }
