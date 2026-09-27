@@ -148,7 +148,7 @@ describe("dashboard filter row", () => {
   });
 });
 
-describe("admin Report settings form", () => {
+describe("admin Report contents form", () => {
   it("parses the checked departments (at least one) and the totals grid mode", () => {
     expect(ReportOptionsForm.parse({ departments: ["EP", "Cath"], totalsGrid: "hidden" })).toEqual({ departments: ["Cath", "EP"], totalsGrid: "hidden" });
     expect(ReportOptionsForm.parse({ departments: [], totalsGrid: "nope" })).toEqual({ departments: DepartmentFilter.all(), totalsGrid: "top" });

@@ -4,7 +4,7 @@ import type { Viewer } from "@/lib/auth/AdminPolicy";
  * - link: normal navigation.
  * - download: a file download (CSV template or export); rendered as <a download>.
  * - action: a one-click action with a right-side caption (Generate PDF, caption "Draft").
- * - viewSettings: opens the dashboard View settings picker (on "/" directly, elsewhere via "/#view-settings").
+ * - viewSettings: opens the Dashboard view picker (on "/" directly, elsewhere via "/#view-settings").
  */
 export type AdminMenuItemKind = "link" | "download" | "action" | "viewSettings";
 
@@ -41,7 +41,9 @@ export class AdminMenu {
   static readonly OPEN_VIEW_SETTINGS_EVENT = "admin-menu:open-view-settings";
   static readonly GROUPS: readonly AdminMenuGroup[] = ["work", "library", "admin"];
   /** Menu item, page heading and metadata title of /admin/settings (was "Line settings"). */
-  static readonly REPORT_SETTINGS = "Report settings";
+  static readonly DASHBOARD_VIEW = "Dashboard view";
+  static readonly REPORT_CONTENTS = "Report contents";
+  static readonly REPORT_FREEZE = "Report freeze";
 
   private static readonly DEFINITIONS: readonly AdminMenuDefinition[] = [
     // Group 1: day-to-day work.
@@ -50,16 +52,16 @@ export class AdminMenu {
     { id: "csv-export", group: "work", kind: "download", icon: "download", label: "Export CSV", href: "/admin/import/export", shipped: true },
     { id: "generate-pdf", group: "work", kind: "action", icon: "pdf", label: "Generate PDF", caption: "Draft", href: "/api/reports/preview", shipped: true },
     { id: "reports", group: "work", kind: "link", icon: "archive", label: "Reports", href: "/reports", shipped: true },
-    { id: "freeze", group: "work", kind: "link", icon: "snowflake", label: "Freeze and report options", href: "/reports#report-admin", shipped: true },
-    // Report settings of the active line (departments in report, totals grid), right after the freeze options.
+    { id: "freeze", group: "work", kind: "link", icon: "snowflake", label: AdminMenu.REPORT_FREEZE, href: "/reports#report-admin", shipped: true },
+    // Report contents of the active line (departments in report, totals grid), right after the freeze options.
     // Departments and contracts leads have their own pages (Departments, People).
-    { id: "service-line", group: "work", kind: "link", icon: "reportSettings", label: AdminMenu.REPORT_SETTINGS, href: "/admin/settings", shipped: true },
+    { id: "service-line", group: "work", kind: "link", icon: "reportSettings", label: AdminMenu.REPORT_CONTENTS, href: "/admin/settings", shipped: true },
     // Group 2: the active line's lists.
     { id: "departments", group: "library", kind: "link", icon: "departments", label: "Departments", href: "/admin/departments", shipped: true },
     { id: "people", group: "library", kind: "link", icon: "people", label: "People", href: "/admin/people", shipped: true },
     // Group 3: oversight and settings.
     { id: "audit", group: "admin", kind: "link", icon: "audit", label: "Audit log", href: "/admin/audit", shipped: true },
-    { id: "settings", group: "admin", kind: "viewSettings", icon: "settings", label: "Settings", href: `/${AdminMenu.VIEW_SETTINGS_HASH}`, shipped: true },
+    { id: "settings", group: "admin", kind: "viewSettings", icon: "settings", label: AdminMenu.DASHBOARD_VIEW, href: `/${AdminMenu.VIEW_SETTINGS_HASH}`, shipped: true },
     { id: "service-lines", group: "admin", kind: "link", icon: "tag", label: "Service lines", href: "/admin/service-lines", shipped: true },
     // Milestone templates.
     { id: "templates", group: "admin", kind: "link", icon: "template", label: "Templates", href: "/admin/templates", shipped: true },

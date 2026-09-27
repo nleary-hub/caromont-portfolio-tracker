@@ -294,7 +294,7 @@ export function ProjectDashboard({
       return err;
     } catch {
       setSettings((s) => (s ? { ...s, [context]: previous } : s));
-      return "Could not save view settings.";
+      return "Couldn't save the dashboard view. Try again.";
     }
   };
 

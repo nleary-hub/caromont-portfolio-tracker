@@ -1,4 +1,6 @@
 import { createElement } from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AdminMenu, MenuKeyboard } from "@/lib/admin/AdminMenu";
@@ -17,12 +19,12 @@ describe("AdminMenu.itemsFor", () => {
       ["work", "Export CSV", "/admin/import/export"],
       ["work", "Generate PDF", "/api/reports/preview"],
       ["work", "Reports", "/reports"],
-      ["work", "Freeze and report options", "/reports#report-admin"],
-      ["work", "Report settings", "/admin/settings"],
+      ["work", "Report freeze", "/reports#report-admin"],
+      ["work", "Report contents", "/admin/settings"],
       ["library", "Departments", "/admin/departments"],
       ["library", "People", "/admin/people"],
       ["admin", "Audit log", "/admin/audit"],
-      ["admin", "Settings", "/#view-settings"],
+      ["admin", "Dashboard view", "/#view-settings"],
       ["admin", "Service lines", "/admin/service-lines"],
       ["admin", "Templates", "/admin/templates"],
     ]);
@@ -35,20 +37,33 @@ describe("AdminMenu.itemsFor", () => {
     expect(AdminMenu.itemsFor(undefined)).toBeNull();
   });
 
-  it("ships Departments then People in the library group, and Report settings right after Freeze with its own icon", () => {
+  it("ships Departments then People in the library group, and Report contents right after Report freeze with its own icon", () => {
     expect(AdminMenu.definitions().filter((d) => !d.shipped)).toEqual([]);
     const labels = AdminMenu.itemsFor(ADMIN)!.map((i) => i.label);
-    expect(labels.indexOf("Report settings")).toBe(labels.indexOf("Freeze and report options") + 1);
+    expect(labels.indexOf("Report contents")).toBe(labels.indexOf("Report freeze") + 1);
     const items = AdminMenu.itemsFor(ADMIN)!;
-    expect(items.find((i) => i.label === "Report settings")?.icon).toBe("reportSettings");
-    expect(items.find((i) => i.label === "Settings")?.icon).toBe("settings");
+    expect(items.find((i) => i.label === "Report contents")?.icon).toBe("reportSettings");
+    expect(items.find((i) => i.label === "Dashboard view")?.icon).toBe("settings");
     expect(labels.indexOf("People")).toBe(labels.indexOf("Departments") + 1);
     expect(labels).not.toContain("Line settings");
-    expect(AdminMenu.REPORT_SETTINGS).toBe("Report settings");
+    expect(labels).not.toContain("Settings");
+    expect(labels).not.toContain("Report settings");
+    expect(labels).not.toContain("Freeze and report options");
+    expect(AdminMenu.DASHBOARD_VIEW).toBe("Dashboard view");
+    expect(AdminMenu.REPORT_CONTENTS).toBe("Report contents");
+    expect(AdminMenu.REPORT_FREEZE).toBe("Report freeze");
   });
 
   it("shows the three groups in order (work, library, admin)", () => {
     expect(AdminMenu.grouped(AdminMenu.itemsFor(ADMIN)!).map((g) => g.group)).toEqual(["work", "library", "admin"]);
+  });
+
+  it("keeps the renamed copy in the dashboard error and report freeze heading", () => {
+    const dashboard = readFileSync(join(process.cwd(), "src/components/ProjectDashboard.tsx"), "utf8");
+    const reports = readFileSync(join(process.cwd(), "src/app/reports/page.tsx"), "utf8");
+    expect(dashboard).toContain("Couldn't save the dashboard view. Try again.");
+    expect(reports).toContain("{AdminMenu.REPORT_FREEZE}");
+    expect(reports).not.toContain('>Report freeze</h2>');
   });
 
   it("marks the current admin page only for exact plain-link matches", () => {
@@ -107,7 +122,7 @@ describe("AdminMenuButton (open)", () => {
   it("renders every shipped item as a menuitem, with a divider between each of the three groups", () => {
     expect(html.match(/role="menuitem"/g)).toHaveLength(13);
     expect(html.match(/role="separator"/g)).toHaveLength(2);
-    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "Departments", "People", "Audit log", "Settings", "Service lines", "Report settings", "Templates"]) {
+    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "Report freeze", "Report contents", "Departments", "People", "Audit log", "Dashboard view", "Service lines", "Templates"]) {
       expect(html).toContain(`>${label}<`);
     }
     expect(html).toContain('<span class="am-caption">Draft</span>');
@@ -115,6 +130,8 @@ describe("AdminMenuButton (open)", () => {
 
   it("never renders unshipped placeholders or disabled coming-soon items", () => {
     expect(html).not.toContain("Line settings");
+    expect(html).not.toContain("Report settings");
+    expect(html).not.toContain("Freeze and report options");
     expect(html).not.toContain("aria-disabled");
     expect(html).not.toMatch(/coming soon/i);
   });
