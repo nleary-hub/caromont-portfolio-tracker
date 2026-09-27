@@ -11,7 +11,7 @@ import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
-import type { DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
+import { PeriodClosure } from "@/lib/report/PeriodClosure";
 import { Db } from "@/lib/db/Db";
 import { ProjectFormModel, type ProjectFormSource, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import type { FiscalYearCount } from "@/lib/domain/types";
@@ -32,8 +32,6 @@ import { ProjectRows } from "@/lib/domain/ProjectRows";
 
 interface DashboardLoad {
   rows: DashboardRow[];
-  /** Completed and Cancelled rows of every fiscal year (the FY sections below the department groups). */
-  fiscalYearRows: DashboardFyRow[];
   columns: ViewColumn[];
   latestReport: LatestReport | null;
   /** "Completed FY27 to date N" for the summary strip. Null when the data could not be loaded. */
@@ -57,7 +55,6 @@ class DashboardData {
     const settings = DashboardData.defaultSettings();
     return {
       rows: [],
-      fiscalYearRows: [],
       columns: ViewSettings.visibleColumns(settings.dashboard),
       latestReport: null,
       completedFiscalYear: null,
@@ -98,16 +95,17 @@ class DashboardData {
       // Derived next milestone and due date (first step not done); projects without steps keep their legacy fields.
       const steps = await MilestoneService.loadSteps(db, stored.map((p) => p.id));
       const projects = MilestoneProgress.applyAll(stored, steps);
-      const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings.dashboard);
-      // FY sections (Completed / Cancelled by fiscal year, replacing the "Completed this period" block on the
-      // dashboard) and the "Completed FY27 to date" tile, which counts the Completed section of the current year.
-      // Only closed projects need their status history for the closed date.
+      // Only closed projects need their status history (closed date, and whether they were completed during the period).
       const closed = VisibilityPolicy.candidates(projects, "dashboard").filter((p) => p.status === "Complete" || p.status === "Cancelled");
       const closedHistory = await db.projectHistory.findMany({
         where: { projectId: { in: closed.map((p) => p.id) }, field: { in: ["status", "created"] } },
         select: { projectId: true, changedAt: true, field: true, oldValue: true, newValue: true },
       });
-      const listedIds = [...visible.map((p) => p.id), ...closed.map((p) => p.id)];
+      // Completed since the line's latest freeze (every Complete project before the first freeze): they keep their
+      // row in their department group until the next freeze, then live on the Completed page. Cancelled never shows.
+      const completedInPeriod = PeriodClosure.ids(closed, closedHistory, latest?.generatedAt ?? null, new Date());
+      const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings.dashboard, completedInPeriod);
+      const listedIds = [...new Set([...visible.map((p) => p.id), ...closed.map((p) => p.id)])];
       const history = await db.projectHistory.findMany({
         where: {
           projectId: { in: listedIds },
@@ -146,8 +144,8 @@ class DashboardData {
           today,
           latestUpdates,
           scope.departments,
+          completedInPeriod,
         ),
-        fiscalYearRows,
         columns: ViewSettings.visibleColumns(settings.dashboard),
         latestReport: latest
           ? {
@@ -203,12 +201,11 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const today = DateOnly.today();
   const { scope, lines } = gate;
-  const { rows, fiscalYearRows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
+  const { rows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
 
   return (
     <ProjectDashboard
       rows={rows}
-      fiscalYearRows={fiscalYearRows}
       columns={columns}
       today={today}
       userEmail={viewer.email}

@@ -20,6 +20,12 @@ export interface HistoryLike {
  * - A project hidden per context (hiddenFromDashboard / hiddenFromReport) is invisible in that context.
  * - A project whose status is hidden by that context's view settings is invisible in that context.
  * - Report context also requires includeInReport.
+ * - Closed statuses do not follow the view settings: a Complete project is visible only while it was completed
+ *   during the report period (PeriodClosure ids, passed as `completedInPeriod`), and a Cancelled project is never
+ *   visible on the dashboard or in the report (it is listed on the Cancelled page at once). So un-hiding Complete or
+ *   Cancelled in the view settings cannot bring closed projects back. Every other rule still applies.
+ * - The Completed and Cancelled pages list closed candidates (isListedClosed); their drawers read History through
+ *   isViewable.
  * - Invisible projects are EXCLUDED from every count, total and flag.
  * - History rows of invisible projects, and hide/unhide/delete/restore events, are admin-only.
  * - The frozen view settings on a snapshot are admin-only.
@@ -55,13 +61,29 @@ export class VisibilityPolicy {
     return true;
   }
 
-  static isVisible(project: ProjectRecord, context: ViewContext, settings: ViewSettingsValue): boolean {
-    return VisibilityPolicy.isCandidate(project, context) && ViewSettings.isStatusVisible(settings, project.status);
+  static isVisible(project: ProjectRecord, context: ViewContext, settings: ViewSettingsValue, completedInPeriod?: ReadonlySet<string>): boolean {
+    if (!VisibilityPolicy.isCandidate(project, context)) return false;
+    if (project.status === "Cancelled") return false;
+    if (project.status === "Complete") return Boolean(completedInPeriod?.has(project.id));
+    return ViewSettings.isStatusVisible(settings, project.status);
   }
 
-  /** Projects visible in a context. Everything a non-admin sees is derived from this list only. */
-  static visibleProjects<T extends ProjectRecord>(projects: readonly T[], context: ViewContext, settings: ViewSettingsValue): T[] {
-    return projects.filter((p) => VisibilityPolicy.isVisible(p, context, settings));
+  /** Listed on the Completed or Cancelled page: a closed dashboard candidate (not deleted, not hidden from the dashboard). */
+  static isListedClosed(project: ProjectRecord): boolean {
+    return (project.status === "Complete" || project.status === "Cancelled") && VisibilityPolicy.isCandidate(project, "dashboard");
+  }
+
+  /** A project a non-admin can open (and read History for): on the dashboard, or listed on a closed page. */
+  static isViewable(project: ProjectRecord, settings: ViewSettingsValue): boolean {
+    return VisibilityPolicy.isVisible(project, "dashboard", settings) || VisibilityPolicy.isListedClosed(project);
+  }
+
+  /**
+   * Projects visible in a context. Everything a non-admin sees is derived from this list only. `completedInPeriod`:
+   * ids of Complete projects completed during the period (PeriodClosure); no other closed project is listed.
+   */
+  static visibleProjects<T extends ProjectRecord>(projects: readonly T[], context: ViewContext, settings: ViewSettingsValue, completedInPeriod?: ReadonlySet<string>): T[] {
+    return projects.filter((p) => VisibilityPolicy.isVisible(p, context, settings, completedInPeriod));
   }
 
   static candidates<T extends ProjectRecord>(projects: readonly T[], context: ViewContext): T[] {

@@ -133,21 +133,21 @@ describe("handoff.json", () => {
       frozenAt: "2026-09-29T21:00:00.000Z",
       frozenAtEt: "Sep 29, 2026, 5:00 PM ET",
       reportRecipient: "you@example.org",
-      totals: { projects: 2, byStatus: { OnTrack: 1, AtRisk: 1 } },
+      // First report: the already-complete project is a regular (unflagged) row, counted as Complete.
+      totals: { projects: 3, byStatus: { OnTrack: 1, AtRisk: 1, Complete: 1 } },
       archiveUrl: "https://tracker.example.org/reports",
     });
-    expect(h.byArea.find((a) => a.area === "Cath")).toMatchObject({ projects: 1, byStatus: { OnTrack: 1 } });
+    expect(h.byArea.find((a) => a.area === "Cath")).toMatchObject({ projects: 2, byStatus: { OnTrack: 1, Complete: 1 } });
     expect(h.flags.overdue.count).toBe(1);
     expect(h.flags.overdue.projects.map((p) => p.name)).toEqual(["Visible late"]);
     expect(h.flags.changed.count).toBe(2);
+    expect(JSON.stringify(h.flags)).not.toContain("Wrapped up");
     expect(h.flags.stale).toEqual({ count: 0, projects: [] });
     expect(h.pdf.fileName).toBe("cardiac-portfolio-report-2026-09-29.pdf");
     const text = JSON.stringify(h);
     expect(text).not.toMatch(/Secret/);
-    // The Complete project is listed once under completedThisPeriod, never in totals or byArea.
-    expect(h.completedThisPeriod.count).toBe(1);
-    expect(h.completedThisPeriod.projects.map((p) => p.name)).toEqual(["Wrapped up"]);
-    expect(JSON.stringify(h.totals)).not.toContain("Wrapped up");
+    // No separate block any more: completedThisPeriod keeps its shape but is empty.
+    expect(h.completedThisPeriod).toEqual({ count: 0, projects: [] });
     expect(text).not.toMatch(/"to"|"cc"|missingChampion|Dr\. Sample/i);
     expect(text).not.toContain("\u2014");
   });

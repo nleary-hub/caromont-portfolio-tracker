@@ -20,6 +20,11 @@ export interface ReportBuildInput {
   departments?: DepartmentList;
   /** Report-context view settings in effect (frozen into the snapshot alongside the result). */
   viewSettings: ViewSettingsValue;
+  /**
+   * Ids of projects completed during the period (PeriodClosure). They are listed in their department group with
+   * their Complete status even when Complete is hidden, and never carry a flag. Cancelled projects never are.
+   */
+  completedInPeriod?: ReadonlySet<string>;
 }
 
 export interface ReportBuildResult {
@@ -69,6 +74,18 @@ export class ReportBuilder {
       overdue: rows.filter((r) => r.overdue).length,
       changed: rows.filter((r) => r.changed).length,
       stale: rows.filter((r) => r.stale).length,
+    };
+  }
+
+  /**
+   * Flags a row may carry. Complete and Cancelled rows never carry a flag (Changed, Overdue or Stale): a project
+   * completed during the period is listed as a plain row with its status chip, and the handoff.json flag lists skip it.
+   */
+  static flags(project: Pick<ProjectRecord, "id" | "dueDate" | "status">, history: readonly HistoryEntryRecord[], previousSnapshotGeneratedAt: Date | null, reportDate: string): RowFlags {
+    if (ProjectStatusInfo.isClosed(project.status)) return { changed: false, overdue: false };
+    return {
+      changed: ReportBuilder.isChanged(project.id, history, previousSnapshotGeneratedAt),
+      overdue: ReportBuilder.isOverdue(project, reportDate),
     };
   }
 
@@ -177,7 +194,7 @@ export class ReportBuilder {
     return from;
   }
 
-  static toRow(project: ProjectRecord, flags: RowFlags, details: Pick<ReportRow, "updatedOn" | "statusFrom" | "stale"> = {}): ReportRow {
+  static toRow(project: ProjectRecord, flags: RowFlags, details: Pick<ReportRow, "updatedOn" | "statusFrom" | "stale" | "completedInPeriod"> = {}): ReportRow {
     return {
       projectId: project.id,
       name: project.name,
@@ -201,7 +218,14 @@ export class ReportBuilder {
       updatedOn: details.updatedOn ?? null,
       statusFrom: details.statusFrom ?? null,
       stale: details.stale ?? false,
+      // Only on rows completed during the period, so every other row's JSON is exactly as before.
+      ...(details.completedInPeriod ? { completedInPeriod: true as const } : {}),
     };
+  }
+
+  /** A Complete project completed during the period (the only Complete projects a new report lists). */
+  static isCompletedInPeriod(project: Pick<ProjectRecord, "id" | "status">, completedInPeriod?: ReadonlySet<string>): boolean {
+    return Boolean(completedInPeriod?.has(project.id)) && project.status === "Complete";
   }
 
   static details(
@@ -220,14 +244,14 @@ export class ReportBuilder {
 
   static build(input: ReportBuildInput): ReportBuildResult {
     if (!DateOnly.isIso(input.reportDate)) throw new Error(`Invalid reportDate: ${input.reportDate}`);
-    const visible = VisibilityPolicy.visibleProjects(input.projects, "report", input.viewSettings);
+    const visible = VisibilityPolicy.visibleProjects(input.projects, "report", input.viewSettings, input.completedInPeriod);
     const history = VisibilityPolicy.publicHistory(input.history, visible.map((p) => p.id));
     const rows = ReportBuilder.sort(
       visible.map((p) =>
-        ReportBuilder.toRow(p, {
-          changed: ReportBuilder.isChanged(p.id, history, input.previousSnapshotGeneratedAt),
-          overdue: ReportBuilder.isOverdue(p, input.reportDate),
-        }, ReportBuilder.details(p, history, input.previousSnapshotGeneratedAt, input.reportDate)),
+        ReportBuilder.toRow(p, ReportBuilder.flags(p, history, input.previousSnapshotGeneratedAt, input.reportDate), {
+          ...ReportBuilder.details(p, history, input.previousSnapshotGeneratedAt, input.reportDate),
+          completedInPeriod: ReportBuilder.isCompletedInPeriod(p, input.completedInPeriod) || undefined,
+        }),
       ),
       input.departments,
     );

@@ -9,7 +9,7 @@ import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 /**
  * The only read path for a project's history timeline. Non-admins get nothing for projects
- * that are invisible on the dashboard, and never see hide/unhide/delete/restore events.
+ * they cannot open (not on the dashboard and not listed on the Completed or Cancelled page), and never see hide/unhide/delete/restore events.
  */
 export class ProjectHistoryService {
   static async forProject(projectId: string, viewer: Viewer, db: PrismaClient = Db.client): Promise<ProjectHistory[]> {
@@ -20,7 +20,7 @@ export class ProjectHistoryService {
       return ProjectHistoryService.newestFirst(all);
     }
     const settings = await ViewSettingsService.get("dashboard", db);
-    if (!VisibilityPolicy.isVisible(project, "dashboard", settings)) return [];
+    if (!VisibilityPolicy.isViewable(project, settings)) return [];
     const rows = await db.projectHistory.findMany({ where: { projectId, ...VisibilityPolicy.publicHistoryWhere() } });
     return ProjectHistoryService.newestFirst(VisibilityPolicy.publicHistory(rows, [projectId]));
   }
@@ -47,7 +47,7 @@ export class ProjectHistoryService {
     if (scope && (project.serviceLineId ?? ServiceLine.DEFAULT_ID) !== scope.id) return empty;
     if (!viewer.isAdmin) {
       const settings = await ViewSettingsService.get("dashboard", db);
-      if (!VisibilityPolicy.isVisible(project, "dashboard", settings)) return empty;
+      if (!VisibilityPolicy.isViewable(project, settings)) return empty;
     }
     const rows = await ProjectHistoryService.forProject(projectId, viewer, db);
     const prior = await db.projectPriorInforNumber.findMany({ where: { projectId }, select: { number: true, recordedAt: true } });

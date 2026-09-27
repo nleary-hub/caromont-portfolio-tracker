@@ -66,8 +66,13 @@ export class DashboardViewModel {
     latestUpdates: readonly HistoryEntryRecord[] = history,
     /** The line's departments (report order). */
     departments: DepartmentList = ServiceAreaInfo.LEGACY,
+    /**
+     * Ids of projects completed since the line's latest freeze (PeriodClosure). They keep their normal row in their
+     * department group, with their Complete chip and no flags, until the next freeze. Cancelled projects never show.
+     */
+    completedInPeriod?: ReadonlySet<string>,
   ): DashboardRow[] {
-    const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings);
+    const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings, completedInPeriod);
     const ids = visible.map((p) => p.id);
     const publicHistory = VisibilityPolicy.publicHistory(history, ids);
     const publicUpdates = VisibilityPolicy.publicHistory(latestUpdates, ids);
@@ -96,6 +101,8 @@ export class DashboardViewModel {
     today: string,
   ): DashboardRow {
     const updatedOn = ReportBuilder.updatedOn(p.id, publicUpdates);
+    // Same flag rules as the report: Complete and Cancelled rows carry none.
+    const flags = ReportBuilder.flags(p, publicHistory, previousSnapshotGeneratedAt, today);
     return {
       id: p.id,
       name: p.name,
@@ -114,8 +121,8 @@ export class DashboardViewModel {
       note: p.note,
       inforRequestNumber: p.inforRequestNumber ?? null,
       includeInReport: p.includeInReport,
-      changed: ReportBuilder.isChanged(p.id, publicHistory, previousSnapshotGeneratedAt),
-      overdue: ReportBuilder.isOverdue(p, today),
+      changed: flags.changed,
+      overdue: flags.overdue,
       updatedOn,
       stale: ReportBuilder.isStale({ status: p.status, updatedOn }, today),
     };
