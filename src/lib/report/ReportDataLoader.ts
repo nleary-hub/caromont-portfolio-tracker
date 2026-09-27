@@ -3,6 +3,7 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { CompletedRow, MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { ChampionCheck } from "@/lib/report/ChampionCheck";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import { CompletedThisPeriod } from "@/lib/report/CompletedThisPeriod";
@@ -41,7 +42,10 @@ export class ReportDataLoader {
       orderBy: { generatedAt: "desc" },
       select: { generatedAt: true },
     });
-    const stored = await db.project.findMany({ where: { archivedAt: null } });
+    const options = await ReportOptionsService.get(db);
+    // Report department filter (admin setting): excluded departments leave no trace (rows, counts, flags,
+    // completed blocks, FY count). All selected = no filter.
+    const stored = DepartmentFilter.apply(await db.project.findMany({ where: { archivedAt: null } }), options.departments);
     // Derived next milestone and due date (first step not done); projects without steps keep their legacy fields.
     const projects = MilestoneProgress.applyAll(stored, await MilestoneService.loadSteps(db, stored.map((p) => p.id)));
     // All public history for these projects: Changed and "from <status>" look at the window since the
@@ -52,7 +56,6 @@ export class ReportDataLoader {
     });
     const recipients = await db.recipient.findMany({ where: { active: true } });
     const viewSettings = await ViewSettingsService.get("report", db);
-    const options = await ReportOptionsService.get(db);
     const serviceLine = await ServiceLineService.get(db);
 
     const previousSnapshotGeneratedAt = previous?.generatedAt ?? null;

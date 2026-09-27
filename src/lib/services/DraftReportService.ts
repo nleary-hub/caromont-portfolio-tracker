@@ -27,6 +27,8 @@ export class DraftReportService {
       completed: data.completed,
       viewSettings: data.viewSettings,
       showKeyPage: data.options.showKeyPage,
+      departments: data.options.departments,
+      totalsGrid: data.options.totalsGrid,
       serviceLine: data.serviceLine,
       reportDate: data.reportDate,
       periodStart: period.periodStart,

@@ -12,6 +12,7 @@ import {
   type DocumentLayout,
   type FlagBox,
   type HeaderModel,
+  type KeyLineModel,
   type KeyModel,
   CompletedBlockStyle,
   type ContractsLine,
@@ -28,7 +29,10 @@ export class ReportColors {
   static readonly TEXT = "#15171C";
   static readonly MUTED = "#5B6270";
   static readonly DIVIDER = "#D9DCE1";
+  /** --light-section-bg: kept for anything else that uses the lighter tint. */
   static readonly SECTION_BG = "#F4F5F7";
+  /** --light-section-bg-strong: department heading bars (clearly visible in print; text contrast stays high). */
+  static readonly SECTION_BG_STRONG = "#E1E5EB";
   static readonly BG = "#FFFFFF";
   static readonly STATUS: Record<ProjectStatus, { bg: string; fg: string }> = {
     NotStarted: { bg: "#E9EBEF", fg: "#3F4550" },
@@ -232,12 +236,12 @@ function Flags({ flags, x, y }: { flags: PlacedFlag[]; x: number; y: number }) {
   );
 }
 
-function Badge({ text, right, top }: { text: string; right: number; top: number }) {
+function Badge({ text, right, left, top }: { text: string; right?: number; left?: number; top: number }) {
   return (
     <View
       style={{
         position: "absolute",
-        right,
+        ...(left !== undefined ? { left } : { right }),
         top,
         borderWidth: 0.75,
         borderColor: C.DIVIDER,
@@ -255,15 +259,11 @@ function Rule({ y, h, color = C.TEXT, x = 0, w = G.CONTENT_W }: { y: number; h: 
   return <View style={{ position: "absolute", left: x, top: y, width: w, height: h, backgroundColor: color }} />;
 }
 
-function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
+function FirstHeader({ h }: { h: HeaderModel }) {
+  if (h.band) return <BandHeader h={h} />;
   const S = G.SIZE;
-  let y = h.titleBarHeight;
   const els: React.ReactNode[] = [];
-  if (draft && h.draftLine) {
-    els.push(<Line key="draft" x={0} y={y + 2} w={G.CONTENT_W} text={h.draftLine} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />);
-    y += G.DRAFT_LINE_H;
-  }
-  const top = y + G.HEADER_BODY_PAD;
+  const top = h.titleBarHeight + G.HEADER_BODY_PAD;
   const { rows: meta, size: metaSize, keyWidth } = h.meta;
   const valueW = h.metaWidth - keyWidth;
   meta.forEach(([k, v], i) => {
@@ -320,8 +320,159 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
     />,
   );
 
-  // Status count grid (visible rows only)
-  const gx = G.CONTENT_W - h.grid.width;
+  els.push(<GridView key="grid" h={h} x={G.CONTENT_W - h.grid.width} top={top} />);
+
+  return (
+    <>
+      <Overline h={h} top={0} />
+      <Text
+        style={{
+          position: "absolute",
+          left: 0,
+          top: h.titleBarHeight - G.TITLE_BAR_H,
+          fontFamily: F,
+          fontSize: S.title,
+          fontWeight: 700,
+          lineHeight: G.TITLE_H / S.title,
+          color: C.TEXT,
+        }}
+      >
+        {h.title}
+      </Text>
+      {h.badge && <Badge text={h.badge} right={0} top={h.overline ? 0 : 2} />}
+      <Rule y={h.titleBarHeight - 1.5} h={1.5} />
+      {els}
+    </>
+  );
+}
+
+/** Page 1 service line overline (uppercase, secondary). */
+function Overline({ h, top }: { h: HeaderModel; top: number }) {
+  return (
+    <>
+      {h.overline?.lines.map((line, i) => (
+        <Text
+          key={`ol${i}`}
+          style={{
+            position: "absolute",
+            left: 0,
+            top: top + i * G.OVERLINE.lineH,
+            width: G.CONTENT_W,
+            fontFamily: F,
+            fontSize: h.overline!.size,
+            fontWeight: G.OVERLINE.weight,
+            letterSpacing: h.overline!.tracking,
+            lineHeight: G.OVERLINE.lineH / h.overline!.size,
+            color: C.MUTED,
+            maxLines: 1,
+          }}
+        >
+          {line}
+        </Text>
+      ))}
+    </>
+  );
+}
+
+/**
+ * One-band page 1 header (Totals grid Hidden or Last page): overline and title on the left, details
+ * right-aligned on the right, a 0.5 pt light-border rule, and in Hidden mode the one-line key under it.
+ */
+function BandHeader({ h }: { h: HeaderModel }) {
+  const S = G.SIZE;
+  const band = h.band!;
+  const B = G.BAND;
+  const st = CompletedBlockStyle;
+  return (
+    <>
+      <Overline h={h} top={0} />
+      <Text style={{ position: "absolute", left: 0, top: band.titleY, fontFamily: F, fontSize: S.title, fontWeight: 700, lineHeight: G.TITLE_H / S.title, color: C.TEXT }}>
+        {h.title}
+      </Text>
+      {h.badge && band.badgeX !== null && (
+        <Badge text={h.badge} left={band.badgeX} top={band.titleY + 3} />
+      )}
+      {band.details.map((d, i) => (
+        <Fragment key={`bd${i}`}>
+          <Text
+            style={{
+              position: "absolute",
+              left: d.x,
+              top: band.labelY,
+              width: d.w,
+              fontFamily: F,
+              fontSize: B.labelSize,
+              fontWeight: B.labelWeight,
+              letterSpacing: B.labelTracking,
+              lineHeight: B.labelLH / B.labelSize,
+              color: C.MUTED,
+              textAlign: "right",
+              maxLines: 1,
+            }}
+          >
+            {d.label}
+          </Text>
+          {d.accent && (
+            <Check
+              x={d.checkX}
+              y={band.valueY + (B.valueLH - st.CHECK) / 2}
+              size={st.CHECK}
+              color={st.ACCENT}
+            />
+          )}
+          <Text
+            style={{
+              position: "absolute",
+              left: d.x - 12,
+              top: band.valueY,
+              width: d.w + 12,
+              fontFamily: F,
+              fontSize: band.valueSize,
+              fontWeight: d.accent ? 700 : B.valueWeight,
+              lineHeight: B.valueLH / band.valueSize,
+              color: d.accent ? st.ACCENT : C.TEXT,
+              textAlign: "right",
+              maxLines: 1,
+            }}
+          >
+            {d.value}
+          </Text>
+        </Fragment>
+      ))}
+      <Rule y={band.height} h={B.ruleW} color={C.DIVIDER} />
+      {h.totalsGrid === "hidden" && h.keyLine && <KeyLine k={h.keyLine} y={band.height + B.ruleW + G.KEYLINE.gapAbove} />}
+    </>
+  );
+}
+
+/** One-line status and flag key: status shapes with labels, then flag chips with their explanations (7 pt, secondary). */
+function KeyLine({ k, y }: { k: KeyLineModel; y: number }) {
+  const K = G.KEYLINE;
+  return (
+    <>
+      {k.items.map((it, i) =>
+        it.kind === "status" ? (
+          <Fragment key={`ks${i}`}>
+            <View style={{ position: "absolute", left: it.x, top: y + (K.h - K.icon) / 2 }}>
+              <Shape status={it.status} size={K.icon} color={C.STATUS[it.status].fg} />
+            </View>
+            {it.label && <Line x={it.textX} y={y + (K.h - G.SMALL_LH) / 2} w={it.w - (it.textX - it.x)} text={it.label} size={K.size} color={C.MUTED} lh={G.SMALL_LH} />}
+          </Fragment>
+        ) : (
+          <Fragment key={`kf${i}`}>
+            <Flag flag={it.flag} x={it.x} y={y} />
+            {it.text && <Line x={it.textX} y={y + (K.h - G.SMALL_LH) / 2} w={it.w - (it.textX - it.x)} text={it.text} size={K.size} color={C.MUTED} lh={G.SMALL_LH} />}
+          </Fragment>
+        ),
+      )}
+    </>
+  );
+}
+
+/** Status count grid (visible rows only) at `x`, `top`. */
+function GridView({ h, x: gx, top }: { h: HeaderModel; x: number; top: number }) {
+  const S = G.SIZE;
+  const els: React.ReactNode[] = [];
   els.push(<Line key="gh" x={gx} y={top + 3} w={G.GRID_AREA_W} text="Area" size={S.small} weight={500} lh={G.SMALL_LH} />);
   let cx = gx + G.GRID_AREA_W;
   const colX: number[] = [];
@@ -355,59 +506,14 @@ function FirstHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
     });
     if (!r.total) els.push(<Rule key={`gb${ri}`} x={gx} y={ry + G.GRID_ROW_H - 0.5} w={h.grid.width} h={0.5} color={C.DIVIDER} />);
   });
-
-  return (
-    <>
-      {h.overline?.lines.map((line, i) => (
-        <Text
-          key={`ol${i}`}
-          style={{
-            position: "absolute",
-            left: 0,
-            top: i * G.OVERLINE.lineH,
-            width: G.CONTENT_W,
-            fontFamily: F,
-            fontSize: h.overline!.size,
-            fontWeight: G.OVERLINE.weight,
-            letterSpacing: h.overline!.tracking,
-            lineHeight: G.OVERLINE.lineH / h.overline!.size,
-            color: C.MUTED,
-            maxLines: 1,
-          }}
-        >
-          {line}
-        </Text>
-      ))}
-      <Text
-        style={{
-          position: "absolute",
-          left: 0,
-          top: h.titleBarHeight - G.TITLE_BAR_H,
-          fontFamily: F,
-          fontSize: S.title,
-          fontWeight: 700,
-          lineHeight: G.TITLE_H / S.title,
-          color: C.TEXT,
-        }}
-      >
-        {h.title}
-      </Text>
-      {h.badge && <Badge text={h.badge} right={0} top={h.overline ? 0 : 2} />}
-      <Rule y={h.titleBarHeight - 1.5} h={1.5} />
-      {els}
-    </>
-  );
+  return <>{els}</>;
 }
 
-function ContinuationHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
+function ContinuationHeader({ h }: { h: HeaderModel }) {
   const S = G.SIZE;
-  let y = G.RUNHEAD_H;
   const els: React.ReactNode[] = [];
-  if (draft && h.draftLine) {
-    els.push(<Line key="draft" x={0} y={y + 2} w={G.CONTENT_W} text={h.draftLine} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />);
-    y += G.DRAFT_LINE_H;
-  }
-  y += G.STRIP_PAD;
+  const y = G.RUNHEAD_H + G.STRIP_PAD;
+  const run = ReportLayout.runningHeaderText(h);
   h.strip.forEach((line, li) => {
     let x = 0;
     const ly = y + li * G.STRIP_LINE_H;
@@ -430,8 +536,8 @@ function ContinuationHeader({ h, draft }: { h: HeaderModel; draft: boolean }) {
   return (
     <>
       <Text style={{ position: "absolute", left: 0, top: 0, fontFamily: F, fontSize: S.body, lineHeight: 12 / S.body, color: C.TEXT }}>
-        <Text style={{ fontWeight: 600 }}>{h.runningTitle}</Text>
-        {` \u00b7 Report of ${h.reportDateMedium}${h.period ? ` \u00b7 Period ${h.period}` : ""} (continued)`}
+        <Text style={{ fontWeight: 600 }}>{run.lead}</Text>
+        {run.rest}
       </Text>
       {h.badge && <Badge text={h.badge} right={0} top={0} />}
       <Rule y={G.RUNHEAD_H - 1.5} h={1.5} />
@@ -706,8 +812,36 @@ function CompletedBlock({ block, top }: { block: Extract<BodyBlock, { kind: "com
   );
 }
 
-function Block({ block, top }: { block: BodyBlock; top: number }) {
+/** Last page mode: "SUMMARY" overline, the grid, then the one-line key, as one unsplittable block. */
+function SummaryBlock({ h, block, top }: { h: HeaderModel; block: Extract<BodyBlock, { kind: "summary" }>; top: number }) {
+  const s = block.summary;
+  const y0 = top + block.y;
+  return (
+    <View wrap={false} style={{ position: "absolute", left: 0, top: y0, width: G.CONTENT_W, height: block.height }}>
+      <Text
+        style={{
+          position: "absolute",
+          left: 0,
+          top: s.gapAbove,
+          fontFamily: F,
+          fontSize: G.OVERLINE.size,
+          fontWeight: G.OVERLINE.weight,
+          letterSpacing: G.OVERLINE.tracking,
+          lineHeight: G.SUMMARY.overlineLH / G.OVERLINE.size,
+          color: C.MUTED,
+        }}
+      >
+        {G.SUMMARY.label}
+      </Text>
+      <GridView h={h} x={0} top={s.gridTop} />
+      {h.keyLine && <KeyLine k={h.keyLine} y={s.keyTop} />}
+    </View>
+  );
+}
+
+function Block({ block, top, h }: { block: BodyBlock; top: number; h: HeaderModel }) {
   const S = G.SIZE;
+  if (block.kind === "summary") return <SummaryBlock h={h} block={block} top={top} />;
   if (block.kind === "row") return <Row row={block.row} y={top + block.y} />;
   if (block.kind === "completed") return <CompletedBlock block={block} top={top} />;
   if (block.kind === "empty") return <Line x={0} y={top + block.y + 6} w={G.CONTENT_W} text={block.text} size={S.body} color={C.MUTED} lh={12} />;
@@ -716,7 +850,7 @@ function Block({ block, top }: { block: BodyBlock; top: number }) {
   // Unassigned: same section head, name and left border in the secondary gray (no amber, no italics).
   const ink = block.area === ServiceAreaInfo.UNASSIGNED ? C.MUTED : C.TEXT;
   return (
-    <View style={{ position: "absolute", left: 0, top: sy, width: G.CONTENT_W, height: G.SECTION_H, backgroundColor: C.SECTION_BG }}>
+    <View style={{ position: "absolute", left: 0, top: sy, width: G.CONTENT_W, height: G.SECTION_H, backgroundColor: C.SECTION_BG_STRONG }}>
       <View style={{ position: "absolute", left: 0, top: 0, width: 2, height: G.SECTION_H, backgroundColor: ink }} />
       <Line x={7} y={2} w={300} text={`${block.label}${block.continued ? " (continued)" : ""}`} size={S.section} weight={600} color={ink} lh={12} />
       <Line x={G.CONTENT_W - 205} y={4} w={200} text={count} size={S.small} color={C.MUTED} lh={G.SMALL_LH} align="right" />
@@ -767,20 +901,20 @@ function KeyPage({ k, top }: { k: KeyModel; top: number }) {
   return <>{els}</>;
 }
 
-function PageView({ layout, page, draft }: { layout: DocumentLayout; page: PageLayout; draft: boolean }) {
+function PageView({ layout, page }: { layout: DocumentLayout; page: PageLayout }) {
   const h = layout.header;
   const footY = G.CONTENT_H - G.FOOTER_H;
   return (
     <Page size={{ width: G.PAGE_W, height: G.PAGE_H }} style={{ backgroundColor: C.BG }}>
       <View style={{ position: "absolute", left: G.MARGIN, top: G.MARGIN, width: G.CONTENT_W, height: G.CONTENT_H }}>
-        {page.first ? <FirstHeader h={h} draft={draft} /> : <ContinuationHeader h={h} draft={draft} />}
+        {page.first ? <FirstHeader h={h} /> : <ContinuationHeader h={h} />}
         {page.kind === "key" && layout.key ? (
           <KeyPage k={layout.key} top={page.bodyTop} />
         ) : (
           <>
-            <ColumnHead h={h} y={page.headerHeight} />
+            {page.columnHead !== false && <ColumnHead h={h} y={page.headerHeight} />}
             {page.blocks.map((b, i) => (
-              <Block key={i} block={b} top={page.bodyTop} />
+              <Block key={i} block={b} top={page.bodyTop} h={h} />
             ))}
           </>
         )}
@@ -802,11 +936,11 @@ function PageView({ layout, page, draft }: { layout: DocumentLayout; page: PageL
 }
 
 /** The report PDF, drawn from a precomputed DocumentLayout (no layout decisions happen here). */
-export function ReportDocument({ layout, draft, title }: { layout: DocumentLayout; draft: boolean; title: string }) {
+export function ReportDocument({ layout, title }: { layout: DocumentLayout; title: string }) {
   return (
     <Document title={title} author="Cardiac Procedure Services" creator="Cardiac portfolio tracker" producer="Cardiac portfolio tracker">
       {layout.pages.map((p) => (
-        <PageView key={p.number} layout={layout} page={p} draft={draft} />
+        <PageView key={p.number} layout={layout} page={p} />
       ))}
     </Document>
   );

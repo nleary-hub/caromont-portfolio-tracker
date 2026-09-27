@@ -68,6 +68,8 @@ export class PdfReportRenderer {
       ...(input.completed ? { completed: input.completed } : {}),
       viewSettings: input.viewSettings,
       showKeyPage: input.options.showKeyPage,
+      departments: input.options.departments,
+      totalsGrid: input.options.totalsGrid,
       serviceLine: input.serviceLine,
       reportDate: input.reportDate,
       periodStart: input.periodStart,
@@ -97,7 +99,6 @@ export class PdfReportRenderer {
     const layout = PdfReportRenderer.layout(doc);
     const element = createElement(ReportDocument, {
       layout,
-      draft: Boolean(doc.draft),
       title: PdfReportLayout.title(doc.serviceLine?.name),
     }) as unknown as ReactElement<DocumentProps>;
     return renderToBuffer(element);

@@ -259,6 +259,10 @@ export class FakeDb {
         },
       },
       reportOptionsHistory: {
+        findFirst: async () => {
+          const rows = [...this.state.reportOptionsHistory].reverse().sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime());
+          return rows[0] ? { ...rows[0] } : null;
+        },
         create: async ({ data }: { data: Row }) => {
           rec("reportOptionsHistory", "create");
           const row = { id: randomUUID(), changedAt: new Date(), ...data };

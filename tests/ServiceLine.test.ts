@@ -217,7 +217,7 @@ describe("PDF header (Figma spec: overline, title line, short-name running heade
     for (const line of spaced.lines) expect(ReportLayout.overlineWidth(m, line, spaced.size)).toBeLessThanOrEqual(maxW);
     const input = SampleReportData.docInput({ serviceLine: { name: WIDEST, shortName: "W" } });
     const layout = ReportLayout.layout(input, m);
-    expect(layout.pages[0].headerHeight).toBe(ReportLayout.firstHeaderHeight(input, layout.header.titleBarHeight));
+    expect(layout.pages[0].headerHeight).toBe(ReportLayout.firstHeaderHeight(input, layout.header));
   });
 
   it("handoff.json title follows the frozen name", () => {

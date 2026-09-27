@@ -68,7 +68,9 @@ describe("Generate PDF now (draft preview)", () => {
     const { ReportDataLoader } = await import("@/lib/report/ReportDataLoader");
     const data = await ReportDataLoader.load(fake.asClient(), now);
     const layout = ReportLayout.layout({ ...data, periodStart: "2026-09-15", periodEnd: "2026-09-29", generatedAt: now, draft: true });
-    expect(layout.header.draftLine).toBe("Draft, generated Sep 26, 2026, 12:00 PM ET. Not an official snapshot.");
+    // No DRAFT watermark and no generated time in any header; the footer still says "Draft <time>".
+    expect(layout.header.badge).toBeNull();
+    expect(layout.header.footerLeft).toMatch(/^Draft Sep 26, 2026, 12:00 PM ET/);
     expect(JSON.stringify(layout)).not.toContain("SecretHidden");
     expect(data.rows.map((r) => r.name)).toEqual(["Live project"]);
   });

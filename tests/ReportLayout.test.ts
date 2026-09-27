@@ -217,17 +217,19 @@ describe("ReportLayout pagination", () => {
     expect(status && status.kind === "status" && status.change?.text).toBe("\u2193 from On track");
   });
 
-  it("marks a draft on every page and never uses em dashes or a 'Hidden:' line", () => {
+  it("drafts carry no watermark or header line (footer only), and never use em dashes or a 'Hidden:' line", () => {
     const l = Many.layout(rows, { draft: true, exampleData: false });
-    expect(l.header.draftLine).toMatch(/^Draft, generated Sep 29, 2026, 5:00 PM ET\. Not an official snapshot\.$/);
-    expect(l.header.badge).toBe("DRAFT");
+    expect(l.header.badge).toBeNull();
+    expect(l.header.footerLeft).toMatch(/^Draft Sep 29, 2026, 5:00 PM ET \u00b7 /);
     const json = JSON.stringify(l);
+    expect(json).not.toContain("DRAFT");
+    expect(json).not.toContain("Not an official snapshot");
     expect(json).not.toContain("\u2014");
     expect(json).not.toContain("Hidden:");
     const official = Many.layout(rows, { exampleData: false });
-    expect(official.header.draftLine).toBeNull();
     expect(official.header.badge).toBeNull();
-    expect(official.pages[0].headerHeight).toBeLessThan(l.pages[0].headerHeight);
+    expect(official.header.footerLeft).toMatch(/^Generated Sep 29, 2026, 5:00 PM ET \u00b7 /);
+    expect(official.pages.map((p) => p.headerHeight)).toEqual(l.pages.map((p) => p.headerHeight));
   });
 
   it("adds the status and flag key as the numbered last page only when the option is on", () => {
