@@ -1,0 +1,25 @@
+/* Dashboard filter row controls (DashboardFilterControls.tsx). Reuses the view picker popover (vp-*) and tokens. */
+@layer components {
+  .df-pop { width: 220px; padding: 8px; }
+  .df-pop-left { left: 0; right: auto; }
+  .df-divider { height: 1px; background: var(--dark-border); margin: 4px 0; }
+  .df-h3 { margin: 4px 6px 6px; align-items: center; }
+  .df-h3 .vp-link { text-transform: none; letter-spacing: 0; font: var(--app-table-strong); }
+  .df-h3 .vp-link:disabled { color: var(--dark-text-secondary); cursor: default; }
+  .df-box {
+    width: 14px; height: 14px; border-radius: 3px; border: 1.5px solid #4A505C;
+    display: grid; place-items: center; flex: none;
+  }
+  .df-box.df-on { background: var(--dark-accent); border-color: var(--dark-accent); color: #fff; }
+  .df-box.df-disabled { opacity: 0.55; }
+  .vp-check:has(input:focus-visible) .df-box { outline: 2px solid var(--dark-accent); outline-offset: 1px; }
+  .df-locked { cursor: default; }
+  .df-icon-btn {
+    width: 28px; height: 28px; display: grid; place-items: center; border-radius: var(--radius-control);
+    color: var(--dark-text-secondary); background: transparent; cursor: pointer; flex: none;
+  }
+  .df-icon-btn:hover, .df-icon-btn[aria-expanded="true"] { background: var(--dark-row-selected); color: var(--dark-text-primary); }
+  .df-icon-btn:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: 1px; }
+  /* Admin "Totals grid" segmented control: the picker's segmented control with three options. */
+  .vp-seg.df-seg3 { grid-template-columns: repeat(3, 1fr); max-width: 360px; }
+}

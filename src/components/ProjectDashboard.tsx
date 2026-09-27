@@ -27,6 +27,10 @@ import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { DashboardTable } from "./DashboardTable";
+import { DepartmentsSelect, TileVisibilityButton } from "./DashboardFilterControls";
+import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
+import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
+import type { ServiceArea } from "@/generated/prisma/enums";
 import { Flags, StatusPill } from "./StatusPill";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
@@ -103,6 +107,17 @@ interface Props {
   signOutAction: () => Promise<void>;
 }
 
+/** Browser localStorage, or null (server render, private mode, or storage blocked). */
+class DashboardPrefsBrowser {
+  static storage(): Storage | null {
+    try {
+      return typeof window === "undefined" ? null : window.localStorage;
+    } catch {
+      return null;
+    }
+  }
+}
+
 class Initials {
   static of(name: string | null, email: string): string {
     const source = name?.trim() || email.split("@")[0].replace(/[._-]+/g, " ");
@@ -139,9 +154,34 @@ export function ProjectDashboard({
   // Admin only: optimistic copy of the settings (rows refresh from the server after each save).
   const [settings, setSettings] = useState<ViewSettingsByContext | null>(admin?.viewSettings ?? null);
 
-  const summary = useMemo(() => DashboardViewModel.summarize(rows), [rows]);
-  const visible = useMemo(() => DashboardViewModel.filter(rows, area, query), [rows, area, query]);
-  const visibleCompleted = useMemo(() => DashboardViewModel.filter(completed, area, query), [completed, area, query]);
+  // Per-user preferences in localStorage (department filter, hidden tiles). Defaults until read after mount,
+  // so the server render and the first client render agree.
+  const [departments, setDepartmentsState] = useState<ServiceArea[]>(() => DepartmentFilter.all());
+  const [hiddenTiles, setHiddenTilesState] = useState<DashboardTile[]>([]);
+  useEffect(() => {
+    const storage = DashboardPrefsBrowser.storage();
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of browser-only storage after hydration
+    setDepartmentsState(DashboardPrefs.readDepartments(storage, userEmail));
+    setHiddenTilesState(DashboardPrefs.readHiddenTiles(storage, userEmail));
+  }, [userEmail]);
+  const setDepartments = (next: ServiceArea[]) => {
+    setDepartmentsState(next);
+    DashboardPrefs.writeDepartments(DashboardPrefsBrowser.storage(), userEmail, next);
+    if (area !== "All" && !DepartmentFilter.includesGroup(next, area)) setArea("All");
+  };
+  const setHiddenTiles = (next: DashboardTile[]) => {
+    setHiddenTilesState(next);
+    DashboardPrefs.writeHiddenTiles(DashboardPrefsBrowser.storage(), userEmail, next);
+  };
+
+  // Department filter first: tiles, chips, rows and the Unassigned group all follow it.
+  const deptRows = useMemo(() => DepartmentFilter.apply(rows, departments), [rows, departments]);
+  const deptCompleted = useMemo(() => DepartmentFilter.apply(completed, departments), [completed, departments]);
+  const summary = useMemo(() => DashboardViewModel.summarize(deptRows), [deptRows]);
+  const visible = useMemo(() => DashboardViewModel.filter(deptRows, area, query), [deptRows, area, query]);
+  const visibleCompleted = useMemo(() => DashboardViewModel.filter(deptCompleted, area, query), [deptCompleted, area, query]);
+  const tiles = DashboardPrefs.visibleTiles(hiddenTiles, Boolean(completedFiscalYear));
+  const tileTemplate = DashboardPrefs.gridTemplate(tiles);
   // Non-admins get only the visible columns in order; that is the same model with nothing hidden.
   const dashboardView: ViewSettingsValue = settings?.dashboard ?? { columnOrder: columnsProp, hiddenColumns: [], hiddenStatuses: [] };
   const showInfor = ViewSettings.visibleColumns(dashboardView).includes("inforNumber");
@@ -211,6 +251,7 @@ export function ProjectDashboard({
       // Show the new project whatever the current filter, then scroll its row into view.
       setArea("All");
       setQuery("");
+      setDepartments(DepartmentFilter.all());
       setSelectedId(id);
       scrollToRef.current = id;
       setFlashId(id);
@@ -338,24 +379,27 @@ export function ProjectDashboard({
           </p>
         )}
 
-        <section
-          className={`grid ${completedFiscalYear ? "grid-cols-[repeat(7,1fr)_1.5fr]" : "grid-cols-7"} gap-2`}
-          aria-label="Status summary"
-        >
-          {ProjectStatusInfo.all().map((s) => (
-            <div key={s} className="flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
-              <div className="type-metric">{summary.byStatus[s]}</div>
-              <StatusPill status={s} />
-            </div>
-          ))}
-          {completedFiscalYear && <CompletedFiscalYearCard fy={completedFiscalYear} />}
-        </section>
+        {tileTemplate && (
+          <section className="grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
+            {tiles.map((t) =>
+              t === "completedFy" ? (
+                completedFiscalYear && <CompletedFiscalYearCard key={t} fy={completedFiscalYear} />
+              ) : (
+                <div key={t} data-tile={t} className="flex min-w-0 flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
+                  <div className="type-metric">{summary.byStatus[t]}</div>
+                  <StatusPill status={t} />
+                </div>
+              ),
+            )}
+          </section>
+        )}
 
         <section className="flex items-center gap-1.5" aria-label="Service area filter">
           <button type="button" className="chip" aria-pressed={area === "All"} onClick={() => setArea("All")}>
             All <b>{summary.total}</b>
           </button>
           {ServiceAreaInfo.groups()
+            .filter((a) => DepartmentFilter.includesGroup(departments, a))
             .filter((a) => a !== ServiceAreaInfo.UNASSIGNED || summary.byArea[a] > 0)
             .map((a) => (
               <button key={a} type="button" className="chip" aria-pressed={area === a} onClick={() => setArea(a)}>
@@ -364,6 +408,9 @@ export function ProjectDashboard({
             ))}
           <div className="flex-1" />
           <span className="type-caption text-muted">Showing {visible.length} projects</span>
+          <div className="ml-2">
+            <DepartmentsSelect value={departments} onChange={setDepartments} />
+          </div>
           {admin && (
             <button
               type="button"
@@ -373,6 +420,12 @@ export function ProjectDashboard({
               + New project
             </button>
           )}
+          <TileVisibilityButton
+            tiles={DashboardPrefs.availableTiles(Boolean(completedFiscalYear))}
+            hidden={hiddenTiles}
+            labelOf={(t) => (t === "completedFy" ? DashboardPrefs.tileLabel(t, completedFiscalYear?.label ?? null) : <span className={`pill st-${t}`}>{ProjectStatusInfo.label(t)}</span>)}
+            onChange={setHiddenTiles}
+          />
         </section>
 
         <section className="overflow-hidden rounded-card border border-line bg-card">
