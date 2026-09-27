@@ -31,7 +31,7 @@ export interface ReportDocInput {
   periodStart: string | null;
   periodEnd: string | null;
   generatedAt: Date;
-  /** Unofficial live preview (admin "Generate PDF now"): marked as a draft on every page. */
+  /** Unofficial live preview (admin "Generate PDF now"). Laid out exactly like a report (footer "Generated ..."). */
   draft?: boolean;
   /** Fictional sample data (design review renders). */
   exampleData?: boolean;
@@ -123,7 +123,7 @@ export class ReportGeometry {
   static readonly INTER_ASCENT = 0.96875;
   static readonly INTER_DESCENT = 0.2421875;
   /** One-line status and flag key (Hidden mode below the band; Last page mode under the grid). */
-  static readonly KEYLINE = { gapAbove: 6, h: 10.5, gapAfter: 10, itemGap: 10, size: 7, icon: 7, iconGap: 3, textGap: 4 } as const;
+  static readonly KEYLINE = { gapAbove: 6, h: 10.5, rowGap: 2, gapAfter: 10, itemGap: 10, size: 7, icon: 7, iconGap: 3, textGap: 4 } as const;
   /** Last page mode summary block: gap, "SUMMARY" overline, grid, gap, key line. Never split. */
   static readonly SUMMARY = { gapAbove: 14, overlineLH: 10, overlineGap: 4, gapBeforeKey: 8, label: "SUMMARY" } as const;
   static readonly FOOTER_H = 13.5;
@@ -388,6 +388,8 @@ export interface HeaderModel {
   reportDateLong: string;
   reportDateMedium: string;
   period: string | null;
+  /** Compact range for the running header ("Sep 15\u201329, 2026"). */
+  periodRange: string | null;
   projectsLine: string;
   /**
    * "[check] Completed FY27 to date N" beside the Projects line on page 1 (teal, number bold). Null for
@@ -400,7 +402,7 @@ export interface HeaderModel {
    * when it fits, otherwise on its own row under it (value column). Null when not shown.
    */
   completedAt: { row: number; x: number } | null;
-  /** Only the fictional sample shows a badge. Drafts carry no watermark (the footer still says "Draft"). */
+  /** Only the fictional sample shows a badge. Drafts carry no watermark, and the footer reads "Generated" on every PDF. */
   badge: "EXAMPLE DATA" | null;
   /** Report department filter detail ("Cath, EP"); null when every department is included. */
   departments: string | null;
@@ -450,15 +452,21 @@ export interface BandModel {
   badgeX: number | null;
 }
 
+/** `row` is 0, or 1 when the key wraps (only after every explanation is cut). */
 export type KeyLineItem =
-  | { kind: "status"; x: number; status: ProjectStatus; label: string; textX: number; w: number }
-  | { kind: "flag"; x: number; flag: FlagBox; text: string | null; textX: number; w: number };
+  | { kind: "status"; x: number; row: number; status: ProjectStatus; label: string; textX: number; w: number }
+  | { kind: "flag"; x: number; row: number; flag: FlagBox; text: string | null; textX: number; w: number };
 
 export interface KeyLineModel {
   items: KeyLineItem[];
+  /** Widest row. */
   width: number;
-  /** Explanatory flag texts were cut so the line fits on one line. */
+  /** Explanatory flag texts were cut so the key fits. */
   cut: boolean;
+  /** 1, or 2+ only when it still does not fit with every explanation cut. */
+  rows: number;
+  /** rows * KEYLINE.h plus KEYLINE.rowGap between rows. */
+  height: number;
 }
 
 export interface SummaryBlockLayout {
@@ -508,6 +516,16 @@ export interface DocumentLayout {
 export class ReportLayout {
   /** Space between the Projects value and the FY completed count on page 1. */
   static readonly COMPLETED_META_GAP = 14;
+  /**
+   * "12 projects across 2 departments", "1 project across 1 department". M counts the departments that
+   * have listed projects; Unassigned is never counted.
+   */
+  static projectsLine(projects: number, departments: number): string {
+    return `${projects} project${projects === 1 ? "" : "s"} across ${departments} department${departments === 1 ? "" : "s"}`;
+  }
+
+  /** Page 1 label for the period (uppercased in the one-band header). */
+  static readonly PERIOD_LABEL = "Reporting period";
 
   static readonly COLUMN_LABELS: Record<LayoutColumn["key"], { label: string; sub: (s: ViewSettingsValue) => string | null }> = {
     project: { label: "PROJECT", sub: () => null },
@@ -947,7 +965,7 @@ export class ReportLayout {
     const settings = input.viewSettings;
     const statuses = ProjectStatusInfo.all().filter((s) => ViewSettings.isStatusVisible(settings, s));
     const columns = ReportLayout.gridColumns(m, statuses);
-    // Departments, then an Unassigned row (gray) only when some listed project has no department.
+    // Departments with listed projects, then an Unassigned row (gray) only when some listed project has no department.
     // Every cell adds into Total: no flag counts here (a flagged project would read as an extra project).
     const areaRows: GridRow[] = ReportLayout.gridAreas(input.rows, input.departments).map((a) => {
       const counts = ReportBuilder.areaCounts(header, a);
@@ -967,7 +985,7 @@ export class ReportLayout {
     const gridWidth = g.GRID_AREA_W + columns.reduce((s, c) => s + c.width, 0);
 
     const areasWithRows = ServiceAreaInfo.groups().filter((a) => input.rows.some((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a));
-    // "N across M service areas": Unassigned is not a service area.
+    // "N projects across M departments": only departments with listed projects; Unassigned never counts.
     const departments = areasWithRows.filter((a) => a !== ServiceAreaInfo.UNASSIGNED);
     const strip = ReportLayout.strip(m, header, areasWithRows, statuses);
 
@@ -981,10 +999,11 @@ export class ReportLayout {
     const n = header.totalProjects;
     const metaWidth = g.CONTENT_W - gridWidth - g.HEADER_GAP;
     const period = input.periodStart && input.periodEnd ? ReportFormat.period(input.periodStart, input.periodEnd) : null;
-    const projectsLine = `${n} across ${departments.length} service ${departments.length === 1 ? "area" : "areas"}`;
+    const periodRange = input.periodStart && input.periodEnd ? ReportFormat.dateRange(input.periodStart, input.periodEnd) : null;
+    const projectsLine = ReportLayout.projectsLine(n, departments.length);
     const metaRows: [string, string][] = [
       ["Report date", ReportFormat.longDate(input.reportDate)],
-      ["Period covered", period ?? "Not set"],
+      [ReportLayout.PERIOD_LABEL, period ?? "Not set"],
       ["Projects", projectsLine],
     ];
     const departmentsDetail = DepartmentFilter.reportDetail(input.departments);
@@ -1023,7 +1042,7 @@ export class ReportLayout {
           badge,
           details: [
             { label: "Report date", value: ReportFormat.longDate(input.reportDate), accent: false },
-            { label: "Period covered", value: period ?? "Not set", accent: false },
+            { label: ReportLayout.PERIOD_LABEL, value: period ?? "Not set", accent: false },
             { label: "Projects", value: projectsLine, accent: false },
             ...(completedFy ? [{ label: completedFy.label, value: String(completedFy.count), accent: true }] : []),
             ...(departmentsDetail
@@ -1040,6 +1059,7 @@ export class ReportLayout {
       reportDateLong: ReportFormat.longDate(input.reportDate),
       reportDateMedium: ReportFormat.mediumDate(input.reportDate),
       period,
+      periodRange,
       projectsLine,
       completedFy,
       completedAt,
@@ -1054,7 +1074,7 @@ export class ReportLayout {
       meta,
       strip,
       columns: cols,
-      footerLeft: `${input.draft ? "Draft" : "Generated"} ${generated} \u00b7 ${runningTitle}${
+      footerLeft: `Generated ${generated} \u00b7 ${runningTitle}${
         input.exampleData ? " \u00b7 Example data (fictional sample projects)" : ""
       }`,
     };
@@ -1129,11 +1149,14 @@ export class ReportLayout {
     return lines;
   }
 
-  /** Page 1 area table rows: every department, then Unassigned only when a listed row has no department. */
+  /**
+   * Page 1 area table rows: each included department that has listed projects, in report order, then
+   * Unassigned when a listed row has no department. An included department with no projects gets no row
+   * (and no section in the body). handoff.json keeps its own list (HandoffBuilder.areas).
+   */
   static gridAreas(rows: readonly ReportRow[], departments?: readonly ServiceArea[]): AreaGroup[] {
-    const unassigned = rows.some((r) => r.serviceArea === null);
     return ServiceAreaInfo.groups()
-      .filter((a) => a !== ServiceAreaInfo.UNASSIGNED || unassigned)
+      .filter((a) => rows.some((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a))
       .filter((a) => !departments || DepartmentFilter.includesGroup(departments, a));
   }
 
@@ -1181,7 +1204,7 @@ export class ReportLayout {
     const g = ReportGeometry;
     if (header.band) {
       const base = header.band.height + g.BAND.ruleW;
-      if (header.totalsGrid === "hidden" && header.keyLine) return base + g.KEYLINE.gapAbove + g.KEYLINE.h + g.KEYLINE.gapAfter;
+      if (header.totalsGrid === "hidden" && header.keyLine) return base + g.KEYLINE.gapAbove + header.keyLine.height + g.KEYLINE.gapAfter;
       return base + g.BAND.gapAfter;
     }
     const rows = header.meta.rows.length;
@@ -1202,9 +1225,9 @@ export class ReportLayout {
     return g.RUNHEAD_H + strip;
   }
 
-  /** Running header on pages 2+: "CVPSL · Project Status Report · Period Sep 15 – Sep 29, 2026 (continued)". No report date. */
-  static runningHeaderText(header: Pick<HeaderModel, "runningTitle" | "period">): { lead: string; rest: string } {
-    return { lead: header.runningTitle, rest: `${header.period ? ` \u00b7 Period ${header.period}` : ""} (continued)` };
+  /** Running header on pages 2+: "CVPSL · Project Status Report · Reporting period Sep 15\u201329, 2026 (continued)". No report date. */
+  static runningHeaderText(header: Pick<HeaderModel, "runningTitle" | "periodRange">): { lead: string; rest: string } {
+    return { lead: header.runningTitle, rest: `${header.periodRange ? ` \u00b7 Reporting period ${header.periodRange}` : ""} (continued)` };
   }
 
   /** Inter cap height (em). */
@@ -1234,7 +1257,7 @@ export class ReportLayout {
       title: string;
       titleBarHeight: number;
       badge: HeaderModel["badge"];
-      /** `short` replaces the value when the details do not fit (e.g. "3 of 4" for Departments). */
+      /** `short` replaces the value when the details do not fit (e.g. "3 of 7" for Departments). */
       details: { label: string; value: string; accent: boolean; short?: string }[];
     },
   ): BandModel {
@@ -1296,39 +1319,48 @@ export class ReportLayout {
   }
 
   /**
-   * One-line status and flag key: each visible status (shape and label), then each flag chip with its
-   * explanation, KEYLINE.itemGap apart. If it is wider than the content width the explanations are cut,
-   * last first; it never wraps. As a last resort the status labels go too (shapes and chips stay).
+   * Status and flag key: each visible status (shape and label), then each flag chip with its explanation,
+   * KEYLINE.itemGap apart, on one line. If it is wider than `maxW` the explanations are cut, last first.
+   * The status labels are never dropped: if it still does not fit with every explanation cut, it wraps
+   * (an item that would cross `maxW` starts the next row at x 0).
    */
   static keyLine(m: Measurer, statuses: readonly ProjectStatus[], legend: Record<FlagKind, FlagBox>, maxW: number = ReportGeometry.CONTENT_W): KeyLineModel {
     const k = ReportGeometry.KEYLINE;
     const flags = FlagSlots.ORDER;
-    const build = (keepTexts: number, statusLabels: boolean): KeyLineModel => {
-      let x = 0;
-      const items: KeyLineItem[] = [];
+    type Placed = "x" | "row" | "textX";
+    type Piece = (Omit<Extract<KeyLineItem, { kind: "status" }>, Placed> | Omit<Extract<KeyLineItem, { kind: "flag" }>, Placed>) & { textOffset: number };
+    const build = (keepTexts: number, wrap: boolean): KeyLineModel => {
+      const pieces: Piece[] = [];
       for (const s of statuses) {
-        const label = statusLabels ? ProjectStatusInfo.label(s) : "";
-        const textX = x + k.icon + k.iconGap;
-        const w = k.icon + (label ? k.iconGap + m.width(label, k.size, 400) : 0);
-        items.push({ kind: "status", x, status: s, label, textX, w });
-        x += w + k.itemGap;
+        const label = ProjectStatusInfo.label(s);
+        pieces.push({ kind: "status", status: s, label, w: k.icon + k.iconGap + m.width(label, k.size, 400), textOffset: k.icon + k.iconGap });
       }
       flags.forEach((kind, i) => {
         const flag = legend[kind];
         const text = i < keepTexts ? ReportLayout.legendText(kind) : null;
-        const textX = x + flag.width + k.textGap;
-        const w = flag.width + (text ? k.textGap + m.width(text, k.size, 400) : 0);
-        items.push({ kind: "flag", x, flag, text, textX, w });
-        x += w + k.itemGap;
+        pieces.push({ kind: "flag", flag, text, w: flag.width + (text ? k.textGap + m.width(text, k.size, 400) : 0), textOffset: flag.width + k.textGap });
       });
-      const width = Math.max(0, x - k.itemGap);
-      return { items, width, cut: keepTexts < flags.length || !statusLabels };
+      let x = 0;
+      let row = 0;
+      let width = 0;
+      const items = pieces.map(({ textOffset, ...p }) => {
+        if (wrap && x > 0 && x + p.w > maxW) {
+          row += 1;
+          x = 0;
+        }
+        const item = { ...p, x, row, textX: x + textOffset } as KeyLineItem;
+        width = Math.max(width, x + p.w);
+        x += p.w + k.itemGap;
+        return item;
+      });
+      const rows = row + 1;
+      return { items, width, cut: keepTexts < flags.length, rows, height: rows * k.h + (rows - 1) * k.rowGap };
     };
     for (let keep = flags.length; keep >= 0; keep--) {
-      const line = build(keep, true);
+      const line = build(keep, false);
       if (line.width <= maxW) return line;
     }
-    return build(0, false);
+    return build(0, true);
   }
 
   /** Last page summary block height (gap only when it does not start the page). */
@@ -1338,7 +1370,7 @@ export class ReportLayout {
     const gapAbove = atTop ? 0 : s.gapAbove;
     const gridTop = gapAbove + s.overlineLH + s.overlineGap;
     const keyTop = gridTop + ReportLayout.gridHeight(header.grid.rows.length) + s.gapBeforeKey;
-    return { height: keyTop + g.KEYLINE.h, summary: { gapAbove, gridTop, keyTop } };
+    return { height: keyTop + (header.keyLine?.height ?? g.KEYLINE.h), summary: { gapAbove, gridTop, keyTop } };
   }
 
   static bodyHeight(headerHeight: number): number {
@@ -1359,7 +1391,7 @@ export class ReportLayout {
     const completedRows = departments && input.completed ? DepartmentFilter.apply(input.completed, departments) : input.completed;
     input = { ...input, rows, ...(completedRows ? { completed: completedRows } : {}), ...(departments ? { departments } : {}) };
     // The FY-to-date count is not derived from rows: it comes from the (frozen) header as stored.
-    const header = { ...ReportBuilder.header(rows), completedFiscalYear: input.header?.completedFiscalYear };
+    const header = { ...ReportBuilder.header(input.rows), completedFiscalYear: input.header?.completedFiscalYear };
     const model = ReportLayout.header(m, input, header);
     const firstH = ReportLayout.firstHeaderHeight(input, model);
     const contH = ReportLayout.continuationHeaderHeight(input, model);

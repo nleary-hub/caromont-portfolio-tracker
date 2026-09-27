@@ -29,6 +29,10 @@ function completable(over: Partial<CompletableProject> = {}): CompletableProject
 function statusToComplete(projectId: string, at: string): HistoryEntryRecord {
   return { projectId, field: "status", oldValue: "OnTrack", newValue: "Complete", changedAt: new Date(at), changedBy: "x", comment: null } as HistoryEntryRecord;
 }
+/** Minimal sortable row for DashboardGroups (report order needs status, due date and name). */
+function g<T extends object>(over: T) {
+  return { status: "OnTrack" as const, dueDate: null, name: "x", ...over };
+}
 function dashRows(projects: ProjectRecord[], settings = dash()): DashboardRow[] {
   return DashboardViewModel.rows(projects, settings, [], null, TODAY);
 }
@@ -52,11 +56,11 @@ describe("Grouping matches the PDF", () => {
 
   it("departments in ServiceAreaInfo order with Unassigned last; empty departments are left out", () => {
     const rows = [
-      { serviceArea: null, id: "u" },
-      { serviceArea: "IR" as const, id: "ir" },
-      { serviceArea: "CardioNeuro" as const, id: "cn" },
-      { serviceArea: "EP" as const, id: "ep" },
-      { serviceArea: "Cath" as const, id: "cath" },
+      g({ serviceArea: null, id: "u" }),
+      g({ serviceArea: "IR" as const, id: "ir" }),
+      g({ serviceArea: "CardioNeuro" as const, id: "cn" }),
+      g({ serviceArea: "EP" as const, id: "ep" }),
+      g({ serviceArea: "Cath" as const, id: "cath" }),
     ];
     const groups = DashboardGroups.group(rows);
     // The PDF order comes from ServiceAreaInfo.groups(): CardioNeuro before IR.
@@ -67,12 +71,23 @@ describe("Grouping matches the PDF", () => {
     expect(groups.some((g) => g.area === "Echo")).toBe(false);
   });
 
+  it("Echo, CVSS and INU are real departments with their own headings, in ServiceAreaInfo order", () => {
+    const rows = [
+      g({ serviceArea: "INU" as const, id: "inu" }),
+      g({ serviceArea: null, id: "none" }),
+      g({ serviceArea: "Echo" as const, id: "echo" }),
+      g({ serviceArea: "Cath" as const, id: "cath" }),
+      g({ serviceArea: "CVSS" as const, id: "cvss" }),
+    ];
+    expect(DashboardGroups.group(rows).map((x) => x.label)).toEqual(["Cath", "Echo", "CVSS", "INU", "Unassigned"]);
+  });
+
   it("a comparator sorts inside each group and never mixes groups", () => {
     const rows = [
-      { serviceArea: "EP" as const, name: "b" },
-      { serviceArea: "Cath" as const, name: "z" },
-      { serviceArea: "EP" as const, name: "a" },
-      { serviceArea: "Cath" as const, name: "y" },
+      g({ serviceArea: "EP" as const, name: "b" }),
+      g({ serviceArea: "Cath" as const, name: "z" }),
+      g({ serviceArea: "EP" as const, name: "a" }),
+      g({ serviceArea: "Cath" as const, name: "y" }),
     ];
     const groups = DashboardGroups.group(rows, [], (x, y) => x.name.localeCompare(y.name));
     expect(groups.map((g) => g.rows.map((r) => r.name))).toEqual([["y", "z"], ["a", "b"]]);
@@ -127,7 +142,7 @@ describe("Completed this period on the dashboard", () => {
   });
 
   it("a department with only completed rows still gets a section", () => {
-    const groups = DashboardGroups.group([] as { serviceArea: null }[], [{ serviceArea: null }]);
+    const groups = DashboardGroups.group([] as ReturnType<typeof g<{ serviceArea: null }>>[], [{ serviceArea: null }]);
     expect(groups.map((g) => [g.area, g.countText])).toEqual([["Unassigned", "1 completed this period"]]);
   });
 });

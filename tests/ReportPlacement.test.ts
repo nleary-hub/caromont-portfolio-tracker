@@ -1,3 +1,4 @@
+import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
 import type { ReportRow } from "@/lib/domain/types";
@@ -38,7 +39,7 @@ class Doc {
 
 describe("header cleanup (all modes)", () => {
   for (const totalsGrid of ["top", "hidden", "lastPage"] as const) {
-    it(`${totalsGrid}: no DRAFT watermark, no Prepared by, no generated time in any header; footer unchanged`, () => {
+    it(`${totalsGrid}: no DRAFT watermark, no Prepared by, no generated time in any header; footer reads Generated`, () => {
       const l = Doc.layout({ draft: true, exampleData: false, totalsGrid });
       const json = JSON.stringify(l);
       expect(json).not.toContain("DRAFT");
@@ -47,7 +48,9 @@ describe("header cleanup (all modes)", () => {
       expect(l.header.meta.rows.map(([k]) => k)).not.toContain("Prepared by");
       for (const d of l.header.band?.details ?? []) expect(d.label).not.toMatch(/PREPARED|GENERATED/);
       // The generated time lives in the footer only.
-      expect(l.header.footerLeft).toBe("Draft Sep 29, 2026, 5:00 PM ET \u00b7 CVPSL \u00b7 Project Status Report");
+      // Drafts and frozen reports share the footer: "Generated <date>, <time> ET" (the word Draft is gone).
+      expect(l.header.footerLeft).toBe("Generated Sep 29, 2026, 5:00 PM ET \u00b7 CVPSL \u00b7 Project Status Report");
+      expect(Doc.layout({ exampleData: false, totalsGrid }).header.footerLeft).toBe(l.header.footerLeft);
       expect(json.split("5:00 PM ET").length - 1).toBe(1);
     });
   }
@@ -55,7 +58,9 @@ describe("header cleanup (all modes)", () => {
   it("the running header on pages 2+ shows only the reporting period (no report date)", () => {
     const l = Doc.layout();
     const run = ReportLayout.runningHeaderText(l.header);
-    expect(`${run.lead}${run.rest}`).toBe("CVPSL \u00b7 Project Status Report \u00b7 Period Sep 15 \u2013 Sep 29, 2026 (continued)");
+    expect(`${run.lead}${run.rest}`).toBe("CVPSL \u00b7 Project Status Report \u00b7 Reporting period Sep 15\u201329, 2026 (continued)");
+    // Page 1 keeps its wording ("Sep 15 \u2013 Sep 29, 2026") under the new label.
+    expect(l.header.meta.rows[1]).toEqual(["Reporting period", "Sep 15 \u2013 Sep 29, 2026"]);
     expect(run.rest).not.toContain("Report of");
     expect(run.rest).not.toContain("Sep 29, 2026 \u00b7");
     const src = readFileSync(new URL("../src/lib/report/pdf/ReportDocument.tsx", import.meta.url), "utf8");
@@ -91,7 +96,7 @@ describe("totals grid placement", () => {
       expect(band.height).toBeCloseTo(G.BAND.minH, 5); // about 0.55 in
       expect(l.pages[0].bodyTop).toBeLessThan(top.pages[0].bodyTop - 50);
       // Same fields and wording as the Top meta block (uppercase labels), right-aligned to the margin.
-      expect(band.details.map((d) => d.label)).toEqual(["REPORT DATE", "PERIOD COVERED", "PROJECTS", "COMPLETED FY27 TO DATE"]);
+      expect(band.details.map((d) => d.label)).toEqual(["REPORT DATE", "REPORTING PERIOD", "PROJECTS", "COMPLETED FY27 TO DATE"]);
       expect(band.details.map((d) => d.value).slice(0, 3)).toEqual(top.header.meta.rows.slice(0, 3).map(([, v]) => v));
       const last = band.details.at(-1)!;
       expect(last.x + last.w).toBeCloseTo(G.CONTENT_W, 5);
@@ -132,24 +137,45 @@ describe("totals grid placement", () => {
     expect(l.pages.every((p) => p.blocks.every((b) => b.kind !== "summary"))).toBe(true);
   });
 
-  it("Hidden: when the key line is too wide the explanations are cut; it never wraps", () => {
+  it("Hidden: too wide, the explanations are cut first; the status labels always stay; it wraps only once every explanation is cut", () => {
     const statuses = ["NotStarted", "OnTrack", "AtRisk", "OffTrack", "OnHold", "Complete", "Cancelled"] as const;
     const legend = Doc.layout({ viewSettings: ALL, totalsGrid: "hidden" }).header.legend;
-    for (const maxW of [720, 600, 500, 420, 300, 200]) {
+    const full = ReportLayout.keyLine(m, statuses, legend, 10_000);
+    const noTexts = full.items.reduce((w, it) => w + (it.kind === "flag" ? it.flag.width : it.w), 0) + G.KEYLINE.itemGap * (full.items.length - 1);
+    for (const maxW of [720, 600, 500, 420, 300, 200, 120]) {
       const k = ReportLayout.keyLine(m, statuses, legend, maxW);
-      const full = ReportLayout.keyLine(m, statuses, legend, 10_000);
-      // One line: every item starts after the previous one on the same row and ends inside maxW when possible.
-      for (let i = 1; i < k.items.length; i++) expect(k.items[i].x).toBeGreaterThan(k.items[i - 1].x);
+      // Status labels are never dropped.
+      expect(k.items.filter((i) => i.kind === "status").map((i) => i.kind === "status" && i.label)).toEqual(statuses.map((s) => ProjectStatusInfo.label(s)));
       if (full.width > maxW) expect(k.cut).toBe(true);
-      const minimal = ReportLayout.keyLine(m, statuses, legend, 0);
-      if (minimal.width <= maxW) expect(k.width).toBeLessThanOrEqual(maxW);
+      if (k.rows > 1) {
+        // Wrapping only after every explanation is cut, and only because even that does not fit.
+        expect(k.items.every((i) => i.kind !== "flag" || i.text === null)).toBe(true);
+        expect(noTexts).toBeGreaterThan(maxW);
+        expect(k.height).toBeCloseTo(k.rows * G.KEYLINE.h + (k.rows - 1) * G.KEYLINE.rowGap, 5);
+      } else {
+        expect(k.width).toBeLessThanOrEqual(maxW);
+      }
+      // Items on a row run left to right; every row starts at 0 and (after the first item) fits maxW.
+      for (let i = 1; i < k.items.length; i++) {
+        if (k.items[i].row === k.items[i - 1].row) expect(k.items[i].x).toBeGreaterThan(k.items[i - 1].x);
+        else expect(k.items[i].x).toBe(0);
+      }
     }
-    // At the real width with every status shown, the line fits by cutting explanations.
+    expect(ReportLayout.keyLine(m, statuses, legend, 200).rows).toBeGreaterThan(1);
+    // At the real (letter) width with every status shown, it fits on one line by cutting explanations.
     const real = ReportLayout.keyLine(m, statuses, legend);
+    expect(real.rows).toBe(1);
     expect(real.width).toBeLessThanOrEqual(G.CONTENT_W);
     expect(real.items.filter((i) => i.kind === "status").every((i) => i.kind === "status" && i.label)).toBe(true);
     const all = ReportLayout.layout(SampleReportData.docInput({ viewSettings: ALL, totalsGrid: "hidden" }), m);
+    expect(all.header.keyLine!.rows).toBe(1);
     expect(all.header.keyLine!.width).toBeLessThanOrEqual(G.CONTENT_W);
+  });
+
+  it("Hidden: a wrapped key line pushes the body down by its extra height", () => {
+    const l = Doc.layout({ totalsGrid: "hidden" });
+    const h = ReportLayout.firstHeaderHeight(SampleReportData.docInput({ totalsGrid: "hidden" }), { ...l.header, keyLine: { ...l.header.keyLine!, rows: 2, height: 2 * G.KEYLINE.h + G.KEYLINE.rowGap } });
+    expect(h - l.pages[0].headerHeight).toBeCloseTo(G.KEYLINE.h + G.KEYLINE.rowGap, 5);
   });
 
   it("Last page: the summary block follows the final rows and is never split across pages", () => {
@@ -225,7 +251,7 @@ describe("report department filter", () => {
   it("all departments selected is identical to no filter (Unassigned and every department shown, no Departments detail)", () => {
     const rows = [...SampleReportData.rows(), unassigned];
     const a = Doc.layout({ rows });
-    const b = Doc.layout({ rows, departments: ["Cath", "EP", "CardioNeuro", "IR"] });
+    const b = Doc.layout({ rows, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"] });
     expect(JSON.stringify(b)).toBe(JSON.stringify(a));
     expect(a.header.departments).toBeNull();
     expect(a.header.grid.rows.map((r) => r.label)).toContain("Unassigned");

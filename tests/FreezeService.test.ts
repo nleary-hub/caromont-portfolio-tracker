@@ -280,14 +280,15 @@ describe("report options (key page)", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const { ReportOptionsService } = await import("@/lib/services/ReportOptionsService");
     const { fake, db } = await Setup.db();
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP", "CardioNeuro", "IR"], totalsGrid: "top" });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top" });
     await expect(ReportOptionsService.update({ showKeyPage: false }, Factory.MEMBER, db)).rejects.toThrow();
     await ReportOptionsService.update({ showKeyPage: false }, Factory.ADMIN, db);
     expect(fake.state.reportOptionsHistory).toHaveLength(1);
     await ReportOptionsService.update({ showKeyPage: false }, Factory.ADMIN, db); // no-op, not audited again
     expect(fake.state.reportOptionsHistory).toHaveLength(1);
     await FreezeService.run(Setup.opts(), db);
-    expect(fake.state.snapshots[0].optionsJson).toEqual({ showKeyPage: false, departments: ["Cath", "EP", "CardioNeuro", "IR"], totalsGrid: "top" });
+    // Frozen in the saved form: excluded departments (none).
+    expect(fake.state.snapshots[0].optionsJson).toEqual({ showKeyPage: false, excludedDepartments: [], totalsGrid: "top" });
   });
 });
 
@@ -299,14 +300,15 @@ describe("report options (departments and totals grid), no migration", () => {
     await ReportOptionsService.update({ departments: ["EP", "Cath"], totalsGrid: "lastPage" }, Factory.ADMIN, db);
     // Only the existing column is written to the row; the full value is in the audit row.
     expect(Object.keys(fake.state.reportOptions[0]).sort()).toEqual(["id", "showKeyPage", "updatedAt", "updatedBy"]);
-    expect(fake.state.reportOptionsHistory.at(-1)!.newValue).toEqual({ showKeyPage: true, departments: ["Cath", "EP"], totalsGrid: "lastPage" });
+    // Saved as the EXCLUDED departments, so a department added later starts included.
+    expect(fake.state.reportOptionsHistory.at(-1)!.newValue).toEqual({ showKeyPage: true, excludedDepartments: ["Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "lastPage" });
     expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP"], totalsGrid: "lastPage" });
     // Changing the key page later keeps the other keys.
     await ReportOptionsService.update({ showKeyPage: false }, Factory.ADMIN, db);
     expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP"], totalsGrid: "lastPage" });
     // Invalid input falls back: an empty list is every department, an unknown mode is Top.
     await ReportOptionsService.update({ departments: [], totalsGrid: "sideways" as never }, Factory.ADMIN, db);
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP", "CardioNeuro", "IR"], totalsGrid: "top" });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top" });
   });
 
   it("a filtered freeze lists only the included departments in the snapshot and handoff.json (same structure)", async () => {
@@ -322,7 +324,7 @@ describe("report options (departments and totals grid), no migration", () => {
     await ReportOptionsService.update({ departments: ["EP"] }, Factory.ADMIN, db);
     await FreezeService.run(Setup.opts(), db);
     const snap = fake.state.snapshots[0];
-    expect((snap.optionsJson as { departments: string[] }).departments).toEqual(["EP"]);
+    expect(ReportOptionsService.normalize(snap.optionsJson).departments).toEqual(["EP"]);
     expect((snap.rowsJson as { name: string }[]).map((r) => r.name)).toEqual(["Visible ok"]);
     const h = Setup.handoff(fake);
     // Same keys at every level as an unfiltered run (byStatus lists only non-zero statuses, as always).

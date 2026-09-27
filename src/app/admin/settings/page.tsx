@@ -30,7 +30,7 @@ export default async function AdminSettingsPage() {
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
       <div className="flex items-center justify-between">
-        <h1 className="type-title">Settings: service line and report</h1>
+        <h1 className="type-title">Service line and report settings</h1>
         <div className="flex items-center gap-3">
           <AdminMenuSlot viewer={viewer} />
           <Link href="/" className="text-muted type-table-strong hover:text-fg">

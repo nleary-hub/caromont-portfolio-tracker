@@ -204,7 +204,7 @@ describe("Completed this period: counts", () => {
       SampleReportData.docInput({ rows: s.rowsJson as unknown as ReportRow[], header, completed: s.completedJson as unknown as CompletedRow[] }),
       m,
     );
-    expect(layout.header.projectsLine).toBe("1 across 1 service area");
+    expect(layout.header.projectsLine).toBe("1 project across 1 department");
     // The frozen header carries the FY-to-date count (the completed project counts there too).
     expect(layout.header.completedFy).toMatchObject({ label: expect.stringMatching(/^Completed FY\d\d to date$/), count: 1 });
     const total = layout.header.grid.rows.at(-1)!;

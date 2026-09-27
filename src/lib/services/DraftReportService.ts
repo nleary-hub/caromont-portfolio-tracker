@@ -12,8 +12,8 @@ export interface DraftPdf {
 
 /**
  * Admin "Generate PDF now": renders the report from LIVE data with the same builder, visibility
- * gate, report view settings and renderer as the scheduled freeze, marked as a draft on every
- * page. Read-only: no snapshot, no artifact, no delivery, no Drive call, no handoff.json, no audit.
+ * gate, report view settings and renderer as the scheduled freeze. Only the file name says draft;
+ * the PDF footer reads "Generated <date>, <time> ET" like every report. Read-only: no snapshot, no artifact, no delivery, no Drive call, no handoff.json, no audit.
  * Returns null for non-admins so the route can answer 404.
  */
 export class DraftReportService {

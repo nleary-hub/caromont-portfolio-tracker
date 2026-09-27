@@ -2,6 +2,9 @@
 @layer components {
   .df-pop { width: 220px; padding: 8px; }
   .df-pop-left { left: 0; right: auto; }
+  /* Departments popover: at most 280px tall; "All departments" stays pinned, the department list scrolls. */
+  .df-pop-scroll { max-height: 280px; display: flex; flex-direction: column; overflow: hidden; }
+  .df-pop-scroll > .df-scroll { overflow-y: auto; min-height: 0; flex: 1 1 auto; }
   .df-divider { height: 1px; background: var(--dark-border); margin: 4px 0; }
   .df-h3 { margin: 4px 6px 6px; align-items: center; }
   .df-h3 .vp-link { text-transform: none; letter-spacing: 0; font: var(--app-table-strong); }

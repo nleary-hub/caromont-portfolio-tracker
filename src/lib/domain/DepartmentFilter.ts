@@ -3,23 +3,33 @@ import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 
 /**
  * Department filter shared by the dashboard (per user, localStorage) and the report (admin setting, frozen
- * into each snapshot). A selection is a non-empty list of OPTIONS in report order. Selecting every option
- * means "All": nothing is filtered, so departments outside OPTIONS and the Unassigned group still show.
- * Any narrower selection lists only the chosen departments (no Unassigned group).
+ * into each snapshot). In memory a selection is a non-empty list of OPTIONS (every department, from the
+ * ServiceArea enum via ServiceAreaInfo) in report order. Selecting every option means "All": nothing is
+ * filtered, and the Unassigned group still shows. Any narrower selection lists only the chosen departments.
+ *
+ * Saved selections store the EXCLUDED departments (`toStored` / `fromStored`), so a department added
+ * later is included by default and never silently hidden by an older saved filter.
  */
 export class DepartmentFilter {
-  /** The departments offered, in report order. */
-  static readonly OPTIONS: readonly ServiceArea[] = [ServiceArea.Cath, ServiceArea.EP, ServiceArea.CardioNeuro, ServiceArea.IR];
-  /** Checkbox labels (the closed box and the PDF use the short ServiceAreaInfo labels). */
+  /** Checkbox labels that differ from the short ServiceAreaInfo label (the closed box and the PDF use the short one). */
   static readonly OPTION_LABELS: Readonly<Partial<Record<ServiceArea, string>>> = {
     Cath: "Cath Lab",
     EP: "EP Lab",
-    CardioNeuro: "CardioNeuro",
-    IR: "IR",
   };
+  /**
+   * The options offered before departments were read from the enum. A saved selection in the old format
+   * (a plain list of INCLUDED departments) is read as "these four minus the ones listed", so departments
+   * that were not offered then (and any added later) come back included.
+   */
+  static readonly LEGACY_OPTIONS: readonly ServiceArea[] = [ServiceArea.Cath, ServiceArea.EP, ServiceArea.CardioNeuro, ServiceArea.IR];
+
+  /** Every department, in report order (ServiceArea enum order). */
+  static get OPTIONS(): readonly ServiceArea[] {
+    return ServiceAreaInfo.all();
+  }
   static readonly ALL_LABEL = "All departments";
   static readonly PREFIX = "Departments";
-  /** Closed-box names longer than this read "3 of 4" instead. */
+  /** Closed-box names longer than this read "3 of 7" instead. */
   static readonly SUMMARY_MAX_CHARS = 16;
 
   static all(): ServiceArea[] {
@@ -74,12 +84,12 @@ export class DepartmentFilter {
     return DepartmentFilter.normalize(selection).map((a) => ServiceAreaInfo.label(a)).join(", ");
   }
 
-  /** "3 of 4". */
+  /** "3 of 7" (M is every department). */
   static countText(selection: readonly ServiceArea[]): string {
     return `${DepartmentFilter.normalize(selection).length} of ${DepartmentFilter.OPTIONS.length}`;
   }
 
-  /** Closed box text: "Departments: All", "Departments: Cath, EP", or "Departments: 3 of 4" when the names are long. */
+  /** Closed box text: "Departments: All", "Departments: Cath, EP", or "Departments: 3 of 7" when the names are long. */
   static summary(selection: readonly ServiceArea[], maxChars: number = DepartmentFilter.SUMMARY_MAX_CHARS): string {
     const sel = DepartmentFilter.normalize(selection);
     if (DepartmentFilter.isAll(sel)) return `${DepartmentFilter.PREFIX}: All`;
@@ -91,6 +101,29 @@ export class DepartmentFilter {
   static reportDetail(selection: readonly ServiceArea[] | undefined): string | null {
     if (!selection || DepartmentFilter.isAll(selection)) return null;
     return DepartmentFilter.names(selection);
+  }
+
+  /** Saved form: the departments NOT selected ({ excluded: [] } means all, today and after a department is added). */
+  static toStored(selection: readonly ServiceArea[]): { excluded: ServiceArea[] } {
+    const sel = DepartmentFilter.normalize(selection);
+    return { excluded: DepartmentFilter.OPTIONS.filter((a) => !sel.includes(a)) };
+  }
+
+  /**
+   * Saved form to a selection. `{ excluded: [...] }` is the current format; a plain array is the old
+   * included-list format (see LEGACY_OPTIONS). Unknown values are ignored; anything unreadable, or a
+   * saved value that would exclude everything, means all.
+   */
+  static fromStored(raw: unknown): ServiceArea[] {
+    let excluded: unknown[];
+    if (raw && typeof raw === "object" && !Array.isArray(raw) && Array.isArray((raw as { excluded?: unknown }).excluded)) {
+      excluded = (raw as { excluded: unknown[] }).excluded;
+    } else if (Array.isArray(raw)) {
+      excluded = DepartmentFilter.LEGACY_OPTIONS.filter((a) => !raw.includes(a));
+    } else {
+      return DepartmentFilter.all();
+    }
+    return DepartmentFilter.normalize(DepartmentFilter.OPTIONS.filter((a) => !excluded.includes(a)));
   }
 
   static equals(a: readonly ServiceArea[], b: readonly ServiceArea[]): boolean {

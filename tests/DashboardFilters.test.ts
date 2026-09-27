@@ -1,3 +1,5 @@
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { ServiceArea } from "@/generated/prisma/enums";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
@@ -40,9 +42,11 @@ const rows = DashboardViewModel.rows(
 );
 
 describe("DepartmentFilter", () => {
-  it("offers Cath Lab, EP Lab, CardioNeuro and IR in report order; default and empty mean all", () => {
-    expect(DepartmentFilter.OPTIONS.map((a) => DepartmentFilter.optionLabel(a))).toEqual(["Cath Lab", "EP Lab", "CardioNeuro", "IR"]);
-    expect(DepartmentFilter.normalize(undefined)).toEqual(["Cath", "EP", "CardioNeuro", "IR"]);
+  it("offers every department from the ServiceArea enum in report order (same as the PDF); default and empty mean all", () => {
+    expect(DepartmentFilter.OPTIONS).toEqual(Object.values(ServiceArea));
+    expect(DepartmentFilter.OPTIONS).toEqual(ServiceAreaInfo.all());
+    expect(DepartmentFilter.OPTIONS.map((a) => DepartmentFilter.optionLabel(a))).toEqual(["Cath Lab", "EP Lab", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
+    expect(DepartmentFilter.normalize(undefined)).toEqual(["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
     expect(DepartmentFilter.normalize([])).toEqual(DepartmentFilter.all());
     expect(DepartmentFilter.normalize(["IR", "bogus", "Cath"])).toEqual(["Cath", "IR"]);
   });
@@ -54,10 +58,12 @@ describe("DepartmentFilter", () => {
     expect(DepartmentFilter.toggle(["EP", "IR"], "Cath")).toEqual(["Cath", "EP", "IR"]);
   });
 
-  it("closed box reads All, the short names, or N of 4 when the names do not fit", () => {
+  it("closed box reads All, the short names, or K of M (M = every department) when the names do not fit", () => {
     expect(DepartmentFilter.summary(DepartmentFilter.all())).toBe("Departments: All");
     expect(DepartmentFilter.summary(["Cath", "EP"])).toBe("Departments: Cath, EP");
-    expect(DepartmentFilter.summary(["Cath", "EP", "CardioNeuro"])).toBe("Departments: 3 of 4");
+    expect(DepartmentFilter.summary(["Cath", "EP", "CardioNeuro"])).toBe(`Departments: 3 of ${ServiceAreaInfo.all().length}`);
+    expect(DepartmentFilter.summary(["Cath", "EP", "CardioNeuro"])).toBe("Departments: 3 of 7");
+    expect(DepartmentFilter.reportDetail(DepartmentFilter.all())).toBeNull();
     expect(DepartmentFilter.summary(["Cath", "EP", "IR"])).toBe("Departments: Cath, EP, IR");
   });
 

@@ -104,7 +104,7 @@ export function DepartmentsSelect({ value, onChange }: { value: readonly Service
         <Chevron open={open} />
       </span>
       {open && (
-        <div role="dialog" aria-label="Departments" className="vp-pop df-pop df-pop-left">
+        <div role="dialog" aria-label="Departments" className="vp-pop df-pop df-pop-left df-pop-scroll" data-testid="departments-popover">
           <ul className="vp-list">
             <li>
               <label className="vp-check">
@@ -115,7 +115,9 @@ export function DepartmentsSelect({ value, onChange }: { value: readonly Service
             </li>
           </ul>
           <div className="df-divider" />
-          <DepartmentChecklist value={value} onChange={onChange} />
+          <div className="df-scroll">
+            <DepartmentChecklist value={value} onChange={onChange} />
+          </div>
         </div>
       )}
     </div>

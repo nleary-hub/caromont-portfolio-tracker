@@ -1,3 +1,4 @@
+import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import type { Prisma, PrismaClient, ReportSnapshot } from "@/generated/prisma/client";
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
@@ -57,7 +58,8 @@ export class SnapshotService {
               missingChampionsJson: data.missingChampions as unknown as Prisma.InputJsonValue,
               headerJson: data.header as unknown as Prisma.InputJsonValue,
               viewSettingsJson: data.viewSettings as unknown as Prisma.InputJsonValue,
-              optionsJson: data.options as unknown as Prisma.InputJsonValue,
+              // Excluded departments, like the admin setting (ReportOptionsService.normalize reads it back).
+              optionsJson: ReportOptionsService.toStored(data.options) as unknown as Prisma.InputJsonValue,
               completedJson: data.completed as unknown as Prisma.InputJsonValue,
               serviceLineJson: data.serviceLine as unknown as Prisma.InputJsonValue,
             },

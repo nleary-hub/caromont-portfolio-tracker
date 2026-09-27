@@ -445,13 +445,14 @@ function BandHeader({ h }: { h: HeaderModel }) {
   );
 }
 
-/** One-line status and flag key: status shapes with labels, then flag chips with their explanations (7 pt, secondary). */
-function KeyLine({ k, y }: { k: KeyLineModel; y: number }) {
+/** Status and flag key: status shapes with labels, then flag chips with their explanations (7 pt, secondary). Wraps only once explanations are cut. */
+function KeyLine({ k, y: top }: { k: KeyLineModel; y: number }) {
   const K = G.KEYLINE;
   return (
     <>
-      {k.items.map((it, i) =>
-        it.kind === "status" ? (
+      {k.items.map((it, i) => {
+        const y = top + it.row * (K.h + K.rowGap);
+        return it.kind === "status" ? (
           <Fragment key={`ks${i}`}>
             <View style={{ position: "absolute", left: it.x, top: y + (K.h - K.icon) / 2 }}>
               <Shape status={it.status} size={K.icon} color={C.STATUS[it.status].fg} />
@@ -463,8 +464,8 @@ function KeyLine({ k, y }: { k: KeyLineModel; y: number }) {
             <Flag flag={it.flag} x={it.x} y={y} />
             {it.text && <Line x={it.textX} y={y + (K.h - G.SMALL_LH) / 2} w={it.w - (it.textX - it.x)} text={it.text} size={K.size} color={C.MUTED} lh={G.SMALL_LH} />}
           </Fragment>
-        ),
-      )}
+        );
+      })}
     </>
   );
 }
