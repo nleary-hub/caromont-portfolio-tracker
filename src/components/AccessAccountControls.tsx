@@ -5,6 +5,7 @@ import { addUserAccount, resetUserPassword, setSignIn, unlockUser } from "@/app/
 import { usePopover } from "@/components/DashboardFilterControls";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
+import { SignInMethods } from "@/lib/auth/SignInMethods";
 import type { AccessLine } from "@/lib/services/LineAccessService";
 import type { AccountResult, PasswordStatus } from "@/lib/services/UserAccountService";
 
@@ -13,21 +14,33 @@ const PRIMARY = "h-7 rounded-control bg-accent px-3 text-white type-table-strong
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
 const TAG = "flex-none rounded-[4px] px-1.5 py-px type-label font-semibold";
 
-/** Tags after a person's name in the Access grid: Google, Password or Must change password, then Off and Locked. */
-export function PasswordTags({ status }: { status?: PasswordStatus }) {
+/**
+ * Tags after a person's name in the Access grid. First every sign-in method that works for the account, side by side
+ * (Google, then Password), then after a visible gap the state tags: amber Must change password, Off and Locked.
+ * `google`: whether Google sign-in lets this email in (UserAccountService.googleSignIn); when not given, Google is
+ * assumed only for accounts with no password (the grid's old rule).
+ */
+export function PasswordTags({ status, google }: { status?: PasswordStatus; google?: boolean }) {
   if (!status) return null;
+  const methods = SignInMethods.of(status, google);
+  const METHOD_CLS = "bg-(--status-on-hold-dark-bg) text-(--status-on-hold-dark-fg)";
   const tags: Array<{ label: string; tip: string; cls: string; id: string }> = [];
-  // Every row says how the person signs in: Google (no password), Password, Must change password or Off.
-  const PASSWORD_CLS = "bg-(--status-on-hold-dark-bg) text-(--status-on-hold-dark-fg)";
-  if (status.state === "none") tags.push({ id: "google", label: PasswordCopy.TAG_GOOGLE, tip: PasswordCopy.TAG_GOOGLE_TIP, cls: PASSWORD_CLS });
-  if (status.state === "active") tags.push({ id: "password", label: PasswordCopy.TAG_PASSWORD, tip: PasswordCopy.TAG_PASSWORD_TIP, cls: PASSWORD_CLS });
   if (status.state === "mustChange") tags.push({ id: "must-change", label: PasswordCopy.TAG_MUST_CHANGE, tip: PasswordCopy.TAG_MUST_CHANGE_TIP, cls: "bg-(--flag-changed-dark-bg) text-(--flag-changed-dark-fg)" });
   if (status.off) tags.push({ id: "off", label: PasswordCopy.TAG_OFF, tip: PasswordCopy.TAG_OFF_TIP, cls: "bg-(--status-cancelled-dark-bg) text-(--status-cancelled-dark-fg)" });
   if (status.locked) tags.push({ id: "locked", label: PasswordCopy.TAG_LOCKED, tip: PasswordCopy.TAG_LOCKED_TIP, cls: "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)" });
   return (
     <>
-      {tags.map((t) => (
-        <span key={t.id} className={`${TAG} ${t.cls}`} title={t.tip} data-password-tag={t.id}>
+      {methods.length > 0 && (
+        <span className="inline-flex flex-none items-center gap-1" role="group" aria-label={PasswordCopy.METHODS_LABEL} data-testid="signin-methods">
+          {methods.map((m) => (
+            <span key={m} className={`${TAG} ${METHOD_CLS}`} title={m === "google" ? PasswordCopy.TAG_GOOGLE_TIP : PasswordCopy.TAG_PASSWORD_TIP} data-password-tag={m}>
+              {m === "google" ? PasswordCopy.TAG_GOOGLE : PasswordCopy.TAG_PASSWORD}
+            </span>
+          ))}
+        </span>
+      )}
+      {tags.map((t, i) => (
+        <span key={t.id} className={`${TAG} ${t.cls} ${i === 0 && methods.length > 0 ? "ml-2" : ""}`} title={t.tip} data-password-tag={t.id}>
           {t.label}
         </span>
       ))}
@@ -100,7 +113,10 @@ export function AccountRowMenu({
         </svg>
       </button>
       {open && (
-        <ul role="menu" className="vp-pop vp-list w-[210px] p-1 text-left" style={pos ? { position: "fixed", top: pos.top, right: pos.right, left: "auto", zIndex: 60 } : { visibility: "hidden" }}>
+        <ul role="menu" className="vp-pop vp-list w-max min-w-[210px] max-w-[340px] p-1 text-left" style={pos ? { position: "fixed", top: pos.top, right: pos.right, left: "auto", zIndex: 60 } : { visibility: "hidden" }}>
+          <li role="presentation" className="truncate border-b border-line px-2 pt-1 pb-1.5 mb-1 type-table-strong text-fg" title={email} data-testid="access-row-email">
+            {email}
+          </li>
           {status?.off && (
             <li role="presentation" className="px-2 pt-1 pb-1.5 text-muted type-caption" data-testid="access-row-status">
               {PasswordCopy.TAG_OFF_TIP}
@@ -225,7 +241,7 @@ export function AddUserForm({
 }
 
 /** Shows a new temporary password once, with Copy. Closing it is the last time anyone sees it. */
-export function TempPasswordDialog({ name, email, password, onDone }: { name: string; email: string; password: string; onDone: () => void }) {
+export function TempPasswordDialog({ email, password, onDone }: { name?: string; email: string; password: string; onDone: () => void }) {
   const [copied, setCopied] = useState(false);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => e.key === "Escape" && onDone();
@@ -236,9 +252,8 @@ export function TempPasswordDialog({ name, email, password, onDone }: { name: st
     <div className="sl-scrim">
       <div role="dialog" aria-modal="true" aria-labelledby="temp-password-title" data-testid="temp-password" className="flex w-[440px] flex-col gap-3 rounded-card border border-line bg-card px-5 py-4 shadow-[0_12px_32px_rgba(0,0,0,.45)]">
         <h2 id="temp-password-title" className="type-heading">
-          {PasswordCopy.tempFor(name)}
+          {PasswordCopy.tempDialogTitle(email)}
         </h2>
-        <p className="type-table text-muted">{email}</p>
         <div className="flex items-center gap-2 rounded-control border border-line bg-input px-3 py-2">
           <code className="flex-1 select-all font-mono text-[15px] tracking-wide text-fg" data-testid="temp-password-value">
             {password}
@@ -253,7 +268,9 @@ export function TempPasswordDialog({ name, email, password, onDone }: { name: st
             {copied ? PasswordCopy.COPIED : PasswordCopy.COPY}
           </button>
         </div>
-        <p className="type-caption text-muted">{PasswordCopy.TEMP_BODY}</p>
+        <p className="type-caption text-muted" data-testid="temp-password-body">
+          {PasswordCopy.TEMP_BODY}
+        </p>
         <div className="flex justify-end">
           <button type="button" autoFocus className={PRIMARY} onClick={onDone}>
             {PasswordCopy.DONE}

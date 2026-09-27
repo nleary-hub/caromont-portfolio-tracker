@@ -2,6 +2,7 @@ import type { PrismaClient } from "@/generated/prisma/client";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { DisplayName } from "@/lib/auth/DisplayName";
+import { EmailAllowlist } from "@/lib/auth/EmailAllowlist";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 import { PasswordHasher } from "@/lib/auth/PasswordHasher";
 import { SignInLockout } from "@/lib/auth/SignInLockout";
@@ -53,6 +54,17 @@ export class UserAccountService {
     for (const email of emails) out[email] = { state: "none", off: off.has(email), locked: locked.has(email) };
     for (const c of creds) out[c.email] = { state: c.mustChange ? "mustChange" : "active", off: off.has(c.email), locked: locked.has(c.email) };
     return out;
+  }
+
+  /**
+   * Whether Google sign-in lets each email in (SignInGate): on ALLOWED_EMAILS, or an admin-created account (app_user
+   * with addedBy). Turned off is a separate tag, so it isn't applied here. Used for the Access grid's method tags.
+   */
+  static async googleSignIn(viewer: Viewer | null, emails: string[], db: Pick<PrismaClient, "appUser"> = Db.client, env: Env = process.env): Promise<Record<string, boolean>> {
+    AdminPolicy.assertAdmin(viewer);
+    const users = emails.length ? await db.appUser.findMany({ where: { email: { in: emails } }, select: { email: true, addedBy: true } }) : [];
+    const added = new Set(users.filter((u) => Boolean(u.addedBy)).map((u) => u.email));
+    return Object.fromEntries(emails.map((e) => [e, EmailAllowlist.isAllowed(e, env) || added.has(e)]));
   }
 
   /**

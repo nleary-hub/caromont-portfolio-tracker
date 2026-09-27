@@ -33,6 +33,14 @@ export interface AuditEvent {
   oldValue: string | null;
   newValue: string | null;
   comment: string | null;
+  /**
+   * Raw stored value, for rows whose oldValue / newValue are already display text (service lines, access moves,
+   * report colors). Recent changes formats from it (AuditText) and shows it under Details.
+   */
+  oldRaw?: string | null;
+  newRaw?: string | null;
+  /** Template step rows: the name of the template the step belongs to, when that template still exists. */
+  parent?: string | null;
 }
 
 export interface AuditData {
@@ -61,6 +69,11 @@ export interface DeletedLine {
 export class AdminAuditService {
   static readonly EVENT_LIMIT = 200;
 
+  /** A stored JSON value as text for Details (null stays null). */
+  static rawJson(v: unknown): string | null {
+    return v === null || v === undefined ? null : JSON.stringify(v);
+  }
+
   /** Audit field of each Report colors change (AuditFormat labels them "Bar color changed" / "Header band changed"). */
   static readonly COLOR_FIELDS = { bar: "reportColors.bar", band: "reportColors.band" } as const;
 
@@ -85,6 +98,8 @@ export class AdminAuditService {
       oldValue: ReportColorScheme.label(before[key]),
       newValue: ReportColorScheme.label(after[key]),
       comment: null,
+      oldRaw: AdminAuditService.rawJson(oldRaw),
+      newRaw: AdminAuditService.rawJson(newRaw),
     });
     return [...(before.bar !== after.bar ? [row("bar")] : []), ...(before.band !== after.band ? [row("band")] : [])];
   }
@@ -137,6 +152,13 @@ export class AdminAuditService {
     const people = new Map(
       (accessMoves.length ? await db.appUser.findMany({ where: { email: { in: [...new Set(accessMoves.map((h) => h.email))] } } }) : []).map((u) => [u.email, LineAccessService.displayName(u)]),
     );
+    // Template step rows name their template when it still exists (the row stores only its id).
+    const templateNames = new Map(
+      (templateEvents.some((h) => h.action.startsWith("item_") && h.templateId)
+        ? await db.milestoneTemplate.findMany({ where: ServiceLineAccess.where(scope), select: { id: true, name: true } })
+        : []
+      ).map((t) => [t.id, t.name]),
+    );
     const departmentNames = new Map(
       (await db.department.findMany({ where: { serviceLineId: scope.id }, select: { id: true, name: true } })).map((d) => [d.id, d.name]),
     );
@@ -170,6 +192,8 @@ export class AdminAuditService {
         oldValue: ServiceLineHistoryText.value(h.oldValue) || null,
         newValue: ServiceLineHistoryText.value(h.newValue) || null,
         comment: null,
+        oldRaw: AdminAuditService.rawJson(h.oldValue),
+        newRaw: AdminAuditService.rawJson(h.newValue),
       })),
       ...templateEvents.map((h) => ({
         kind: "template" as const,
@@ -180,6 +204,7 @@ export class AdminAuditService {
         oldValue: h.oldValue === null ? null : JSON.stringify(h.oldValue),
         newValue: h.newValue === null ? null : JSON.stringify(h.newValue),
         comment: null,
+        parent: h.action.startsWith("item_") && h.templateId ? (templateNames.get(h.templateId) ?? null) : null,
       })),
       ...layoutEvents.map((h) => ({
         kind: "layout" as const,
@@ -212,6 +237,8 @@ export class AdminAuditService {
           field: `access.${h.action}`,
           oldValue: detail.from ?? null,
           newValue: detail.to ?? null,
+          oldRaw: null,
+          newRaw: AdminAuditService.rawJson(h.detail),
           comment: DepartmentAccessCopy.movedAudit(who, detail.from ?? "Department", detail.to ?? "Department"),
         };
       }),

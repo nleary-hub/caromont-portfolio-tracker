@@ -1,6 +1,6 @@
 "use client";
 
-import { useActionState, useMemo, useState } from "react";
+import { useActionState, useState } from "react";
 import { saveReportColors } from "@/app/actions/reports";
 import { ReportColorScheme, type ReportColorsValue, type ResolvedReportColors } from "@/lib/report/ReportColorScheme";
 import type { ReportColorsFormState } from "@/lib/services/ReportOptionsForm";
@@ -34,12 +34,14 @@ export function ReportColorsForm({ colors }: { colors: ReportColorsValue }) {
   const blocked = !barError.ok || !bandError.ok;
   const serverField = state && !state.ok ? state.field : undefined;
 
-  // Preview: the last valid choice of each (a blocked custom color previews as the saved value).
-  const preview: ResolvedReportColors = useMemo(() => {
-    const b = barError.ok ? valueOf(bar) : null;
-    const h = bandError.ok ? valueOf(band) : null;
-    return ReportColorScheme.resolve({ bar: b ?? colors.bar, band: h ?? colors.band });
-  }, [bar, band, barError.ok, bandError.ok, colors]);
+  // Preview: what's being typed, even a custom color that fails contrast (Save stays disabled). Only input that
+  // doesn't parse as a color keeps the last valid one.
+  const [lastValid, setLastValid] = useState<ReportColorsValue>(colors);
+  const typed = { bar: bar.key === ReportColorScheme.CUSTOM ? bar.hex : bar.key, band: band.key === ReportColorScheme.CUSTOM ? band.hex : band.key };
+  const parsed = { bar: bar.key !== ReportColorScheme.CUSTOM || ReportColorScheme.hex(bar.hex) !== null, band: band.key !== ReportColorScheme.CUSTOM || ReportColorScheme.hex(band.hex) !== null };
+  const nextValid: ReportColorsValue = { bar: parsed.bar ? (valueOf(bar) ?? lastValid.bar) : lastValid.bar, band: parsed.band ? (valueOf(band) ?? lastValid.band) : lastValid.band };
+  if (nextValid.bar !== lastValid.bar || nextValid.band !== lastValid.band) setLastValid(nextValid);
+  const preview: ResolvedReportColors = ReportColorScheme.preview(typed, lastValid);
 
   return (
     <form action={action} className="flex flex-col gap-4" data-testid="report-colors-form">
@@ -52,6 +54,7 @@ export function ReportColorsForm({ colors }: { colors: ReportColorsValue }) {
             choice={bar}
             onChange={setBar}
             withNone={false}
+            field="bar"
             error={!barError.ok ? barError.message : serverField === "bar" && state && !state.ok ? state.message : null}
             warning={barError.ok && bar.key === ReportColorScheme.CUSTOM && ReportColorScheme.nearStatus(bar.hex) ? COPY.statusWarning : null}
           />
@@ -61,6 +64,7 @@ export function ReportColorsForm({ colors }: { colors: ReportColorsValue }) {
             choice={band}
             onChange={setBand}
             withNone
+            field="band"
             help={COPY.bandHelp}
             error={!bandError.ok ? bandError.message : serverField === "band" && state && !state.ok ? state.message : null}
             warning={bandError.ok && band.key === ReportColorScheme.CUSTOM && ReportColorScheme.nearStatus(band.hex) ? COPY.statusWarning : null}
@@ -103,6 +107,7 @@ function ColorChoice({
   choice,
   onChange,
   withNone,
+  field,
   help,
   error,
   warning,
@@ -112,22 +117,23 @@ function ColorChoice({
   choice: Choice;
   onChange: (c: Choice) => void;
   withNone: boolean;
+  field: "bar" | "band";
   help?: string;
   error: string | null;
   warning: string | null;
 }) {
   const keys = [...(withNone ? [ReportColorScheme.NONE] : []), ...ReportColorScheme.PRESET_KEYS, ReportColorScheme.CUSTOM];
-  const label = (k: string) => (k === ReportColorScheme.NONE ? COPY.none : k === ReportColorScheme.CUSTOM ? COPY.custom : ReportColorScheme.PRESETS[k as keyof typeof ReportColorScheme.PRESETS].label);
+  const label = (k: string) => ReportColorScheme.optionLabel(k, field);
   const swatch = (k: string) => (ReportColorScheme.isPreset(k) ? ReportColorScheme.PRESETS[k].bar.fill : null);
   const pickerValue = ReportColorScheme.hex(choice.hex) ?? "#2B4C7E";
   return (
     <fieldset className="flex flex-col gap-1.5">
       <legend className="mb-1 type-label text-muted">{legend}</legend>
       <input type="hidden" name={name} value={choice.key} />
-      <div role="radiogroup" aria-label={legend} className="vp-seg" style={{ gridTemplateColumns: `repeat(${keys.length}, auto)`, maxWidth: withNone ? 470 : 390 }}>
+      <div role="radiogroup" aria-label={legend} className="vp-seg" style={{ gridTemplateColumns: `repeat(${keys.length}, auto)`, maxWidth: withNone ? 520 : 480 }}>
         {keys.map((k) => (
           <button key={k} type="button" role="radio" aria-checked={choice.key === k} className={`px-2.5 ${choice.key === k ? "vp-act" : ""}`} onClick={() => onChange({ ...choice, key: k })}>
-            <span className="inline-flex items-center gap-1.5">
+            <span className="inline-flex items-center gap-1.5 whitespace-nowrap">
               {swatch(k) && <span aria-hidden className="inline-block size-2.5 rounded-[3px] border border-white/20" style={{ background: swatch(k)! }} />}
               {label(k)}
             </span>

@@ -145,7 +145,12 @@ describe("ReportColorsForm (Admin > Report contents > Report colors)", () => {
       ["Report colors", AdminAuditService.COLOR_FIELDS.bar, "Navy solid", "Custom #FFD700"],
       ["Report colors", AdminAuditService.COLOR_FIELDS.band, "None", "Plum"],
     ]);
-    expect(src("src/app/admin/audit/page.tsx")).toContain("ReportColorScheme.COPY.auditBand : ReportColorScheme.COPY.auditBar");
+    // The CHANGE label comes from AuditText (strings in AuditCopy); OLD / NEW keep the plain color names.
+    const { AuditText } = await import("@/lib/admin/AuditText");
+    expect(audit.events.filter((e) => e.kind === "reportColors").map((e) => [AuditText.change(e), AuditText.summary(e, "old"), AuditText.summary(e, "new")])).toEqual([
+      ["Bar color changed", "Navy solid", "Custom #FFD700"],
+      ["Header band changed", "None", "Plum"],
+    ]);
     expect([S.COPY.auditBar, S.COPY.auditBand]).toEqual(["Bar color changed", "Header band changed"]);
   });
 

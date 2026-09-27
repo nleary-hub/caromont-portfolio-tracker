@@ -828,6 +828,7 @@ export function ProjectDrawer({
     // Edit form: header, scrolling fields, footer pinned to the drawer bottom.
     return (
       <aside
+        key="drawer-form"
         aria-label={row ? "Edit project" : "New project"}
         className="fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col overflow-hidden rounded-card border border-line bg-card shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
       >
@@ -845,6 +846,7 @@ export function ProjectDrawer({
   const daysOverdue = row.overdue && row.dueDate ? DateFormat.daysBetween(row.dueDate, today) : 0;
   return (
     <aside
+      key="drawer-detail"
       aria-label="Project detail"
       className="fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col gap-4 overflow-y-auto rounded-card border border-line bg-card px-6 py-5 shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
     >

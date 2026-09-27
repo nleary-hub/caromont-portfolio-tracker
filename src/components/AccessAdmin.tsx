@@ -37,6 +37,7 @@ export function AccessAdmin({
   initialAdd = false,
   initialExpanded = null,
   passwords = {},
+  google,
   initialMenu = null,
   viewerEmail = null,
 }: {
@@ -45,6 +46,8 @@ export function AccessAdmin({
   initialExpanded?: string | null;
   /** Password tags and the row menu (email and password sign-in). */
   passwords?: Record<string, PasswordStatus>;
+  /** Whether Google sign-in lets each email in (UserAccountService.googleSignIn), for the method tags. */
+  google?: Record<string, boolean>;
   /** Email whose ⋯ menu starts open (screenshots). */
   initialMenu?: string | null;
   /** The signed-in admin (lowercase): their own row has no Turn off sign-in. */
@@ -110,6 +113,8 @@ export function AccessAdmin({
   const toggleExpanded = (email: string) => setExpanded((cur) => (cur === email ? null : email));
 
   const cols = grid.lines.length;
+  // Rows that share a display name (for example someone's gmail and work address) lead with the email.
+  const shared = AccessGridModel.sharedNames([...grid.admins, ...users]);
   return (
     <section aria-labelledby="people-access" className="flex flex-col gap-2" data-testid="people-access">
       <div className="flex items-center justify-between gap-4">
@@ -161,10 +166,10 @@ export function AccessAdmin({
             {grid.admins.map((r) => (
               <tr key={r.email} data-access-row={r.email} data-admin="">
                 <td className="border-b border-line px-3 py-2">
-                  <span className="flex min-w-0 items-center gap-2" title={LineAccessCopy.ADMIN_LOCK_TOOLTIP}>
+                  <span className={nameCellClass(r, shared)} title={LineAccessCopy.ADMIN_LOCK_TOOLTIP}>
                     <LockIcon />
-                    <span className="truncate type-table-strong">{r.name}</span>
-                    <PasswordTags status={passwords[r.email]} />
+                    <PersonName row={r} shared={shared} />
+                    <PasswordTags status={passwords[r.email]} google={google?.[r.email]} />
                   </span>
                 </td>
                 <td className="truncate border-b border-line px-3 py-2 text-muted">{r.email}</td>
@@ -186,7 +191,7 @@ export function AccessAdmin({
                 <Fragment key={r.email}>
                   <tr data-access-row={r.email} data-expanded={open ? "" : undefined} className={open ? "bg-row-selected" : undefined}>
                     <td className={`${open ? "" : "border-b"} border-line px-3 py-2`}>
-                      <span className="flex min-w-0 items-center gap-2">
+                      <span className={nameCellClass(r, shared)}>
                         {canExpand ? (
                           <button
                             type="button"
@@ -196,10 +201,10 @@ export function AccessAdmin({
                             onClick={() => toggleExpanded(r.email)}
                             data-testid="access-name"
                           >
-                            {r.name}
+                            <PersonName row={r} shared={shared} plain />
                           </button>
                         ) : (
-                          <span className="truncate type-table-strong">{r.name}</span>
+                          <PersonName row={r} shared={shared} />
                         )}
                         {AccessGridModel.hasNoAccess(r) && (
                           <span
@@ -210,7 +215,7 @@ export function AccessAdmin({
                             {LineAccessCopy.NO_ACCESS_TAG}
                           </span>
                         )}
-                        <PasswordTags status={passwords[r.email]} />
+                        <PasswordTags status={passwords[r.email]} google={google?.[r.email]} />
                       </span>
                     </td>
                     <td className={`truncate ${open ? "" : "border-b"} border-line px-3 py-2 text-muted`}>{r.email}</td>
@@ -301,6 +306,25 @@ export function AccessAdmin({
         </div>
       )}
     </section>
+  );
+}
+
+/** Name cell layout. Same-name rows (email as the main line) let the tags wrap under it instead of cutting the email. */
+function nameCellClass(row: AccessRow, shared: Set<string>): string {
+  return AccessGridModel.sharesName(row, shared) ? "flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1" : "flex min-w-0 items-center gap-2";
+}
+
+/**
+ * The person's name, or for rows that share a display name, the email as the bold main line with the name muted
+ * under it. `plain` drops the outer weight (inside the name button, which sets its own).
+ */
+function PersonName({ row, shared, plain = false }: { row: AccessRow; shared: Set<string>; plain?: boolean }) {
+  if (!AccessGridModel.sharesName(row, shared)) return plain ? <>{row.name}</> : <span className="truncate type-table-strong">{row.name}</span>;
+  return (
+    <span className="flex max-w-full min-w-0 flex-col leading-tight" data-testid="access-same-name">
+      <span className="truncate type-table-strong">{row.email}</span>
+      <span className="truncate text-muted type-caption font-normal">{row.name}</span>
+    </span>
   );
 }
 
