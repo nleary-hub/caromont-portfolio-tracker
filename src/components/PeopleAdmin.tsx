@@ -61,12 +61,15 @@ export function PeopleAdmin({
   owners = [],
   requesters = [],
   initial = {},
+  top,
 }: {
   lineShort: string;
   leads: ContractsLeadRow[];
   owners?: PersonRow[];
   requesters?: PersonRow[];
   initial?: PeopleAdminInitial;
+  /** Rendered under the page title, above the line's lists (the Access grid). */
+  top?: React.ReactNode;
 }) {
   const router = useRouter();
   const sections: { config: SectionConfig; rows: SectionRow[] }[] = [
@@ -114,6 +117,8 @@ export function PeopleAdmin({
         <h1 className="type-title">{ContractsLeadRules.PAGE_TITLE}</h1>
         <span className="text-muted type-table-strong">{lineShort}</span>
       </div>
+
+      {top}
 
       {sections.map(({ config, rows }) => (
         <Section

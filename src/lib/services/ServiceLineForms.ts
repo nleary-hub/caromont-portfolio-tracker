@@ -61,11 +61,17 @@ export class ServiceLineForms {
     return result;
   }
 
+  /** The switcher: any signed-in viewer, to a line they may use (admins: any open line; others: their lines). */
   static async switchTo(viewer: Viewer | null, id: string, db: PrismaClient = Db.client): Promise<ServiceLineActionResult> {
-    return ServiceLineForms.run(viewer, async (v) => {
-      const line = await ServiceLineAccess.setActive(v, id, db);
+    if (!viewer) return { ok: false, message: ServiceLineForms.NOT_AUTHORIZED };
+    try {
+      const line = await ServiceLineAccess.setActive(viewer, String(id ?? ""), db);
       return { ok: true, message: ServiceLineCopy.switchedToast(line.shortName), line, switchedTo: line.shortName };
-    });
+    } catch (e) {
+      if (e instanceof ServiceLineAccessError) return { ok: false, message: "That service line is not available." };
+      console.error("Service line switch failed", e);
+      return { ok: false, message: ServiceLineForms.FAILED };
+    }
   }
 
   private static async isActive(viewer: Viewer, id: string, db: PrismaClient): Promise<boolean> {

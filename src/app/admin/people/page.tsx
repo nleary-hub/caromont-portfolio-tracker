@@ -3,6 +3,8 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { PeopleAdmin } from "@/components/PeopleAdmin";
+import { AccessAdmin } from "@/components/AccessAdmin";
+import { LineAccessService } from "@/lib/services/LineAccessService";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -13,13 +15,13 @@ import { PeopleService } from "@/lib/services/PeopleService";
 export const metadata: Metadata = { title: ContractsLeadRules.PAGE_TITLE };
 export const dynamic = "force-dynamic";
 
-/** Admin > People of the active line: Owners, Requesters and Contracts leads. Non-admins get a 404. */
+/** Admin > People: Access (every line) at the top, then the active line's Owners, Requesters and Contracts leads. Non-admins get a 404. */
 export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string; rename?: string; role?: string }> }) {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
-  const [leads, lists, params] = await Promise.all([PeopleService.contractsLeads(scope, viewer), PeopleService.lists(scope, viewer), searchParams]);
+  const [leads, lists, grid, params] = await Promise.all([PeopleService.contractsLeads(scope, viewer), PeopleService.lists(scope, viewer), LineAccessService.grid(viewer), searchParams]);
   // Deep links (screenshots): ?add=1 (Contracts leads) or ?add=owner|requester; ?role=owner|requester with ?rename= or ?remove=.
   const section = (v: string | undefined) => (v === "owner" || v === "requester" || v === "lead" ? v : undefined);
 
@@ -41,6 +43,8 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
         owners={lists.owners}
         requesters={lists.requesters}
         initial={{ add: params.add === "1" ? true : section(params.add), role: section(params.role), remove: params.remove ?? null, rename: params.rename ?? null }}
+        // Access (item 8) covers every line, so it is not keyed to the active one. ?add=user opens its Add row.
+        top={<AccessAdmin grid={grid} initialAdd={params.add === "user"} />}
       />
     </main>
   );

@@ -9,5 +9,7 @@ import { ProjectHistoryForms } from "@/lib/services/ProjectHistoryForms";
 export async function loadProjectHistory(projectId: string): Promise<TimelineDto | null> {
   const viewer = await CurrentViewer.get();
   if (!viewer) return null;
-  return ProjectHistoryForms.load(viewer, projectId, await ServiceLineAccess.activeOrDefault(viewer));
+  // Per-line access: a viewer with no line gets nothing; a project of another line is not found in theirs.
+  const scope = await ServiceLineAccess.activeOrNull(viewer).catch(() => null);
+  return scope ? ProjectHistoryForms.load(viewer, projectId, scope) : null;
 }

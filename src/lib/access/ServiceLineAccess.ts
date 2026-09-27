@@ -1,11 +1,12 @@
 import type { Prisma, PrismaClient, ServiceLine as ServiceLineRow } from "@/generated/prisma/client";
-import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentRules, type DepartmentRow } from "@/lib/domain/DepartmentRules";
 
-type Reader = Pick<Prisma.TransactionClient, "serviceLine" | "serviceLineUserState">;
+type Reader = Pick<Prisma.TransactionClient, "serviceLine" | "serviceLineUserState" | "serviceLineAccessGrant">;
+type LineReader = Pick<Prisma.TransactionClient, "serviceLine" | "serviceLineAccessGrant">;
 
 export class ServiceLineAccessError extends Error {
   constructor(message = "That service line is not available.") {
@@ -14,13 +15,22 @@ export class ServiceLineAccessError extends Error {
   }
 }
 
+/** The viewer may not see any service line (no access rows, not an admin). Pages show the no-access card; routes 404. */
+export class NoLineAccessError extends ServiceLineAccessError {
+  constructor() {
+    super("No service line access.");
+    this.name = "NoLineAccessError";
+  }
+}
+
 /**
  * The one place that decides which service line a viewer works in, and the filter every scoped query uses.
  *
- * Today: admins may use any line that is not archived or deleted and switch between them (the choice is saved
- * per user); everyone else works in the default line (CVPSL). Per-line user access (item 8) only needs to
- * change `mayUse` (and `usableLines`) here: pages, actions and services already ask this class for the line and
- * pass it down, and services filter with `where()` and check writes with `assertInScope()`.
+ * Per-line user access (item 8): admins may use any line that is not archived or deleted; everyone else only the
+ * open lines they have a `service_line_access` row for (Admin > People > Access). Anyone with more than one line
+ * switches between them (the choice is saved per user). Pages, actions and routes ask this class for the line and
+ * pass it down, services filter with `where()`, so a line the viewer may not use is never read or written.
+ * The scheduled report (cron freeze, handoff.json, Drive) and signed share links have no viewer and do not use it.
  */
 export class ServiceLineAccess {
   /** Short name of the default line in copy that must not depend on a database read. */
@@ -56,10 +66,17 @@ export class ServiceLineAccess {
     return !row.archivedAt && !row.deletedAt;
   }
 
-  /** Access rule. The seam for per-line user access: today admins use any open line, others the default only. */
-  static mayUse(viewer: Viewer, row: Pick<ServiceLineRow, "isDefault" | "archivedAt" | "deletedAt">): boolean {
+  /** Access rule: admins use any open line; others the open lines in `granted` (their access rows). */
+  static mayUse(viewer: Viewer, row: Pick<ServiceLineRow, "id" | "archivedAt" | "deletedAt">, granted: ReadonlySet<string> = new Set()): boolean {
     if (!ServiceLineAccess.isOpen(row)) return false;
-    return viewer.isAdmin || row.isDefault;
+    return viewer.isAdmin || granted.has(row.id);
+  }
+
+  /** Ids of the lines this viewer has access rows for (empty for admins: they need none). */
+  static async grantedIds(viewer: Viewer, db: Pick<Prisma.TransactionClient, "serviceLineAccessGrant"> = Db.client): Promise<Set<string>> {
+    if (viewer.isAdmin) return new Set();
+    const rows = await db.serviceLineAccessGrant.findMany({ where: { email: viewer.email.trim().toLowerCase() } });
+    return new Set(rows.map((r) => r.serviceLineId));
   }
 
   /** The default line (CVPSL). Falls back to the built-in values if the row is missing (before migration 0016). */
@@ -76,41 +93,58 @@ export class ServiceLineAccess {
     return ServiceLineAccess.defaultLine(db);
   }
 
-  /** The line this viewer works in for this request. */
+  /**
+   * The line this viewer works in for this request: their saved line when they may still use it, else their first
+   * usable line (default first, then A to Z). Throws NoLineAccessError when a non-admin may use no line at all.
+   */
   static async activeFor(viewer: Viewer, db: Reader = Db.client): Promise<ServiceLineScope> {
-    if (viewer.isAdmin) {
-      const state = await db.serviceLineUserState.findUnique({ where: { email: viewer.email } });
-      if (state) {
-        const row = await db.serviceLine.findUnique({ where: { id: state.serviceLineId }, include: ServiceLineAccess.INCLUDE });
-        if (row && ServiceLineAccess.mayUse(viewer, row)) return ServiceLineAccess.toScope(row);
-      }
+    const lines = await ServiceLineAccess.usableLines(viewer, db);
+    if (!lines.length) {
+      if (viewer.isAdmin) return ServiceLineAccess.defaultLine(db);
+      throw new NoLineAccessError();
     }
-    return ServiceLineAccess.defaultLine(db);
+    const state = await db.serviceLineUserState.findUnique({ where: { email: viewer.email } });
+    return (state && lines.find((l) => l.id === state.serviceLineId)) || lines[0];
   }
 
-  /** activeFor() for pages that must render without a database: the default line then. */
-  static async activeOrDefault(viewer: Viewer | null, db?: Reader): Promise<ServiceLineScope> {
-    if (!viewer || (!db && !Db.isConfigured())) return ServiceLine.defaultScope();
+  /**
+   * activeFor() for pages and routes a non-admin can reach: null when there is no viewer or the viewer may use no
+   * line (the page shows the no-access card, a route answers 404). Fails closed for non-admins: a read error is
+   * thrown, never replaced by the default line. Admins keep the old fallback (default line without a database).
+   */
+  static async activeOrNull(viewer: Viewer | null, db?: Reader): Promise<ServiceLineScope | null> {
+    if (!viewer) return null;
+    if (!db && !Db.isConfigured()) return viewer.isAdmin ? ServiceLine.defaultScope() : null;
     try {
       return await ServiceLineAccess.activeFor(viewer, db ?? Db.client);
     } catch (e) {
+      if (e instanceof NoLineAccessError) return null;
+      if (!viewer.isAdmin) throw e;
       console.error("Could not read the active service line; using the default", e);
       return ServiceLine.defaultScope();
     }
   }
 
-  /** Lines this viewer may switch to, in switcher order (default first, then A to Z). Empty for non-admins. */
-  static async usableLines(viewer: Viewer, db: Pick<Prisma.TransactionClient, "serviceLine"> = Db.client): Promise<ServiceLineScope[]> {
-    if (!viewer.isAdmin) return [];
-    const rows = await db.serviceLine.findMany({ where: { archivedAt: null, deletedAt: null }, include: ServiceLineAccess.INCLUDE });
-    return ServiceLine.sortForSwitcher(rows.filter((r) => ServiceLineAccess.mayUse(viewer, r)).map((r) => ServiceLineAccess.toScope(r)));
+  /** activeOrNull() for admin pages (admins always get a line). A non-admin without a line gets NoLineAccessError. */
+  static async activeOrDefault(viewer: Viewer | null, db?: Reader): Promise<ServiceLineScope> {
+    if (!viewer) return ServiceLine.defaultScope();
+    const scope = await ServiceLineAccess.activeOrNull(viewer, db);
+    if (!scope) throw new NoLineAccessError();
+    return scope;
   }
 
-  /** Save the viewer's active line (admins only; the line must be usable). */
+  /** Lines this viewer may use and switch to, in switcher order (default first, then A to Z). */
+  static async usableLines(viewer: Viewer, db: LineReader = Db.client): Promise<ServiceLineScope[]> {
+    const granted = await ServiceLineAccess.grantedIds(viewer, db);
+    if (!viewer.isAdmin && !granted.size) return [];
+    const rows = await db.serviceLine.findMany({ where: { archivedAt: null, deletedAt: null }, include: ServiceLineAccess.INCLUDE });
+    return ServiceLine.sortForSwitcher(rows.filter((r) => ServiceLineAccess.mayUse(viewer, r, granted)).map((r) => ServiceLineAccess.toScope(r)));
+  }
+
+  /** Save the viewer's active line (any viewer; the line must be one they may use). */
   static async setActive(viewer: Viewer, serviceLineId: string, db: PrismaClient = Db.client): Promise<ServiceLineScope> {
-    AdminPolicy.assertAdmin(viewer);
     const row = await db.serviceLine.findUnique({ where: { id: serviceLineId }, include: ServiceLineAccess.INCLUDE });
-    if (!row || !ServiceLineAccess.mayUse(viewer, row)) throw new ServiceLineAccessError();
+    if (!row || !ServiceLineAccess.mayUse(viewer, row, await ServiceLineAccess.grantedIds(viewer, db))) throw new ServiceLineAccessError();
     await db.serviceLineUserState.upsert({
       where: { email: viewer.email },
       create: { email: viewer.email, serviceLineId: row.id },

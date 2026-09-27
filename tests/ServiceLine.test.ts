@@ -12,7 +12,7 @@ import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { SampleReportData } from "@/lib/report/SampleReportData";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { ServiceLineForms } from "@/lib/services/ServiceLineForms";
-import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { NoLineAccessError, ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLineService } from "@/lib/services/ServiceLineService";
 import { AdminAuditService } from "@/lib/services/AdminAuditService";
 import { ServiceLineTable } from "@/lib/admin/ServiceLineTable";
@@ -252,7 +252,9 @@ describe("ServiceLineForms (the Server Action bodies)", () => {
     const fake = new FakeDb();
     expect(await ServiceLineForms.save(MEMBER, { name: "X Line", shortName: "XL" }, fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
     expect(await ServiceLineForms.save(null, { name: "X Line", shortName: "XL" }, fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
-    expect(await ServiceLineForms.switchTo(MEMBER, ServiceLine.DEFAULT_ID, fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
+    // Switching is open to everyone (item 8) but only to a line they may use: a member without access gets nothing.
+    expect(await ServiceLineForms.switchTo(null, ServiceLine.DEFAULT_ID, fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
+    expect(await ServiceLineForms.switchTo(MEMBER, ServiceLine.DEFAULT_ID, fake.asClient())).toEqual({ ok: false, message: "That service line is not available." });
     expect(fake.writes).toHaveLength(0);
   });
 
@@ -322,15 +324,23 @@ describe("ServiceLineForms (the Server Action bodies)", () => {
     expect(DashboardViewModel.isEmptyLine(undefined, 0, false)).toBe(false);
   });
 
-  it("non-admins always work in the default line (the seam for per-line access)", async () => {
+  it("non-admins work only in the lines they have access to (item 8)", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const onc = fake.addLine();
     fake.state.serviceLineUserState.push({ email: MEMBER.email, serviceLineId: onc.id, updatedAt: new Date() });
-    expect((await ServiceLineAccess.activeFor(MEMBER, db)).id).toBe(ServiceLine.DEFAULT_ID);
+    // No access rows: no line at all (the saved ONC choice does not count).
+    await expect(ServiceLineAccess.activeFor(MEMBER, db)).rejects.toBeInstanceOf(NoLineAccessError);
     expect(await ServiceLineAccess.usableLines(MEMBER, db)).toEqual([]);
     expect(ServiceLineAccess.mayUse(MEMBER, onc as never)).toBe(false);
     expect(ServiceLineAccess.mayUse(ADMIN, onc as never)).toBe(true);
+    // CVPSL only: the saved ONC choice falls back to CVPSL.
+    fake.grant(MEMBER.email, ServiceLine.DEFAULT_ID);
+    expect((await ServiceLineAccess.activeFor(MEMBER, db)).id).toBe(ServiceLine.DEFAULT_ID);
+    // Both: the saved ONC choice applies.
+    fake.grant(MEMBER.email, onc.id as string);
+    expect((await ServiceLineAccess.activeFor(MEMBER, db)).id).toBe(onc.id);
+    expect(ServiceLineAccess.mayUse(MEMBER, onc as never, await ServiceLineAccess.grantedIds(MEMBER, db))).toBe(true);
   });
 
   it("the switcher lists open lines only, default first then A to Z", async () => {

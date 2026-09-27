@@ -31,6 +31,9 @@ interface State {
   departmentHistory: Row[];
   yearEndReports: Row[];
   priorInforNumbers: Row[];
+  appUsers: Row[];
+  accessGrants: Row[];
+  accessHistory: Row[];
 }
 
 /** Scoped tables: a row stored without serviceLineId (tests that push rows directly) belongs to the default line. */
@@ -68,6 +71,9 @@ export class FakeDb {
     // Migration 0018 seeds the default line's seven departments. Here their ids are the old ServiceArea values, so
     // rows pushed with serviceArea "Cath" belong to them (the real ids are ServiceAreaInfo.CVPSL_IDS).
     departments: FakeDb.defaultDepartmentRows(),
+    appUsers: [],
+    accessGrants: [],
+    accessHistory: [],
     departmentHistory: [],
     yearEndReports: [],
     priorInforNumbers: [],
@@ -116,6 +122,15 @@ export class FakeDb {
     const row = FakeDb.departmentRow(serviceLineId, { position: last + 1, ...over });
     this.state.departments.push(row);
     return row;
+  }
+
+  /** Give a person access to service lines (tests); records the person too. */
+  grant(email: string, ...serviceLineIds: string[]): void {
+    const e = email.trim().toLowerCase();
+    if (!this.state.appUsers.some((u) => u.email === e)) this.state.appUsers.push({ email: e, name: null, firstSignInAt: null, addedBy: null, createdAt: new Date() });
+    for (const id of serviceLineIds) {
+      if (!this.state.accessGrants.some((g) => g.email === e && g.serviceLineId === id)) this.state.accessGrants.push({ email: e, serviceLineId: id, grantedAt: new Date(), grantedBy: "test" });
+    }
   }
 
   /** Add an open service line (tests). */
@@ -170,6 +185,9 @@ export class FakeDb {
       departmentHistory: c(state.departmentHistory),
       yearEndReports: c(state.yearEndReports),
       priorInforNumbers: c(state.priorInforNumbers),
+      appUsers: c(state.appUsers),
+      accessGrants: c(state.accessGrants),
+      accessHistory: c(state.accessHistory),
     };
   }
 
@@ -738,6 +756,60 @@ export class FakeDb {
           }
           const row = { ...create, updatedAt: new Date() };
           this.state.serviceLineUserState.push(row);
+          return { ...row };
+        },
+      },
+      appUser: {
+        findUnique: async ({ where }: { where: { email: string } }) => {
+          const r = this.state.appUsers.find((u) => u.email === where.email);
+          return r ? { ...r } : null;
+        },
+        findMany: async ({ include }: { include?: { access?: boolean } } = {}) =>
+          this.state.appUsers.map((u) => ({ ...u, ...(include?.access ? { access: this.state.accessGrants.filter((g) => g.email === u.email).map((g) => ({ ...g })) } : {}) })),
+        create: async ({ data }: { data: Row }) => {
+          rec("appUser", "create");
+          if (this.state.appUsers.some((u) => u.email === data.email)) throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+          const row = { name: null, firstSignInAt: null, addedBy: null, createdAt: new Date(), ...data };
+          this.state.appUsers.push(row);
+          return { ...row };
+        },
+        update: async ({ where, data }: { where: { email: string }; data: Row }) => {
+          rec("appUser", "update");
+          const r = this.state.appUsers.find((u) => u.email === where.email);
+          if (!r) throw new Error("not found");
+          Object.assign(r, data);
+          return { ...r };
+        },
+      },
+      serviceLineAccessGrant: {
+        findMany: async ({ where }: { where?: Row } = {}) => this.state.accessGrants.filter((g) => matches(g, where)).map((g) => ({ ...g })),
+        findUnique: async ({ where }: { where: { email_serviceLineId: { email: string; serviceLineId: string } } }) => {
+          const k = where.email_serviceLineId;
+          const r = this.state.accessGrants.find((g) => g.email === k.email && g.serviceLineId === k.serviceLineId);
+          return r ? { ...r } : null;
+        },
+        create: async ({ data }: { data: Row }) => {
+          rec("serviceLineAccessGrant", "create");
+          if (!this.state.appUsers.some((u) => u.email === data.email)) throw new Error("service_line_access_email_fkey");
+          if (this.state.accessGrants.some((g) => g.email === data.email && g.serviceLineId === data.serviceLineId)) throw Object.assign(new Error("Unique constraint failed"), { code: "P2002" });
+          const row = { grantedAt: new Date(), ...data };
+          this.state.accessGrants.push(row);
+          return { ...row };
+        },
+        delete: async ({ where }: { where: { email_serviceLineId: { email: string; serviceLineId: string } } }) => {
+          rec("serviceLineAccessGrant", "delete");
+          const k = where.email_serviceLineId;
+          const i = this.state.accessGrants.findIndex((g) => g.email === k.email && g.serviceLineId === k.serviceLineId);
+          if (i < 0) throw new Error("not found");
+          const [r] = this.state.accessGrants.splice(i, 1);
+          return { ...r };
+        },
+      },
+      serviceLineAccessHistory: {
+        create: async ({ data }: { data: Row }) => {
+          rec("serviceLineAccessHistory", "create");
+          const row = { id: randomUUID(), changedAt: new Date(), serviceLineId: null, ...data };
+          this.state.accessHistory.push(row);
           return { ...row };
         },
       },
