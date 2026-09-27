@@ -2,7 +2,9 @@
 
 import { useActionState, useState } from "react";
 import { chooseOwnPassword } from "@/app/actions/password";
+import { AuthMessageIcon } from "@/components/AuthStage";
 import { PasswordField } from "@/components/PasswordField";
+import { SignInButton } from "@/components/SignInButton";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 import { PasswordPolicy } from "@/lib/auth/PasswordPolicy";
 
@@ -10,11 +12,11 @@ import { PasswordPolicy } from "@/lib/auth/PasswordPolicy";
 export function SetPasswordForm({ email, initialPassword = "", initialConfirm = "" }: { email: string; initialPassword?: string; initialConfirm?: string }) {
   const [password, setPassword] = useState(initialPassword);
   const [confirm, setConfirm] = useState(initialConfirm);
-  const [state, action, pending] = useActionState(chooseOwnPassword, { message: null });
+  const [state, action] = useActionState(chooseOwnPassword, { message: null });
   const rules = PasswordPolicy.rules(password, confirm, email);
   const ready = rules.every((r) => r.met);
   return (
-    <form action={action} className="mt-4 space-y-3" data-testid="set-password-form">
+    <form action={action} className="si-reveal si-d2 mt-4 space-y-3" data-testid="set-password-form">
       <label className="block space-y-1">
         <span className="block type-caption text-muted">{PasswordCopy.NEW_PASSWORD}</span>
         <PasswordField name="password" autoComplete="new-password" value={password} onChange={setPassword} autoFocus invalid={Boolean(state.message)} />
@@ -41,13 +43,13 @@ export function SetPasswordForm({ email, initialPassword = "", initialConfirm = 
         ))}
       </ul>
       {state.message && (
-        <p role="alert" className="text-danger type-caption">
-          {state.message}
+        <p role="alert" className="si-error si-error-now">
+          <AuthMessageIcon kind="alert" />
+          <span>{state.message}</span>
         </p>
       )}
-      <button disabled={!ready || pending} className="w-full rounded-control bg-accent px-3 py-2 text-white type-table-strong hover:opacity-90 disabled:opacity-50">
-        {PasswordCopy.SET_SUBMIT}
-      </button>
+      {/* Disabled until every rule is met, and while saving (SignInButton shows the heartbeat then). */}
+      <SignInButton label={PasswordCopy.SET_SUBMIT} variant="primary" disabled={!ready} />
     </form>
   );
 }

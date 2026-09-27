@@ -1,0 +1,247 @@
+/*
+ * /signin: heartbeat line, pulse orb card and live portfolio wall (Superdesign "Sign In — Heartbeat" v3).
+ * The card's center sits on the heartbeat line; the line, orb and wall are all anchored to --si-line (the stage's
+ * vertical center). Stacking: grid < wall < heartbeat < orb < card. Every loop stops under prefers-reduced-motion.
+ */
+.si-stage {
+  --si-line: 50%;
+  position: relative;
+  display: grid;
+  place-items: center;
+  min-height: 100vh;
+  min-height: 100svh;
+  /* Symmetric so the card stays centered on the line; the top half holds the headline, the bottom the statement. */
+  padding: 168px 16px;
+  overflow: hidden;
+  background: var(--dark-bg);
+}
+
+.si-backdrop { position: absolute; inset: 0; pointer-events: none; }
+
+.si-grid {
+  position: absolute; inset: 0;
+  background-image: linear-gradient(var(--dark-border) 1px, transparent 1px), linear-gradient(90deg, var(--dark-border) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.42;
+  mask-image: radial-gradient(ellipse 95% 80% at 50% 45%, #000 45%, transparent 100%);
+}
+
+/* Portfolio wall: full width across the bottom, fully transparent a little below the heartbeat line. */
+.si-wall {
+  position: absolute; left: 0; right: 0; bottom: 0; top: calc(var(--si-line) + 72px);
+  overflow: hidden;
+  opacity: 0;
+  animation: si-fade-in 1.2s ease-out 0.9s forwards;
+  mask-image: linear-gradient(180deg, transparent 0%, transparent 8%, rgb(0 0 0 / 0.06) 22%, rgb(0 0 0 / 0.2) 40%, rgb(0 0 0 / 0.45) 62%, rgb(0 0 0 / 0.7) 84%, rgb(0 0 0 / 0.78) 100%);
+}
+.si-wall-cols { position: absolute; inset: 0; display: grid; grid-template-columns: repeat(6, minmax(0, 1fr)); gap: 12px; padding: 0 12px; }
+.si-wall-col { min-width: 0; overflow: hidden; }
+.si-wall-track { display: flex; flex-direction: column; gap: 8px; will-change: transform; animation: si-scroll-up var(--dur, 30s) linear infinite; }
+.si-row {
+  display: flex; flex: none; align-items: center; gap: 8px; height: var(--row-height-app); padding: 0 10px;
+  border: 1px solid var(--dark-border); border-radius: var(--radius-card); background: var(--dark-card);
+}
+.si-row .pill, .si-row .flag { flex: none; transition: background-color 0.25s ease-out, color 0.25s ease-out; }
+.si-row-name { flex: 1; min-width: 0; overflow: hidden; font: var(--app-table); color: var(--dark-text-primary); text-overflow: ellipsis; white-space: nowrap; }
+.si-prog { flex: none; width: 56px; height: 6px; overflow: hidden; border-radius: var(--radius-pill); background: var(--dark-input); }
+.si-prog > span {
+  display: block; height: 100%; border-radius: var(--radius-pill); background: var(--dark-accent);
+  transform-origin: left; transform: scaleX(var(--pct, 0.7));
+  animation: si-fill 6s ease-out infinite alternate;
+}
+
+/* Heartbeat trace across the full width, with a bright sweeping head. */
+.si-ecg {
+  position: absolute; left: 0; top: var(--si-line); width: 100%; height: 280px; transform: translateY(-50%);
+  mask-image: linear-gradient(90deg, transparent 0, #000 8%, #000 92%, transparent 100%);
+}
+.si-ecg path { fill: none; stroke: var(--dark-accent); stroke-linecap: round; stroke-linejoin: round; }
+.si-ecg-trace { stroke-width: 2; opacity: 0.55; filter: drop-shadow(0 0 6px rgb(76 141 255 / 0.55)); }
+.si-ecg-head {
+  stroke-width: 2.6; stroke-dasharray: 120 4000;
+  filter: drop-shadow(0 0 10px rgb(76 141 255 / 0.9)) drop-shadow(0 0 22px rgb(76 141 255 / 0.6));
+  animation: si-sweep 3.5s linear infinite;
+}
+.si-pop { position: absolute; top: calc(var(--si-line) - 84px); opacity: 0; transform: translate(-50%, 6px) scale(0.9); }
+.si-pop-a { left: 26%; animation: si-pill-pop 3.5s ease-out infinite; }
+.si-pop-b { left: 74%; top: calc(var(--si-line) - 70px); animation: si-pill-pop 3.5s ease-out 1.75s infinite; }
+
+/* Pulse orb and heartbeat rings behind the card. */
+.si-orb { position: absolute; left: 50%; top: var(--si-line); width: 0; height: 0; transition: translate 0.4s ease-out; }
+.si-orb-core {
+  position: absolute; left: -260px; top: -260px; width: 520px; height: 520px; border-radius: 50%;
+  background: radial-gradient(circle, rgb(76 141 255 / 0.26) 0%, rgb(76 141 255 / 0.11) 38%, rgb(76 141 255 / 0.03) 62%, transparent 72%);
+  filter: blur(4px); opacity: 0; transform: scale(0.6);
+  animation: si-orb-in 1.2s cubic-bezier(0.2, 0.7, 0.2, 1) 0.4s forwards, si-orb-breath 6s ease-in-out 1.6s infinite;
+}
+.si-ring { position: absolute; left: -150px; top: -150px; width: 300px; height: 300px; border: 1px solid rgb(76 141 255 / 0.35); border-radius: 50%; opacity: 0; }
+.si-ring-1 { animation: si-pulse 1.8s ease-out 1s infinite; }
+.si-ring-2 { animation: si-pulse 1.8s ease-out 1.28s infinite; }
+.si-particles { position: absolute; inset: 0 0 50% 0; }
+.si-pt { position: absolute; width: 3px; height: 3px; border-radius: 50%; opacity: 0; transition: translate 0.4s ease-out; animation: si-pt-in 1s ease-out forwards, si-pt-drift 12s ease-in-out infinite; }
+
+/* "Every project. One view." over the bottom-left of the wall, with a soft scrim so it reads over moving rows. */
+.si-statement { position: absolute; left: 40px; bottom: 40px; opacity: 0; animation: si-reveal 0.6s ease-out 1.1s forwards; }
+.si-statement::before {
+  content: ""; position: absolute; z-index: -1; inset: -90px -160px -60px -120px;
+  background: radial-gradient(ellipse at 35% 60%, rgb(15 17 21 / 0.94) 0%, rgb(15 17 21 / 0.82) 40%, rgb(15 17 21 / 0) 72%);
+}
+.si-statement-text { font: 700 44px/1.04 var(--font-family); letter-spacing: -0.02em; color: var(--dark-text-primary); text-shadow: 0 2px 24px rgb(15 17 21 / 0.9); }
+.si-metrics { display: flex; gap: 40px; margin-top: 20px; }
+.si-metric-value { font: 600 32px/36px var(--font-family); font-variant-numeric: tabular-nums; color: var(--dark-text-primary); }
+.si-metric-label { margin-top: 2px; font: var(--app-label); letter-spacing: 0.04em; text-transform: uppercase; color: var(--dark-text-secondary); }
+
+/* Headline above the card, card centered on the line. */
+.si-center { position: relative; z-index: 1; width: 100%; max-width: 384px; }
+.si-headline {
+  position: absolute; left: 50%; bottom: 100%; width: min(900px, calc(100vw - 32px)); margin-bottom: 32px; transform: translateX(-50%);
+  font: 700 60px/1.04 var(--font-family); letter-spacing: -0.02em; text-align: center; color: var(--dark-text-primary);
+  text-shadow: 0 0 40px rgb(76 141 255 / 0.12);
+}
+.si-word { display: inline-block; opacity: 0; transform: translateY(14px); animation: si-word-in 0.6s cubic-bezier(0.2, 0.7, 0.2, 1) forwards; }
+
+@property --si-angle { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+.si-card-shell {
+  --si-ring-rgb: 76 141 255;
+  position: relative; padding: 1px; border-radius: calc(var(--radius-card) + 1px);
+  background: conic-gradient(from var(--si-angle), rgb(var(--si-ring-rgb) / 0.9), rgb(var(--si-ring-rgb) / 0.05) 25%, rgb(38 42 51 / 0.6) 50%, rgb(var(--si-ring-rgb) / 0.05) 75%, rgb(var(--si-ring-rgb) / 0.9));
+  box-shadow: 0 20px 40px -12px rgb(0 0 0 / 0.6);
+  opacity: 0; transform: translateY(14px);
+  animation: si-card-in 0.5s ease-out 0.6s forwards, si-spin 7s linear 1.2s infinite;
+}
+.si-card-shell::before { content: ""; position: absolute; inset: 0; border-radius: inherit; opacity: 0; pointer-events: none; }
+.si-card {
+  position: relative; padding: 24px; border-radius: var(--radius-card);
+  background: var(--dark-topbar-glass); backdrop-filter: blur(20px);
+}
+.si-reveal { opacity: 0; transform: translateY(10px); animation: si-reveal 0.45s ease-out forwards; }
+.si-d1 { animation-delay: 0.85s; }
+.si-d2 { animation-delay: 0.95s; }
+.si-d3 { animation-delay: 1.05s; }
+
+/* Buttons: hover shimmer; while submitting, a heartbeat trace replaces the label (kept for screen readers). */
+.si-btn {
+  position: relative; display: flex; align-items: center; justify-content: center; gap: 8px; width: 100%; min-height: 34px;
+  padding: 8px 12px; overflow: hidden; border-radius: var(--radius-control); font: var(--app-table-strong); cursor: pointer;
+}
+.si-btn-primary { border: 0; background: var(--dark-accent); color: #fff; transition: opacity 0.18s ease-out; }
+.si-btn-primary:hover { opacity: 0.92; }
+.si-btn-secondary { border: 1px solid var(--dark-border); background: var(--dark-input); color: var(--dark-text-primary); transition: border-color 0.18s ease-out; }
+.si-btn-secondary:hover { border-color: var(--dark-accent); }
+.si-btn::after {
+  content: ""; position: absolute; top: 0; left: -60%; width: 40%; height: 100%; opacity: 0; transform: skewX(-18deg);
+  background: linear-gradient(100deg, transparent, rgb(255 255 255 / 0.22), transparent);
+}
+.si-btn:hover::after { opacity: 1; animation: si-shimmer 0.7s ease-out; }
+.si-ekg { display: none; width: 60px; height: 14px; }
+.si-ekg path { fill: none; stroke: currentColor; stroke-width: 1.4; stroke-dasharray: 120; stroke-dashoffset: 120; animation: si-ekg 1s linear infinite; }
+.si-btn[data-pending] { cursor: progress; }
+.si-btn:disabled:not([data-pending]) { opacity: 0.5; cursor: not-allowed; }
+.si-btn:disabled::after { display: none; }
+.si-btn-secondary[data-pending] { color: var(--dark-accent); }
+.si-btn[data-pending] .si-ekg { display: block; }
+.si-btn[data-pending] .si-btn-label { position: absolute; width: 1px; height: 1px; overflow: hidden; clip-path: inset(50%); white-space: nowrap; }
+
+.si-divider { display: flex; align-items: center; gap: 12px; padding-top: 4px; font: var(--app-caption); color: var(--dark-text-secondary); }
+.si-divider::before, .si-divider::after { content: ""; flex: 1; height: 1px; background: var(--dark-border); }
+.si-input {
+  width: 100%; height: 32px; padding: 0 10px; border: 1px solid var(--dark-border); border-radius: var(--radius-control);
+  background: var(--dark-input); color: var(--dark-text-primary); font: var(--app-table); transition: border-color 0.18s ease-out;
+}
+.si-input:focus { border-color: var(--dark-accent); outline: none; }
+.si-input[aria-invalid="true"] { border-color: rgb(255 122 127 / 0.6); }
+
+/* Messages: amber / gray panels at the top of the card, one-line errors in red. They ease in after the card. */
+.si-notice {
+  display: flex; align-items: flex-start; gap: 10px; margin-bottom: 16px; padding: 9px 12px;
+  border: 1px solid; border-radius: var(--radius-control);
+  animation: si-notice-in 0.32s cubic-bezier(0.2, 0.7, 0.2, 1) 0.95s both;
+}
+.si-notice svg, .si-error svg { flex: none; margin-top: 2px; }
+.si-notice-warning { border-color: rgb(245 184 61 / 0.28); background: var(--status-at-risk-dark-bg); color: var(--status-at-risk-dark-fg); }
+.si-notice-info { border-color: var(--dark-border); background: var(--status-not-started-dark-bg); color: var(--status-not-started-dark-fg); }
+.si-notice-title { font: 600 13px/18px var(--font-family); }
+.si-notice-body { margin-top: 2px; font: var(--app-table); opacity: 0.92; }
+.si-error { display: flex; align-items: flex-start; gap: 6px; font: var(--app-table); color: var(--status-off-track-dark-fg); animation: si-notice-in 0.28s cubic-bezier(0.2, 0.7, 0.2, 1) 1.05s both; }
+.si-error svg { margin-top: 1px; }
+/* A message that answers a click (not part of the page load) appears right away. */
+.si-error-now { animation-delay: 0s; }
+.si-card > .si-error { margin-bottom: 16px; }
+
+/* Error: one small shake and a red flash on the border, then back to blue. */
+.si-stage[data-state="error"] .si-card-shell::before { background: rgb(255 122 127 / 0.9); animation: si-flash 1.4s ease-out 1.05s; }
+.si-stage[data-state="error"] .si-card { animation: si-shake 0.42s cubic-bezier(0.36, 0.07, 0.19, 0.97) 1.05s both; }
+/* Warning (lockout, rate limit): the border and rings turn amber and slow down while sign-in is paused. */
+.si-stage[data-state="warning"] .si-card-shell { --si-ring-rgb: 245 184 61; animation: si-card-in 0.5s ease-out 0.6s forwards, si-spin 12s linear 1.2s infinite; }
+.si-stage[data-state="warning"] .si-ring { border-color: rgb(245 184 61 / 0.3); animation-duration: 3.2s; }
+.si-stage[data-state="warning"] .si-ring-2 { animation-delay: 1.5s; }
+.si-stage[data-state="warning"] .si-orb-core { background: radial-gradient(circle, rgb(245 184 61 / 0.07) 0%, rgb(76 141 255 / 0.09) 40%, rgb(76 141 255 / 0.02) 62%, transparent 72%); }
+
+@keyframes si-fade-in { to { opacity: 1; } }
+@keyframes si-scroll-up { to { transform: translateY(-50%); } }
+@keyframes si-fill { from { transform: scaleX(0.08); } to { transform: scaleX(var(--pct, 0.7)); } }
+@keyframes si-sweep { to { stroke-dashoffset: -4120; } }
+@keyframes si-pill-pop {
+  0%, 32% { opacity: 0; transform: translate(-50%, 8px) scale(0.9); }
+  38%, 48% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+  62% { opacity: 0; transform: translate(-50%, -8px) scale(0.95); }
+  100% { opacity: 0; }
+}
+@keyframes si-orb-in { to { opacity: 1; transform: scale(1); } }
+@keyframes si-orb-breath { 0%, 100% { transform: scale(1); } 50% { transform: scale(1.06); } }
+@keyframes si-pulse { 0% { opacity: 0.55; transform: scale(0.4); } 18% { opacity: 0.4; } 40%, 100% { opacity: 0; transform: scale(1.35); } }
+@keyframes si-pt-in { to { opacity: var(--o); } }
+@keyframes si-pt-drift { 50% { transform: translate(var(--dx), var(--dy)); } }
+@keyframes si-word-in { to { opacity: 1; transform: none; } }
+@keyframes si-card-in { to { opacity: 1; transform: none; } }
+@keyframes si-spin { to { --si-angle: 360deg; } }
+@keyframes si-reveal { to { opacity: 1; transform: none; } }
+@keyframes si-shimmer { from { left: -60%; } to { left: 120%; } }
+@keyframes si-ekg { to { stroke-dashoffset: -120; } }
+@keyframes si-notice-in { from { opacity: 0; transform: translateY(-6px); clip-path: inset(0 0 100% 0); } to { opacity: 1; transform: none; clip-path: inset(0); } }
+@keyframes si-flash { 12% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes si-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
+}
+
+@media (max-width: 1100px) {
+  .si-headline { font-size: 48px; }
+  .si-statement-text { font-size: 34px; }
+  .si-metric-value { font-size: 26px; line-height: 30px; }
+  .si-metrics { gap: 28px; }
+  .si-wall-cols { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+  .si-wall-col:nth-child(n + 5) { display: none; }
+}
+@media (max-height: 760px) {
+  .si-headline { font-size: 44px; margin-bottom: 20px; }
+  .si-statement { bottom: 24px; }
+  .si-statement-text { font-size: 30px; }
+  .si-metrics { margin-top: 12px; }
+  .si-metric-value { font-size: 22px; line-height: 26px; }
+}
+@media (max-width: 720px) {
+  .si-stage { padding: 140px 16px 150px; }
+  .si-headline { font-size: 34px; margin-bottom: 24px; }
+  .si-wall-cols { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .si-wall-col:nth-child(n + 3) { display: none; }
+  .si-statement { left: 16px; right: 16px; bottom: 20px; }
+  .si-statement-text { font-size: 26px; }
+  .si-metrics { gap: 20px; margin-top: 10px; }
+  .si-metric-value { font-size: 20px; line-height: 24px; }
+  .si-pop-a { left: 14%; }
+  .si-pop-b { left: 86%; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .si-stage *, .si-stage *::before, .si-stage *::after { animation: none !important; transition: none !important; }
+  .si-wall, .si-statement, .si-word, .si-card-shell, .si-reveal, .si-orb-core, .si-notice, .si-error { opacity: 1; transform: none; clip-path: none; }
+  .si-ecg-head, .si-ring { display: none; }
+  .si-pop { opacity: 1; transform: translate(-50%, 0); }
+  .si-pt { opacity: var(--o); }
+  .si-ekg path { stroke-dasharray: none; stroke-dashoffset: 0; }
+  .si-card-shell { background: var(--dark-border); }
+  .si-stage[data-state="warning"] .si-card-shell { background: rgb(245 184 61 / 0.5); }
+}

@@ -3,7 +3,6 @@ import { SessionPolicy } from "@/lib/auth/SessionPolicy";
 import type { Provider } from "next-auth/providers";
 import Credentials from "next-auth/providers/credentials";
 import Google from "next-auth/providers/google";
-import MicrosoftEntraID from "next-auth/providers/microsoft-entra-id";
 
 type Env = Record<string, string | undefined>;
 
@@ -23,18 +22,6 @@ export class AuthProviders {
     enabled: (env: Env) => boolean;
     build: (env: Env) => Provider;
   }> = [
-    {
-      id: "microsoft-entra-id",
-      name: "Microsoft",
-      enabled: (env) => Boolean(env.AUTH_MICROSOFT_ENTRA_ID_ID && env.AUTH_MICROSOFT_ENTRA_ID_SECRET),
-      build: (env) =>
-        MicrosoftEntraID({
-          clientId: env.AUTH_MICROSOFT_ENTRA_ID_ID,
-          clientSecret: env.AUTH_MICROSOFT_ENTRA_ID_SECRET,
-          // Tenant-specific issuer strongly recommended: https://login.microsoftonline.com/<tenant-id>/v2.0/
-          ...(env.AUTH_MICROSOFT_ENTRA_ID_ISSUER ? { issuer: env.AUTH_MICROSOFT_ENTRA_ID_ISSUER } : {}),
-        }),
-    },
     {
       id: "google",
       name: "Google",

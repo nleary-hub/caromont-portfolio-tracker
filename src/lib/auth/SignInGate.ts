@@ -17,7 +17,7 @@ export interface SignInAttempt {
  *   turned off (`allowSignInWithAccounts`). The rule is ALLOWED_EMAILS OR account, never account only: everyone on
  *   ALLOWED_EMAILS and not turned off signs in exactly as before.
  * - Google only: Google must also report `email_verified === true` (boolean true, not the string).
- *   Other providers (Microsoft Entra ID, local dev login) are unchanged.
+ *   Other providers (local dev login) are unchanged.
  * Returning false makes Auth.js show the generic AccessDenied message; never reveal which check failed.
  */
 export class SignInGate {

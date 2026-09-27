@@ -1,11 +1,15 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input pl-2.5 pr-9 text-fg type-table focus:border-accent focus:outline-none";
 
-/** Password input with an eye button that shows or hides what was typed. */
+/**
+ * Password input with an eye button that shows or hides what was typed. `autoFocus` also focuses the field when it
+ * turns on for a field that is already on screen (e.g. /signin re-rendered after a wrong password), which the plain
+ * HTML attribute doesn't do.
+ */
 export function PasswordField({
   name,
   autoComplete,
@@ -24,9 +28,14 @@ export function PasswordField({
   invalid?: boolean;
 }) {
   const [shown, setShown] = useState(false);
+  const input = useRef<HTMLInputElement>(null);
+  useEffect(() => {
+    if (autoFocus) input.current?.focus();
+  }, [autoFocus]);
   return (
     <span className="relative block">
       <input
+        ref={input}
         id={id}
         name={name}
         type={shown ? "text" : "password"}

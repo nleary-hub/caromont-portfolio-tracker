@@ -35,9 +35,8 @@ describe("EmailAllowlist", () => {
 describe("AuthProviders", () => {
   it("enables providers only when their env vars exist", () => {
     expect(AuthProviders.summaries({})).toEqual([]);
-    expect(
-      AuthProviders.summaries({ AUTH_MICROSOFT_ENTRA_ID_ID: "id", AUTH_MICROSOFT_ENTRA_ID_SECRET: "s" }).map((p) => p.id),
-    ).toEqual(["microsoft-entra-id"]);
+    // Microsoft sign-in was removed: its old env vars enable nothing.
+    expect(AuthProviders.summaries({ AUTH_MICROSOFT_ENTRA_ID_ID: "id", AUTH_MICROSOFT_ENTRA_ID_SECRET: "s" })).toEqual([]);
     expect(AuthProviders.summaries({ AUTH_GOOGLE_ID: "id", AUTH_GOOGLE_SECRET: "s" }).map((p) => p.id)).toEqual(["google"]);
     expect(AuthProviders.summaries({ AUTH_GOOGLE_ID: "id" })).toEqual([]);
   });
