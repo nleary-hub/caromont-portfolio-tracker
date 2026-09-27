@@ -59,7 +59,7 @@ export function ViewSettingsPicker({ settings, counts, onSave, layoutReset }: Vi
   const [confirm, setConfirm] = useState<LayoutResetKind | null>(null);
   const rootRef = useRef<HTMLDivElement>(null);
 
-  // Opened from the admin menu "Settings" item: an event on "/", or "/#view-settings" from other pages.
+  // Opened from the admin menu "Dashboard view" item: an event on "/", or "/#view-settings" from other pages.
   useEffect(() => {
     const openFromMenu = () => {
       setReportDraft(settings.report);
@@ -134,12 +134,12 @@ export function ViewSettingsPicker({ settings, counts, onSave, layoutReset }: Vi
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
           <path d="M1 3h12M3 7h8M5 11h4" stroke="currentColor" strokeWidth="1.5" fill="none" />
         </svg>
-        View
+        {AdminMenu.DASHBOARD_VIEW}
         {hidden > 0 && <span className="vp-badge">{hidden} hidden</span>}
       </button>
 
       {open && (
-        <div className="vp-pop" role="dialog" aria-label="View settings">
+        <div className="vp-pop" role="dialog" aria-label={AdminMenu.DASHBOARD_VIEW}>
           <div className="vp-seg" role="tablist">
             {ViewSettings.CONTEXTS.map((c) => (
               <button

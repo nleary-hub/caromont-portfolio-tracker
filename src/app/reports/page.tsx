@@ -77,7 +77,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           : ServiceLineCopy.onDemandNote(scope.shortName)}
       </p>
       {viewer.isAdmin && options && (
-        <section id="report-admin" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+        <section id="report-admin" aria-labelledby="report-freeze-heading" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+          <h2 id="report-freeze-heading" className="type-heading">Report freeze</h2>
           <div className="flex flex-wrap items-center gap-4">
             {scope.isDefault && <FreezeNowButton />}
             <a href="/api/reports/preview" download className="type-table-strong text-accent">

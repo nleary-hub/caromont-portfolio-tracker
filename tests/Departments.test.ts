@@ -347,6 +347,6 @@ describe("People (contracts leads) and Report settings", () => {
     expect(ContractsLeadRules.EMPTY).toBe("No contracts leads yet. Add the people who handle contracts for this service line.");
     expect(ReportSettingsCopy.pointerText()).toBe("Contracts leads are now on the People page");
     expect(ReportSettingsCopy.POINTER_LINK).toBe("People");
-    expect(AdminMenu.REPORT_SETTINGS).toBe("Report settings");
+    expect(AdminMenu.REPORT_CONTENTS).toBe("Report contents");
   });
 });
