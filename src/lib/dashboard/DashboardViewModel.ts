@@ -4,9 +4,8 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import type { MilestoneCount } from "@/lib/domain/MilestoneProgress";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
-import type { CompletedRow, HistoryEntryRecord, ProjectRecord, StatusCounts } from "@/lib/domain/types";
+import type { HistoryEntryRecord, ProjectRecord, StatusCounts } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
-import { CompletedThisPeriod, type CompletableProject } from "@/lib/report/CompletedThisPeriod";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
@@ -43,13 +42,6 @@ export interface DashboardRow {
   stale: boolean;
 }
 
-/** A "Completed this period" row: a full row (so it opens the drawer) plus what the PDF block prints. */
-export interface DashboardCompletedRow extends DashboardRow {
-  accomplishment: string | null;
-  /** YYYY-MM-DD printed in the block: completedOn when set, else the in-app completion date (as in the PDF). */
-  completedOn: string;
-}
-
 export interface DashboardSummary {
   total: number;
   byStatus: Record<ProjectStatus, number>;
@@ -80,49 +72,6 @@ export class DashboardViewModel {
     const publicHistory = VisibilityPolicy.publicHistory(history, ids);
     const publicUpdates = VisibilityPolicy.publicHistory(latestUpdates, ids);
     return ReportBuilder.sortProjects(visible, departments).map((p) => DashboardViewModel.toRow(p, publicHistory, publicUpdates, previousSnapshotGeneratedAt, today));
-  }
-
-  /**
-   * "Completed this period" for the dashboard: exactly the rows the next report lists
-   * (CompletedThisPeriod.select with the report view settings, so nothing when Complete is shown in the
-   * report), limited to projects the dashboard may show (not deleted, not hidden from the dashboard) and
-   * never a project that is already a regular row (Complete shown on the dashboard). Order as in the PDF.
-   */
-  static completedThisPeriod(input: {
-    projects: readonly CompletableProject[];
-    history: readonly HistoryEntryRecord[];
-    reportSettings: ViewSettingsValue;
-    /** Ids of the regular dashboard rows. */
-    rowIds: readonly string[];
-    now: Date;
-    departments?: DepartmentList;
-  }): CompletedRow[] {
-    const allowed = new Set(VisibilityPolicy.candidates(input.projects, "dashboard").map((p) => p.id));
-    const listed = new Set(input.rowIds);
-    return CompletedThisPeriod.select({ projects: input.projects, history: input.history, viewSettings: input.reportSettings, cutoff: input.now, departments: input.departments }).filter(
-      (c) => allowed.has(c.projectId) && !listed.has(c.projectId),
-    );
-  }
-
-  /** Full rows for the completed block, in the block order, with the block's date and accomplishment. */
-  static completedRows(
-    projects: readonly ProjectRecord[],
-    completed: readonly CompletedRow[],
-    history: readonly HistoryEntryRecord[],
-    previousSnapshotGeneratedAt: Date | null,
-    today: string,
-    latestUpdates: readonly HistoryEntryRecord[] = history,
-  ): DashboardCompletedRow[] {
-    const byId = new Map(projects.map((p) => [p.id, p]));
-    const ids = completed.map((c) => c.projectId);
-    const publicHistory = VisibilityPolicy.publicHistory(history, ids);
-    const publicUpdates = VisibilityPolicy.publicHistory(latestUpdates, ids);
-    return completed.flatMap((c) => {
-      const p = byId.get(c.projectId);
-      if (!p) return [];
-      const row = DashboardViewModel.toRow(p, publicHistory, publicUpdates, previousSnapshotGeneratedAt, today);
-      return [{ ...row, accomplishment: c.accomplishment, completedOn: c.completedOn }];
-    });
   }
 
   /** Full rows (drawer-ready) for the given projects, in the given order, without the status settings. */

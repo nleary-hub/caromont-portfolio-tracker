@@ -388,7 +388,6 @@ describe("dashboard table with the line layout", () => {
     renderToStaticMarkup(
       createElement(DashboardTable, {
         rows,
-        completed: [],
         settings,
         selectedId: null,
         onSelect: () => {},
