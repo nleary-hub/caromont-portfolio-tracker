@@ -153,14 +153,18 @@ describe("Year-end report data", () => {
     const { list, history } = projects();
     const d = Fy.data(list, history, "FY27");
     expect(d.toDate).toBe(true);
-    expect(d.title).toBe("FY27 Year-End Report");
+    expect(d.title).toBe("FY27 Mid-Year Report");
     expect(d.periodText).toBe("Jul 1, 2026 \u2013 Sep 27, 2026 (to date)");
-    expect(d.sections.map((s) => [s.heading, s.count])).toEqual([["Completed in FY27", 1], ["Cancelled in FY27", 0], ["Carried into FY28", 1]]);
-    expect(d.sections[0].groups[0].rows[0]).toMatchObject({ name: "Done 27", date: "2026-08-01", finalUpdate: "Live." });
-    expect(d.sections[1].emptyText).toBe("No projects cancelled in FY27 so far.");
+    // No Cancelled section: the report is Carried in, Completed, then Still in progress.
+    expect(d.sections.map((s) => [s.kind, s.heading, s.count])).toEqual([["carriedIn", "Carried in from FY26", 2], ["completed", "Completed in FY27", 1], ["carried", "Still in progress", 1]]);
+    expect(d.sections[1].groups[0].rows[0]).toMatchObject({ name: "Done 27", date: "2026-08-01", finalUpdate: "Live." });
     expect(d.sections[2].groups[0]).toMatchObject({ label: "IR" });
     expect(d.sections[2].groups[0].rows[0]).toMatchObject({ name: "Open", status: "AtRisk", date: null, finalUpdate: "Waiting on vendor." });
-    expect(d.summary.at(-1)).toEqual({ area: "total", label: "Total", muted: false, completed: 1, cancelled: 0, carried: 1 });
+    // Grid: carried in from FY26 = open at the end of Jun 30, 2026 (Done 27 and Open); still in progress = open
+    // today (Open); Completed FY27 1.
+    expect(d.summary.at(-1)).toEqual({ area: "total", label: "Total", muted: false, carriedIn: 2, openAtEnd: 1, completed: 1 });
+    expect(d.carriedInNote).toBeNull();
+    expect(d.openAtEndNote).toBeNull();
   });
 
   it("past year: full period, closed dates in the year, carried status rebuilt at June 30", () => {
@@ -168,20 +172,22 @@ describe("Year-end report data", () => {
     const d = Fy.data(list, history, "FY26");
     expect(d.toDate).toBe(false);
     expect(d.periodText).toBe("Jul 1, 2025 \u2013 Jun 30, 2026");
-    const names = (i: number) => d.sections[i].groups.flatMap((g) => g.rows.map((r) => r.name));
+    const names = (i: number) => d.sections[i + 1].groups.flatMap((g) => g.rows.map((r) => r.name));
     expect(names(0)).toEqual(["Done 26"]);
-    expect(names(1)).toEqual(["Stop 26"]);
+    // Stop 26 (cancelled in FY26) isn't listed or counted anywhere: not a section, not carried.
+    expect(JSON.stringify(d)).not.toContain("Stop 26");
     // Done 27 was OnTrack at the FY26 end (completed in FY27); Open was OffTrack then.
     expect(d.sections[2].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status]))).toEqual([["Done 27", "OnTrack"], ["Open", "OffTrack"]]);
     // Groups follow the line's department order, Unassigned last and muted; empty departments are left out.
-    expect(d.summary.map((s) => s.label)).toEqual(["Cath", "Echo", "IR", "Unassigned", "Total"]);
-    expect(d.summary.find((s) => s.label === "Unassigned")).toMatchObject({ muted: true, cancelled: 1 });
-    expect(d.sections[1].groups[0]).toMatchObject({ label: "Unassigned", muted: true });
+    // The grid has no Cancelled column, so a department with only a cancelled project (Unassigned here) isn't listed.
+    expect(d.summary.map((s) => s.label)).toEqual(["Cath", "Echo", "IR", "Total"]);
+    expect(d.sections.flatMap((s) => s.groups.map((g) => g.label))).not.toContain("Unassigned");
   });
 
   it("empty past year copy, and the dialog years", () => {
     const d = Fy.data([], [], "FY25");
-    expect(d.sections.map((s) => s.emptyText)).toEqual(["No projects were completed in FY25.", "No projects were cancelled in FY25.", "No active projects carry into FY26."]);
+    // No data at all: tracking starts today, so neither carried list is available (their totals are dashes too).
+    expect(d.sections.map((s) => s.emptyText)).toEqual(["Tracking started Sep 27, 2026, so this list isn't available.", "No projects were completed in FY25.", "Tracking started Sep 27, 2026, so this list isn't available."]);
     const { list, history } = projects();
     expect(YearEndReportData.years(list, history, TODAY)).toEqual(["FY27", "FY26", "FY25"]);
   });
@@ -193,8 +199,11 @@ describe("Year-end report data", () => {
     expect(YearEndCopy.GENERATING).toBe("Generating\u2026");
     expect(YearEndCopy.ERROR).toBe("Couldn't generate the report. Try again.");
     expect(YearEndCopy.listRow("FY27", new Date("2026-09-27T04:34:00Z"), "Nick Leary")).toBe("FY27 Year-End Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary");
-    expect(YearEndCopy.fileName("FY27", "2026-09-27", null)).toBe("fy27-year-end-report-2026-09-27.pdf");
-    expect(YearEndCopy.fileName("FY27", "2026-09-27", "ONC")).toBe("onc-fy27-year-end-report-2026-09-27.pdf");
+    expect(YearEndCopy.fileName("FY26", "2026-09-27", null)).toBe("year-end-fy26-2026-09-27.pdf");
+    expect(YearEndCopy.fileName("FY26", "2026-09-27", "ONC")).toBe("onc-year-end-fy26-2026-09-27.pdf");
+    expect(YearEndCopy.fileName("FY27", "2026-09-27", null, true)).toBe("mid-year-fy27-2026-09-27.pdf");
+    expect(YearEndCopy.fileName("FY27", "2026-09-27", "ONC", true)).toBe("onc-mid-year-fy27-2026-09-27.pdf");
+    expect(YearEndCopy.listRow("FY27", new Date("2026-09-27T04:34:00Z"), "Nick Leary", true)).toBe("FY27 Mid-Year Report, generated Sep 27, 2026, 12:34 AM ET by Nick Leary");
     const all = Object.values(YearEndCopy).filter((v) => typeof v === "string").join(" ");
     expect(all).not.toContain("\u2014");
   });
@@ -204,7 +213,7 @@ describe("Year-end report data", () => {
     const d = Fy.data(many, [], "FY27");
     const layout = YearEndLayout.layout(d, new Date("2026-09-27T16:00:00Z"), "Nick Leary");
     expect(layout.pages.length).toBeGreaterThan(1);
-    expect(layout.footerLeft).toBe("Generated Sep 27, 2026 by Nick Leary \u00b7 FY27 Year-End Report");
+    expect(layout.footerLeft).toBe("Generated Sep 27, 2026 by Nick Leary \u00b7 FY27 Mid-Year Report");
     expect(layout.pages[1].blocks.find((b) => b.kind === "dept")).toMatchObject({ label: "Cath", continued: true });
     const pdf = await YearEndRenderer.render(d, new Date("2026-09-27T16:00:00Z"), "Nick Leary");
     expect(pdf.subarray(0, 5).toString()).toBe("%PDF-");
@@ -221,8 +230,8 @@ describe("YearEndReportService", () => {
     const now = new Date("2026-09-27T16:00:00Z");
     await expect(YearEndReportService.generate(Factory.MEMBER, "FY27", scope, db, now)).rejects.toBeInstanceOf(AdminRequiredError);
     const e = await YearEndReportService.generate({ ...Factory.ADMIN, name: "Nick Leary" }, "FY27", scope, db, now);
-    expect(e).toMatchObject({ fiscalYear: "FY27", toDate: true, generatedByName: "Nick Leary", fileName: "fy27-year-end-report-2026-09-27.pdf" });
-    expect(YearEndReportService.listText(e)).toBe("FY27 Year-End Report, generated Sep 27, 2026, 12:00 PM ET by Nick Leary");
+    expect(e).toMatchObject({ fiscalYear: "FY27", toDate: true, generatedByName: "Nick Leary", fileName: "mid-year-fy27-2026-09-27.pdf" });
+    expect(YearEndReportService.listText(e)).toBe("FY27 Mid-Year Report, generated Sep 27, 2026, 12:00 PM ET by Nick Leary");
     expect(fake.writes.map((w) => w.model)).toEqual(["yearEndReport"]);
     expect(fake.state.snapshots).toHaveLength(0);
     expect(fake.state.artifacts).toHaveLength(0);
