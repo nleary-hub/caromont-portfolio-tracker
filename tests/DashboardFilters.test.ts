@@ -126,7 +126,7 @@ describe("dashboard filter row", () => {
   it("shows the Departments select (All by default) and the tile button, and no Cancelled tile", () => {
     expect(html).toContain("Departments: All");
     expect(html).toContain('title="Show or hide tiles"');
-    const summary = html.slice(html.indexOf('aria-label="Status summary"'), html.indexOf('aria-label="Service area filter"'));
+    const summary = html.slice(html.indexOf('aria-label="Status summary"'), html.indexOf('aria-label="Department filter"'));
     expect(html).toContain("grid-template-columns:repeat(7, minmax(0, 1fr))");
     expect(summary).not.toContain("Cancelled");
     expect((summary.match(/data-tile=/g) ?? []).length).toBe(6);

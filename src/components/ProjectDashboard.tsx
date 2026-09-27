@@ -5,7 +5,8 @@ import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
-import { DashboardViewModel, DateFormat, type DashboardCompletedRow, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import type { DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
 import type { FiscalYearCount } from "@/lib/domain/types";
@@ -27,6 +28,7 @@ import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { DashboardTable, type DashboardLayoutControl } from "./DashboardTable";
+import { FiscalYearSectionsView } from "./FiscalYearSections";
 import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardSort";
 import { LayoutCopy, LineLayout, type ColumnLayoutValue, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
@@ -98,15 +100,15 @@ export class NewRowFlash {
 interface Props {
   /** Already filtered by VisibilityPolicy on the server. */
   rows: DashboardRow[];
-  /** "Completed this period" rows (block at the end of each department group, as in the PDF). */
-  completed?: DashboardCompletedRow[];
+  /** Completed and Cancelled rows of every fiscal year (FY sections below the department groups). */
+  fiscalYearRows?: DashboardFyRow[];
   /** Visible dashboard columns in order. */
   columns: ViewColumn[];
   today: string;
   userEmail: string;
   userName: string | null;
   latestReport: LatestReport | null;
-  /** "Completed FY27 to date N" (same rule as report page 1). */
+  /** "Completed FY27 to date N": the current year's Completed section count (dashboard visibility). */
   completedFiscalYear?: FiscalYearCount | null;
   loadError: string | null;
   /** Service line name setting (top bar lockup). */
@@ -142,7 +144,7 @@ class Initials {
 
 export function ProjectDashboard({
   rows,
-  completed = [],
+  fiscalYearRows = [],
   today,
   userEmail,
   userName,
@@ -232,17 +234,18 @@ export function ProjectDashboard({
   // Department filter first (the Departments dropdown is the only department filter): tiles, rows and the
   // Unassigned group all follow it. Options are the line's departments (every department for CVPSL).
   const deptRows = useMemo(() => DepartmentFilter.apply(rows, departments, deptOptions), [rows, departments, deptOptions]);
-  const deptCompleted = useMemo(() => DepartmentFilter.apply(completed, departments, deptOptions), [completed, departments, deptOptions]);
+  // The FY sections follow the same department filter and search as the rows.
+  const deptFy = useMemo(() => DepartmentFilter.apply(fiscalYearRows, departments, deptOptions), [fiscalYearRows, departments, deptOptions]);
   const summary = useMemo(() => DashboardViewModel.summarize(deptRows), [deptRows]);
   const visible = useMemo(() => DashboardViewModel.filter(deptRows, query), [deptRows, query]);
-  const visibleCompleted = useMemo(() => DashboardViewModel.filter(deptCompleted, query), [deptCompleted, query]);
+  const visibleFy = useMemo(() => DashboardViewModel.filter(deptFy, query), [deptFy, query]);
   const tiles = DashboardPrefs.visibleTiles(hiddenTiles, Boolean(completedFiscalYear));
   const tileTemplate = DashboardPrefs.gridTemplate(tiles);
-  const emptyLine = DashboardViewModel.isEmptyLine(line, rows.length + completed.length, Boolean(loadError));
+  const emptyLine = DashboardViewModel.isEmptyLine(line, rows.length + fiscalYearRows.length, Boolean(loadError));
   // Non-admins get only the visible columns in order; that is the same model with nothing hidden.
   const dashboardView: ViewSettingsValue = settings?.dashboard ?? { columnOrder: columnsProp, hiddenColumns: [], hiddenStatuses: [] };
   const showInfor = ViewSettings.visibleColumns(dashboardView).includes("inforNumber");
-  const selected = rows.find((r) => r.id === selectedId) ?? completed.find((r) => r.id === selectedId) ?? null;
+  const selected = rows.find((r) => r.id === selectedId) ?? fiscalYearRows.find((r) => r.id === selectedId) ?? null;
 
   /** Optimistic: apply locally, persist, roll back on failure. */
   const saveSettings = async (context: ViewContext, value: ViewSettingsValue): Promise<string | null> => {
@@ -520,16 +523,25 @@ export function ProjectDashboard({
           <div className="max-h-[calc(100vh-260px)] overflow-auto">
             <DashboardTable
               rows={visible}
-              completed={visibleCompleted}
+              completed={[]}
               settings={dashboardView}
               selectedId={selectedId}
               flashId={flashId}
               onSelect={selectRow}
               today={today}
-              emptyText={rows.length === 0 && completed.length === 0 ? "No projects yet." : "No projects match the current filter."}
+              emptyText={rows.length === 0 && fiscalYearRows.length === 0 ? "No projects yet." : "No projects match the current filter."}
               renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
               layout={layoutControl}
               departments={line?.departments}
+            />
+            <FiscalYearSectionsView
+              rows={visibleFy}
+              allRows={fiscalYearRows}
+              today={today}
+              departments={line?.departments}
+              selectedId={selectedId}
+              onSelect={selectRow}
+              renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
             />
           </div>
           <div className="flex justify-between border-t border-line px-3 py-2.5 text-muted type-caption">

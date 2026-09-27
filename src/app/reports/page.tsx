@@ -13,6 +13,10 @@ import { ReportSchedule } from "@/lib/report/ReportSchedule";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ReportArchiveService, type ArchiveEntry } from "@/lib/services/ReportArchiveService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
+import { YearEndReportButton } from "@/components/YearEndReportButton";
+import { FiscalYear } from "@/lib/domain/FiscalYear";
+import { YearEndCopy } from "@/lib/report/YearEndReportData";
+import { YearEndReportService } from "@/lib/services/YearEndReportService";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +31,7 @@ class ArchiveView {
 }
 
 /** Archive of frozen reports. Signed-in users download PDFs; admins also see delivery and can freeze. */
-export default async function ReportsPage() {
+export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const viewer = await CurrentViewer.get();
   if (!viewer) redirect("/signin");
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
@@ -35,6 +39,11 @@ export default async function ReportsPage() {
   const entries = await ReportArchiveService.list(viewer, undefined, scope);
   const next = ReportSchedule.nextFreezeOnOrAfter(DateOnly.today());
   const options = viewer.isAdmin ? await ReportOptionsService.get(undefined, scope) : null;
+  const today = DateOnly.today();
+  const yearEndYears = viewer.isAdmin ? await YearEndReportService.years(viewer, scope).catch(() => [FiscalYear.of(today).label]) : [];
+  const yearEnd = await YearEndReportService.list(scope).catch(() => []);
+  // Deep link for review and screenshots: ?yearEnd=1 opens the dialog.
+  const openYearEnd = (await searchParams).yearEnd === "1";
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
@@ -63,6 +72,7 @@ export default async function ReportsPage() {
             <a href="/api/reports/preview" download className="type-table-strong text-accent">
               Generate PDF now (draft)
             </a>
+            <YearEndReportButton years={yearEndYears} current={FiscalYear.of(today).label} initialOpen={openYearEnd} />
           </div>
           <form action={setShowKeyPageForm} className="flex items-center gap-2 type-table">
             <label className="flex items-center gap-2">
@@ -133,6 +143,24 @@ export default async function ReportsPage() {
           </tbody>
         </table>
       </div>
+
+      {yearEnd.length > 0 && (
+        <section aria-labelledby="year-end-heading" className="flex flex-col gap-2">
+          <h2 id="year-end-heading" className="type-heading">
+            {YearEndCopy.LIST_HEADING}
+          </h2>
+          <ul className="overflow-hidden rounded-card border border-line bg-card type-table" data-testid="year-end-list">
+            {yearEnd.map((e) => (
+              <li key={e.id} className="flex items-center justify-between gap-4 border-b border-line px-3 py-2 last:border-b-0">
+                <span>{YearEndReportService.listText(e)}</span>
+                <a href={`/reports/year-end/${e.id}`} className="shrink-0 text-accent type-table-strong">
+                  {YearEndCopy.DOWNLOAD}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
     </main>
   );
 }

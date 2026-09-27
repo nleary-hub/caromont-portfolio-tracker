@@ -7,12 +7,13 @@ import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
-import { DashboardViewModel, type DashboardCompletedRow, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
+import type { DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
 import { Db } from "@/lib/db/Db";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
 import { ProjectFormModel, type ProjectFormSource, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
-import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext } from "@/lib/domain/ViewSettings";
@@ -28,8 +29,8 @@ import { ProjectRows } from "@/lib/domain/ProjectRows";
 
 interface DashboardLoad {
   rows: DashboardRow[];
-  /** "Completed this period" rows (the block at the end of each department group, as in the PDF). */
-  completed: DashboardCompletedRow[];
+  /** Completed and Cancelled rows of every fiscal year (the FY sections below the department groups). */
+  fiscalYearRows: DashboardFyRow[];
   columns: ViewColumn[];
   latestReport: LatestReport | null;
   /** "Completed FY27 to date N" for the summary strip. Null when the data could not be loaded. */
@@ -53,7 +54,7 @@ class DashboardData {
     const settings = DashboardData.defaultSettings();
     return {
       rows: [],
-      completed: [],
+      fiscalYearRows: [],
       columns: ViewSettings.visibleColumns(settings.dashboard),
       latestReport: null,
       completedFiscalYear: null,
@@ -95,23 +96,15 @@ class DashboardData {
       const steps = await MilestoneService.loadSteps(db, stored.map((p) => p.id));
       const projects = MilestoneProgress.applyAll(stored, steps);
       const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings.dashboard);
-      // "Completed FY27 to date": same rule as the report (report candidates only, completedOn else the
-      // day the status became Complete). Only Complete projects need their status history. The same
-      // history picks the "Completed this period" rows (CompletedThisPeriod, as the PDF does).
-      const complete = projects.filter((p) => p.status === "Complete");
-      const completionHistory = await db.projectHistory.findMany({
-        where: { projectId: { in: complete.map((p) => p.id) }, field: { in: ["status", "created"] } },
-        select: { projectId: true, changedAt: true, field: true, newValue: true },
+      // FY sections (Completed / Cancelled by fiscal year, replacing the "Completed this period" block on the
+      // dashboard) and the "Completed FY27 to date" tile, which counts the Completed section of the current year.
+      // Only closed projects need their status history for the closed date.
+      const closed = VisibilityPolicy.candidates(projects, "dashboard").filter((p) => p.status === "Complete" || p.status === "Cancelled");
+      const closedHistory = await db.projectHistory.findMany({
+        where: { projectId: { in: closed.map((p) => p.id) }, field: { in: ["status", "created"] } },
+        select: { projectId: true, changedAt: true, field: true, oldValue: true, newValue: true },
       });
-      const completedThisPeriod = DashboardViewModel.completedThisPeriod({
-        projects,
-        history: completionHistory,
-        reportSettings: settings.report,
-        rowIds: visible.map((p) => p.id),
-        now: new Date(),
-        departments: scope.departments,
-      });
-      const listedIds = [...visible.map((p) => p.id), ...completedThisPeriod.map((c) => c.projectId)];
+      const listedIds = [...visible.map((p) => p.id), ...closed.map((p) => p.id)];
       const history = await db.projectHistory.findMany({
         where: {
           projectId: { in: listedIds },
@@ -130,7 +123,15 @@ class DashboardData {
       const latestUpdates = lastUpdates.flatMap((g) =>
         g._max.changedAt ? [{ projectId: g.projectId, changedAt: g._max.changedAt, field: "update" }] : [],
       );
-      const completedFiscalYear = CompletedFiscalYear.count({ projects: complete, history: completionHistory, reportDate: today });
+      const fiscalYearRows = FiscalYearRows.build({
+        projects: closed,
+        closedHistory,
+        history,
+        latestUpdates,
+        previousSnapshotGeneratedAt: latest?.generatedAt ?? null,
+        today,
+      });
+      const completedFiscalYear = FiscalYearRows.tile(fiscalYearRows, today);
       return {
         completedFiscalYear,
         layout,
@@ -143,7 +144,7 @@ class DashboardData {
           latestUpdates,
           scope.departments,
         ),
-        completed: DashboardViewModel.completedRows(projects, completedThisPeriod, history, latest?.generatedAt ?? null, today, latestUpdates),
+        fiscalYearRows,
         columns: ViewSettings.visibleColumns(settings.dashboard),
         latestReport: latest
           ? {
@@ -182,7 +183,7 @@ export default async function DashboardPage() {
 
   const today = DateOnly.today();
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
-  const [{ rows, completed, columns, latestReport, completedFiscalYear, layout, admin, error }, lines] = await Promise.all([
+  const [{ rows, fiscalYearRows, columns, latestReport, completedFiscalYear, layout, admin, error }, lines] = await Promise.all([
     DashboardData.load(viewer, today, scope),
     viewer.isAdmin && Db.isConfigured() ? ServiceLineAccess.usableLines(viewer).catch(() => [scope]) : Promise.resolve([]),
   ]);
@@ -190,7 +191,7 @@ export default async function DashboardPage() {
   return (
     <ProjectDashboard
       rows={rows}
-      completed={completed}
+      fiscalYearRows={fiscalYearRows}
       columns={columns}
       today={today}
       userEmail={viewer.email}

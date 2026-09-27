@@ -125,6 +125,20 @@ export class DashboardViewModel {
     });
   }
 
+  /** Full rows (drawer-ready) for the given projects, in the given order, without the status settings. */
+  static rowsFor(
+    projects: readonly ProjectRecord[],
+    history: readonly HistoryEntryRecord[],
+    previousSnapshotGeneratedAt: Date | null,
+    today: string,
+    latestUpdates: readonly HistoryEntryRecord[] = history,
+  ): DashboardRow[] {
+    const ids = projects.map((p) => p.id);
+    const publicHistory = VisibilityPolicy.publicHistory(history, ids);
+    const publicUpdates = VisibilityPolicy.publicHistory(latestUpdates, ids);
+    return projects.map((p) => DashboardViewModel.toRow(p, publicHistory, publicUpdates, previousSnapshotGeneratedAt, today));
+  }
+
   private static toRow(
     p: ProjectRecord,
     publicHistory: readonly HistoryEntryRecord[],
