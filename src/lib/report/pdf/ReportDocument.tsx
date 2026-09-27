@@ -160,7 +160,7 @@ function Shape({ status, size, color }: { status: ProjectStatus; size: number; c
   );
 }
 
-function Pill({ pill, x, y }: { pill: PillBox; x: number; y: number }) {
+export function Pill({ pill, x, y }: { pill: PillBox; x: number; y: number }) {
   const c = C.STATUS[pill.status];
   return (
     <View
@@ -736,7 +736,7 @@ function ContractsText({ c, x, y, w }: { c: ContractsLine; x: number; y: number;
 }
 
 /** Check shape (the Complete status shape) at 10-unit viewBox scale. */
-function Check({ x, y, size, color }: { x: number; y: number; size: number; color: string }) {
+export function Check({ x, y, size, color }: { x: number; y: number; size: number; color: string }) {
   return (
     <View style={{ position: "absolute", left: x, top: y, width: size, height: size }}>
       <Shape status="Complete" size={size} color={color} />

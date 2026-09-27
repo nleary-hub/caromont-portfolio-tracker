@@ -8,6 +8,8 @@ import { ReportLog } from "@/lib/report/ReportLog";
 import { FreezeService } from "@/lib/services/FreezeService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { ReportOptionsForm, type ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
+import { YearEndReportService } from "@/lib/services/YearEndReportService";
+import { YearEndCopy } from "@/lib/report/YearEndReportData";
 
 export type FreezeNowState = { ok: boolean; message: string } | null;
 
@@ -52,4 +54,22 @@ export async function saveReportOptions(_prev: ReportOptionsFormState, form: For
     revalidatePath("/reports");
   }
   return state;
+}
+
+export type YearEndActionResult = { ok: true; id: string; fileName: string } | { ok: false; message: string };
+
+/** Admin "Year-end report": render and store the PDF for the active line (never emailed or scheduled). */
+export async function generateYearEndReport(fiscalYear: string): Promise<YearEndActionResult> {
+  const viewer = await CurrentViewer.get();
+  if (!viewer?.isAdmin) return { ok: false, message: "Not authorized." };
+  try {
+    const scope = await ServiceLineAccess.activeFor(viewer);
+    const entry = await YearEndReportService.generate(viewer, String(fiscalYear), scope);
+    ReportLog.info("year_end.generated", { id: entry.id, fiscalYear: entry.fiscalYear, serviceLineId: scope.id });
+    revalidatePath("/reports");
+    return { ok: true, id: entry.id, fileName: entry.fileName };
+  } catch (e) {
+    ReportLog.error("year_end.failed", { error: e instanceof Error ? e.message : String(e) });
+    return { ok: false, message: YearEndCopy.ERROR };
+  }
 }

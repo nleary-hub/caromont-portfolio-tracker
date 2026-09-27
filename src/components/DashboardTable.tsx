@@ -55,7 +55,7 @@ export interface DashboardLayoutControl {
 }
 
 /** Dark-theme styling of the grouped table (Figma spec; dark versions of the PDF tokens). */
-class GroupedTableStyle {
+export class GroupedTableStyle {
   /** Department header row: PDF section head. The PDF fill (#F4F5F7) has no dark token; --dark-input is the closest. */
   static readonly GROUP_HEADER_BG = "var(--dark-input)";
   /** PDF section edge: primary text color, Unassigned in the secondary gray. */

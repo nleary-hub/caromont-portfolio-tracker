@@ -29,6 +29,23 @@ export class FiscalYear {
     return `Completed ${label} to date`;
   }
 
+  /** The fiscal year named by a label ("FY27"), or null for anything else. */
+  static fromLabel(label: string, startMonth: number = AppConfig.FISCAL_YEAR_START_MONTH): FiscalYearRange | null {
+    const m = /^FY(\d{2})$/.exec(label);
+    if (!m) return null;
+    const endYear = 2000 + Number(m[1]);
+    const pad = (n: number) => String(n).padStart(2, "0");
+    // The last day of the fiscal year sits in the calendar year it is named for.
+    const endMonth = startMonth === 1 ? 12 : startMonth - 1;
+    return FiscalYear.of(`${endYear}-${pad(endMonth)}-01`, startMonth);
+  }
+
+  /** The label of the fiscal year after `label` ("FY27" to "FY28"). */
+  static nextLabel(label: string): string {
+    const n = Number(label.slice(2));
+    return `FY${String((n + 1) % 100).padStart(2, "0")}`;
+  }
+
   static contains(range: Pick<FiscalYearRange, "start">, date: string, through: string): boolean {
     return date >= range.start && date <= through;
   }
