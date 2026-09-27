@@ -58,6 +58,23 @@ describe("summary grid and header totals: the same columns in the same order", (
   const bandLabels = (l: ReturnType<typeof YearEndLayout.layout>) => l.band.details.map((x) => [x.label.toUpperCase(), x.value]);
   const grid = (d: YearEndData) => d.summary.map((r) => [r.label, ...d.columns.map((k) => r[k])]);
   /** Header totals after Period must be the grid's heads and Total row, in the same order. */
+  const kindOf = { carriedIn: "carriedIn", completed: "completed", openAtEnd: "carried" } as const;
+  // Sections are the selected categories in column order; each section's rows per department equal its grid column
+  // (a project in two categories is listed in both); rows match the all-three report's section of the same kind.
+  const sectionsMatchGrid = (d: YearEndData, c: YearEndCategory[], all: YearEndData) => {
+    expect(d.sections.map((s) => s.kind)).toEqual(c.map((x) => kindOf[x]));
+    expect(d.columns).toEqual(c);
+    for (const [i, x] of c.entries()) {
+      const s = d.sections[i];
+      expect(s).toEqual(all.sections.find((a) => a.kind === s.kind));
+      for (const r of d.summary) {
+        const n = r.area === "total" ? s.groups.reduce((t, g) => t + g.rows.length, 0) : (s.groups.find((g) => g.label === r.label)?.rows.length ?? 0);
+        expect(r[x], `${d.title} ${c.join("+")} ${x} ${r.label}`).toBe(n);
+      }
+      // Every listed department has a grid row.
+      for (const g of s.groups) expect(d.summary.map((r) => r.label)).toContain(g.label);
+    }
+  };
   const aligned = (d: YearEndData) => {
     const l = YearEndLayout.layout(d, AT, "Nick Leary");
     const total = d.summary.at(-1)!;
@@ -83,13 +100,23 @@ describe("summary grid and header totals: the same columns in the same order", (
     expect(bandLabels(layout)[0]).toEqual(["PERIOD", d.periodText]);
     expect([d.carriedInNote, d.openAtEndNote]).toEqual([null, null]);
     expect(layout.summaryNotes).toEqual([BOTH("FY26")]);
-    expect(d.sections.map((s) => s.heading)).toEqual(["Completed in FY26", "Carried into FY27"]);
-    expect(d.sections[1].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status, r.statusUnknown ?? false]))).toEqual([
+    expect(d.sections.map((s) => s.heading)).toEqual(["Carried in from FY25", "Completed in FY26", "Carried into FY27"]);
+    expect(d.sections[2].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status, r.statusUnknown ?? false]))).toEqual([
       ["Open all along", "OnTrack", false],
       ["Done in FY27", "OnTrack", false],
       ["Started in FY26", "AtRisk", false],
     ]);
-    expect(JSON.stringify(layout)).not.toMatch(/cancel|FY28/i);
+    expect(JSON.stringify(layout)).not.toMatch(/FY28/i);
+    // No Cancelled section or column. Carried in lists the projects open on Jun 30, 2025 with their status on Jun 30,
+    // 2026, so the one later cancelled shows that status there (it's in the Carried in count).
+    expect(JSON.stringify([layout.summaryHeads, layout.summaryNotes, d.sections.slice(1)])).not.toMatch(/cancel/i);
+    expect(d.sections[0].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status, r.statusUnknown ?? false]))).toEqual([
+      ["Done in FY26", "Complete", false],
+      ["Open all along", "OnTrack", false],
+      ["Cancelled in FY26", "Cancelled", false],
+      ["Done in FY27", "OnTrack", false],
+      ["Reopened", "Complete", false],
+    ]);
     // A closed year is a snapshot: the same figures whenever it's run.
     expect(build(list, history, "FY26", "2027-03-01").totals).toMatchObject({ carriedIn: 5, openAtEnd: 3, completed: 1 });
   });
@@ -108,12 +135,22 @@ describe("summary grid and header totals: the same columns in the same order", (
       ["IR", 1, 0, 2],
       ["Total", 3, 1, 4],
     ]);
-    expect(d.sections.map((s) => s.heading)).toEqual(["Completed in FY27", "Still in progress"]);
+    expect(d.sections.map((s) => s.heading)).toEqual(["Carried in from FY26", "Completed in FY27", "Still in progress"]);
+    // Carried in from FY26 (open at the end of Jun 30, 2026) shows each project's status today: Done in FY27 is
+    // Complete (and also listed under Completed); Reopened is back to OnTrack.
+    expect(d.sections[0].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status]))).toEqual([
+      ["Open all along", "OnHold"],
+      ["Done in FY27", "Complete"],
+      ["Started in FY26", "AtRisk"],
+    ]);
+    // Overlap: Done in FY27 is in both Carried in and Completed; only the Completed row is shaded.
+    const shaded = layout.pages.flatMap((pg) => pg.blocks).filter((b): b is Extract<YearEndBlock, { kind: "row" }> => b.kind === "row" && b.row.name[0] === "Done in FY27").map((b) => b.row.shaded);
+    expect(shaded).toEqual([false, true]);
     expect(layout.summaryNotes).toEqual([BOTH("FY27")]);
     expect(JSON.stringify(layout)).not.toMatch(/cancel|FY28/i);
-    expect(build([p({ name: "Done", status: "Complete", completedOn: "2026-08-01" })], [], "FY27").sections[1].emptyText).toBe("No projects are still in progress.");
-    expect(build([], [], "FY27").sections[0].emptyText).toBe("No projects completed in FY27 so far.");
-    expect(build([], [], "FY25").sections[1].emptyText).toBe("No projects carried into FY26.");
+    expect(build([p({ name: "Done", status: "Complete", completedOn: "2026-08-01" })], [], "FY27").sections[2].emptyText).toBe("No projects are still in progress.");
+    expect(build([], [], "FY27").sections[1].emptyText).toBe("No projects completed in FY27 so far.");
+    expect(build([p({ name: "Old", status: "OnTrack", createdAt: new Date("2024-01-01T12:00:00Z") })], [], "FY25").sections[2].emptyText).toBe("No projects carried into FY26.");
   });
 
   it("FY N 'Carried into FY N+1' equals FY N+1 'Carried in from FY N', in total and per department (one shared computation)", () => {
@@ -155,8 +192,8 @@ describe("summary grid and header totals: the same columns in the same order", (
     const d = build(list, [], "FY27");
     const order = ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"];
     expect(d.summary.map((r) => r.label)).toEqual([...order, "Unassigned", "Total"]);
-    expect(d.sections[0].groups.map((g) => g.label)).toEqual(order);
-    expect(d.sections[1].groups.map((g) => g.label)).toEqual([...order, "Unassigned"]);
+    expect(d.sections[1].groups.map((g) => g.label)).toEqual(order);
+    expect(d.sections[2].groups.map((g) => g.label)).toEqual([...order, "Unassigned"]);
     const few = build([p({ name: "IR only", serviceArea: D.IR, status: "OnTrack" }), p({ name: "Cath only", serviceArea: D.Cath, status: "Complete", completedOn: "2026-08-01" })], [], "FY27");
     expect(few.summary.map((r) => r.label)).toEqual(["Cath", "IR", "Total"]);
   });
@@ -173,7 +210,9 @@ describe("summary grid and header totals: the same columns in the same order", (
     const fy26 = build(list, [], "FY26");
     expect(fy26.summary.at(-1)).toMatchObject({ carriedIn: null, completed: 0, openAtEnd: null });
     expect(fy26.openAtEndNote).toBe("Tracking started Sep 26, 2026, so Carried into FY27 isn't available.");
-    expect(fy26.sections[1].emptyText).toBe("Tracking started Sep 26, 2026, so this list isn't available.");
+    expect(fy26.sections[2].emptyText).toBe("Tracking started Sep 26, 2026, so this list isn't available.");
+    // The Carried in section follows its dashed total: no rows, the same tracking text (both years).
+    for (const d of [fy26, fy27]) expect([d.sections[0].kind, d.sections[0].count, d.sections[0].groups, d.sections[0].emptyText]).toEqual(["carriedIn", 0, [], "Tracking started Sep 26, 2026, so this list isn't available."]);
     const layout = aligned(fy26);
     // Both carried columns dashed: one merged tracking line; no Carried in sentence (no real number).
     expect(layout.summaryNotes).toEqual([MERGED, OTHER("FY26")]);
@@ -201,7 +240,7 @@ describe("summary grid and header totals: the same columns in the same order", (
     const l26 = aligned(fy26);
     expect(bandLabels(l26).slice(1)).toEqual([["CARRIED IN FROM FY25", YearEndCopy.EMPTY_VALUE], ["COMPLETED FY26", "1"], ["CARRIED INTO FY27", YearEndCopy.EMPTY_VALUE]]);
     expect(l26.summaryNotes).toEqual([MERGED, OTHER("FY26")]);
-    expect(fy26.sections[1].emptyText).toBe("Tracking started Sep 26, 2026, so this list isn't available.");
+    expect(fy26.sections[2].emptyText).toBe("Tracking started Sep 26, 2026, so this list isn't available.");
     const fy27 = build(list, history, "FY27");
     expect(fy27.summary.at(-1)).toMatchObject({ carriedIn: null, completed: 1, openAtEnd: 2 });
     const l27 = aligned(fy27);
@@ -212,7 +251,7 @@ describe("summary grid and header totals: the same columns in the same order", (
     expect(src.match(/YearEndReportData\.trackedSince\(/g)).toHaveLength(1);
   });
 
-  it("current-year categories: every one of the 7 combinations shows exactly the selected totals, in order, in the header and the grid", () => {
+  it("current-year categories: every one of the 7 combinations shows exactly the selected sections and totals, in order; each section's rows per department equal its grid column", () => {
     const { list, history } = world();
     const all = build(list, history, "FY27");
     const label = { carriedIn: "Carried in from FY26", completed: "Completed FY27", openAtEnd: "Still in progress" } as const;
@@ -229,8 +268,9 @@ describe("summary grid and header totals: the same columns in the same order", (
       // Rows: departments with a project in a shown column.
       expect(d.summary.map((r) => [r.label, ...c.map((x) => r[key[x]])])).toEqual(all.summary.filter((r) => r.area === "total" || c.some((x) => (r[key[x]] ?? 0) > 0)).map((r) => [r.label, ...c.map((x) => r[key[x]])]));
       expect(l.summary.at(-1)).toMatchObject({ label: "Total" });
-      // Sections don't change. The grid note has only the sentences for the shown columns.
-      expect(d.sections).toEqual(all.sections);
+      // One section per selected category, in column order; each lists the same rows as in the all-three report,
+      // and its row count per department equals its grid column. The grid note has only the shown columns' sentences.
+      sectionsMatchGrid(d, c, all);
       const expected = [c.includes("carriedIn") ? IN : null, c.some((x) => x !== "carriedIn") ? (c.includes("carriedIn") ? OTHER("FY27") : THESE("FY27")) : null].filter(Boolean).join(" ");
       expect(l.summaryNotes).toEqual([expected]);
       notes.set(c.join("+"), expected);
@@ -256,7 +296,7 @@ describe("summary grid and header totals: the same columns in the same order", (
     expect(YearEndLayout.layout(build(imported, [], "FY27", undefined, ["carriedIn", "completed"]), AT, "N").summaryNotes).toEqual(["Tracking started Sep 26, 2026, so Carried in from FY26 isn't available.", OTHER("FY27")]);
   });
 
-  it("closed-year categories (FY26): every one of the 7 combinations shows exactly the selected totals, in order, in the header and the grid; sections unchanged; no Cancelled", () => {
+  it("closed-year categories (FY26): every one of the 7 combinations shows exactly the selected sections and totals, in order; each section's rows per department equal its grid column; no Cancelled", () => {
     const { list, history } = world();
     const all = build(list, history, "FY26");
     const label = { carriedIn: "Carried in from FY25", completed: "Completed FY26", openAtEnd: "Carried into FY27" } as const;
@@ -271,9 +311,12 @@ describe("summary grid and header totals: the same columns in the same order", (
       // Same per-department numbers as the all-three report; rows are departments with a project in a shown column;
       // Total sums each shown column (no cross-column sum).
       expect(d.summary.map((r) => [r.label, ...c.map((x) => r[x])])).toEqual(all.summary.filter((r) => r.area === "total" || c.some((x) => (r[x] ?? 0) > 0)).map((r) => [r.label, ...c.map((x) => r[x])]));
-      expect(d.sections).toEqual(all.sections);
-      expect(d.sections.map((s) => s.heading)).toEqual(["Completed in FY26", "Carried into FY27"]);
-      expect(JSON.stringify(l)).not.toMatch(/cancel/i);
+      sectionsMatchGrid(d, c, all);
+      expect(d.sections.map((s) => s.heading)).toEqual(c.map((x) => ({ carriedIn: "Carried in from FY25", completed: "Completed in FY26", openAtEnd: "Carried into FY27" })[x]));
+      // No Cancelled section, column or total. (A Carried in row can show a Cancelled status: the Carried in count
+      // includes projects later closed without being completed, and its section lists the same projects.)
+      expect(JSON.stringify([l.summaryHeads, l.summaryNotes, l.band, d.sections.map((s) => s.heading)])).not.toMatch(/cancel/i);
+      for (const sec of d.sections.filter((x) => x.kind !== "carriedIn")) expect(JSON.stringify(sec)).not.toMatch(/cancel/i);
       notes.set(c.join("+"), l.summaryNotes.join(" | "));
     }
     expect(Object.fromEntries(notes)).toEqual({
@@ -309,7 +352,7 @@ describe("summary grid and header totals: the same columns in the same order", (
     expect(YearEndCategories.parse(null)).toEqual(["carriedIn", "completed", "openAtEnd"]);
     expect(YearEndCategories.parse(["openAtEnd", "carriedIn"])).toEqual(["carriedIn", "openAtEnd"]);
     for (const bad of [[], ["cancelled"], ["completed", "completed"], "completed", 3, [1], ["carriedIn", "completed", "openAtEnd", "carriedIn"]]) expect(YearEndCategories.parse(bad)).toBeNull();
-    expect([YearEndCopy.CATEGORIES_LABEL, ...YearEndCategories.ALL.map((c) => YearEndCopy.categoryLabel(c, "FY27", true)), YearEndCopy.CATEGORIES_NONE]).toEqual(["Show in totals", "Carried in from FY26", "Completed FY27", "Still in progress", "Pick at least one."]);
+    expect([YearEndCopy.CATEGORIES_LABEL, ...YearEndCategories.ALL.map((c) => YearEndCopy.categoryLabel(c, "FY27", true)), YearEndCopy.CATEGORIES_NONE]).toEqual(["Include in report", "Carried in from FY26", "Completed FY27", "Still in progress", "Pick at least one."]);
     expect(YearEndCategories.ALL.map((c) => YearEndCopy.categoryLabel(c, "FY26", false))).toEqual(["Carried in from FY25", "Completed FY26", "Carried into FY27"]);
     for (const bad of [["inProgress"], ["carriedOut"], ["cancelled", "completed"]]) expect(YearEndCategories.parse(bad)).toBeNull();
   });
@@ -319,7 +362,7 @@ describe("summary grid and header totals: the same columns in the same order", (
     const hidden = p({ name: "Hidden", serviceArea: D.Cath, status: "Complete", completedOn: "2026-08-20", hiddenFromReport: true });
     const d = build([...list, hidden], history, "FY27");
     expect(Object.keys(d.summary[0]).sort()).toEqual(["area", "carriedIn", "completed", "label", "muted", "openAtEnd"]);
-    expect(d.sections[0].groups.flatMap((g) => g.rows.map((r) => r.name))).toEqual(["Done in FY27"]);
+    expect(d.sections[1].groups.flatMap((g) => g.rows.map((r) => r.name))).toEqual(["Done in FY27"]);
     for (const fy of ["FY26", "FY27"]) {
       const l = YearEndLayout.layout(build(list, history, fy), AT, "Nick Leary");
       expect(l.summaryHeads).toHaveLength(3);
@@ -396,7 +439,7 @@ describe("table: wider Final update that wraps in full, and completed rows tinte
   it("completed rows are shaded with the weekly CompletedBlockStyle; carried rows are not; cancelled projects aren't listed; long rows move whole to the next page", async () => {
     const many = Array.from({ length: 40 }, (_, i) => p({ name: `Done ${String(i).padStart(2, "0")}`, serviceArea: "Cath", status: "Complete", completedOn: "2026-08-12", accomplishment: LONG }));
     const stopped = p({ name: "Stopped", status: "Cancelled", note: LONG });
-    const d = build([...many, stopped, p({ name: "Still open", status: "OnTrack", note: LONG })], [status(stopped.id, "2026-08-01T15:00:00Z", "OnHold", "Cancelled")], "FY27");
+    const d = build([...many, stopped, p({ name: "Still open", status: "OnTrack", note: LONG })], [status(stopped.id, "2026-08-01T15:00:00Z", "OnHold", "Cancelled")], "FY27", undefined, ["completed", "openAtEnd"]);
     const layout = YearEndLayout.layout(d, AT, "Nick Leary");
     const rows = layout.pages.flatMap((pg) => pg.blocks).filter((b): b is Extract<YearEndBlock, { kind: "row" }> => b.kind === "row");
     expect(rows.filter((r) => r.row.shaded)).toHaveLength(40);
@@ -416,10 +459,15 @@ describe("table: wider Final update that wraps in full, and completed rows tinte
     const later = p({ name: "Completed later by date", serviceArea: "Cath", status: "Complete", completedOn: "2026-09-10" });
     const tracked = p({ name: "Tracked", serviceArea: "Cath", status: "OnTrack", createdAt: new Date("2025-01-01T12:00:00Z") });
     const d = build([later, tracked], [], "FY26");
-    const row = d.sections[1].groups[0].rows.find((r) => r.name === "Completed later by date")!;
+    const row = d.sections[2].groups[0].rows.find((r) => r.name === "Completed later by date")!;
     expect(row.statusUnknown).toBe(true);
     const laid = YearEndLayout.row(new TextMeasure(), row);
     expect([laid.pill, laid.statusText]).toEqual([null, "Open"]);
     expect(d.totals).toMatchObject({ openAtEnd: 2 });
+    // Carried in from FY25 lists it too, with its status at the FY26 end: unknown, so the same gray "Open".
+    const inRow = d.sections[0].groups[0].rows.find((r) => r.name === "Completed later by date")!;
+    expect([inRow.status, inRow.statusUnknown]).toEqual(["Complete", true]);
+    expect(YearEndLayout.row(new TextMeasure(), inRow).statusText).toBe("Open");
+    expect(d.sections[0].count).toBe(d.totals.carriedIn);
   });
 });

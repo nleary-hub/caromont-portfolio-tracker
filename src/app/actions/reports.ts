@@ -60,7 +60,7 @@ export type YearEndActionResult = { ok: true; id: string; fileName: string } | {
 
 /**
  * Admin "Year-end report": render and store the PDF for the active line (never emailed or scheduled).
- * `categories`: the totals to show (any fiscal year); missing = all three; invalid or empty is refused.
+ * `categories`: the categories to include, each as a section, header total and grid column (any fiscal year); missing = all three; invalid or empty is refused.
  */
 export async function generateYearEndReport(fiscalYear: string, categories?: unknown): Promise<YearEndActionResult> {
   const viewer = await CurrentViewer.get();

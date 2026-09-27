@@ -219,10 +219,10 @@ export class YearEndLayout {
     return n === null ? YearEndCopy.EMPTY_VALUE : String(n);
   }
 
-  /** Column labels of a section's table: "Completed" and "Final update", or "Status" and "Latest update" for carried projects. */
+  /** Column labels of a section's table: "Completed" and "Final update", or "Status" and "Latest update" for Carried in / Carried into. */
   static columnLabels(section: YearEndSectionKind): string[] {
     const date = section === "completed" ? YearEndCopy.COMPLETED : YearEndCopy.STATUS;
-    const update = section === "carried" ? YearEndCopy.LATEST_UPDATE : YearEndCopy.FINAL_UPDATE;
+    const update = section === "completed" ? YearEndCopy.FINAL_UPDATE : YearEndCopy.LATEST_UPDATE;
     return [YearEndCopy.PROJECT, YearEndCopy.OWNER, YearEndCopy.REQUESTER, date, update];
   }
 }

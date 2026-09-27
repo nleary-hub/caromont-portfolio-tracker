@@ -85,9 +85,11 @@ describe("CHECK: one fiscal year per closed project, dashboard and PDF agree", (
       const pdfIds = (kind: string) => pdf.sections.find((s) => s.kind === kind)!.groups.flatMap((g) => g.rows.map((r) => [r.projectId, r.date]));
       const dash = (s: "Complete" | "Cancelled") => FiscalYearSections.section(rows, fy, s).map((r) => [r.id, r.closedOn]);
       expect(pdfIds("completed").sort()).toEqual(dash("Complete").sort());
-      expect(pdf.sections.map((s) => s.kind)).toEqual(["completed", "carried"]);
+      expect(pdf.sections.map((s) => s.kind)).toEqual(["carriedIn", "completed", "carried"]);
       const cancelledIds = dash("Cancelled").map(([id]) => id);
-      for (const s of pdf.sections) for (const g of s.groups) for (const r of g.rows) expect(cancelledIds).not.toContain(r.projectId);
+      // Cancelled projects are never listed as Completed, Still in progress or Carried into. (Carried in lists every
+      // project open at the start, including ones later cancelled, with that status; there's no Cancelled section.)
+      for (const s of pdf.sections.filter((x) => x.kind !== "carriedIn")) for (const g of s.groups) for (const r of g.rows) expect(cancelledIds).not.toContain(r.projectId);
     }
     // Both read the one shared method.
     expect(R.src("lib/dashboard/FiscalYearRows.ts")).toContain("ClosedProjects.closedIn(");

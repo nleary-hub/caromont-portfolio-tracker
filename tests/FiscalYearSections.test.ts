@@ -155,11 +155,11 @@ describe("Year-end report data", () => {
     expect(d.toDate).toBe(true);
     expect(d.title).toBe("FY27 Mid-Year Report");
     expect(d.periodText).toBe("Jul 1, 2026 \u2013 Sep 27, 2026 (to date)");
-    // No Cancelled section: the report is Completed, then Still in progress.
-    expect(d.sections.map((s) => [s.kind, s.heading, s.count])).toEqual([["completed", "Completed in FY27", 1], ["carried", "Still in progress", 1]]);
-    expect(d.sections[0].groups[0].rows[0]).toMatchObject({ name: "Done 27", date: "2026-08-01", finalUpdate: "Live." });
-    expect(d.sections[1].groups[0]).toMatchObject({ label: "IR" });
-    expect(d.sections[1].groups[0].rows[0]).toMatchObject({ name: "Open", status: "AtRisk", date: null, finalUpdate: "Waiting on vendor." });
+    // No Cancelled section: the report is Carried in, Completed, then Still in progress.
+    expect(d.sections.map((s) => [s.kind, s.heading, s.count])).toEqual([["carriedIn", "Carried in from FY26", 2], ["completed", "Completed in FY27", 1], ["carried", "Still in progress", 1]]);
+    expect(d.sections[1].groups[0].rows[0]).toMatchObject({ name: "Done 27", date: "2026-08-01", finalUpdate: "Live." });
+    expect(d.sections[2].groups[0]).toMatchObject({ label: "IR" });
+    expect(d.sections[2].groups[0].rows[0]).toMatchObject({ name: "Open", status: "AtRisk", date: null, finalUpdate: "Waiting on vendor." });
     // Grid: carried in from FY26 = open at the end of Jun 30, 2026 (Done 27 and Open); still in progress = open
     // today (Open); Completed FY27 1.
     expect(d.summary.at(-1)).toEqual({ area: "total", label: "Total", muted: false, carriedIn: 2, openAtEnd: 1, completed: 1 });
@@ -172,12 +172,12 @@ describe("Year-end report data", () => {
     const d = Fy.data(list, history, "FY26");
     expect(d.toDate).toBe(false);
     expect(d.periodText).toBe("Jul 1, 2025 \u2013 Jun 30, 2026");
-    const names = (i: number) => d.sections[i].groups.flatMap((g) => g.rows.map((r) => r.name));
+    const names = (i: number) => d.sections[i + 1].groups.flatMap((g) => g.rows.map((r) => r.name));
     expect(names(0)).toEqual(["Done 26"]);
     // Stop 26 (cancelled in FY26) isn't listed or counted anywhere: not a section, not carried.
     expect(JSON.stringify(d)).not.toContain("Stop 26");
     // Done 27 was OnTrack at the FY26 end (completed in FY27); Open was OffTrack then.
-    expect(d.sections[1].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status]))).toEqual([["Done 27", "OnTrack"], ["Open", "OffTrack"]]);
+    expect(d.sections[2].groups.flatMap((g) => g.rows.map((r) => [r.name, r.status]))).toEqual([["Done 27", "OnTrack"], ["Open", "OffTrack"]]);
     // Groups follow the line's department order, Unassigned last and muted; empty departments are left out.
     // The grid has no Cancelled column, so a department with only a cancelled project (Unassigned here) isn't listed.
     expect(d.summary.map((s) => s.label)).toEqual(["Cath", "Echo", "IR", "Total"]);
@@ -186,7 +186,8 @@ describe("Year-end report data", () => {
 
   it("empty past year copy, and the dialog years", () => {
     const d = Fy.data([], [], "FY25");
-    expect(d.sections.map((s) => s.emptyText)).toEqual(["No projects were completed in FY25.", "No projects carried into FY26."]);
+    // No data at all: tracking starts today, so neither carried list is available (their totals are dashes too).
+    expect(d.sections.map((s) => s.emptyText)).toEqual(["Tracking started Sep 27, 2026, so this list isn't available.", "No projects were completed in FY25.", "Tracking started Sep 27, 2026, so this list isn't available."]);
     const { list, history } = projects();
     expect(YearEndReportData.years(list, history, TODAY)).toEqual(["FY27", "FY26", "FY25"]);
   });

@@ -27,7 +27,7 @@ export function YearEndReportButton({ years, current, initialOpen = false }: { y
 function YearEndDialog({ years, current, onClose }: { years: readonly string[]; current: string; onClose: () => void }) {
   const router = useRouter();
   const [fy, setFy] = useState(current);
-  // Which totals the header and grid show, any fiscal year (not saved; all three each time the dialog opens).
+  // Which categories the report includes (section, header total, grid column), any fiscal year (not saved; all three each time the dialog opens).
   const [categories, setCategories] = useState<YearEndCategory[]>([...YearEndCategories.ALL]);
   const isCurrent = fy === current;
   const none = categories.length === 0;
