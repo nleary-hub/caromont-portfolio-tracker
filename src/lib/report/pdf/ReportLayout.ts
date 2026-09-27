@@ -1160,7 +1160,7 @@ export class ReportLayout {
       departments: departmentsDetail,
       totalsGrid,
       band,
-      keyLine: usesBand ? ReportLayout.keyLine(m, statuses, legend) : null,
+      keyLine: usesBand && input.showKeyPage !== false ? ReportLayout.keyLine(m, statuses, legend) : null,
       grid: { columns, rows: [...areaRows, totalRow], width: gridWidth },
       legend,
       metaWidth,
@@ -1469,14 +1469,14 @@ export class ReportLayout {
     return build(0, true);
   }
 
-  /** Last page summary block height (gap only when it does not start the page). */
+  /** Last page summary block height; the key is included only when the key-page option is on. */
   static summaryBlock(header: HeaderModel, atTop: boolean): { height: number; summary: SummaryBlockLayout } {
     const g = ReportGeometry;
     const s = g.SUMMARY;
     const gapAbove = atTop ? 0 : s.gapAbove;
     const gridTop = gapAbove + s.overlineLH + s.overlineGap;
-    const keyTop = gridTop + ReportLayout.gridHeight(header.grid.rows.length) + s.gapBeforeKey;
-    return { height: keyTop + (header.keyLine?.height ?? g.KEYLINE.h), summary: { gapAbove, gridTop, keyTop } };
+    const keyTop = gridTop + ReportLayout.gridHeight(header.grid.rows.length) + (header.keyLine ? s.gapBeforeKey : 0);
+    return { height: keyTop + (header.keyLine?.height ?? 0), summary: { gapAbove, gridTop, keyTop } };
   }
 
   static bodyHeight(headerHeight: number): number {

@@ -5,6 +5,7 @@ import type { ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
+import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
 import { ReportColors } from "@/lib/report/pdf/ReportDocument";
 import { ReportGeometry as G, ReportLayout, type DocumentLayout, type PageLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
@@ -86,6 +87,11 @@ describe("totals grid placement", () => {
     expect(l.header.band).toBeNull();
     expect(l.header.keyLine).toBeNull();
     expect(l.pages.every((p) => p.blocks.every((b) => b.kind !== "summary"))).toBe(true);
+  });
+
+  it("uses the approved labels and keeps the default output unchanged", () => {
+    expect(TotalsGridPlacement.LABELS).toEqual({ top: "Page one", hidden: "Hide", lastPage: "Last page, with the key" });
+    expect(JSON.stringify(Doc.layout())).toBe(JSON.stringify(Doc.layout({ totalsGrid: "top" })));
   });
 
   it("Hidden and Last page use the one-band header, so projects start higher than in Top", () => {
@@ -228,6 +234,18 @@ describe("totals grid placement", () => {
     const b = Doc.summaryPages(last)[0].blocks.find((x) => x.kind === "summary")!;
     if (b.kind !== "summary") throw new Error("expected summary");
     expect(b.summary.keyTop - b.summary.gridTop).toBeCloseTo(ReportLayout.gridHeight(last.header.grid.rows.length) + G.SUMMARY.gapBeforeKey, 5);
+  });
+
+  it("Last page without the key option renders a final page with only the summary grid", () => {
+    const last = Doc.layout({ totalsGrid: "lastPage", showKeyPage: false });
+    expect(last.header.keyLine).toBeNull();
+    const p = Doc.summaryPages(last)[0];
+    const b = p.blocks.find((x) => x.kind === "summary");
+    expect(b).toBeDefined();
+    if (b?.kind === "summary") {
+      expect(b.summary.keyTop - b.summary.gridTop).toBe(ReportLayout.gridHeight(last.header.grid.rows.length));
+      expect(b.height).toBe(ReportLayout.summaryBlock(last.header, b.y === 0).height);
+    }
   });
 });
 
