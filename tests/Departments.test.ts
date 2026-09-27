@@ -321,7 +321,8 @@ describe("People (contracts leads) and Report settings", () => {
     fake.state.projects.find((x) => x.id === p.id)!.contractsLead = "Jeff Krause";
     const scope = await Fx.scope(db);
     const rows = await PeopleService.contractsLeads(scope, ADMIN, db);
-    expect(rows.map((r) => r.name)).toEqual(["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"]);
+    // Shown A to Z (PR #25 review); the stored order is unchanged and new names still go at the end.
+    expect(rows.map((r) => r.name)).toEqual(["Amber Hatley", "Dave Dermady", "Jeff Krause", "Mellisa Gonzales", "Shea Waldron"]);
     expect(rows.find((r) => r.name === "Jeff Krause")!.projects).toBe(1);
     expect(await PeopleService.addContractsLead(scope, "  Pat   Lee ", ADMIN, db)).toBe("Pat Lee");
     const s2 = await Fx.scope(db);

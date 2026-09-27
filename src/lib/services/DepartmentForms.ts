@@ -4,6 +4,8 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
 import { DepartmentCopy, DepartmentValidationError, type DepartmentField } from "@/lib/domain/DepartmentRules";
 import { ContractsLeadRules, ContractsLeadValidationError } from "@/lib/people/ContractsLeadRules";
+import type { PeopleRole } from "@/lib/people/PeopleDirectory";
+import { PeopleListRules, PeopleListValidationError } from "@/lib/people/PeopleListRules";
 import { DepartmentNotFoundError, DepartmentRestoreConflictError, DepartmentService } from "@/lib/services/DepartmentService";
 import { PeopleService } from "@/lib/services/PeopleService";
 
@@ -72,6 +74,29 @@ export class DepartmentForms {
     });
   }
 
+  static async addPerson(viewer: Viewer | null, role: unknown, name: unknown, db: PrismaClient = Db.client): Promise<AdminListResult> {
+    return DepartmentForms.run(viewer, db, async (v, scope) => ({ ok: true, message: PeopleListRules.addedToast(await PeopleService.addPerson(scope, DepartmentForms.role(role), name, v, db)) }));
+  }
+
+  static async renamePerson(viewer: Viewer | null, role: unknown, name: string, newName: unknown, db: PrismaClient = Db.client): Promise<AdminListResult> {
+    return DepartmentForms.run(viewer, db, async (v, scope) => {
+      const r = await PeopleService.renamePerson(scope, DepartmentForms.role(role), name, newName, v, db);
+      return { ok: true, message: PeopleListRules.renamedToast(r.name, r.projects) };
+    });
+  }
+
+  static async removePerson(viewer: Viewer | null, role: unknown, name: string, db: PrismaClient = Db.client): Promise<AdminListResult> {
+    return DepartmentForms.run(viewer, db, async (v, scope) => {
+      await PeopleService.removePerson(scope, DepartmentForms.role(role), name, v, db);
+      return { ok: true, message: PeopleListRules.removedToast(name) };
+    });
+  }
+
+  private static role(raw: unknown): PeopleRole {
+    if (raw === "owner" || raw === "requester") return raw;
+    throw new PeopleListValidationError(DepartmentForms.FAILED);
+  }
+
   private static async run(
     viewer: Viewer | null,
     db: PrismaClient,
@@ -83,6 +108,7 @@ export class DepartmentForms {
     } catch (e) {
       if (e instanceof DepartmentValidationError) return { ok: false, message: Object.values(e.errors)[0] ?? DepartmentForms.FAILED, errors: e.errors };
       if (e instanceof ContractsLeadValidationError) return { ok: false, message: e.error, errors: { name: e.error } };
+      if (e instanceof PeopleListValidationError) return { ok: false, message: e.error, errors: { name: e.error } };
       if (e instanceof DepartmentRestoreConflictError) return { ok: false, message: DepartmentCopy.RESTORE_CONFLICT };
       if (e instanceof DepartmentNotFoundError) return { ok: false, message: DepartmentForms.GONE };
       console.error("Department or people action failed", e);

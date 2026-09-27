@@ -1,3 +1,4 @@
+import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { Assignee } from "@/lib/domain/Assignee";
 import type { FontWeight } from "@/lib/report/pdf/ReportFonts";
@@ -11,7 +12,8 @@ export interface YearEndRowLayout {
   height: number;
   name: string[];
   owner: { text: string; muted: boolean };
-  requester: { text: string; muted: boolean } | null;
+  /** Requester, or the gray en dash when Not applicable (as blank update cells). */
+  requester: { text: string; muted: boolean };
   /** Completed / Cancelled date, or null (carried rows print the status chip). */
   date: string | null;
   pill: PillBox | null;
@@ -156,10 +158,14 @@ export class YearEndLayout {
     const pad = g.CELL_PAD_R;
     const size = g.SIZE.table;
     const wrap = (text: string, w: number, weight: FontWeight, max: number) => TextMeasure.wrap(m, text, w - pad, size, weight, max);
-    const name = wrap(r.name, C.project.w, 600, YearEndLayout.MAX_NAME_LINES);
+    // Empty text cells print the gray en dash (YearEndCopy.EMPTY_VALUE), like blank update cells.
+    const name = r.name.trim() ? wrap(r.name, C.project.w, 600, YearEndLayout.MAX_NAME_LINES) : [YearEndCopy.EMPTY_VALUE];
     const update = r.finalUpdate ? wrap(r.finalUpdate, C.update.w, 400, YearEndLayout.MAX_UPDATE_LINES) : [YearEndCopy.EMPTY_VALUE];
-    const owner = Assignee.isAssigned(r.owner) ? { text: TextMeasure.fitLine(m, r.owner.trim(), C.owner.w - pad, size, 400), muted: false } : { text: Assignee.TO_ASSIGN, muted: true };
-    const requester = r.requester ? { text: TextMeasure.fitLine(m, r.requester.text, C.requester.w - pad, size, 400), muted: r.requester.muted } : null;
+    // Legacy "To assign" / "TBD" text reads like a blank owner: gray "To assign".
+    const owner = Assignee.isAssigned(r.owner) && !PeopleDirectory.isToAssignText(r.owner) ? { text: TextMeasure.fitLine(m, r.owner.trim(), C.owner.w - pad, size, 400), muted: false } : { text: Assignee.TO_ASSIGN, muted: true };
+    const requester = r.requester?.text.trim()
+      ? { text: TextMeasure.fitLine(m, r.requester.text, C.requester.w - pad, size, 400), muted: r.requester.muted }
+      : { text: YearEndCopy.EMPTY_VALUE, muted: true };
     const lines = Math.max(1, name.length, update.length);
     return {
       height: g.ROW_PAD * 2 + lines * g.TABLE_LH + g.ROW_BORDER,

@@ -139,7 +139,7 @@ function Block({ b, top, l }: { b: YearEndBlock; top: number; l: YearEndDocument
             <Line key={`n${i}`} x={Col.project.x} y={ty + i * G.TABLE_LH} w={w(Col.project)} text={t} size={S.table} weight={600} lh={G.TABLE_LH} />
           ))}
           <Line x={Col.owner.x} y={ty} w={w(Col.owner)} text={r.owner.text} size={S.table} color={r.owner.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
-          {r.requester && <Line x={Col.requester.x} y={ty} w={w(Col.requester)} text={r.requester.text} size={S.table} color={r.requester.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />}
+          <Line x={Col.requester.x} y={ty} w={w(Col.requester)} text={r.requester.text} size={S.table} color={r.requester.muted ? C.MUTED : C.TEXT} lh={G.TABLE_LH} />
           {r.date && <Line x={Col.date.x} y={ty} w={w(Col.date)} text={r.date} size={S.table} lh={G.TABLE_LH} />}
           {r.pill && <Pill pill={r.pill} x={Col.date.x} y={ty - 0.25} />}
           {r.update.map((t, i) => (

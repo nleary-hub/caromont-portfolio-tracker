@@ -28,6 +28,11 @@ export class ContractsLead {
     return `"${value.trim()}" is not a contracts lead. Use one of: ${ContractsLead.options(list).join(", ")} (or leave blank)`;
   }
 
+  /** The drawer picker's options: the line's list A to Z (display only; the stored list order is unchanged). */
+  static pickerOptions(list: readonly string[] = ServiceLine.CVPSL_CONTRACTS_LEADS): string[] {
+    return [...ContractsLead.options(list)].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" }));
+  }
+
   private static key(value: string): string {
     return value.trim().replace(/\s+/g, " ").toLowerCase();
   }

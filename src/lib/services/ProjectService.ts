@@ -465,6 +465,27 @@ export class ProjectService {
     return ProjectService.update(id, patch, ProjectService.actorOf(admin), db, scope);
   }
 
+  /**
+   * Admin > People rename: every project of the line (not deleted) whose owner (or requester) is `from`, ignoring
+   * case and spacing, gets `to`, with a history entry each (so it reads like an edit in the drawer). Runs inside the
+   * caller's transaction; returns how many projects changed. Frozen reports are snapshots and keep the old name.
+   */
+  static async renamePerson(tx: Tx, scope: Pick<ServiceLineScope, "id">, field: "owner" | "physicianChampion", from: string, to: string, admin: Viewer): Promise<number> {
+    AdminPolicy.assertAdmin(admin);
+    const key = PeopleDirectory.normalizeName(from).toLowerCase();
+    if (!key) return 0;
+    const rows = await tx.project.findMany({ where: { archivedAt: null, [field]: { not: null }, ...ServiceLineAccess.where(scope) } });
+    const hits = rows.filter((r) => PeopleDirectory.normalizeName(r[field]).toLowerCase() === key && r[field] !== to);
+    const at = new Date();
+    for (const row of hits) {
+      const existing = ProjectRows.fromDb(row);
+      const data = { [field]: to };
+      await tx.project.update({ where: { id: row.id }, data: { ...data, updatedBy: admin.email } });
+      await ProjectService.writeHistory(tx, row.id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin), at);
+    }
+    return hits.length;
+  }
+
   static async setHidden(
     id: string,
     context: ViewContext,

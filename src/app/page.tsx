@@ -1,3 +1,4 @@
+import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
@@ -11,8 +12,6 @@ import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/Dashboard
 import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
 import type { DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
 import { Db } from "@/lib/db/Db";
-import { Assignee } from "@/lib/domain/Assignee";
-import { Requester } from "@/lib/domain/Requester";
 import { ProjectFormModel, type ProjectFormSource, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { DateOnly } from "@/lib/domain/DateOnly";
@@ -60,7 +59,7 @@ class DashboardData {
       completedFiscalYear: null,
       layout: LineLayout.defaults(),
       admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([], ServiceLineAccess.ownerSeed(scope, Assignee.OWNER_BASE_SUGGESTIONS)), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
+        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: PeopleDirectory.merge(scope.owners), requesterSuggestions: PeopleDirectory.merge(scope.requesters), menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
         : null,
       error,
     };
@@ -158,8 +157,9 @@ class DashboardData {
               viewSettings: settings,
               pickerCounts: DashboardViewModel.adminPickerCounts(projects),
               hiddenFromReportIds: visible.filter((p) => p.hiddenFromReport).map((p) => p.id),
-              ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner), ServiceLineAccess.ownerSeed(scope, Assignee.OWNER_BASE_SUGGESTIONS)),
-              requesterSuggestions: Requester.suggestions(projects.map((p) => p.physicianChampion)),
+              // The line's lists (Admin > People); blocked names are dropped even if stored.
+              ownerSuggestions: PeopleDirectory.merge(scope.owners),
+              requesterSuggestions: PeopleDirectory.merge(scope.requesters),
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
               // The form reads the stored legacy fields; the checklist comes separately.
               formValues: DashboardData.formValues(stored, listedIds),

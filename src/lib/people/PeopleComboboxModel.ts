@@ -38,8 +38,15 @@ export class PeopleComboboxModel {
   static readonly TO_ASSIGN = "To assign";
   static readonly NO_MATCH = "No match";
   static readonly EMPTY = "No names yet. Type to add one.";
+  /** Gray tag on a closed field whose name is not on the line's list (Admin > People), e.g. Mark Wingard. */
+  static readonly NOT_ON_LIST = "Not on list";
 
   /** Value from the stored project fields. */
+  /** Whether the current value is a name the list doesn't offer (ignoring case and spacing). Legacy "To assign" text is built in, not off-list. */
+  static offList(value: PeopleValue, options: readonly string[]): boolean {
+    return value.kind === "name" && value.name.trim() !== "" && !PeopleDirectory.isSentinel(value.name) && !PeopleDirectory.find(options, value.name);
+  }
+
   static valueOf(name: string | null | undefined, notApplicable = false): PeopleValue {
     const n = PeopleDirectory.normalizeName(name);
     if (n) return { kind: "name", name: n };

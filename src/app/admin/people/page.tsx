@@ -13,13 +13,15 @@ import { PeopleService } from "@/lib/services/PeopleService";
 export const metadata: Metadata = { title: ContractsLeadRules.PAGE_TITLE };
 export const dynamic = "force-dynamic";
 
-/** Admin > People of the active line (this release: Contracts leads). Non-admins get a 404. */
-export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string }> }) {
+/** Admin > People of the active line: Owners, Requesters and Contracts leads. Non-admins get a 404. */
+export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string; rename?: string; role?: string }> }) {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
-  const [leads, params] = await Promise.all([PeopleService.contractsLeads(scope, viewer), searchParams]);
+  const [leads, lists, params] = await Promise.all([PeopleService.contractsLeads(scope, viewer), PeopleService.lists(scope, viewer), searchParams]);
+  // Deep links (screenshots): ?add=1 (Contracts leads) or ?add=owner|requester; ?role=owner|requester with ?rename= or ?remove=.
+  const section = (v: string | undefined) => (v === "owner" || v === "requester" || v === "lead" ? v : undefined);
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-5 px-6 py-6">
@@ -32,7 +34,14 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
           </Link>
         </div>
       </div>
-      <PeopleAdmin key={scope.id} lineShort={scope.shortName} leads={leads} initial={{ add: params.add === "1", remove: params.remove ?? null }} />
+      <PeopleAdmin
+        key={scope.id}
+        lineShort={scope.shortName}
+        leads={leads}
+        owners={lists.owners}
+        requesters={lists.requesters}
+        initial={{ add: params.add === "1" ? true : section(params.add), role: section(params.role), remove: params.remove ?? null, rename: params.rename ?? null }}
+      />
     </main>
   );
 }

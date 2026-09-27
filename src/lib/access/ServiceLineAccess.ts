@@ -35,7 +35,7 @@ export class ServiceLineAccess {
    * listed ones otherwise.
    */
   static toScope(
-    row: Pick<ServiceLineRow, "id" | "name" | "shortName" | "isDefault" | "departments" | "contractsLeads"> & { departmentRows?: readonly DepartmentRow[] },
+    row: Pick<ServiceLineRow, "id" | "name" | "shortName" | "isDefault" | "departments" | "contractsLeads"> & Partial<Pick<ServiceLineRow, "owners" | "requesters">> & { departmentRows?: readonly DepartmentRow[] },
   ): ServiceLineScope {
     return {
       id: row.id,
@@ -46,6 +46,8 @@ export class ServiceLineAccess {
         ? row.departmentRows.map((d) => DepartmentRules.toInfo(d))
         : ServiceAreaInfo.LEGACY.filter((d) => row.isDefault || (row.departments ?? []).includes(d.id as never)).map((d) => ({ ...d })),
       contractsLeads: [...(row.contractsLeads ?? [])],
+      owners: [...(row.owners ?? [])],
+      requesters: [...(row.requesters ?? [])],
     };
   }
 
