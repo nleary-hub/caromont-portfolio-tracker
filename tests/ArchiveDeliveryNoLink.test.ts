@@ -89,7 +89,7 @@ describe("Report archive: signed-link delivery without link details", () => {
   });
 
   it("labels: missing details read as issued without details; a full link keeps its date and anchor", () => {
-    expect(ArchiveDeliveryText.label(ReportDeliveryService.parse({ status: "signed_link" }))).toBe("Signed link issued (link details missing)");
+    expect(ArchiveDeliveryText.label(ReportDeliveryService.parse({ status: "signed_link" }))).toBe("Signed link issued. Link details weren't saved.");
     expect(ArchiveDeliveryText.linkHref(ReportDeliveryService.parse({ status: "signed_link" }))).toBeNull();
     const full = ReportDeliveryService.parse({ status: "signed_link", signedLink: { pdfUrl: "/p", handoffUrl: "/h", expiresAt: "2026-10-06T21:30:00.000Z" } });
     expect(ArchiveDeliveryText.label(full)).toMatch(/^Signed link until Oct 6, 2026/);
@@ -113,7 +113,7 @@ describe("Report archive: signed-link delivery without link details", () => {
     );
     const html = await Fx.render();
     expect(html).toContain("Report archive");
-    expect(html).toContain("Signed link issued (link details missing)");
+    expect(html).toContain("Signed link issued. Link details weren&#x27;t saved.");
     expect(html).toContain("Uploaded to Google Drive");
     expect(html).toMatch(/Signed link until Sep 29, 2026/);
     expect(html.match(/>link<\/a>/g)).toHaveLength(1);

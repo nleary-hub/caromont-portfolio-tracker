@@ -5,7 +5,7 @@ import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 export class ArchiveDeliveryText {
   static readonly NONE = "Not delivered yet";
   static readonly DRIVE = "Uploaded to Google Drive";
-  static readonly SIGNED_LINK_NO_DETAILS = "Signed link issued (link details missing)";
+  static readonly SIGNED_LINK_NO_DETAILS = "Signed link issued. Link details weren't saved.";
   static readonly FAILED = "Delivery failed";
 
   static label(d: DeliveryRecord | null | undefined): string {
