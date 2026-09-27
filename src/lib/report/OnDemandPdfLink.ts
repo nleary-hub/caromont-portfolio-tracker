@@ -1,7 +1,7 @@
 /**
- * The dashboard's "Generate PDF now" link (/api/reports/preview). For a non-admin it carries the departments they
- * are viewing (their dashboard filter); the server keeps only ones they can see (DraftReportService). Admins' link
- * has no departments (their PDF follows the admin report setting, as before).
+ * The dashboard's "Generate PDF now" link (/api/reports/preview). It carries the departments the user is viewing
+ * (their dashboard filter); the server keeps only ones they can see (DraftReportService). An admin viewing every
+ * department gets the admin report setting, as before.
  */
 export class OnDemandPdfLink {
   static readonly PATH = "/api/reports/preview";

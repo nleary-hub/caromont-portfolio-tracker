@@ -3,9 +3,9 @@ import { ReportHttp } from "@/lib/report/ReportHttp";
 import { DraftReportService } from "@/lib/services/DraftReportService";
 import { OnDemandPdfLink } from "@/lib/report/OnDemandPdfLink";
 
-// "Generate PDF now": live-data draft, download only. Admins as before; any other viewer with access to the line
-// gets the departments they are viewing (?departments=, their dashboard filter), clamped to ones they can see.
-// No access to the line = 404.
+// "Generate PDF now": live-data draft, download only. Anyone with access to the line gets the departments they are
+// viewing (?departments=, their dashboard filter), clamped to ones they can see. An admin viewing every department
+// gets the admin report setting, as before. No access to the line = 404.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;

@@ -428,10 +428,10 @@ export function ProjectDashboard({
         <Link href="/reports" className="shrink-0 whitespace-nowrap type-table-strong text-muted hover:text-fg">
           Reports
         </Link>
-        {/* Everyone who can see the dashboard. Admins: as before. Everyone else: only the departments they are
-            viewing (the server keeps only ones they can see; DraftReportService). */}
+        {/* Everyone who can see the dashboard: only the departments they are viewing (the server keeps only ones
+            they can see; an admin viewing every department gets the admin report setting; DraftReportService). */}
         <a
-          href={admin ? OnDemandPdfLink.href() : OnDemandPdfLink.href(departments)}
+          href={OnDemandPdfLink.href(departments)}
           download
           title={OnDemandPdfLink.TOOLTIP}
           className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"

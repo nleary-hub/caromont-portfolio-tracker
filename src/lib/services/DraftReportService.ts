@@ -21,8 +21,9 @@ export interface DraftPdf {
  * no handoff.json, no audit.
  *
  * Who gets one:
- * - Admins: unchanged. Their active line, departments from the admin "Departments in report" setting; requested
- *   departments are ignored.
+ * - Admins: their active line and the departments they are viewing (their dashboard filter, sent as `departments`),
+ *   clamped to the line's departments. With every department selected, or nothing valid requested, the default
+ *   is unchanged: the admin "Departments in report" setting.
  * - Any other signed-in viewer with access to the line: the departments they are viewing (their dashboard filter,
  *   sent as `departments`), clamped on the server to the line's departments they can see: all of the line's for
  *   someone with every department, only theirs for someone limited to some (DepartmentAccess). Anything else
@@ -43,6 +44,7 @@ export class DraftReportService {
     if (viewer.isAdmin) {
       // The admin's active line (any line has on-demand PDFs; only the default line has scheduled ones).
       line = scope ?? (await ServiceLineAccess.activeFor(viewer, db));
+      departments = DraftReportService.adminDepartmentsFor(line, requested);
     } else {
       const active = scope ?? (await ServiceLineAccess.activeOrNull(viewer, db));
       if (!active) return null;
@@ -69,6 +71,13 @@ export class DraftReportService {
       draft: true,
     });
     return { bytes, fileName: line.isDefault ? PdfReportRenderer.draftFileName(data.reportDate) : PdfReportRenderer.lineDraftFileName(line.shortName, data.reportDate) };
+  }
+
+  /** An admin's narrowed selection, or undefined (every department or nothing valid: the admin report setting). */
+  static adminDepartmentsFor(line: ServiceLineScope, requested: readonly string[] | undefined): DepartmentKey[] | undefined {
+    const options = DepartmentFilter.optionsFor(line);
+    const picked = DraftReportService.departmentsFor(line, requested);
+    return DepartmentFilter.isAll(picked, options) ? undefined : picked;
   }
 
   /** A non-admin's departments for an on-demand PDF: the requested ones they can see, or all they can see. */

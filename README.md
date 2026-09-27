@@ -158,7 +158,8 @@ Notes:
   `/api/reports/preview`) is offered to everyone with the line and covers the departments their dashboard filter
   shows (`?departments=`, checked on the server against the departments they can see: all of the line's, or only
   theirs when limited; anything else is dropped). It is download only and never stored, delivered or frozen.
-  Admins' draft is unchanged (admin report setting). The year-end Generate stays admin-only.
+  Admins follow their filter too (clamped to the line); with every department selected they get the admin report
+  setting, as before. The year-end Generate stays admin-only.
   `/?project=<id>` opens a project's detail; a project outside their lines or departments, or one that
   doesn't exist, shows "You don't have access to this project" without its name. Deleting a department and
   moving its projects moves people's access with them (Audit log); a new department reaches only people with

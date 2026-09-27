@@ -51,6 +51,13 @@ const CVPSL = "00000000-0000-4000-8000-000000000001";
 const MISSING = "00000000-0000-4000-8000-00000000dead";
 const actor = { changedBy: "nick.leary@caromonthealth.org" };
 
+/** PDF bytes with the creation date and document id masked (they differ on every render). */
+class Pdf {
+  static masked(bytes: Buffer): string {
+    return bytes.toString("latin1").replace(/\(D:\d{14}Z\)/g, "(D:X)").replace(/\/ID \[<[0-9a-fA-F]+> <[0-9a-fA-F]+>\]/g, "/ID [X]");
+  }
+}
+
 /** A stored year-end report row (Reports > Year-end report). */
 class YearEnd {
   static add(serviceLineId: string): string {
@@ -411,12 +418,47 @@ describe("on-demand PDFs (Generate PDF now): the departments the user is viewing
     expect(r.bytes.equals(frozen)).toBe(false);
   });
 
-  it("admins keep today's behavior: the admin setting applies and params are ignored; no access to the line is 404", async () => {
+  it("admins follow their dashboard filter too: filtered to Cath+EP they get only those, even when the admin setting excludes EP", async () => {
+    const { ReportOptionsService } = await import("@/lib/services/ReportOptionsService");
+    const { ServiceLineAccess } = await import("@/lib/access/ServiceLineAccess");
+    const scope = await ServiceLineAccess.activeFor(ADMIN, h.db as never);
+    await ReportOptionsService.update({ departments: ["Cath", "Echo", "CVSS", "INU", "CardioNeuro", "IR"] }, ADMIN, h.db as never, scope);
     h.viewer = ADMIN;
-    const admin = await Draft.get("?departments=Echo");
-    expect(admin.status).toBe(200);
-    expect(Draft.names(admin.input)).toEqual(expect.arrayContaining(["Cath secret project", "EP secret project", "Echo visible project", "Unassigned secret project"]));
-    expect(admin.input!.lineDepartments).toHaveLength(7);
+    const some = await Draft.get("?departments=Cath,EP");
+    expect(some.status).toBe(200);
+    expect(some.input!.departments).toEqual(["Cath", "EP"]);
+    expect(Draft.names(some.input)).toEqual(["Cath secret project", "EP secret project"]);
+    // Other lines' ids and junk are dropped (clamped to the line's departments).
+    const junk = await Draft.get("?departments=EP,nope,00000000-0000-4000-8000-00000000dead");
+    expect(junk.input!.departments).toEqual(["EP"]);
+    expect(Draft.names(junk.input)).toEqual(["EP secret project"]);
+  });
+
+  it("an unfiltered admin (every department selected, nothing sent, or nothing valid) gets exactly today's output: the admin report setting", async () => {
+    const { ReportOptionsService } = await import("@/lib/services/ReportOptionsService");
+    const { ServiceLineAccess } = await import("@/lib/access/ServiceLineAccess");
+    const { DraftReportService } = await import("@/lib/services/DraftReportService");
+    const scope = await ServiceLineAccess.activeFor(ADMIN, h.db as never);
+    await ReportOptionsService.update({ departments: ["Cath", "Echo", "CVSS", "INU", "CardioNeuro", "IR"] }, ADMIN, h.db as never, scope);
+    const NOW = new Date("2026-09-27T15:00:00Z");
+    const render = async (requested?: string[]) => (await DraftReportService.render(ADMIN, h.db as never, NOW, undefined, requested))!.bytes;
+    // Today's output: no departments sent (what the admin link sent before this change).
+    const today = await render();
+    // Two renders of the same input differ only in the PDF creation date and document id (as in the freeze check).
+    expect(Pdf.masked(await render())).toBe(Pdf.masked(today));
+    const everything = await render(["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
+    const invalid = await render(["nope", "00000000-0000-4000-8000-00000000dead"]);
+    expect(Pdf.masked(everything)).toBe(Pdf.masked(today));
+    expect(Pdf.masked(invalid)).toBe(Pdf.masked(today));
+    // And it is the admin setting (EP excluded), not every department.
+    h.viewer = ADMIN;
+    const viaRoute = await Draft.get("?departments=Cath,EP,Echo,CVSS,INU,CardioNeuro,IR");
+    expect(viaRoute.input!.departments).toEqual(["Cath", "Echo", "CVSS", "INU", "CardioNeuro", "IR"]);
+    // (As today, a report department filter that leaves any department out also leaves out Unassigned.)
+    expect(Draft.names(viaRoute.input)).toEqual(["Echo visible project", "Echo finished project", "Cath secret project"]);
+  });
+
+  it("no access to the line is 404", async () => {
     h.viewer = { email: "ben.noaccess@caromonthealth.org", isAdmin: false, name: "Ben" };
     expect((await Draft.get()).status).toBe(404);
     expect((await Draft.get("?departments=Echo")).status).toBe(404);
@@ -473,7 +515,7 @@ describe("on-demand PDFs (Generate PDF now): the departments the user is viewing
     h.viewer = JANE;
     expect(await link()).toBe("/api/reports/preview?departments=Echo,IR");
     h.viewer = ADMIN;
-    expect(await link()).toBe("/api/reports/preview");
+    expect(await link()).toBe("/api/reports/preview?departments=Cath,EP,Echo,CVSS,INU,CardioNeuro,IR");
     h.viewer = JANE;
     fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
     expect(await link()).toBe("/api/reports/preview?departments=Cath,EP,Echo,CVSS,INU,CardioNeuro,IR");
