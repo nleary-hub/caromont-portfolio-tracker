@@ -277,7 +277,7 @@ export class UpdateTimeline {
       case "hiddenFromReport":
         return { text: after === "true" ? C.HIDDEN_REPORT : C.SHOWN_REPORT };
       case "includeInReport":
-        return { text: C.changed(C.IN_REPORT_LABEL, before === "false" ? "No" : "Yes", after === "false" ? "No" : "Yes") };
+        return before === after ? null : { text: C.inReportByCsv(after !== "false") };
     }
     if (field === "serviceArea" && row.comment && UpdateTimeline.DEPARTMENT_DELETED.test(row.comment) && before && after) {
       return { text: C.movedOnDelete(before, after) };

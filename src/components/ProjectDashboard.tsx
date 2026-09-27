@@ -829,7 +829,8 @@ function ProjectDrawer({
         {(row.changed || row.overdue) && <Flags changed={row.changed} overdue={row.overdue} />}
       </div>
       {peopleEditor}
-      <dl className="grid grid-cols-[130px_1fr] gap-y-2 border-y border-line py-3 type-table">
+      {/* With the people editor above (its own bottom divider), one divider only: no top border here. */}
+      <dl className={`grid grid-cols-[130px_1fr] gap-y-2 border-line type-table ${peopleEditor ? "border-b pb-3" : "border-y py-3"}`}>
         {!peopleEditor && (
           <>
             <dt className="text-muted">Department</dt>
@@ -856,7 +857,7 @@ function ProjectDrawer({
         </dd>
         <dt className="text-muted">Next milestone</dt>
         <dd>
-          {row.nextMilestone ?? ""}
+          {row.nextMilestone?.trim() ? row.nextMilestone : <span className="text-muted">–</span>}
           {MilestoneProgress.progressLabel(row.milestoneProgress) && (
             <span className="ml-1.5 whitespace-nowrap text-muted" data-testid="milestone-progress">
               {MilestoneProgress.progressLabel(row.milestoneProgress)}

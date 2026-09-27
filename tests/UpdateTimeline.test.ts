@@ -95,6 +95,10 @@ describe("UpdateTimeline (Project detail > History)", () => {
     expect(texts([row("milestones_reordered", '["A","B"]', '["B","A"]')])).toEqual(["Reordered steps."]);
     expect(texts([row("milestone_template_applied", null, "Device trial (Add to end, 3 steps)")])).toEqual(['Applied the "Device trial" template and added 3 steps to the end.']);
     expect(texts([row("milestone_template_applied", null, "Device trial (Add to end, 1 step)")])).toEqual(['Applied the "Device trial" template and added 1 step to the end.']);
+    expect(texts([row("milestone_template_applied", null, "Device trial (Replace, 5 steps)")])).toEqual(['Applied the "Device trial" template and replaced the existing steps with its 5 steps.']);
+    expect(texts([row("milestone_template_applied", null, "Device trial (Replace, 1 step)")])).toEqual(['Applied the "Device trial" template and replaced the existing steps with its 1 step.']);
+    expect(texts([row("nextMilestone", null, "Go-live")])).toEqual(['Next milestone set to "Go-live".']);
+    expect(texts([row("nextMilestone", "Go-live", null)])).toEqual(['Next milestone cleared (was "Go-live").']);
     // No step change in the save: Next milestone gets its own sentence, names in quotes.
     expect(texts([row("nextMilestone", "Vendor quote", "Contract signed")])).toEqual(['Next milestone changed from "Vendor quote" to "Contract signed".']);
   });
@@ -107,7 +111,8 @@ describe("UpdateTimeline (Project detail > History)", () => {
     expect(UpdateTimeline.lines([row("hiddenFromDashboard", "true", "false")])).toEqual([{ text: "Shown on the dashboard again.", admin: true }]);
     expect(UpdateTimeline.lines([row("hiddenFromReport", "false", "true")])).toEqual([{ text: "Left out of the report.", admin: true }]);
     expect(UpdateTimeline.lines([row("hiddenFromReport", "true", "false")])).toEqual([{ text: "Included in the report again.", admin: true }]);
-    expect(UpdateTimeline.lines([row("includeInReport", "true", "false")])).toEqual([{ text: "In report changed from Yes to No." }]);
+    expect(UpdateTimeline.lines([row("includeInReport", "true", "false")])).toEqual([{ text: "CSV import set In report to No." }]);
+    expect(UpdateTimeline.lines([row("includeInReport", "false", "true")])).toEqual([{ text: "CSV import set In report to Yes." }]);
   });
 
   it("long text: one line with Before and After", () => {
@@ -168,6 +173,8 @@ describe("UpdateTimeline (Project detail > History)", () => {
     expect(UpdateHistoryCopy.EMPTY).toBe("No changes yet. Edits to this project will show here.");
     expect(UpdateTimeline.INITIAL_ENTRIES).toBe(10);
     expect(UpdateHistoryCopy.showAll(14)).toBe("Show all 14 changes");
+    expect(UpdateHistoryCopy.LOADING).toBe("Loading history…");
+    expect(UpdateHistoryCopy.LOAD_FAILED).toBe("Couldn't load the history. Close and reopen the project to try again.");
     const all = [
       ...Object.values(UpdateHistoryCopy).filter((v) => typeof v === "string"),
       UpdateHistoryCopy.stepDue("A", "Oct 1, 2026", null),

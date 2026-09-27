@@ -1,8 +1,7 @@
 import { InforNumber } from "@/lib/domain/InforNumber";
 
 /**
- * Copy for Project detail > History (item 6). Writing Bot's final copy; entries marked "Provisional" cover events the
- * copy does not name yet (built in the same pattern) and need sign-off. No em dashes. Step names are quoted and values
+ * Copy for Project detail > History (item 6): Writing Bot's final copy. No em dashes. Step names are quoted and values
  * are shown as saved.
  */
 export class UpdateHistoryCopy {
@@ -10,9 +9,9 @@ export class UpdateHistoryCopy {
   static readonly BEFORE_THIS_TRACKER = "Before this tracker";
   static readonly EMPTY = "No changes yet. Edits to this project will show here.";
   static readonly SHOW_CHANGE = "Show change";
-  /** Provisional: while the timeline loads, and when it could not load. */
+  /** While the timeline loads, and when it could not load. */
   static readonly LOADING = "Loading history…";
-  static readonly LOAD_FAILED = "History could not load. Close and reopen the project to try again.";
+  static readonly LOAD_FAILED = "Couldn't load the history. Close and reopen the project to try again.";
   static readonly BEFORE = "Before";
   static readonly AFTER = "After";
   static readonly PROJECT_CREATED = "Project created.";
@@ -30,8 +29,10 @@ export class UpdateHistoryCopy {
   /** Requester states without a name (Requester.NOT_APPLICABLE and the gray "To assign"). */
   static readonly NOT_APPLICABLE = "Not applicable";
   static readonly TO_ASSIGN = "To assign";
-  /** Provisional: the project's own "In report" field (Project.includeInReport), shown in Project detail as Yes / No. */
-  static readonly IN_REPORT_LABEL = "In report";
+  /** The project's own "In report" field (Project.includeInReport, set only by CSV import). */
+  static inReportByCsv(included: boolean): string {
+    return `CSV import set In report to ${included ? "Yes" : "No"}.`;
+  }
 
   static title(count: number): string {
     return `History (${count})`;
@@ -91,14 +92,14 @@ export class UpdateHistoryCopy {
 
   /**
    * "Applied the "Device trial" template and added 3 steps to the end." Stored as "Device trial (Add to end, 3 steps)"
-   * (MilestoneRules). Replace mode is provisional.
+   * (MilestoneRules).
    */
   static templateApplied(detail: string): string {
     const m = /^(.*) \((Add to end|Replace), (\d+) steps?\)$/.exec(detail);
     if (!m) return `Applied the "${detail}" template.`;
     const n = Number(m[3]);
     const steps = `${n} ${n === 1 ? "step" : "steps"}`;
-    return m[2] === "Replace" ? `Applied the "${m[1]}" template and replaced the steps with its ${steps}.` : `Applied the "${m[1]}" template and added ${steps} to the end.`;
+    return m[2] === "Replace" ? `Applied the "${m[1]}" template and replaced the existing steps with its ${steps}.` : `Applied the "${m[1]}" template and added ${steps} to the end.`;
   }
 
   /** Older saves that changed only Next milestone (no step change in that save). */
