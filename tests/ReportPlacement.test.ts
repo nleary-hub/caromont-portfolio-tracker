@@ -5,6 +5,8 @@ import type { ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
+import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { ReportColors } from "@/lib/report/pdf/ReportDocument";
 import { ReportGeometry as G, ReportLayout, type DocumentLayout, type PageLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
@@ -88,6 +90,11 @@ describe("totals grid placement", () => {
     expect(l.pages.every((p) => p.blocks.every((b) => b.kind !== "summary"))).toBe(true);
   });
 
+  it("uses the approved labels and keeps the default output unchanged", () => {
+    expect(TotalsGridPlacement.LABELS).toEqual({ top: "Page one", lastPage: "Last page", hidden: "Leave out" });
+    expect(JSON.stringify(Doc.layout())).toBe(JSON.stringify(Doc.layout({ totalsGrid: "top" })));
+  });
+
   it("Hidden and Last page use the one-band header, so projects start higher than in Top", () => {
     const top = Doc.layout();
     for (const totalsGrid of ["hidden", "lastPage"] as const) {
@@ -105,8 +112,8 @@ describe("totals grid placement", () => {
       }
       // Value baselines sit on the title baseline.
       expect(band.valueY + ReportLayout.baseline(band.valueSize, G.BAND.valueLH)).toBeCloseTo(band.titleY + ReportLayout.baseline(G.SIZE.title, G.TITLE_H), 5);
-      // Rule, then 10 pt (Last page) or the key line (Hidden) before the column head.
-      const expected = totalsGrid === "hidden" ? band.height + G.BAND.ruleW + G.KEYLINE.gapAbove + G.KEYLINE.h + G.KEYLINE.gapAfter : band.height + G.BAND.ruleW + G.BAND.gapAfter;
+      // With the key on, both modes keep the band compact. Key-off strip placement is tested below.
+      const expected = band.height + G.BAND.ruleW + G.BAND.gapAfter;
       expect(l.pages[0].headerHeight).toBeCloseTo(expected, 5);
     }
   });
@@ -124,8 +131,36 @@ describe("totals grid placement", () => {
     expect(band.details.every((d) => !d.value.endsWith("\u2026") || d.label === "DEPARTMENTS")).toBe(true);
   });
 
+  it("all six placement and key combinations put the strip in the correct place", () => {
+    for (const totalsGrid of ["top", "lastPage", "hidden"] as const) {
+      for (const showKeyPage of [true, false]) {
+        const l = Doc.layout({ totalsGrid, showKeyPage });
+        const hasStrip = l.header.keyLine !== null;
+        expect(hasStrip).toBe(totalsGrid !== "top" && !showKeyPage);
+        if (totalsGrid === "top") {
+          expect(l.header.band).toBeNull();
+          expect(l.pages[0].blocks.some((b) => b.kind === "summary")).toBe(false);
+        } else if (totalsGrid === "hidden") {
+          expect(l.header.band).not.toBeNull();
+          expect(l.pages[0].blocks.some((b) => b.kind === "summary")).toBe(false);
+          expect(l.pages[0].headerHeight).toBeCloseTo(
+            l.header.band!.height + G.BAND.ruleW + (showKeyPage ? G.BAND.gapAfter : G.KEYLINE.gapAbove + l.header.keyLine!.height + G.KEYLINE.gapAfter),
+            5,
+          );
+        } else if (showKeyPage) {
+          const key = l.pages.find((p) => p.kind === "key")!;
+          expect(key.summaryOnKeyPage).toBeDefined();
+          expect(l.pages.some((p) => p.blocks.some((b) => b.kind === "summary"))).toBe(false);
+        } else {
+          const summaryPage = l.pages.find((p) => p.blocks.some((b) => b.kind === "summary"))!;
+          expect(summaryPage.blocks.some((b) => b.kind === "summary")).toBe(true);
+        }
+      }
+    }
+  });
+
   it("Hidden: the key line is one left-aligned line with the status shapes and flag chips, 10 pt apart", () => {
-    const l = Doc.layout({ totalsGrid: "hidden" });
+    const l = Doc.layout({ totalsGrid: "hidden", showKeyPage: false });
     const k = l.header.keyLine!;
     expect(k.items[0].x).toBe(0);
     expect(k.items.filter((i) => i.kind === "status").map((i) => i.kind === "status" && i.status)).toEqual(["NotStarted", "OnTrack", "AtRisk", "OffTrack", "OnHold"]);
@@ -139,7 +174,7 @@ describe("totals grid placement", () => {
 
   it("Hidden: too wide, the explanations are cut first; the status labels always stay; it wraps only once every explanation is cut", () => {
     const statuses = ["NotStarted", "OnTrack", "AtRisk", "OffTrack", "OnHold", "Complete", "Cancelled"] as const;
-    const legend = Doc.layout({ viewSettings: ALL, totalsGrid: "hidden" }).header.legend;
+    const legend = Doc.layout({ viewSettings: ALL, totalsGrid: "hidden", showKeyPage: false }).header.legend;
     const full = ReportLayout.keyLine(m, statuses, legend, 10_000);
     const noTexts = full.items.reduce((w, it) => w + (it.kind === "flag" ? it.flag.width : it.w), 0) + G.KEYLINE.itemGap * (full.items.length - 1);
     for (const maxW of [720, 600, 500, 420, 300, 200, 120]) {
@@ -167,14 +202,14 @@ describe("totals grid placement", () => {
     expect(real.rows).toBe(1);
     expect(real.width).toBeLessThanOrEqual(G.CONTENT_W);
     expect(real.items.filter((i) => i.kind === "status").every((i) => i.kind === "status" && i.label)).toBe(true);
-    const all = ReportLayout.layout(SampleReportData.docInput({ viewSettings: ALL, totalsGrid: "hidden" }), m);
+    const all = ReportLayout.layout(SampleReportData.docInput({ viewSettings: ALL, totalsGrid: "hidden", showKeyPage: false }), m);
     expect(all.header.keyLine!.rows).toBe(1);
     expect(all.header.keyLine!.width).toBeLessThanOrEqual(G.CONTENT_W);
   });
 
   it("Hidden: a wrapped key line pushes the body down by its extra height", () => {
-    const l = Doc.layout({ totalsGrid: "hidden" });
-    const h = ReportLayout.firstHeaderHeight(SampleReportData.docInput({ totalsGrid: "hidden" }), { ...l.header, keyLine: { ...l.header.keyLine!, rows: 2, height: 2 * G.KEYLINE.h + G.KEYLINE.rowGap } });
+    const l = Doc.layout({ totalsGrid: "hidden", showKeyPage: false });
+    const h = ReportLayout.firstHeaderHeight(SampleReportData.docInput({ totalsGrid: "hidden", showKeyPage: false }), { ...l.header, keyLine: { ...l.header.keyLine!, rows: 2, height: 2 * G.KEYLINE.h + G.KEYLINE.rowGap } });
     expect(h - l.pages[0].headerHeight).toBeCloseTo(G.KEYLINE.h + G.KEYLINE.rowGap, 5);
   });
 
@@ -221,13 +256,43 @@ describe("totals grid placement", () => {
     expect(b.y + b.height).toBeLessThanOrEqual(p.bodyHeight);
   });
 
-  it("Last page: grid shows the same counts as Top, with the key line under it", () => {
+  it("Last page: grid shows the same counts as Top at the top of the combined key page", () => {
     const top = Doc.layout();
     const last = Doc.layout({ totalsGrid: "lastPage" });
     expect(last.header.grid).toEqual(top.header.grid);
-    const b = Doc.summaryPages(last)[0].blocks.find((x) => x.kind === "summary")!;
-    if (b.kind !== "summary") throw new Error("expected summary");
-    expect(b.summary.keyTop - b.summary.gridTop).toBeCloseTo(ReportLayout.gridHeight(last.header.grid.rows.length) + G.SUMMARY.gapBeforeKey, 5);
+    expect(last.pages.filter((p) => p.kind === "key")).toHaveLength(1);
+    expect(last.pages.some((p) => p.blocks.some((b) => b.kind === "summary"))).toBe(false);
+    const keyPage = last.pages.find((p) => p.kind === "key")!;
+    expect(keyPage.summaryOnKeyPage).toEqual(ReportLayout.keyPageSummary(last.header));
+    expect(keyPage.summaryOnKeyPage!.keyTop - keyPage.summaryOnKeyPage!.gridTop).toBe(
+      ReportLayout.gridHeight(last.header.grid.rows.length) + G.KEY_PAGE_SUMMARY.gapAfterGrid,
+    );
+  });
+
+  it("Last page keeps the normal seven-area grid and key on one page, while an extra-area grid can flow", () => {
+    const normal = Doc.layout({ totalsGrid: "lastPage" });
+    const normalKey = normal.pages.findIndex((p) => p.kind === "key");
+    expect(normal.pages).toHaveLength(4);
+    expect(normalKey).toBeGreaterThan(-1);
+    expect(normal.pages[normalKey].summaryOnKeyPage).toBeDefined();
+
+    const extraList = [...ServiceAreaInfo.LEGACY, { id: "Vascular", name: "Vascular", shortName: "Vascular" }, { id: "Structural", name: "Structural", shortName: "Structural" }];
+    const extraRows = [...SampleReportData.rows(), { ...SampleReportData.rows()[0], projectId: "extra-v", name: "Sample: Vascular", serviceArea: "Vascular" }, { ...SampleReportData.rows()[1], projectId: "extra-s", name: "Sample: Structural", serviceArea: "Structural" }];
+    const extra = Doc.layout({ totalsGrid: "lastPage", rows: extraRows, lineDepartments: extraList, header: ReportBuilder.header(extraRows), showKeyPage: true });
+    expect(extra.pages.some((p) => p.keySummaryOnly)).toBe(true);
+    expect(extra.pages.filter((p) => p.kind === "key")).toHaveLength(2);
+  });
+
+  it("Last page without the key option renders a final page with only the summary grid", () => {
+    const last = Doc.layout({ totalsGrid: "lastPage", showKeyPage: false });
+    expect(last.header.keyLine).not.toBeNull();
+    const p = Doc.summaryPages(last)[0];
+    const b = p.blocks.find((x) => x.kind === "summary");
+    expect(b).toBeDefined();
+    if (b?.kind === "summary") {
+      expect(b.summary.keyTop - b.summary.gridTop).toBe(ReportLayout.gridHeight(last.header.grid.rows.length) + G.SUMMARY.gapBeforeKey);
+      expect(b.height).toBe(ReportLayout.summaryBlock(last.header, b.y === 0).height);
+    }
   });
 });
 
