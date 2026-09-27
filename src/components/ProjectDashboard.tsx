@@ -529,7 +529,6 @@ export function ProjectDashboard({
           <div className="max-h-[calc(100vh-260px)] overflow-auto">
             <DashboardTable
               rows={visible}
-              completed={[]}
               settings={dashboardView}
               selectedId={selectedId}
               flashId={flashId}

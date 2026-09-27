@@ -8,24 +8,20 @@ import {
   type MilestoneUpdateVisibility,
   type PeopleVisibility,
 } from "@/lib/dashboard/DashboardColumnModel";
-import { CompletedBlockCopy, DashboardGroups, type DashboardGroup } from "@/lib/dashboard/DashboardGroups";
+import { DashboardGroups, type DashboardGroup } from "@/lib/dashboard/DashboardGroups";
 import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardSort";
 import type { AreaGroup, DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ColumnShares, LayoutCopy, LineLayout, RowOrder, type ColumnLayoutValue, type LayoutKey, type LineLayoutValue } from "@/lib/layout/LineLayout";
-import type { DashboardCompletedRow, DashboardRow } from "@/lib/dashboard/DashboardViewModel";
+import type { DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { PeopleStack, type PeopleLine } from "@/lib/dashboard/PeopleStack";
 import { DueFlags, MilestoneUpdateStack, type DueFlagKind, type DueFlagsCell, type MilestoneUpdateLine } from "@/lib/dashboard/StackedCells";
-import { InforNumber } from "@/lib/domain/InforNumber";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
-import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import { StatusPill } from "./StatusPill";
 import { StatusShape } from "./StatusShape";
 
 export interface DashboardTableProps {
   /** Filtered regular rows, in report order. */
   rows: readonly DashboardRow[];
-  /** Filtered "Completed this period" rows. */
-  completed: readonly DashboardCompletedRow[];
   /** Dashboard view settings (drives the one column model shared by every group). */
   settings: ViewSettingsValue;
   selectedId: string | null;
@@ -61,9 +57,6 @@ export class GroupedTableStyle {
   /** PDF section edge: primary text color, Unassigned in the secondary gray. */
   static readonly GROUP_EDGE = "var(--dark-text-primary)";
   static readonly GROUP_EDGE_MUTED = "var(--dark-text-secondary)";
-  /** Completed block: PDF accent #0E6961 and tint #F4FBFA map to the dark complete tokens (tint mixed into the card). */
-  static readonly COMPLETE_ACCENT = "var(--status-complete-dark-fg)";
-  static readonly COMPLETE_TINT = "color-mix(in srgb, var(--status-complete-dark-bg) 45%, var(--dark-card))";
   static readonly HEADER_H = 36;
   /** Layout controls: the 2px accent guide (resize edge, header and row drop spot). */
   static readonly ACCENT = "var(--color-accent)";
@@ -147,7 +140,8 @@ class TableMeasure {
 /**
  * The grouped dashboard table: one <table> with one <colgroup> from DashboardColumnModel, one sticky
  * column header, then one <tbody> per department (DashboardGroups, PDF order) with a sticky 36px group
- * header, the rows (keyed by project id) and the department's "Completed this period" block at the end.
+ * header and the rows (keyed by project id). Completed and Cancelled projects are listed in the FY sections below
+ * the table (FiscalYearSections), not here.
  * The first column is the 24px gutter with the row drag grip (admins, manual order only).
  *
  * Layout (one per service line, LineLayout): columns follow the saved order; with saved width shares every
@@ -155,7 +149,7 @@ class TableMeasure {
  * flexible column. Admins resize from each header's right edge, drag headers (Project stays first) and drag
  * rows within their department; everyone else sees the same layout with no handles or grips.
  */
-export function DashboardTable({ rows, completed, settings, selectedId, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments }: DashboardTableProps) {
+export function DashboardTable({ rows, settings, selectedId, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments }: DashboardTableProps) {
   const value = layout?.value ?? LineLayout.defaults();
   const effective = value.columns ? LineLayout.orderedSettings("dashboard", settings, value.columns.order) : settings;
   const columns = DashboardColumnModel.columns(effective);
@@ -168,9 +162,8 @@ export function DashboardTable({ rows, completed, settings, selectedId, flashId 
   const people = DashboardColumnModel.peopleVisibility(settings);
   const stack = DashboardColumnModel.milestoneUpdateVisibility(settings);
   const dueFlags = DashboardColumnModel.dueFlagsVisibility(settings);
-  const showInfor = settings.columnOrder.includes("inforNumber") && !settings.hiddenColumns.includes("inforNumber");
   const ordered = manual ? RowOrder.apply(rows, value.rows) : rows;
-  const groups = DashboardGroups.group(ordered, completed, layout ? DashboardSort.comparator(layout.sort) : undefined, departments);
+  const groups = DashboardGroups.group(ordered, layout ? DashboardSort.comparator(layout.sort) : undefined, departments);
   const span = columns.length;
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -312,7 +305,7 @@ export function DashboardTable({ rows, completed, settings, selectedId, flashId 
   // ---- Row reorder (admins, manual order): pointer drag on the grip, or Space / arrows / Space / Esc.
   const rowGeometry = (area: AreaGroup): { ids: string[]; tops: number[]; heights: number[] } | null => {
     const wrap = wrapRef.current?.getBoundingClientRect();
-    const trs = tableRef.current?.querySelectorAll<HTMLElement>(`tbody[data-area="${area}"] tr[data-row-key]:not([data-completed])`);
+    const trs = tableRef.current?.querySelectorAll<HTMLElement>(`tbody[data-area="${area}"] tr[data-row-key]`);
     if (!wrap || !trs) return null;
     const list = [...trs];
     return {
@@ -535,9 +528,6 @@ export function DashboardTable({ rows, completed, settings, selectedId, flashId 
                 />
               );
             })}
-            {g.completed.length > 0 && (
-              <CompletedBlock rows={g.completed} columns={columns} people={people} showInfor={showInfor} selectedId={selectedId} onSelect={onSelect} today={today} />
-            )}
           </tbody>
         ))}
       </table>
@@ -620,7 +610,7 @@ export function RowGrip({
   );
 }
 
-function GroupHeader({ group, span }: { group: DashboardGroup<DashboardRow, DashboardCompletedRow>; span: number }) {
+function GroupHeader({ group, span }: { group: DashboardGroup<DashboardRow>; span: number }) {
   const edge = group.muted ? GroupedTableStyle.GROUP_EDGE_MUTED : GroupedTableStyle.GROUP_EDGE;
   const style: CSSProperties = { background: GroupedTableStyle.GROUP_HEADER_BG, boxShadow: `inset 3px 0 0 ${edge}`, top: GroupedTableStyle.HEADER_H };
   return (
@@ -858,127 +848,6 @@ function ClockIcon() {
     <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true">
       <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1.3" />
       <path d="M5 2.6V5l1.7 1.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  );
-}
-
-/** Columns that keep their own cell in a completed row; the first other column starts the accomplishment span. */
-const COMPLETED_OWN_CELLS = new Set(["gutter", "project", "people", "status"]);
-
-function CompletedBlock({
-  rows,
-  columns,
-  people,
-  showInfor,
-  selectedId,
-  onSelect,
-  today,
-}: {
-  rows: readonly DashboardCompletedRow[];
-  columns: readonly DashboardColumn[];
-  people: PeopleVisibility;
-  showInfor: boolean;
-  selectedId: string | null;
-  onSelect: (id: string | null) => void;
-  today: string;
-}) {
-  const tint: CSSProperties = { background: GroupedTableStyle.COMPLETE_TINT };
-  const accent = GroupedTableStyle.COMPLETE_ACCENT;
-  // The accomplishment spans the first run of columns that are not project, people or status (the note width).
-  const spanStart = columns.findIndex((c) => !COMPLETED_OWN_CELLS.has(c.key));
-  let spanLen = 0;
-  if (spanStart >= 0) while (spanStart + spanLen < columns.length && !COMPLETED_OWN_CELLS.has(columns[spanStart + spanLen].key)) spanLen += 1;
-  return (
-    <>
-      <tr data-testid="completed-header">
-        <td aria-hidden="true" className="p-0" />
-        <td colSpan={columns.length - 1} style={{ ...tint, boxShadow: `inset 2px 0 0 ${accent}`, color: accent }} className="h-7 px-3 align-middle">
-          <div className="flex items-center justify-between gap-3 type-label">
-            <span className="flex items-center gap-1.5 font-semibold tracking-[.04em]">
-              <CheckIcon />
-              {CompletedBlockCopy.HEADING}
-            </span>
-            <span className="font-normal">{CompletedBlockCopy.NOTE}</span>
-          </div>
-        </td>
-      </tr>
-      {rows.map((r) => {
-        const selected = r.id === selectedId;
-        const td = `${CELL} ${selected ? "bg-row-selected" : ""}`;
-        const cells: ReactNode[] = [];
-        columns.forEach((c, i) => {
-          if (i > spanStart && i < spanStart + spanLen) return;
-          const style = selected ? undefined : tint;
-          if (i === spanStart) {
-            cells.push(
-              <td key="accomplishment" colSpan={spanLen} className={td} style={style}>
-                {r.accomplishment && (
-                  <div title={r.accomplishment} className="line-clamp-2 text-[13px] leading-[18px] text-fg" data-testid="accomplishment">
-                    {r.accomplishment}
-                  </div>
-                )}
-              </td>,
-            );
-            return;
-          }
-          switch (c.key) {
-            case "gutter":
-              cells.push(<td key={c.key} aria-hidden="true" className={`${td} px-0`} />);
-              return;
-            case "project": {
-              const req = showInfor ? InforNumber.format(r.inforRequestNumber) : null;
-              cells.push(
-                <td key={c.key} className={`${td} type-table-strong`} style={{ ...style, boxShadow: `inset 2px 0 0 ${accent}` }}>
-                  <div className="truncate" title={r.name}>
-                    {r.name}
-                  </div>
-                  {req && <div className="font-mono text-[9px] font-normal text-[#B8BEC8]">{req}</div>}
-                </td>,
-              );
-              return;
-            }
-            case "people":
-              cells.push(
-                <td key={c.key} className={td} style={style}>
-                  <PeopleCell lines={PeopleStack.lines(r, people)} />
-                </td>,
-              );
-              return;
-            case "status":
-              cells.push(
-                <td key={c.key} className={td} style={style}>
-                  <span className="flex items-center gap-1 font-medium" style={{ color: accent }} data-testid="completed-date">
-                    <CheckIcon />
-                    {ReportFormat.shortDate(r.completedOn, today)}
-                  </span>
-                </td>,
-              );
-              return;
-            default:
-              cells.push(<td key={c.key} className={td} style={style} />);
-          }
-        });
-        return (
-          <tr
-            key={r.id}
-            data-row-key={r.id}
-            data-completed="true"
-            onClick={() => onSelect(selected ? null : r.id)}
-            className="cursor-pointer hover:[&>td]:bg-row-selected/60"
-            aria-selected={selected}
-          >
-            {cells}
-          </tr>
-        );
-      })}
-    </>
-  );
-}
-
-function CheckIcon() {
-  return (
-    <svg width="10" height="10" viewBox="0 0 10 10" aria-hidden="true" className="flex-none">
-      <path d="M1.5 5.2 4 7.5 8.5 2.5" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" />
     </svg>
   );
 }
