@@ -607,6 +607,63 @@ model ProjectPriorInforNumber {
   @@map("project_prior_infor_number")
 }
 
+/// Email and password sign-in (migration 0025): one argon2id hash per person, set or reset only by an admin on
+/// Admin > People. Sign-in still requires ALLOWED_EMAILS.
+model PasswordCredential {
+  email         String    @id
+  passwordHash  String
+  passwordSetAt DateTime  @default(now())
+  passwordSetBy String
+  lastSignInAt  DateTime?
+  /// True for a temporary password an admin set; the person must choose their own at first sign-in.
+  mustChange    Boolean   @default(true)
+  user          AppUser   @relation(fields: [email], references: [email], onDelete: Cascade)
+
+  @@map("password_credential")
+}
+
+/// Sign-in turned off by an admin ("Off", migration 0025): blocks password and Google (and any provider), even for
+/// ALLOWED_EMAILS or ADMIN_EMAILS. Keyed by email, no foreign key, so Google-only people can be turned off too.
+model SignInBlock {
+  email     String   @id
+  blockedAt DateTime @default(now())
+  blockedBy String
+
+  @@map("sign_in_block")
+}
+
+/// Failed password attempts per typed email (with or without an account): 5 failures lock it for 15 minutes.
+model PasswordSignInAttempt {
+  email        String    @id
+  failedCount  Int       @default(0)
+  lastFailedAt DateTime?
+  lockedUntil  DateTime?
+
+  @@map("password_sign_in_attempt")
+}
+
+/// Append-only log of password changes (set, reset by an admin; changed by the person). DB trigger blocks UPDATE/DELETE.
+model PasswordCredentialHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  email     String
+  action    String
+  changedAt DateTime @default(now())
+  changedBy String
+
+  @@index([email, changedAt])
+  @@map("password_credential_history")
+}
+
+/// Password sign-in rate limit (fixed window per "ip:<address>" or "email:<email>"), shared by every serverless instance.
+model PasswordRateLimit {
+  key         String   @id
+  windowStart DateTime
+  count       Int
+
+  @@index([windowStart])
+  @@map("password_rate_limit")
+}
+
 /// People who can be given service line access (migration 0023): added by an admin on Admin > People > Access, or
 /// recorded on their first page load after sign-in. Sign-in itself is still ALLOWED_EMAILS. Email lowercased.
 model AppUser {
@@ -618,6 +675,7 @@ model AppUser {
   addedBy       String?
   createdAt     DateTime                 @default(now())
   access        ServiceLineAccessGrant[]
+  password      PasswordCredential?
 
   @@map("app_user")
 }

@@ -222,6 +222,59 @@ describe("Frank: the Tuesday freeze runs with nobody signed in and nobody given 
   });
 });
 
+describe("#36: the share-link fallback and the freeze stay outside sign-in and turn-off checks", () => {
+  /** Next's matcher is a path regex; these paths must stay out of the auth proxy. */
+  const proxied = (path: string) => new RegExp(`^${proxyConfig.matcher[0]}$`).test(path);
+
+  it("the proxy (Auth.js) never runs for /api/cron/freeze or /api/share/*, and still runs for app pages", () => {
+    expect(proxied("/api/cron/freeze")).toBe(false);
+    expect(proxied("/api/share/some.token/pdf")).toBe(false);
+    expect(proxied("/api/share/some.token/handoff")).toBe(false);
+    expect(proxied("/admin/people")).toBe(true);
+    expect(proxied("/reports")).toBe(true);
+    expect(proxied("/")).toBe(true);
+  });
+
+  it("/api/share works with no session and never reads sign-in data, even when the report recipient is turned off; a bad token is the app's own 404", async () => {
+    h.viewer = null;
+    vi.useFakeTimers({ toFake: ["Date"], now: FREEZE_RUN });
+    vi.stubGlobal("fetch", Drive.fetch());
+    expect((await cronGET(new Request("https://tracker.example.org/api/cron/freeze", { headers: { authorization: `Bearer ${ENV.CRON_SECRET}` } }))).status).toBe(200);
+    const snap = fake.state.snapshots[0];
+    const token = SignedLink.sign(snap.id as string, new Date("2026-10-06T21:00:00Z"), SECRET);
+
+    // No session, and any read of the sign-in tables (turned off, passwords, attempts) or of auth() fails the test.
+    const touched: string[] = [];
+    const SIGN_IN_TABLES = new Set(["signInBlock", "passwordCredential", "passwordSignInAttempt", "passwordCredentialHistory"]);
+    const client = h.db as Record<string, unknown>;
+    h.db = new Proxy(client, {
+      get(target, key) {
+        if (typeof key === "string" && SIGN_IN_TABLES.has(key)) touched.push(key);
+        return Reflect.get(target, key);
+      },
+    });
+    const authMod = await import("@/auth");
+    const authSpy = vi.spyOn(authMod, "auth");
+    for (const file of ["pdf", "handoff"]) {
+      const r = await shareGET(new Request("https://tracker.example.org/"), { params: Promise.resolve({ token, file }) });
+      expect(r.status, file).toBe(200);
+      expect((await r.arrayBuffer()).byteLength, file).toBeGreaterThan(0);
+    }
+    expect(touched).toEqual([]);
+    expect(authSpy).not.toHaveBeenCalled();
+
+    // Invalid, tampered or expired tokens and unknown files: the route's own plain 404, not a sign-in redirect.
+    const expired = SignedLink.sign(snap.id as string, new Date("2026-09-01T00:00:00Z"), SECRET);
+    for (const [t, file] of [["not-a-token", "pdf"], [`${token}x`, "pdf"], [expired, "pdf"], [token, "other"]]) {
+      const r = await shareGET(new Request("https://tracker.example.org/"), { params: Promise.resolve({ token: t, file }) });
+      expect(r.status, `${t} ${file}`).toBe(404);
+      expect(r.headers.get("location")).toBeNull();
+      expect(await r.text()).toBe("Not found");
+      expect(r.headers.get("cache-control")).toBe("no-store");
+    }
+  });
+});
+
 describe("Writing Bot: the live project export for CVPSL", () => {
   it("CLI export (npm run export:csv, DATABASE_URL, no app sign-in) is CVPSL and ignores access rows", async () => {
     expect(fake.state.accessGrants).toEqual([]);

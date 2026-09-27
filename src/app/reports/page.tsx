@@ -2,6 +2,8 @@ import Link from "next/link";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { redirect } from "next/navigation";
 import { setShowKeyPageForm } from "@/app/actions/reports";
+import { DriveCheckButton } from "@/components/DriveCheckButton";
+import { DriveCheckService } from "@/lib/services/DriveCheckService";
 import { FreezeNowButton } from "@/components/FreezeNowButton";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { signOut, SIGN_IN_PATH } from "@/auth";
@@ -87,6 +89,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             </a>
             <YearEndReportButton years={yearEndYears} current={FiscalYear.of(today).label} initialOpen={openYearEnd} />
           </div>
+          {scope.isDefault && <DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} />}
           <form action={setShowKeyPageForm} className="flex items-center gap-2 type-table">
             <label className="flex items-center gap-2">
               <input type="checkbox" name="showKeyPage" defaultChecked={options.showKeyPage} />

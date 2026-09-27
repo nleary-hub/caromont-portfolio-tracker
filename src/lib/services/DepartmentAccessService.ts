@@ -5,6 +5,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { LineAccessService, type AccessResult } from "@/lib/services/LineAccessService";
+import { AddUserRejected, type AddUserGrantHook } from "@/lib/services/AddUserHook";
 
 type Env = Record<string, string | undefined>;
 type Tx = Pick<
@@ -114,6 +115,41 @@ export class DepartmentAccessService {
       await DepartmentAccessService.log(tx, r.email, serviceLineId, to.id, DepartmentAccessService.ACTIONS.moved, { from: from.name, to: to.name, fromId: from.id }, by);
     }
     return rows.length;
+  }
+
+  /**
+   * Add user (Admin > People > Access): the department part of the same save. `limitsIn` maps a checked line to the
+   * departments chosen when its "All departments" switch is off; lines not in it keep All departments (the default).
+   * Like turning the switch off in the grid: allDepartments = false, one row per chosen department, one all_off
+   * history row. Anything that doesn't fit (unknown or closed department, another line's department, none chosen)
+   * rolls the whole Add user back. Limits for lines that aren't checked are ignored.
+   */
+  static addUserHook(limitsIn: unknown): AddUserGrantHook {
+    return async (tx, email, lineIds, viewer) => {
+      const limits = DepartmentAccessService.parseLimits(limitsIn);
+      for (const serviceLineId of lineIds) {
+        const chosen = limits.get(serviceLineId);
+        if (!chosen) continue;
+        const open = await DepartmentAccessService.openDepartments(tx, serviceLineId);
+        const picked = open.filter((d) => chosen.has(d.id));
+        if (!picked.length || picked.length !== chosen.size) throw new AddUserRejected(DepartmentAccessCopy.SAVE_ERROR);
+        await tx.serviceLineAccessGrant.update({ where: { email_serviceLineId: { email, serviceLineId } }, data: { allDepartments: false } });
+        await tx.departmentAccessGrant.createMany({ data: picked.map((d) => ({ email, serviceLineId, departmentId: d.id, grantedBy: viewer.email })) });
+        await tx.departmentAccessHistory.create({
+          data: { email, serviceLineId, action: DepartmentAccessService.ACTIONS.allOff, detail: { departments: picked.map((d) => d.name) }, changedBy: viewer.email },
+        });
+      }
+    };
+  }
+
+  private static parseLimits(value: unknown): Map<string, Set<string>> {
+    const out = new Map<string, Set<string>>();
+    if (!value || typeof value !== "object" || Array.isArray(value)) return out;
+    for (const [lineId, ids] of Object.entries(value as Record<string, unknown>)) {
+      if (!Array.isArray(ids) || ids.some((x) => typeof x !== "string")) throw new AddUserRejected(DepartmentAccessCopy.SAVE_ERROR);
+      out.set(lineId, new Set(ids as string[]));
+    }
+    return out;
   }
 
   /** The person, the open line and their access row for it; null when any is missing (the change fails). */

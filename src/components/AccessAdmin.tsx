@@ -1,19 +1,23 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { Fragment, useEffect, useRef, useState, useTransition } from "react";
-import { addAccessUser, setAllDepartments, setDepartmentAccess, setLineAccess } from "@/app/actions/access";
+import { Fragment, useEffect, useState, useTransition } from "react";
+import { setAllDepartments, setDepartmentAccess, setLineAccess } from "@/app/actions/access";
+import { AccountRowMenu, PasswordTags, TempPasswordDialog } from "@/components/AccessAccountControls";
+import { AddUserWithDepartments } from "@/components/AddUserDepartments";
 import { AccessGridModel } from "@/lib/access/AccessGridModel";
 import { DepartmentAccessCopy } from "@/lib/access/DepartmentAccessCopy";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
+import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 import { AdminButtonStyles } from "@/lib/admin/AdminButtonStyles";
 import type { AccessDepartment, AccessGrid, AccessLine, AccessRow } from "@/lib/services/LineAccessService";
+import type { AccountResult, PasswordStatus } from "@/lib/services/UserAccountService";
 
 const GHOST = "h-7 rounded-control border border-line px-3 text-muted type-table-strong hover:text-fg";
 const PRIMARY = "h-7 rounded-control bg-accent px-3 text-white type-table-strong disabled:opacity-60";
-const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
 const LINE_COL = 64;
-const CARET_COL = 36;
+/** The last column: the department caret and the ⋯ account menu. */
+const ACTION_COL = 72;
 
 type Confirm = { row: AccessRow; line: AccessLine; department?: AccessDepartment } | null;
 type Result = { ok: boolean; message: string };
@@ -28,13 +32,36 @@ type Result = { ok: boolean; message: string };
  * of the row, opens a panel under the row with one block per line the person has: an "All departments" switch and,
  * when it's off, the line's departments as checkboxes (A to Z). One panel at a time; Esc or the name closes it.
  */
-export function AccessAdmin({ grid, initialAdd = false, initialExpanded = null }: { grid: AccessGrid; initialAdd?: boolean; initialExpanded?: string | null }) {
+export function AccessAdmin({
+  grid,
+  initialAdd = false,
+  initialExpanded = null,
+  passwords = {},
+  initialMenu = null,
+  viewerEmail = null,
+}: {
+  grid: AccessGrid;
+  initialAdd?: boolean;
+  initialExpanded?: string | null;
+  /** Password tags and the row menu (email and password sign-in). */
+  passwords?: Record<string, PasswordStatus>;
+  /** Email whose ⋯ menu starts open (screenshots). */
+  initialMenu?: string | null;
+  /** The signed-in admin (lowercase): their own row has no Turn off sign-in. */
+  viewerEmail?: string | null;
+}) {
   const router = useRouter();
   const [users, setUsers] = useState(grid.users);
   const [adding, setAdding] = useState(initialAdd && grid.canAdd);
   const [confirm, setConfirm] = useState<Confirm>(null);
   const [expanded, setExpanded] = useState<string | null>(initialExpanded);
   const [toast, setToast] = useState<string | null>(null);
+  const [temp, setTemp] = useState<{ name: string; email: string; password: string } | null>(null);
+  const accountResult = (email: string) => (r: AccountResult, name: string) => {
+    if (r.ok && r.temporaryPassword) setTemp({ name, email, password: r.temporaryPassword });
+    else setToast(r.message);
+    router.refresh();
+  };
   const [, start] = useTransition();
   // A refresh brings the saved rows: adopt them (render-time sync, no effect).
   const [seen, setSeen] = useState(grid.users);
@@ -97,24 +124,26 @@ export function AccessAdmin({ grid, initialAdd = false, initialExpanded = null }
       </div>
       <p className="text-[12px] leading-4 text-(--dark-text-secondary)">{LineAccessCopy.NOTE}</p>
       {adding && (
-        <AddUserRow
+        <AddUserWithDepartments
+          lines={grid.lines}
           onCancel={() => setAdding(false)}
-          onAdded={(message) => {
+          onAdded={(r) => {
             setAdding(false);
-            setToast(message);
+            if (r.temporaryPassword) setTemp({ name: r.name ?? r.email ?? "", email: r.email ?? "", password: r.temporaryPassword });
+            else setToast(r.message);
             router.refresh();
           }}
         />
       )}
       <div className="overflow-x-auto rounded-card border border-line bg-card">
-        <table className="w-full table-fixed border-separate border-spacing-0 type-table" style={{ minWidth: 420 + cols * LINE_COL + CARET_COL }}>
+        <table className="w-full table-fixed border-separate border-spacing-0 type-table" style={{ minWidth: 420 + cols * LINE_COL + ACTION_COL }}>
           <colgroup>
             <col style={{ width: "34%" }} />
             <col />
             {grid.lines.map((l) => (
               <col key={l.id} style={{ width: `${LINE_COL}px` }} />
             ))}
-            <col style={{ width: `${CARET_COL}px` }} />
+            <col style={{ width: `${ACTION_COL}px` }} />
           </colgroup>
           <thead>
             <tr className="text-left text-muted type-label uppercase">
@@ -125,7 +154,7 @@ export function AccessAdmin({ grid, initialAdd = false, initialExpanded = null }
                   {l.shortName}
                 </th>
               ))}
-              <th className="border-b border-line" aria-hidden="true" />
+              <th className="border-b border-line" aria-label={PasswordCopy.MENU_LABEL} />
             </tr>
           </thead>
           <tbody>
@@ -135,6 +164,7 @@ export function AccessAdmin({ grid, initialAdd = false, initialExpanded = null }
                   <span className="flex min-w-0 items-center gap-2" title={LineAccessCopy.ADMIN_LOCK_TOOLTIP}>
                     <LockIcon />
                     <span className="truncate type-table-strong">{r.name}</span>
+                    <PasswordTags status={passwords[r.email]} />
                   </span>
                 </td>
                 <td className="truncate border-b border-line px-3 py-2 text-muted">{r.email}</td>
@@ -143,7 +173,9 @@ export function AccessAdmin({ grid, initialAdd = false, initialExpanded = null }
                     {LineAccessCopy.ALL_LINES}
                   </td>
                 )}
-                <td className="border-b border-line" />
+                <td className="border-b border-line px-1 py-1 text-center">
+                  <AccountRowMenu name={r.name} email={r.email} status={passwords[r.email]} isSelf={viewerEmail === r.email.toLowerCase()} initialOpen={initialMenu === r.email} onResult={accountResult(r.email)} />
+                </td>
               </tr>
             ))}
             {users.map((r) => {
@@ -178,6 +210,7 @@ export function AccessAdmin({ grid, initialAdd = false, initialExpanded = null }
                             {LineAccessCopy.NO_ACCESS_TAG}
                           </span>
                         )}
+                        <PasswordTags status={passwords[r.email]} />
                       </span>
                     </td>
                     <td className={`truncate ${open ? "" : "border-b"} border-line px-3 py-2 text-muted`}>{r.email}</td>
@@ -203,21 +236,24 @@ export function AccessAdmin({ grid, initialAdd = false, initialExpanded = null }
                         </td>
                       );
                     })}
-                    <td className={`${open ? "" : "border-b"} border-line pr-2 text-right`}>
-                      {canExpand && (
-                        <button
-                          type="button"
-                          className="inline-flex size-6 items-center justify-center rounded-control text-muted hover:bg-input hover:text-fg"
-                          aria-expanded={open}
-                          aria-controls={open ? panelId : undefined}
-                          aria-label={open ? DepartmentAccessCopy.hideDepartments(r.name) : DepartmentAccessCopy.showDepartments(r.name)}
-                          title={open ? DepartmentAccessCopy.hideDepartments(r.name) : DepartmentAccessCopy.showDepartments(r.name)}
-                          onClick={() => toggleExpanded(r.email)}
-                          data-testid="access-caret"
-                        >
-                          <CaretIcon open={open} />
-                        </button>
-                      )}
+                    <td className={`${open ? "" : "border-b"} border-line pr-1 text-right`}>
+                      <span className="inline-flex items-center justify-end gap-0.5">
+                        {canExpand && (
+                          <button
+                            type="button"
+                            className="inline-flex size-6 items-center justify-center rounded-control text-muted hover:bg-input hover:text-fg"
+                            aria-expanded={open}
+                            aria-controls={open ? panelId : undefined}
+                            aria-label={open ? DepartmentAccessCopy.hideDepartments(r.name) : DepartmentAccessCopy.showDepartments(r.name)}
+                            title={open ? DepartmentAccessCopy.hideDepartments(r.name) : DepartmentAccessCopy.showDepartments(r.name)}
+                            onClick={() => toggleExpanded(r.email)}
+                            data-testid="access-caret"
+                          >
+                            <CaretIcon open={open} />
+                          </button>
+                        )}
+                        <AccountRowMenu name={r.name} email={r.email} status={passwords[r.email]} isSelf={viewerEmail === r.email.toLowerCase()} initialOpen={initialMenu === r.email} onResult={accountResult(r.email)} />
+                      </span>
                     </td>
                   </tr>
                   {open && (
@@ -258,6 +294,7 @@ export function AccessAdmin({ grid, initialAdd = false, initialExpanded = null }
           }}
         />
       )}
+      {temp && <TempPasswordDialog name={temp.name} email={temp.email} password={temp.password} onDone={() => setTemp(null)} />}
       {toast && (
         <div role="status" data-testid="access-toast" className="fixed bottom-6 left-1/2 z-50 flex -translate-x-1/2 items-center gap-4 rounded-card border border-line bg-(--dark-input) px-4 py-2.5 text-fg shadow-lg type-table">
           {toast}
@@ -273,57 +310,6 @@ function LockIcon() {
       <rect x="2.5" y="5.5" width="7" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
       <path d="M4 5.5V4a2 2 0 0 1 4 0v1.5" stroke="currentColor" strokeWidth="1.2" />
     </svg>
-  );
-}
-
-function AddUserRow({ onCancel, onAdded }: { onCancel: () => void; onAdded: (message: string) => void }) {
-  const [email, setEmail] = useState("");
-  const [error, setError] = useState<string | null>(null);
-  const [pending, start] = useTransition();
-  const ref = useRef<HTMLInputElement>(null);
-  useEffect(() => ref.current?.focus(), []);
-  return (
-    <form
-      className="flex items-start gap-2 rounded-card border border-line bg-card px-3 py-2.5"
-      data-testid="access-add"
-      onSubmit={(e) => {
-        e.preventDefault();
-        start(async () => {
-          const r = await addAccessUser(email).catch(() => ({ ok: false as const, message: LineAccessCopy.SAVE_ERROR }));
-          if (r.ok) onAdded(r.message);
-          else setError(r.message);
-        });
-      }}
-    >
-      <label className="flex min-w-0 flex-1 flex-col gap-1">
-        <span className="text-muted type-caption">{LineAccessCopy.ADD_FIELD}</span>
-        <input
-          ref={ref}
-          type="email"
-          value={email}
-          aria-invalid={error ? true : undefined}
-          aria-describedby="access-add-help"
-          onChange={(e) => setEmail(e.target.value)}
-          onKeyDown={(e) => e.key === "Escape" && onCancel()}
-          className={INPUT}
-        />
-        {error ? (
-          <span role="alert" className="text-danger type-caption">
-            {error}
-          </span>
-        ) : (
-          <span id="access-add-help" className="text-muted type-caption">
-            {LineAccessCopy.ADD_HELPER}
-          </span>
-        )}
-      </label>
-      <button type="button" className={`${GHOST} mt-5`} onClick={onCancel}>
-        {LineAccessCopy.CANCEL}
-      </button>
-      <button type="submit" className={`${PRIMARY} mt-5`} disabled={pending}>
-        {LineAccessCopy.ADD_BUTTON}
-      </button>
-    </form>
   );
 }
 

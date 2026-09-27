@@ -93,7 +93,11 @@ export class GoogleDriveClient {
 
   async upload(files: DriveFile[]): Promise<DriveUploadResult> {
     const token = await this.accessToken();
-    const folderId = await this.folderId(token);
+    return this.uploadTo(token, await this.folderId(token), files);
+  }
+
+  /** Upload into a folder already resolved with `folderId` (one token, one lookup). */
+  async uploadTo(token: string, folderId: string, files: DriveFile[]): Promise<DriveUploadResult> {
     const out: DriveUploadResult["files"] = [];
     for (const file of files) {
       const boundary = `report-${Math.random().toString(36).slice(2)}`;
@@ -107,5 +111,25 @@ export class GoogleDriveClient {
       out.push({ name: file.name, id: json.id, webViewLink: json.webViewLink ?? null });
     }
     return { folderId, files: out };
+  }
+
+  /** A file's or folder's name (the Drive check shows the folder by name). */
+  async fileName(token: string, id: string): Promise<string> {
+    const res = await this.fetchImpl(`${GoogleDriveClient.FILES_URL}/${encodeURIComponent(id)}?fields=name`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return GoogleDriveClient.fail(res, "Folder read");
+    return ((await res.json()) as { name?: string }).name ?? id;
+  }
+
+  /** A file's contents as text (alt=media). */
+  async readText(token: string, id: string): Promise<string> {
+    const res = await this.fetchImpl(`${GoogleDriveClient.FILES_URL}/${encodeURIComponent(id)}?alt=media`, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) return GoogleDriveClient.fail(res, "Read back");
+    return res.text();
+  }
+
+  /** Permanently deletes a file the app created. */
+  async deleteFile(token: string, id: string): Promise<void> {
+    const res = await this.fetchImpl(`${GoogleDriveClient.FILES_URL}/${encodeURIComponent(id)}`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok && res.status !== 404) return GoogleDriveClient.fail(res, "Delete");
   }
 }

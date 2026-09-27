@@ -175,6 +175,11 @@ Visible rows only. No To/Cc and no missing-requester list.
   plain `fetch` (no SDK). Uploads the PDF and handoff.json. Scope caveat: `drive.file` only sees files and
   folders the app created. Leave `GOOGLE_DRIVE_FOLDER_ID` empty and the app finds or creates its own
   folder "Cardiac Status Reports"; a folder made by hand in the Drive UI will not be writable.
+- **Check Drive** (Admin > Report freeze, CVPSL, admins only; `POST /api/reports/drive-check`, 403 for anyone
+  else): with the same settings and client as the freeze, saves a small plain text file named
+  `portfolio-drive-setup-test-<timestamp>.txt` in the report folder, reads it back and deletes it. Nothing is
+  frozen or sent. The result names the step that failed (save, read back, remove) with Drive's error text; it
+  never returns a secret. Use it to confirm production Drive writes without waiting for a freeze.
 - **Fallback: signed link** when Drive is unconfigured or fails. HMAC-SHA256 (`SHARE_LINK_SECRET`,
   at least 32 chars), expires after 7 days. `/api/share/<token>/pdf` and `/api/share/<token>/handoff`
   serve the files without app sign-in (excluded from the auth proxy); a bad, tampered or expired token
