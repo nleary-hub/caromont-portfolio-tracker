@@ -30,7 +30,8 @@ export interface ServiceLineScope extends ServiceLineValue {
   requesters: string[];
   /**
    * Department-level access (migration 0024): present only when the viewer is limited to some of the line's
-   * departments. Then `departments` lists only those, and projects outside them (and Unassigned ones) are never read.
+   * departments. Then `departments` lists only those, and projects of other departments are never read. Unassigned
+   * projects (no department) stay visible to everyone with the line.
    * Absent: every department (admins, and anyone with "All departments").
    */
   departmentLimit?: readonly string[];

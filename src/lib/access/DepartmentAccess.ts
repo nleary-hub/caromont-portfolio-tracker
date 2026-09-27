@@ -9,7 +9,8 @@ type Reader = Pick<Prisma.TransactionClient, "serviceLineAccessGrant" | "departm
  * departments unless an admin turned "All departments" off for them; then only their department_access rows count.
  * ServiceLineAccess.activeFor() narrows the viewer's scope here, so everything that reads projects through the scope
  * (dashboard rows, tiles, counts, search, the department filter, History) sees only their departments. Unassigned
- * projects belong to no department, so a limited viewer never sees them. Admins are never limited.
+ * projects belong to no department, so everyone with the line sees them, limited viewers included. Admins are never
+ * limited.
  */
 /** Prisma project filter for a scope (DepartmentAccess.projectWhere). */
 export type ProjectScopeWhere = { serviceLineId: string; OR?: ({ departmentId: { in: string[] } } | { departmentId: null })[] };

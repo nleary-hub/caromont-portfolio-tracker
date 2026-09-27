@@ -1,4 +1,5 @@
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
@@ -536,10 +537,15 @@ export class ProjectService {
     return { changedBy: admin.email, comment: comment ?? null };
   }
 
-  /** A project of `scope` that may be changed. A project of another service line is "not found" (no leak). */
-  private static async loadMutable(tx: Tx, id: string, scope: Pick<ServiceLineScope, "id">): Promise<Project> {
+  /**
+   * A project of `scope` that may be changed. A project of another service line, or of a department a limited user
+   * doesn't have, is "not found" (no leak). Unassigned projects are open to everyone with the line.
+   */
+  private static async loadMutable(tx: Tx, id: string, scope: Pick<ServiceLineScope, "id" | "departmentLimit">): Promise<Project> {
     const found = await tx.project.findUnique({ where: { id } });
-    if (!found || !ServiceLineAccess.inScope(found, scope)) throw new ProjectNotFoundError(id);
+    if (!found || !ServiceLineAccess.inScope(found, scope) || !DepartmentAccess.allows(scope, found.departmentId)) {
+      throw new ProjectNotFoundError(id);
+    }
     if (found.archivedAt) throw new ProjectArchivedError(id);
     return ProjectRows.fromDb(found);
   }

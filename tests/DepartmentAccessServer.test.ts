@@ -256,6 +256,20 @@ describe("routes and actions", () => {
     expect(await loadProjectHistory(ids.none)).toEqual(await loadProjectHistory(MISSING));
   });
 
+  it("writes re-check departments too (defense in depth; every write is admin-only today): another department is 'not found', Unassigned and their own are editable", async () => {
+    const { ServiceLineAccess } = await import("@/lib/access/ServiceLineAccess");
+    const { ProjectNotFoundError } = await import("@/lib/services/ProjectService");
+    const scope = await ServiceLineAccess.activeFor(JANE, h.db as never);
+    expect(scope.departmentLimit).toBeDefined();
+    const janeActor = { changedBy: JANE.email };
+    for (const id of [ids.cath, ids.ep]) {
+      await expect(ProjectService.update(id, { note: "x" } as never, janeActor, h.db as never, scope)).rejects.toBeInstanceOf(ProjectNotFoundError);
+    }
+    expect(fake.state.projects.find((p) => p.id === ids.cath)?.note ?? null).toBeNull();
+    await expect(ProjectService.update(ids.none, { note: "shared" } as never, janeActor, h.db as never, scope)).resolves.toMatchObject({ id: ids.none });
+    await expect(ProjectService.update(ids.echo, { note: "mine" } as never, janeActor, h.db as never, scope)).resolves.toMatchObject({ id: ids.echo });
+  });
+
   it("reports: a limited user lists and opens the weekly PDF, the archive and the year-end report of their line, like a user with all departments", async () => {
     await FreezeService.run({ trigger: "cron", actor: "cron", now: FREEZE_RUN, env: { ...ENV }, fetch: vi.fn() }, h.db as never);
     const snap = fake.state.snapshots[0];
