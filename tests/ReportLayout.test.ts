@@ -153,6 +153,28 @@ describe("ReportLayout pagination", () => {
     expect(ReportLayout.flagSlotsWidth(m)).toBeLessThanOrEqual(flagsCol.w - ReportGeometry.CELL_PAD_R);
   });
 
+  it("a row with Changed, Overdue and Stale keeps all three in their fixed slots on one line inside the 2.95 in column", () => {
+    const g = ReportGeometry;
+    const base = SampleReportData.rows().find((r) => r.overdue)!;
+    const row = { ...base, changed: true, overdue: true, stale: SampleReportData.rows().find((r) => r.stale)!.stale };
+    const layout = ReportLayout.rowLayout(m, row, DEFAULTS, SampleReportData.REPORT_DATE);
+    const cell = layout.cells.find((c) => c.kind === "flags")!;
+    if (cell.kind !== "flags") throw new Error("no flags cell");
+    const slots = ReportLayout.flagSlots(m);
+    expect(cell.w).toBeCloseTo(2.95 * 72 - g.CELL_PAD_R, 9);
+    expect(cell.flags.map((f) => f.kind)).toEqual(["changed", "overdue", "stale"]);
+    cell.flags.forEach((f, i) => {
+      expect(f.dx).toBe(slots[i].dx);
+      expect(f.width).toBe(slots[i].width);
+      if (i > 0) expect(f.dx).toBeGreaterThanOrEqual(cell.flags[i - 1].dx + cell.flags[i - 1].width);
+    });
+    const last = cell.flags[cell.flags.length - 1];
+    expect(last.dx + last.width).toBeLessThanOrEqual(cell.w);
+    // Same row height as without the extra flag: the pills sit on line one and never wrap.
+    const without = ReportLayout.rowLayout(m, { ...row, stale: undefined }, DEFAULTS, SampleReportData.REPORT_DATE);
+    expect(layout.height).toBe(without.height);
+  });
+
   it("uses the spec column widths in inches", () => {
     const cols = ReportLayout.columns(ViewSettings.defaults("report"));
     expect(cols.map((c) => [c.key, c.w / 72])).toEqual(
