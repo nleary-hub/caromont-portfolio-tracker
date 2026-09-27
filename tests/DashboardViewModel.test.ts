@@ -106,7 +106,7 @@ describe("PdfReportLayout", () => {
   it("lays out line-1 columns from the frozen report settings (order, visibility, full width)", () => {
     const defaults = PdfReportLayout.lineOneColumns(ViewSettings.defaults("report"));
     expect(defaults.map((c) => c.key)).toEqual(["project", "owner", "status", "nextMilestone", "due", "flags"]);
-    expect(defaults.map((c) => c.widthIn)).toEqual([2.2, 1.35, 0.85, 2.0, 0.6, 3.0].map((w) => expect.closeTo(w)));
+    expect(defaults.map((c) => c.widthIn)).toEqual([2.2, 1.4, 0.85, 2.0, 0.6, 2.95].map((w) => expect.closeTo(w)));
 
     const custom = ViewSettings.normalize("report", {
       columnOrder: ["project", "status", "due"],

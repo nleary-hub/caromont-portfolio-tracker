@@ -88,7 +88,7 @@ describe("ReportLayout pagination", () => {
     expect(r.note!.lines.length).toBeGreaterThan(2);
     expect(r.note!.lines.map((l) => l.text).join(" ")).toBe(long.note);
     expect(r.note!.lines.some((l) => l.text.includes("\u2026"))).toBe(false);
-    expect(r.note!.w).toBeCloseTo(5.6 * 72, 5);
+    expect(r.note!.w).toBeCloseTo(5.55 * 72, 5);
     const milestone = r.cells.find((c) => c.kind === "nextMilestone")!;
     expect(r.note!.x).toBe(milestone.x);
     for (const l of r.note!.lines) expect(m.width(l.text, 8, 400)).toBeLessThanOrEqual(r.note!.w);
@@ -149,14 +149,36 @@ describe("ReportLayout pagination", () => {
 
   it("all flag slots fit the Flags column at its current width", () => {
     const flagsCol = ReportLayout.columns(ViewSettings.defaults("report")).find((c) => c.key === "flags")!;
-    expect(flagsCol.w / 72).toBeCloseTo(3.0, 9);
+    expect(flagsCol.w / 72).toBeCloseTo(2.95, 9);
     expect(ReportLayout.flagSlotsWidth(m)).toBeLessThanOrEqual(flagsCol.w - ReportGeometry.CELL_PAD_R);
+  });
+
+  it("a row with Changed, Overdue and Stale keeps all three in their fixed slots on one line inside the 2.95 in column", () => {
+    const g = ReportGeometry;
+    const base = SampleReportData.rows().find((r) => r.overdue)!;
+    const row = { ...base, changed: true, overdue: true, stale: SampleReportData.rows().find((r) => r.stale)!.stale };
+    const layout = ReportLayout.rowLayout(m, row, DEFAULTS, SampleReportData.REPORT_DATE);
+    const cell = layout.cells.find((c) => c.kind === "flags")!;
+    if (cell.kind !== "flags") throw new Error("no flags cell");
+    const slots = ReportLayout.flagSlots(m);
+    expect(cell.w).toBeCloseTo(2.95 * 72 - g.CELL_PAD_R, 9);
+    expect(cell.flags.map((f) => f.kind)).toEqual(["changed", "overdue", "stale"]);
+    cell.flags.forEach((f, i) => {
+      expect(f.dx).toBe(slots[i].dx);
+      expect(f.width).toBe(slots[i].width);
+      if (i > 0) expect(f.dx).toBeGreaterThanOrEqual(cell.flags[i - 1].dx + cell.flags[i - 1].width);
+    });
+    const last = cell.flags[cell.flags.length - 1];
+    expect(last.dx + last.width).toBeLessThanOrEqual(cell.w);
+    // Same row height as without the extra flag: the pills sit on line one and never wrap.
+    const without = ReportLayout.rowLayout(m, { ...row, stale: undefined }, DEFAULTS, SampleReportData.REPORT_DATE);
+    expect(layout.height).toBe(without.height);
   });
 
   it("uses the spec column widths in inches", () => {
     const cols = ReportLayout.columns(ViewSettings.defaults("report"));
     expect(cols.map((c) => [c.key, c.w / 72])).toEqual(
-      ([["project", 2.2], ["owner", 1.35], ["status", 0.85], ["nextMilestone", 2.0], ["due", 0.6], ["flags", 3.0]] as const).map(([k, w]) => [k, expect.closeTo(w, 9)]),
+      ([["project", 2.2], ["owner", 1.4], ["status", 0.85], ["nextMilestone", 2.0], ["due", 0.6], ["flags", 2.95]] as const).map(([k, w]) => [k, expect.closeTo(w, 9)]),
     );
     // The owner widening comes out of Flags only: the total table width is unchanged (10.0 in).
     expect(cols.reduce((s, c) => s + c.w, 0) / 72).toBeCloseTo(10.0, 9);

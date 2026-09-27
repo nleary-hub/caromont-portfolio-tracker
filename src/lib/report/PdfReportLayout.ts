@@ -29,24 +29,24 @@ export class PdfReportLayout {
   /** Owner column before the Contracts lead line (Figma spec). */
   static readonly OWNER_BASE_IN = 1.0;
   /**
-   * Extra owner width so "Contracts Mellisa Gonzales" (the longest name) fits on one line at 7 pt. Taken in
-   * full from the Flags column, so the total table width is unchanged.
+   * Extra owner width so "Contracts: Mellisa Gonzales" (the longest name, with its label) fits on one line at
+   * 7 pt. Taken in full from the Flags column, so the total table width is unchanged.
    */
-  static readonly OWNER_CONTRACTS_EXTRA_IN = 0.35;
+  static readonly OWNER_CONTRACTS_EXTRA_IN = 0.4;
   static readonly FLAGS_BASE_IN = 3.35;
 
   /** Column widths in inches, line 1 of each row. Owner cell shows requester and contracts lead in small gray beneath. */
   static readonly COLUMNS_IN = {
     project: 2.2,
-    owner: PdfReportLayout.OWNER_BASE_IN + PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 1.35
+    owner: PdfReportLayout.OWNER_BASE_IN + PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 1.4
     status: 0.85,
     nextMilestone: 2.0,
     due: 0.6,
-    flags: PdfReportLayout.FLAGS_BASE_IN - PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 3.0
+    flags: PdfReportLayout.FLAGS_BASE_IN - PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 2.95
   };
 
   /**
-   * Line 2: note starts under Next milestone and runs to the right margin (2.0 + 0.6 + 3.0 = 5.6 in). A note
+   * Line 2: note starts under Next milestone and runs to the right margin (2.0 + 0.6 + 2.95 = 5.55 in). A note
    * is never cut off: it wraps to as many lines as it needs and the row grows. Usually one or two lines; a
    * 200-character note with the "No change." prefix takes three.
    */

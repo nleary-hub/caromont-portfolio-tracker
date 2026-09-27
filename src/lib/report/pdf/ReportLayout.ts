@@ -3,8 +3,8 @@ import { AppConfig } from "@/lib/config/AppConfig";
 import { Assignee } from "@/lib/domain/Assignee";
 import { FlagSlots, type FlagKind } from "@/lib/domain/FlagSlots";
 import { Requester } from "@/lib/domain/Requester";
-import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { InforNumber } from "@/lib/domain/InforNumber";
+import { PeopleLabel } from "@/lib/domain/PeopleLabel";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
@@ -161,9 +161,9 @@ export class CompletedBlockStyle {
 }
 
 /**
- * "Contracts Shea Waldron" under owner and requester, in the requester small gray style with the prefix at
- * weight 500. Blank reads "Contracts To assign". If the line is wider than the owner column it wraps the
- * name (no shrinking, no clipping); line 1 always starts with the prefix.
+ * "Contracts: Shea Waldron" under owner and requester, in the requester small gray style (label and name at
+ * weight 400). Blank reads "Contracts: To assign". If the line is wider than the owner column it wraps the
+ * name (no shrinking, no clipping); line 1 always starts with the label.
  */
 export interface ContractsLine {
   /** First line: prefix + text; later lines: text only (prefix null). */
@@ -182,7 +182,18 @@ export interface CompletedRowLayout {
   name: { x: number; w: number; lines: string[] };
   /** REQ number in the Infor slot under the name (null when none or hidden). */
   req: MetaRun | null;
-  owner: { x: number; w: number; owner: string; ownerMissing: boolean; champion: string | null; contracts: ContractsLine | null } | null;
+  owner: {
+    x: number;
+    w: number;
+    owner: string;
+    ownerMissing: boolean;
+    /** Width of "Owner: " (the name starts after it). */
+    ownerLabelW: number;
+    champion: string | null;
+    /** Width of "Requester: ". */
+    championLabelW: number;
+    contracts: ContractsLine | null;
+  } | null;
   /** Check and completion date ("Sep 22"), in the status column. */
   date: { x: number; w: number; text: string } | null;
   accomplishment: { x: number; w: number; lines: string[] } | null;
@@ -238,11 +249,16 @@ export type RowCell =
       kind: "owner";
       x: number;
       w: number;
+      /** Owner name after the "Owner: " label (primary; the name at 600). */
       owner: string;
-      /** Owner blank: owner reads "To assign" in muted text. */
+      /** Owner blank: the name reads "To assign" in muted regular text (the label stays primary). */
       ownerMissing: boolean;
-      /** Requester line. Null when the column is hidden or the requester is Not applicable. */
+      /** Width of "Owner: " (the name starts after it). */
+      ownerLabelW: number;
+      /** Requester name after "Requester: ". Null when the column is hidden or the requester is Not applicable. */
       champion: string | null;
+      /** Width of "Requester: ". */
+      championLabelW: number;
       championMissing: boolean;
       /** "Contracts <name>" line(s) under the requester; null when the column is hidden. */
       contracts: ContractsLine | null;
@@ -495,7 +511,7 @@ export class ReportLayout {
   /**
    * Where the note goes: from the first column after the last column that has line-2 content
    * (project spans both lines, requester sits under owner, the status change under status) to the
-   * right margin. With the default order that is Next milestone to the margin (5.6 in).
+   * right margin. With the default order that is Next milestone to the margin (5.55 in).
    */
   static notePlacement(settings: ViewSettingsValue): { x: number; w: number; ownLine: boolean } {
     const cols = ReportLayout.columns(settings);
@@ -584,7 +600,8 @@ export class ReportLayout {
         case "owner": {
           // Blank owner or requester reads "To assign" (muted). A requester marked Not applicable drops its line.
           const requester = showsChampion ? Requester.display(row.physicianChampion, row.requesterNotApplicable) : null;
-          const champion = requester ? TextMeasure.fitLine(m, requester.text, inner, S.small, 400) : null;
+          const people = ReportLayout.peopleText(m, row.owner, requester?.text ?? null, inner);
+          const champion = people.champion;
           const contracts = PdfReportLayout.showsContracts(settings) ? ReportLayout.contractsLine(m, row.contractsLead ?? null, inner) : null;
           const stackH = (champion ? g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
           if (stackH) lineTwoH = Math.max(lineTwoH, stackH);
@@ -592,9 +609,11 @@ export class ReportLayout {
             kind: "owner",
             x: col.x,
             w: inner,
-            owner: TextMeasure.fitLine(m, Assignee.label(row.owner), inner, S.table, 400),
+            owner: people.owner,
             ownerMissing: !Assignee.isAssigned(row.owner),
+            ownerLabelW: people.ownerLabelW,
             champion,
+            championLabelW: people.championLabelW,
             championMissing: requester?.muted ?? false,
             contracts,
           });
@@ -667,13 +686,33 @@ export class ReportLayout {
     return { projectId: row.projectId, height: g.ROW_PAD * 2 + content + g.ROW_BORDER, cells, note, lineTwoY };
   }
 
-  /** Weight of the "Contracts" prefix (the name is regular). */
-  static readonly CONTRACTS_PREFIX_WEIGHT = 500;
+  /** Weight of the "Contracts:" label (the same as the name: both regular secondary). */
+  static readonly CONTRACTS_PREFIX_WEIGHT = 400;
+  /** Owner name weight in the People cell (the "Owner:" label is regular; "To assign" is regular). */
+  static readonly OWNER_NAME_WEIGHT = 600;
+
+  /**
+   * People cell owner and requester text after their labels ("Owner: ", "Requester: "): each name is fitted
+   * to what is left of the column (ellipsis as a last resort); the label is never cut. Owner at the table
+   * size (name 600, or 400 for "To assign"), requester at the small size (400).
+   */
+  static peopleText(m: Measurer, owner: string | null, requester: string | null, w: number): { owner: string; ownerLabelW: number; champion: string | null; championLabelW: number } {
+    const S = ReportGeometry.SIZE;
+    const ownerLabelW = m.width(`${PeopleLabel.OWNER} `, S.table, 400);
+    const championLabelW = m.width(`${PeopleLabel.REQUESTER} `, S.small, 400);
+    const ownerWeight = Assignee.isAssigned(owner) ? ReportLayout.OWNER_NAME_WEIGHT : 400;
+    return {
+      owner: TextMeasure.fitLine(m, Assignee.label(owner), w - ownerLabelW, S.table, ownerWeight),
+      ownerLabelW,
+      champion: requester === null ? null : TextMeasure.fitLine(m, requester, w - championLabelW, S.small, 400),
+      championLabelW,
+    };
+  }
 
   /** Lay out "Contracts <name or To assign>" at the requester size within `w`; wraps the name if needed. */
   static contractsLine(m: Measurer, lead: string | null, w: number): ContractsLine {
     const S = ReportGeometry.SIZE;
-    const prefix = `${ContractsLead.PREFIX} `;
+    const prefix = `${PeopleLabel.CONTRACTS} `;
     const name = Assignee.label(lead);
     const prefixW = m.width(prefix, S.small, ReportLayout.CONTRACTS_PREFIX_WEIGHT);
     const lines: ContractsLine["lines"] = [];
@@ -726,16 +765,17 @@ export class ReportLayout {
     if (ownerCol) {
       const w = ownerCol.w - g.CELL_PAD_R;
       const requester = PdfReportLayout.showsChampion(settings) ? Requester.display(row.physicianChampion, row.requesterNotApplicable) : null;
-      const champion = requester
-        ? TextMeasure.fitLine(m, requester.text, w, S.small, 400)
-        : null;
+      const people = ReportLayout.peopleText(m, row.owner, requester?.text ?? null, w);
+      const champion = people.champion;
       const contracts = PdfReportLayout.showsContracts(settings) ? ReportLayout.contractsLine(m, row.contractsLead ?? null, w) : null;
       owner = {
         x: ownerCol.x,
         w,
-        owner: TextMeasure.fitLine(m, Assignee.label(row.owner), w, S.table, 400),
+        owner: people.owner,
         ownerMissing: !Assignee.isAssigned(row.owner),
+        ownerLabelW: people.ownerLabelW,
         champion,
+        championLabelW: people.championLabelW,
         contracts,
       };
       const stackH = (champion ? g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);

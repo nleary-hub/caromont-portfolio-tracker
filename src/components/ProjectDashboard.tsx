@@ -10,7 +10,6 @@ import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
-import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
@@ -542,18 +541,6 @@ export function RequesterText({ name, notApplicable }: { name: string | null; no
 
 export function AssigneeText({ value }: { value: string | null }) {
   return Assignee.isAssigned(value) ? <>{value}</> : <span className="font-normal text-muted">{Assignee.TO_ASSIGN}</span>;
-}
-
-/**
- * "Contracts Shea Waldron" under the requester (or the owner when the requester column is hidden): small gray
- * like the requester, "Contracts" at weight 500. Blank reads "Contracts To assign".
- */
-export function ContractsLeadLine({ value }: { value: string | null }) {
-  return (
-    <div data-testid="contracts-line" className="truncate text-[10px] leading-3 font-normal text-muted">
-      <span className="font-medium">{ContractsLead.PREFIX}</span> {Assignee.label(value)}
-    </div>
-  );
 }
 
 /** Dashboard meta line geometry. The designer tunes these two values. */

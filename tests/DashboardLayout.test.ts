@@ -133,18 +133,18 @@ describe("Completed this period on the dashboard", () => {
 });
 
 describe("People cell display rules", () => {
-  const texts = (row: Parameters<typeof PeopleStack.lines>[0], show = ALL) => PeopleStack.lines(row, show).map((l) => [l.kind, l.prefix ? `${l.prefix} ${l.text}` : l.text, l.muted]);
+  const texts = (row: Parameters<typeof PeopleStack.lines>[0], show = ALL) => PeopleStack.lines(row, show).map((l) => [l.kind, `${l.label} ${l.text}`, l.muted]);
 
-  it("Owner, Requester, Contracts in PDF order; blank reads To assign (muted)", () => {
+  it("labeled Owner, Requester, Contracts lines in PDF order; blank reads To assign (muted)", () => {
     expect(texts({ owner: "Nick Leary", physicianChampion: "Dr. A", contractsLead: "Shea Waldron" })).toEqual([
-      ["owner", "Nick Leary", false],
-      ["requester", "Dr. A", false],
-      ["contracts", "Contracts Shea Waldron", false],
+      ["owner", "Owner: Nick Leary", false],
+      ["requester", "Requester: Dr. A", false],
+      ["contracts", "Contracts: Shea Waldron", false],
     ]);
     expect(texts({ owner: null, physicianChampion: " ", contractsLead: null })).toEqual([
-      ["owner", "To assign", true],
-      ["requester", "To assign", true],
-      ["contracts", "Contracts To assign", true],
+      ["owner", "Owner: To assign", true],
+      ["requester", "Requester: To assign", true],
+      ["contracts", "Contracts: To assign", true],
     ]);
   });
 
@@ -154,12 +154,21 @@ describe("People cell display rules", () => {
     expect(PeopleStack.lines({ owner: "O", physicianChampion: "R" }, { owner: false, requester: false, contracts: false })).toEqual([]);
   });
 
-  it("renders single-line entries with tooltips, To assign regular and gray, prefix at weight 500", () => {
-    const html = renderToStaticMarkup(createElement(PeopleCell, { lines: PeopleStack.lines({ owner: null, physicianChampion: "Dr. Very Long Name", contractsLead: "Jeff Krause" }, ALL) }));
-    expect(html).toContain('title="Dr. Very Long Name" class="truncate"');
-    expect(html).toContain('title="Contracts Jeff Krause"');
-    expect(html).toContain('<span class="font-normal text-muted">To assign</span>');
-    expect(html).toContain('<span class="font-medium text-muted">Contracts </span>');
+  it("owner is primary (label 400, name 600); requester and contracts are 400 secondary; names truncate with a tooltip, labels never", () => {
+    const html = renderToStaticMarkup(createElement(PeopleCell, { lines: PeopleStack.lines({ owner: "Owner A", physicianChampion: "Dr. Very Long Name", contractsLead: "Jeff Krause" }, ALL) }));
+    expect(html).toContain('<span class="shrink-0 whitespace-pre font-normal text-fg">Owner: </span>');
+    expect(html).toContain('<span title="Owner A" class="min-w-0 truncate font-semibold text-fg">Owner A</span>');
+    expect(html).toContain('<span class="shrink-0 whitespace-pre font-normal text-muted">Requester: </span>');
+    expect(html).toContain('<span title="Dr. Very Long Name" class="min-w-0 truncate font-normal text-muted">Dr. Very Long Name</span>');
+    expect(html).toContain('<span class="shrink-0 whitespace-pre font-normal text-muted">Contracts: </span>');
+    expect(html).toContain('<span title="Jeff Krause" class="min-w-0 truncate font-normal text-muted">Jeff Krause</span>');
+    expect(html).not.toContain("font-medium");
+  });
+
+  it("an empty owner keeps the primary label with To assign in regular secondary gray, never amber", () => {
+    const html = renderToStaticMarkup(createElement(PeopleCell, { lines: PeopleStack.lines({ owner: null, physicianChampion: null, contractsLead: null }, ALL) }));
+    expect(html).toContain('<span class="shrink-0 whitespace-pre font-normal text-fg">Owner: </span>');
+    expect(html).toContain('<span title="To assign" class="min-w-0 truncate font-normal text-muted">To assign</span>');
     expect(html).not.toMatch(/amber|at-risk/);
   });
 });

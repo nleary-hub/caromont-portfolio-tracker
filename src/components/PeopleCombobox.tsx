@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { PeopleRole } from "@/lib/people/PeopleDirectory";
 import { PeopleComboboxModel, type ComboOption, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
+import { Chevron, FieldControlStyle } from "./FieldControl";
 
 export interface PeopleComboboxProps {
   role: PeopleRole;
@@ -87,7 +88,7 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
   };
 
   return (
-    <div className="relative min-w-0 flex-1">
+    <div className={FieldControlStyle.WRAP}>
       <input
         ref={inputRef}
         id={id}
@@ -107,7 +108,7 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
         onClick={() => (open ? undefined : openList())}
         onKeyDown={onKeyDown}
         onBlur={close}
-        className={`h-[28px] w-full truncate rounded-control border border-line bg-input pl-2 pr-7 placeholder:text-muted focus:border-accent focus:outline-none ${shown.muted ? "text-muted" : "text-fg"}`}
+        className={`${FieldControlStyle.BOX} placeholder:text-muted ${shown.muted ? "text-muted" : "text-fg"}`}
       />
       <button
         type="button"
@@ -119,11 +120,9 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
           if (open) close();
           else openList();
         }}
-        className="absolute inset-y-0 right-0 grid w-7 place-items-center text-muted"
+        className={FieldControlStyle.CHEVRON_SLOT}
       >
-        <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" className={open ? "rotate-180" : undefined}>
-          <path d="M3 4.5 6 7.5 9 4.5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-        </svg>
+        <Chevron open={open} />
       </button>
       <ul
         id={listId}
