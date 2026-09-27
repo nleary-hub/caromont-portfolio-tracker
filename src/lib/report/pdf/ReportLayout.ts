@@ -14,7 +14,7 @@ import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
-import { PdfReportLayout, type LayoutColumn } from "@/lib/report/PdfReportLayout";
+import { PdfReportLayout, type LayoutColumn, type ReportColumnSettings } from "@/lib/report/PdfReportLayout";
 import { LineLayout, RowOrder, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
@@ -239,7 +239,9 @@ export interface CompletedRowLayout {
     ownerMissing: boolean;
     /** Width of "Owner: " (the name starts after it). */
     ownerLabelW: number;
+    ownerMore: string[];
     champion: string | null;
+    championMore: string[];
     /** Width of "Requester: ". */
     championLabelW: number;
     contracts: ContractsLine | null;
@@ -305,8 +307,12 @@ export type RowCell =
       ownerMissing: boolean;
       /** Width of "Owner: " (the name starts after it). */
       ownerLabelW: number;
+      /** Owner name lines after the first, from the cell's left edge (wrapped at word boundaries, never cut). */
+      ownerMore: string[];
       /** Requester name after "Requester: ". Null when the column is hidden or the requester is Not applicable. */
       champion: string | null;
+      /** Requester name lines after the first, from the cell's left edge. */
+      championMore: string[];
       /** Width of "Requester: ". */
       championLabelW: number;
       championMissing: boolean;
@@ -612,6 +618,23 @@ export class ReportLayout {
     });
   }
 
+  /**
+   * A row's flag chips. Default layout: each in its fixed slot (flagSlots; empty slots stay blank). Custom layout:
+   * the chips that apply pack left from the Flags column's x (under the FLAGS header, like the date under DUE),
+   * FLAG_GAP apart, in slot order.
+   */
+  static placeFlags(m: Measurer, state: { changed: boolean; overdue: boolean; stale: boolean }, packLeft: boolean): PlacedFlag[] {
+    const slots = ReportLayout.flagSlots(m);
+    let dx = 0;
+    return FlagSlots.slots(state).flatMap((kind, slot) => {
+      if (!kind) return [];
+      const f = ReportLayout.flag(m, kind);
+      const placed = { ...f, slot, dx: packLeft ? dx : slots[slot].dx };
+      dx += f.width + ReportGeometry.FLAG_GAP;
+      return [placed];
+    });
+  }
+
   /** Total width of all flag slots (must fit the Flags column). */
   static flagSlotsWidth(m: Measurer): number {
     const slots = ReportLayout.flagSlots(m);
@@ -632,7 +655,8 @@ export class ReportLayout {
   /**
    * Where the note goes: from the first column after the last column that has line-2 content
    * (project spans both lines, requester sits under owner, the status change under status) to the
-   * right margin. With the default order that is Next milestone to the margin (5.55 in).
+   * right margin. With the default order that is Next milestone to the margin (5.55 in). When that leaves less
+   * than NOTE_MIN_W the note takes its own line under the row, starting at the Next milestone column.
    */
   static notePlacement(settings: ViewSettingsValue): { x: number; w: number; ownLine: boolean } {
     const cols = ReportLayout.columns(settings);
@@ -646,8 +670,13 @@ export class ReportLayout {
     });
     const start = last + 1 < cols.length ? cols[last + 1].x : ReportGeometry.CONTENT_W;
     const w = ReportGeometry.CONTENT_W - start;
-    if (w < ReportGeometry.NOTE_MIN_W) return { x: 0, w: ReportGeometry.CONTENT_W, ownLine: true };
-    return { x: start, w, ownLine: false };
+    if (w >= ReportGeometry.NOTE_MIN_W) return { x: start, w, ownLine: false };
+    // Its own line under the row: from the Next milestone column's left edge (the note stays under its
+    // milestone) to the right margin, or the full width when that is too narrow or the column is hidden.
+    const milestone = cols.find((c) => c.key === "nextMilestone");
+    const mw = milestone ? ReportGeometry.CONTENT_W - milestone.x : 0;
+    if (milestone && mw >= ReportGeometry.NOTE_MIN_W) return { x: milestone.x, w: mw, ownLine: true };
+    return { x: 0, w: ReportGeometry.CONTENT_W, ownLine: true };
   }
 
   /**
@@ -724,16 +753,20 @@ export class ReportLayout {
           const people = ReportLayout.peopleText(m, row.owner, requester?.text ?? null, inner);
           const champion = people.champion;
           const contracts = PdfReportLayout.showsContracts(settings) ? ReportLayout.contractsLine(m, row.contractsLead ?? null, inner) : null;
-          const stackH = (champion ? g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
+          const stackH = (champion ? (1 + people.championMore.length) * g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
           if (stackH) lineTwoH = Math.max(lineTwoH, stackH);
+          // A wrapped owner name takes more of line 1, so line 2 (requester, contracts) starts below it.
+          lineOneH = Math.max(lineOneH, (1 + people.ownerMore.length) * g.TABLE_LH);
           cells.push({
             kind: "owner",
             x: col.x,
             w: inner,
             owner: people.owner,
+            ownerMore: people.ownerMore,
             ownerMissing: !Assignee.isAssigned(row.owner),
             ownerLabelW: people.ownerLabelW,
             champion,
+            championMore: people.championMore,
             championLabelW: people.championLabelW,
             championMissing: requester?.muted ?? false,
             contracts,
@@ -765,10 +798,7 @@ export class ReportLayout {
           break;
         }
         case "flags": {
-          const slots = ReportLayout.flagSlots(m);
-          const flags: PlacedFlag[] = FlagSlots.slots({ changed: row.changed, overdue: row.overdue, stale: Boolean(row.stale) }).flatMap((kind, slot) =>
-            kind ? [{ ...ReportLayout.flag(m, kind), slot, dx: slots[slot].dx }] : [],
-          );
+          const flags = ReportLayout.placeFlags(m, { changed: row.changed, overdue: row.overdue, stale: Boolean(row.stale) }, Boolean((settings as ReportColumnSettings).customLayout));
           if (flags.length) lineOneH = Math.max(lineOneH, g.PILL_H);
           cells.push({ kind: "flags", x: col.x, w: inner, flags });
           break;
@@ -813,21 +843,48 @@ export class ReportLayout {
   static readonly OWNER_NAME_WEIGHT = 600;
 
   /**
-   * People cell owner and requester text after their labels ("Owner: ", "Requester: "): each name is fitted
-   * to what is left of the column (ellipsis as a last resort); the label is never cut. Owner at the table
-   * size (name 600, or 400 for "To assign"), requester at the small size (400).
+   * People cell owner and requester text after their labels ("Owner: ", "Requester: "). Each name wraps at
+   * word boundaries (never truncated): line 1 after the label, later lines from the cell's left edge, the
+   * same way the Contracts line wraps. Only a single word wider than the whole cell is clipped. Owner at the
+   * table size (name 600, or 400 for "To assign"), requester at the small size (400).
    */
-  static peopleText(m: Measurer, owner: string | null, requester: string | null, w: number): { owner: string; ownerLabelW: number; champion: string | null; championLabelW: number } {
+  static peopleText(
+    m: Measurer,
+    owner: string | null,
+    requester: string | null,
+    w: number,
+  ): { owner: string; ownerMore: string[]; ownerLabelW: number; champion: string | null; championMore: string[]; championLabelW: number } {
     const S = ReportGeometry.SIZE;
     const ownerLabelW = m.width(`${PeopleLabel.OWNER} `, S.table, 400);
     const championLabelW = m.width(`${PeopleLabel.REQUESTER} `, S.small, 400);
     const ownerWeight = Assignee.isAssigned(owner) ? ReportLayout.OWNER_NAME_WEIGHT : 400;
-    return {
-      owner: TextMeasure.fitLine(m, Assignee.label(owner), w - ownerLabelW, S.table, ownerWeight),
-      ownerLabelW,
-      champion: requester === null ? null : TextMeasure.fitLine(m, requester, w - championLabelW, S.small, 400),
-      championLabelW,
-    };
+    const [first, ...ownerMore] = ReportLayout.wrapAfterLabel(m, Assignee.label(owner), w - ownerLabelW, w, S.table, ownerWeight);
+    const champ = requester === null ? null : ReportLayout.wrapAfterLabel(m, requester, w - championLabelW, w, S.small, 400);
+    return { owner: first, ownerMore, ownerLabelW, champion: champ ? champ[0] : null, championMore: champ ? champ.slice(1) : [], championLabelW };
+  }
+
+  /**
+   * Word-wrap `text` with `firstW` available on line 1 (beside a label) and `restW` on later lines. A word goes
+   * on the current line when it fits (or the line is empty); each line is clipped only if a single word is wider
+   * than its line.
+   */
+  static wrapAfterLabel(m: Measurer, text: string, firstW: number, restW: number, size: number, weight: FontWeight): string[] {
+    if (m.width(text, size, weight) <= firstW) return [text];
+    const lines: string[] = [];
+    let current = "";
+    let avail = firstW;
+    for (const word of text.split(/\s+/).filter(Boolean)) {
+      const next = current ? `${current} ${word}` : word;
+      if (m.width(next, size, weight) <= avail || !current) {
+        current = next;
+        continue;
+      }
+      lines.push(TextMeasure.fitLine(m, current, avail, size, weight));
+      current = word;
+      avail = restW;
+    }
+    lines.push(TextMeasure.fitLine(m, current, avail, size, weight));
+    return lines;
   }
 
   /** Lay out "Contracts <name or To assign>" at the requester size within `w`; wraps the name if needed. */
@@ -893,14 +950,16 @@ export class ReportLayout {
         x: ownerCol.x,
         w,
         owner: people.owner,
+        ownerMore: people.ownerMore,
         ownerMissing: !Assignee.isAssigned(row.owner),
         ownerLabelW: people.ownerLabelW,
         champion,
+        championMore: people.championMore,
         championLabelW: people.championLabelW,
         contracts,
       };
-      const stackH = (champion ? g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
-      h = Math.max(h, g.TABLE_LH + (stackH ? g.LINE_GAP + stackH : 0));
+      const stackH = (champion ? (1 + people.championMore.length) * g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
+      h = Math.max(h, (1 + people.ownerMore.length) * g.TABLE_LH + (stackH ? g.LINE_GAP + stackH : 0));
     }
 
     const statusCol = col("status");

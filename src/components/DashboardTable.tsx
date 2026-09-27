@@ -737,16 +737,16 @@ export class PeopleCellStyle {
 }
 
 /**
- * Stacked People cell: up to three labeled single-line entries at 13/18 ("Owner: Name"). The label is never
- * cut; a long name ends in an ellipsis with the full name as a tooltip.
+ * Stacked People cell: up to three labeled entries at 13/18 ("Owner: Name"). Each entry wraps at word
+ * boundaries onto as many lines as it needs (never truncated), like the Contracts line in the PDF.
  */
 export function PeopleCell({ lines }: { lines: readonly PeopleLine[] }) {
   return (
     <div className="flex flex-col text-[13px] leading-[18px]" data-testid="people-cell">
       {lines.map((l) => (
-        <div key={l.kind} data-line={l.kind} className="flex min-w-0 whitespace-nowrap">
-          <span className={`shrink-0 whitespace-pre ${PeopleCellStyle.labelClass(l)}`}>{`${l.label} `}</span>
-          <span title={l.title} className={`min-w-0 truncate ${PeopleCellStyle.nameClass(l)}`}>
+        <div key={l.kind} data-line={l.kind} className="min-w-0 whitespace-normal break-words">
+          <span className={PeopleCellStyle.labelClass(l)}>{`${l.label} `}</span>
+          <span title={l.title} className={PeopleCellStyle.nameClass(l)}>
             {l.text}
           </span>
         </div>
