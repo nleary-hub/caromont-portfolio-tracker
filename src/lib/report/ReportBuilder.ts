@@ -1,10 +1,14 @@
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
+import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord, ReportHeader, ReportRow, StatusCounts } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { ClosedProjects } from "@/lib/report/ClosedProjects";
+import type { CompletableProject } from "@/lib/report/CompletedThisPeriod";
+import { PeriodClosure } from "@/lib/report/PeriodClosure";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 export interface ReportBuildInput {
@@ -49,20 +53,35 @@ export interface SortableRow {
   name: string;
 }
 
+/** What CompletedChangedRule reads from a project (createdAt is optional: older records fall back to history). */
+export type CompletedChangedProject = Pick<ProjectRecord, "id" | "status" | "completedOn"> & { createdAt?: Date };
+
 /**
- * Changed on a completed row (listed only while completed during the period). One switch for Nick's open question:
- * - FIRST_REPORT_CHANGED = true (current default): on a line's first report (no earlier freeze) every already-complete
- *   project counts as completed this period, so each one gets Changed like any row with history.
- * - false: only projects completed since the last freeze get Changed; on the first report none of the already-complete
- *   ones do (they are still listed, with no Changed flag).
- * After the first freeze both settings behave the same: the usual Changed rule (any public history since the last freeze).
+ * Changed on a completed row. Nick's decision (Sep 27, 2026):
+ * - First report of a line (no earlier freeze): every project already completed this fiscal year (the fiscal year of
+ *   the report date, same attribution as the "Completed FYxx to date" tile) gets Changed.
+ * - From the second report on: only projects completed within that period (in the app since the previous freeze, the
+ *   same clock PeriodClosure uses to list them) get Changed.
+ * FIRST_REPORT_CHANGED = false would turn off the first-report part (none of the already-complete ones get Changed then).
  */
 export class CompletedChangedRule {
   static readonly FIRST_REPORT_CHANGED: boolean = true;
 
-  static changed(projectId: string, history: readonly HistoryEntryRecord[], previousSnapshotGeneratedAt: Date | null, firstReportChanged: boolean = CompletedChangedRule.FIRST_REPORT_CHANGED): boolean {
-    if (previousSnapshotGeneratedAt === null && !firstReportChanged) return false;
-    return ReportBuilder.isChanged(projectId, history, previousSnapshotGeneratedAt);
+  static changed(
+    project: CompletedChangedProject,
+    history: readonly HistoryEntryRecord[],
+    previousSnapshotGeneratedAt: Date | null,
+    reportDate: string,
+    firstReportChanged: boolean = CompletedChangedRule.FIRST_REPORT_CHANGED,
+  ): boolean {
+    if (project.status !== "Complete") return false;
+    const p = project as CompletableProject;
+    if (previousSnapshotGeneratedAt === null) {
+      if (!firstReportChanged) return false;
+      return ClosedProjects.closedIn(p, history, reportDate)?.fiscalYear === FiscalYear.of(reportDate).label;
+    }
+    const at = PeriodClosure.completedAt(p, history);
+    return at !== null && at.getTime() > previousSnapshotGeneratedAt.getTime();
   }
 }
 
@@ -100,9 +119,9 @@ export class ReportBuilder {
    * the PDF, on the dashboard and in handoff.json's changed list, but never gets Overdue (or Stale, see isStale). A
    * Cancelled row never carries a flag (it is not listed anywhere).
    */
-  static flags(project: Pick<ProjectRecord, "id" | "dueDate" | "status">, history: readonly HistoryEntryRecord[], previousSnapshotGeneratedAt: Date | null, reportDate: string): RowFlags {
+  static flags(project: Pick<ProjectRecord, "id" | "dueDate" | "status"> & Partial<Pick<ProjectRecord, "completedOn">> & { createdAt?: Date }, history: readonly HistoryEntryRecord[], previousSnapshotGeneratedAt: Date | null, reportDate: string): RowFlags {
     if (project.status === "Cancelled") return { changed: false, overdue: false };
-    if (project.status === "Complete") return { changed: CompletedChangedRule.changed(project.id, history, previousSnapshotGeneratedAt), overdue: false };
+    if (project.status === "Complete") return { changed: CompletedChangedRule.changed({ completedOn: null, ...project }, history, previousSnapshotGeneratedAt, reportDate), overdue: false };
     return {
       changed: ReportBuilder.isChanged(project.id, history, previousSnapshotGeneratedAt),
       overdue: ReportBuilder.isOverdue(project, reportDate),

@@ -5,7 +5,7 @@ import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import type { HistoryEntryRecord, ProjectRecord, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { PeriodClosure } from "@/lib/report/PeriodClosure";
-import { CompletedChangedRule, ReportBuilder } from "@/lib/report/ReportBuilder";
+import { CompletedChangedRule, ReportBuilder, type CompletedChangedProject } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
 import { ReportLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
@@ -250,16 +250,51 @@ describe("Completed rows keep Changed but never get Overdue or Stale; cancelled 
     for (const f of ["changed", "overdue", "stale"]) for (const p of handoff.flags[f].projects) expect(Object.keys(p).sort()).toEqual(["dueDate", "name", "serviceArea", "status"]);
   });
 
-  it("first report: the switch decides whether already-complete projects get Changed (default: they do)", () => {
-    const h: HistoryEntryRecord[] = [{ projectId: "d", changedAt: new Date("2025-11-03T14:00:00Z"), field: "created" }];
+  it("Nick's decision, first report: every project already completed this fiscal year gets Changed (earlier years do not)", async () => {
+    const w = new World();
+    const active = await w.add("Active", "Cath");
+    const julyDone = await w.add("Done in July", "EP");
+    const lastYear = await w.add("Done last FY", "IR");
+    for (const p of w.fake.state.projects) w.at(p.id as string, "2025-11-03T14:00:00Z");
+    await w.setStatus(julyDone, "Complete", "2026-07-15T14:00:00Z");
+    await w.setStatus(lastYear, "Complete", "2026-03-10T14:00:00Z");
     expect(CompletedChangedRule.FIRST_REPORT_CHANGED).toBe(true);
-    expect(CompletedChangedRule.changed("d", h, null)).toBe(true);
-    expect(ReportBuilder.flags(done, h, null, "2026-09-29")).toEqual({ changed: true, overdue: false });
-    // Switched to "only since the last freeze": none of the already-complete ones on the first report.
-    expect(CompletedChangedRule.changed("d", h, null, false)).toBe(false);
-    // After the first freeze the switch does not matter.
-    expect(CompletedChangedRule.changed("d", history, new Date(PREV), false)).toBe(true);
-    expect(CompletedChangedRule.changed("d", h, new Date(PREV), true)).toBe(false);
+    const s = await w.freeze();
+    const rows = s.rowsJson as ReportRow[];
+    const flag = (id: string) => rows.find((r) => r.projectId === id)?.changed;
+    expect(flag(julyDone)).toBe(true);
+    // Listed (the first report has no lower bound) but completed in FY26: no Changed.
+    expect(flag(lastYear)).toBe(false);
+    // Active rows keep the usual rule (on a first report any public history counts).
+    expect(flag(active)).toBe(true);
+    const byId = (id: string) => w.fake.state.projects.find((p) => p.id === id) as unknown as CompletedChangedProject;
+    const history = w.fake.state.history as unknown as HistoryEntryRecord[];
+    expect(CompletedChangedRule.changed(byId(julyDone), history, null, "2026-09-29")).toBe(true);
+    expect(CompletedChangedRule.changed(byId(lastYear), history, null, "2026-09-29")).toBe(false);
+    // The switch off: none of the already-complete ones on the first report.
+    expect(CompletedChangedRule.changed(byId(julyDone), history, null, "2026-09-29", false)).toBe(false);
+  });
+
+  it("Nick's decision, second report on: only projects completed within that period get Changed", async () => {
+    const w = new World();
+    const before = await w.add("Done before the period", "Cath");
+    const during = await w.add("Done this period", "EP");
+    for (const p of w.fake.state.projects) w.at(p.id as string, "2026-05-01T14:00:00Z");
+    await w.setStatus(before, "Complete", "2026-09-05T14:00:00Z");
+    await w.previousFreeze();
+    await w.setStatus(during, "Complete", "2026-09-20T14:00:00Z");
+    // An edit in the period to the project completed before it does not make it Changed.
+    const n = w.fake.state.history.length;
+    await ProjectService.update(before, { note: "Final note" }, actor, w.db);
+    for (const h of w.fake.state.history.slice(n)) h.changedAt = new Date("2026-09-21T14:00:00Z");
+    const byId = (id: string) => w.fake.state.projects.find((p) => p.id === id) as unknown as CompletedChangedProject;
+    const history = w.fake.state.history as unknown as HistoryEntryRecord[];
+    expect(CompletedChangedRule.changed(byId(during), history, new Date(PREV), "2026-09-29")).toBe(true);
+    expect(CompletedChangedRule.changed(byId(before), history, new Date(PREV), "2026-09-29")).toBe(false);
+    // The switch only affects the first report.
+    expect(CompletedChangedRule.changed(byId(during), history, new Date(PREV), "2026-09-29", false)).toBe(true);
+    const rows = (await w.freeze()).rowsJson as ReportRow[];
+    expect(rows.filter((r) => r.status === "Complete").map((r) => [r.name, r.changed])).toEqual([["Done this period", true]]);
   });
 });
 
