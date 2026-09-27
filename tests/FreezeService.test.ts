@@ -1,4 +1,5 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
+import { ServiceLine } from "@/lib/domain/ServiceLine";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { Handoff } from "@/lib/report/HandoffBuilder";
 import { SignedLink } from "@/lib/report/SignedLink";
@@ -298,8 +299,9 @@ describe("report options (departments and totals grid), no migration", () => {
     const { fake, db } = await Setup.db();
     await expect(ReportOptionsService.update({ departments: ["Cath"] }, Factory.MEMBER, db)).rejects.toThrow();
     await ReportOptionsService.update({ departments: ["EP", "Cath"], totalsGrid: "lastPage" }, Factory.ADMIN, db);
-    // Only the existing column is written to the row; the full value is in the audit row.
-    expect(Object.keys(fake.state.reportOptions[0]).sort()).toEqual(["id", "showKeyPage", "updatedAt", "updatedBy"]);
+    // Only the existing column (and the row's service line, 0016) is written to the row; the full value is in the audit row.
+    expect(Object.keys(fake.state.reportOptions[0]).sort()).toEqual(["id", "serviceLineId", "showKeyPage", "updatedAt", "updatedBy"]);
+    expect(fake.state.reportOptions[0]).toMatchObject({ id: "report", serviceLineId: ServiceLine.DEFAULT_ID });
     // Saved as the EXCLUDED departments, so a department added later starts included.
     expect(fake.state.reportOptionsHistory.at(-1)!.newValue).toEqual({ showKeyPage: true, excludedDepartments: ["Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "lastPage" });
     expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP"], totalsGrid: "lastPage" });

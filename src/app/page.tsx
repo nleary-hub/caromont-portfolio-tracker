@@ -17,7 +17,9 @@ import { ViewSettings, type ViewColumn, type ViewSettingsByContext } from "@/lib
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { MilestoneService } from "@/lib/services/MilestoneService";
 import { MilestoneTemplateService } from "@/lib/services/MilestoneTemplateService";
-import { ServiceLineService } from "@/lib/services/ServiceLineService";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
+import { ServiceLineSwitcher } from "@/components/ServiceLineSwitcher";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
@@ -42,7 +44,7 @@ class DashboardData {
     return { dashboard: ViewSettings.defaults("dashboard"), report: ViewSettings.defaults("report") };
   }
 
-  static empty(viewer: Viewer, error: string): DashboardLoad {
+  static empty(viewer: Viewer, error: string, scope: ServiceLineScope = ServiceLine.defaultScope()): DashboardLoad {
     const settings = DashboardData.defaultSettings();
     return {
       rows: [],
@@ -51,7 +53,7 @@ class DashboardData {
       latestReport: null,
       completedFiscalYear: null,
       admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([]), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
+        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([], ServiceLineAccess.ownerSeed(scope, Assignee.OWNER_BASE_SUGGESTIONS)), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
         : null,
       error,
     };
@@ -68,13 +70,15 @@ class DashboardData {
   }
 
   /** Everything is filtered through VisibilityPolicy on the server; non-admins never receive hidden data. */
-  static async load(viewer: Viewer, today: string): Promise<DashboardLoad> {
-    if (!Db.isConfigured()) return DashboardData.empty(viewer, "DATABASE_URL is not configured.");
+  /** Scoped to the viewer's active service line: projects, people, templates and the latest report. */
+  static async load(viewer: Viewer, today: string, scope: ServiceLineScope): Promise<DashboardLoad> {
+    if (!Db.isConfigured()) return DashboardData.empty(viewer, "DATABASE_URL is not configured.", scope);
     try {
       const db = Db.client;
       const [stored, latest, settings] = await Promise.all([
-        db.project.findMany({ where: { archivedAt: null } }),
+        db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(scope) } }),
         db.reportSnapshot.findFirst({
+          where: ServiceLineAccess.where(scope),
           orderBy: { generatedAt: "desc" },
           select: { generatedAt: true, periodStart: true, periodEnd: true },
         }),
@@ -143,20 +147,20 @@ class DashboardData {
               viewSettings: settings,
               pickerCounts: DashboardViewModel.adminPickerCounts(projects),
               hiddenFromReportIds: visible.filter((p) => p.hiddenFromReport).map((p) => p.id),
-              ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner)),
+              ownerSuggestions: Assignee.ownerSuggestions(projects.map((p) => p.owner), ServiceLineAccess.ownerSeed(scope, Assignee.OWNER_BASE_SUGGESTIONS)),
               requesterSuggestions: Requester.suggestions(projects.map((p) => p.physicianChampion)),
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
               // The form reads the stored legacy fields; the checklist comes separately.
               formValues: DashboardData.formValues(stored, listedIds),
               milestoneSteps: MilestoneService.byProject(steps.filter((s) => listedIds.includes(s.projectId))),
-              templates: await MilestoneTemplateService.listOrEmpty(db),
+              templates: await MilestoneTemplateService.listOrEmpty(db, scope),
             }
           : null,
         error: null,
       };
     } catch (e) {
       console.error("Failed to load projects", e);
-      return DashboardData.empty(viewer, "Could not load projects from the database.");
+      return DashboardData.empty(viewer, "Could not load projects from the database.", scope);
     }
   }
 }
@@ -167,9 +171,10 @@ export default async function DashboardPage() {
   if (!viewer) redirect(SIGN_IN_PATH);
 
   const today = DateOnly.today();
-  const [{ rows, completed, columns, latestReport, completedFiscalYear, admin, error }, serviceLine] = await Promise.all([
-    DashboardData.load(viewer, today),
-    ServiceLineService.getOrDefault(),
+  const scope = await ServiceLineAccess.activeOrDefault(viewer);
+  const [{ rows, completed, columns, latestReport, completedFiscalYear, admin, error }, lines] = await Promise.all([
+    DashboardData.load(viewer, today, scope),
+    viewer.isAdmin && Db.isConfigured() ? ServiceLineAccess.usableLines(viewer).catch(() => [scope]) : Promise.resolve([]),
   ]);
 
   return (
@@ -183,7 +188,11 @@ export default async function DashboardPage() {
       latestReport={latestReport}
       completedFiscalYear={completedFiscalYear}
       loadError={error}
-      serviceLine={serviceLine}
+      serviceLine={ServiceLine.valueOf(scope)}
+      // Switching lines remounts the dashboard: an open drawer closes and filters reset to the line's own.
+      key={scope.id}
+      line={scope}
+      switcher={viewer.isAdmin ? <ServiceLineSwitcher lines={lines.length ? lines : [scope]} active={scope} /> : null}
       // Spread so non-admins' payload does not even carry an "admin" key.
       {...(admin
         ? {

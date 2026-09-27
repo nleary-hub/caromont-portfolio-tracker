@@ -49,8 +49,9 @@ export class PeopleDirectory {
   }
 
   /** Owner options: the seed plus distinct owners in use. */
-  static owners(inUse: readonly (string | null | undefined)[]): string[] {
-    return PeopleDirectory.merge([...PeopleDirectory.OWNER_SEED, ...inUse]);
+  /** Owner options: the seed (built-in owners; ServiceLineAccess.ownerSeed gives none for a new line) plus owners in use. */
+  static owners(inUse: readonly (string | null | undefined)[], seed: readonly string[] = PeopleDirectory.OWNER_SEED): string[] {
+    return PeopleDirectory.merge([...seed, ...inUse]);
   }
 
   /** Requester options: distinct requesters in use. */
@@ -58,8 +59,8 @@ export class PeopleDirectory {
     return PeopleDirectory.merge(inUse);
   }
 
-  static forRole(role: PeopleRole, inUse: readonly (string | null | undefined)[]): string[] {
-    return role === "owner" ? PeopleDirectory.owners(inUse) : PeopleDirectory.requesters(inUse);
+  static forRole(role: PeopleRole, inUse: readonly (string | null | undefined)[], seed: readonly string[] = PeopleDirectory.OWNER_SEED): string[] {
+    return role === "owner" ? PeopleDirectory.owners(inUse, seed) : PeopleDirectory.requesters(inUse);
   }
 
   /** Trimmed, whitespace-collapsed, case-insensitively deduped (first spelling wins), no sentinels or blocked names, A to Z. */

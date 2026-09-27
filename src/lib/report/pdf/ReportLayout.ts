@@ -57,6 +57,12 @@ export interface ReportDocInput {
   departments?: readonly ServiceArea[];
   /** Totals grid placement (admin setting). Absent = "top", today's layout. */
   totalsGrid?: TotalsGridMode;
+  /**
+   * The service line's departments, for a line other than the default. Absent = the default line (CVPSL):
+   * all seven, exactly as before. Limits the page 1 grid to these departments and is the department
+   * filter's option list.
+   */
+  lineDepartments?: readonly ServiceArea[];
 }
 
 /** Geometry in PDF points (1 in = 72 pt). Mirrors portfolio-tracker-mockups/report.css. */
@@ -967,7 +973,7 @@ export class ReportLayout {
     const columns = ReportLayout.gridColumns(m, statuses);
     // Departments with listed projects, then an Unassigned row (gray) only when some listed project has no department.
     // Every cell adds into Total: no flag counts here (a flagged project would read as an extra project).
-    const areaRows: GridRow[] = ReportLayout.gridAreas(input.rows, input.departments).map((a) => {
+    const areaRows: GridRow[] = ReportLayout.gridAreas(input.rows, input.departments, input.lineDepartments).map((a) => {
       const counts = ReportBuilder.areaCounts(header, a);
       const total = statuses.reduce((sum, s) => sum + counts[s], 0);
       return {
@@ -1006,7 +1012,7 @@ export class ReportLayout {
       [ReportLayout.PERIOD_LABEL, period ?? "Not set"],
       ["Projects", projectsLine],
     ];
-    const departmentsDetail = DepartmentFilter.reportDetail(input.departments);
+    const departmentsDetail = DepartmentFilter.reportDetail(input.departments, ReportLayout.departmentOptions(input));
     let meta = ReportLayout.meta(m, metaRows, metaWidth);
     let completedAt: HeaderModel["completedAt"] = null;
     const fy = header.completedFiscalYear;
@@ -1046,7 +1052,7 @@ export class ReportLayout {
             { label: "Projects", value: projectsLine, accent: false },
             ...(completedFy ? [{ label: completedFy.label, value: String(completedFy.count), accent: true }] : []),
             ...(departmentsDetail
-              ? [{ label: "Departments", value: departmentsDetail, accent: false, short: DepartmentFilter.countText(input.departments!) }]
+              ? [{ label: "Departments", value: departmentsDetail, accent: false, short: DepartmentFilter.countText(input.departments!, ReportLayout.departmentOptions(input)) }]
               : []),
           ],
         })
@@ -1153,11 +1159,18 @@ export class ReportLayout {
    * Page 1 area table rows: each included department that has listed projects, in report order, then
    * Unassigned when a listed row has no department. An included department with no projects gets no row
    * (and no section in the body). handoff.json keeps its own list (HandoffBuilder.areas).
+   * `lineDepartments` are a non-default service line's departments (the filter's options).
    */
-  static gridAreas(rows: readonly ReportRow[], departments?: readonly ServiceArea[]): AreaGroup[] {
+  static gridAreas(rows: readonly ReportRow[], departments?: readonly ServiceArea[], lineDepartments?: readonly ServiceArea[]): AreaGroup[] {
+    const options = lineDepartments ?? DepartmentFilter.OPTIONS;
     return ServiceAreaInfo.groups()
       .filter((a) => rows.some((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a))
-      .filter((a) => !departments || DepartmentFilter.includesGroup(departments, a));
+      .filter((a) => !departments || DepartmentFilter.includesGroup(departments, a, options));
+  }
+
+  /** The department filter's options: the line's departments, or DepartmentFilter.OPTIONS for the default line. */
+  static departmentOptions(input: Pick<ReportDocInput, "lineDepartments">): readonly ServiceArea[] {
+    return input.lineDepartments ?? DepartmentFilter.OPTIONS;
   }
 
   /** Width the badge takes at the top right (text at 7 pt semibold with 0.4 pt tracking, padding, border). */
@@ -1209,7 +1222,7 @@ export class ReportLayout {
     }
     const rows = header.meta.rows.length;
     const meta = rows * g.META_ROW_H + (rows - 1) * g.META_GAP + 6 + 3 * g.LEGEND_LINE_H;
-    const grid = ReportLayout.gridHeight(ReportLayout.gridAreas(input.rows, input.departments).length + 1);
+    const grid = ReportLayout.gridHeight(ReportLayout.gridAreas(input.rows, input.departments, input.lineDepartments).length + 1);
     return header.titleBarHeight + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
   }
 
@@ -1384,11 +1397,12 @@ export class ReportLayout {
     // ReportBuilder already satisfy this; the header is always recomputed from the listed rows so
     // every count (grid, strip, projects line, flags) matches what is on the page.
     // The department filter applies the same way (rows from ReportDataLoader already satisfy it).
-    const departments = input.departments ? DepartmentFilter.normalize(input.departments) : undefined;
+    const options = ReportLayout.departmentOptions(input);
+    const departments = input.departments ? DepartmentFilter.normalize(input.departments, options) : undefined;
     const rows = input.rows.filter(
-      (r) => ViewSettings.isStatusVisible(input.viewSettings, r.status) && (!departments || DepartmentFilter.includes(departments, r.serviceArea)),
+      (r) => ViewSettings.isStatusVisible(input.viewSettings, r.status) && (!departments || DepartmentFilter.includes(departments, r.serviceArea, options)),
     );
-    const completedRows = departments && input.completed ? DepartmentFilter.apply(input.completed, departments) : input.completed;
+    const completedRows = departments && input.completed ? DepartmentFilter.apply(input.completed, departments, options) : input.completed;
     input = { ...input, rows, ...(completedRows ? { completed: completedRows } : {}), ...(departments ? { departments } : {}) };
     // The FY-to-date count is not derived from rows: it comes from the (frozen) header as stored.
     const header = { ...ReportBuilder.header(input.rows), completedFiscalYear: input.header?.completedFiscalYear };

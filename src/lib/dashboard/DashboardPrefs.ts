@@ -6,6 +6,13 @@ import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 /** A summary tile: a status count, or the "Completed FY27 to date" card. */
 export type DashboardTile = ProjectStatus | "completedFy";
 
+/** The service line prefs belong to. Absent = the default line (CVPSL), which keeps the original keys. */
+export interface PrefsLine {
+  id: string;
+  isDefault: boolean;
+  departments: readonly ServiceArea[];
+}
+
 /** Minimal Storage surface (window.localStorage in the browser, a Map in tests). */
 export interface PrefsStorage {
   getItem(key: string): string | null;
@@ -24,12 +31,22 @@ export class DashboardPrefs {
   static readonly TILES_TOOLTIP = "Show or hide tiles";
   static readonly SHOW_ALL = "Show all";
 
-  static departmentsKey(email: string): string {
-    return `pt:v${DashboardPrefs.VERSION}:dashboard:departments:${email.trim().toLowerCase()}`;
+  /** Keys are per line: the default line keeps the original key, other lines add ":sl:<line id>". */
+  static departmentsKey(email: string, line?: PrefsLine): string {
+    return `pt:v${DashboardPrefs.VERSION}:dashboard:departments:${email.trim().toLowerCase()}${DashboardPrefs.lineSuffix(line)}`;
   }
 
-  static hiddenTilesKey(email: string): string {
-    return `pt:v${DashboardPrefs.VERSION}:dashboard:hidden-tiles:${email.trim().toLowerCase()}`;
+  static hiddenTilesKey(email: string, line?: PrefsLine): string {
+    return `pt:v${DashboardPrefs.VERSION}:dashboard:hidden-tiles:${email.trim().toLowerCase()}${DashboardPrefs.lineSuffix(line)}`;
+  }
+
+  private static lineSuffix(line: PrefsLine | undefined): string {
+    return !line || line.isDefault ? "" : `:sl:${line.id}`;
+  }
+
+  /** The department filter's options for the line. */
+  static options(line?: PrefsLine): readonly ServiceArea[] {
+    return line ? DepartmentFilter.optionsFor(line) : DepartmentFilter.OPTIONS;
   }
 
   private static parse(text: string | null): unknown {
@@ -41,23 +58,23 @@ export class DashboardPrefs {
     }
   }
 
-  static readDepartments(storage: PrefsStorage | null, email: string): ServiceArea[] {
-    return DepartmentFilter.fromStored(storage ? DashboardPrefs.parse(storage.getItem(DashboardPrefs.departmentsKey(email))) : null);
+  static readDepartments(storage: PrefsStorage | null, email: string, line?: PrefsLine): ServiceArea[] {
+    return DepartmentFilter.fromStored(storage ? DashboardPrefs.parse(storage.getItem(DashboardPrefs.departmentsKey(email, line))) : null, DashboardPrefs.options(line));
   }
 
   /** Excluded departments are stored (not included ones), so a department added later starts included. */
-  static writeDepartments(storage: PrefsStorage | null, email: string, selection: readonly ServiceArea[]): void {
-    storage?.setItem(DashboardPrefs.departmentsKey(email), JSON.stringify(DepartmentFilter.toStored(selection)));
+  static writeDepartments(storage: PrefsStorage | null, email: string, selection: readonly ServiceArea[], line?: PrefsLine): void {
+    storage?.setItem(DashboardPrefs.departmentsKey(email, line), JSON.stringify(DepartmentFilter.toStored(selection, DashboardPrefs.options(line))));
   }
 
   /** Hidden tiles are stored (not shown ones), so a tile added later starts visible. */
-  static readHiddenTiles(storage: PrefsStorage | null, email: string): DashboardTile[] {
-    const raw = storage ? DashboardPrefs.parse(storage.getItem(DashboardPrefs.hiddenTilesKey(email))) : null;
+  static readHiddenTiles(storage: PrefsStorage | null, email: string, line?: PrefsLine): DashboardTile[] {
+    const raw = storage ? DashboardPrefs.parse(storage.getItem(DashboardPrefs.hiddenTilesKey(email, line))) : null;
     return Array.isArray(raw) ? DashboardPrefs.TILES.filter((t) => raw.includes(t)) : [];
   }
 
-  static writeHiddenTiles(storage: PrefsStorage | null, email: string, hidden: readonly DashboardTile[]): void {
-    storage?.setItem(DashboardPrefs.hiddenTilesKey(email), JSON.stringify(DashboardPrefs.TILES.filter((t) => hidden.includes(t))));
+  static writeHiddenTiles(storage: PrefsStorage | null, email: string, hidden: readonly DashboardTile[], line?: PrefsLine): void {
+    storage?.setItem(DashboardPrefs.hiddenTilesKey(email, line), JSON.stringify(DashboardPrefs.TILES.filter((t) => hidden.includes(t))));
   }
 
   /** Tiles available now (the FY card only when its count loaded), in display order. */

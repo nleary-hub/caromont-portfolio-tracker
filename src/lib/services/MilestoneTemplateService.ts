@@ -1,3 +1,5 @@
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
@@ -5,6 +7,7 @@ import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 
 type Reader = Pick<Prisma.TransactionClient, "milestoneTemplate" | "milestoneTemplateItem">;
 type Tx = Prisma.TransactionClient;
+type Scope = Pick<ServiceLineScope, "id">;
 
 export interface TemplateItemDto {
   id: string;
@@ -60,8 +63,9 @@ export class MilestoneTemplateService {
   } as const;
 
   /** All templates in order, each with its steps in order. */
-  static async list(db: Reader = Db.client): Promise<TemplateDto[]> {
-    const [templates, items] = await Promise.all([db.milestoneTemplate.findMany({}), db.milestoneTemplateItem.findMany({})]);
+  static async list(db: Reader = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<TemplateDto[]> {
+    const templates = await db.milestoneTemplate.findMany({ where: ServiceLineAccess.where(scope) });
+    const items = templates.length ? await db.milestoneTemplateItem.findMany({ where: { templateId: { in: templates.map((t) => t.id) } } }) : [];
     return [...templates]
       .sort((a, b) => a.position - b.position || a.name.localeCompare(b.name))
       .map((t) => ({
@@ -76,118 +80,118 @@ export class MilestoneTemplateService {
   }
 
   /** list() for pages that must render without the table (migration 0015 not applied): empty then. */
-  static async listOrEmpty(db: Reader = Db.client): Promise<TemplateDto[]> {
+  static async listOrEmpty(db: Reader = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<TemplateDto[]> {
     try {
-      return await MilestoneTemplateService.list(db);
+      return await MilestoneTemplateService.list(db, scope);
     } catch (e) {
       console.error("Could not read milestone templates", e);
       return [];
     }
   }
 
-  static async create(name: string, admin: Viewer, db: PrismaClient = Db.client): Promise<TemplateDto> {
+  static async create(name: string, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<TemplateDto> {
     AdminPolicy.assertAdmin(admin);
     const clean = MilestoneTemplateService.templateName(name);
     return db.$transaction(async (tx) => {
-      const all = await tx.milestoneTemplate.findMany({ select: { position: true } });
+      const all = await tx.milestoneTemplate.findMany({ where: ServiceLineAccess.where(scope), select: { position: true } });
       const position = all.reduce((m, t) => Math.max(m, t.position), 0) + 1;
-      const t = await tx.milestoneTemplate.create({ data: { name: clean, position, updatedBy: admin.email } });
-      await MilestoneTemplateService.audit(tx, admin, t.id, MilestoneTemplateService.ACTIONS.created, null, { name: clean });
+      const t = await tx.milestoneTemplate.create({ data: { name: clean, position, serviceLineId: scope.id, updatedBy: admin.email } });
+      await MilestoneTemplateService.audit(tx, admin, scope, t.id, MilestoneTemplateService.ACTIONS.created, null, { name: clean });
       return { id: t.id, name: t.name, position: t.position, items: [] };
     });
   }
 
-  static async rename(id: string, name: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
+  static async rename(id: string, name: string, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<void> {
     AdminPolicy.assertAdmin(admin);
     const clean = MilestoneTemplateService.templateName(name);
     await db.$transaction(async (tx) => {
-      const t = await MilestoneTemplateService.load(tx, id);
+      const t = await MilestoneTemplateService.load(tx, id, scope);
       if (t.name === clean) return;
       await tx.milestoneTemplate.update({ where: { id }, data: { name: clean, updatedBy: admin.email } });
-      await MilestoneTemplateService.audit(tx, admin, id, MilestoneTemplateService.ACTIONS.renamed, { name: t.name }, { name: clean });
+      await MilestoneTemplateService.audit(tx, admin, scope, id, MilestoneTemplateService.ACTIONS.renamed, { name: t.name }, { name: clean });
     });
   }
 
   /** Delete a template and its steps. Projects that used it keep their steps (sourceTemplateId becomes null). */
-  static async remove(id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
+  static async remove(id: string, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<void> {
     AdminPolicy.assertAdmin(admin);
     await db.$transaction(async (tx) => {
-      const t = await MilestoneTemplateService.load(tx, id);
+      const t = await MilestoneTemplateService.load(tx, id, scope);
       const items = await MilestoneTemplateService.items(tx, id);
       await tx.milestoneTemplate.delete({ where: { id } });
-      await MilestoneTemplateService.audit(tx, admin, id, MilestoneTemplateService.ACTIONS.deleted, { name: t.name, items: items.map((i) => i.name) }, null);
+      await MilestoneTemplateService.audit(tx, admin, scope, id, MilestoneTemplateService.ACTIONS.deleted, { name: t.name, items: items.map((i) => i.name) }, null);
     });
   }
 
-  static async reorder(ids: readonly string[], admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
+  static async reorder(ids: readonly string[], admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<void> {
     AdminPolicy.assertAdmin(admin);
     await db.$transaction(async (tx) => {
-      const all = [...(await tx.milestoneTemplate.findMany({}))].sort((a, b) => a.position - b.position);
+      const all = [...(await tx.milestoneTemplate.findMany({ where: ServiceLineAccess.where(scope) }))].sort((a, b) => a.position - b.position);
       MilestoneTemplateService.assertSameSet(all.map((t) => t.id), ids);
       if (all.map((t) => t.id).join("|") === ids.join("|")) return;
       for (const [i, id] of ids.entries()) await tx.milestoneTemplate.update({ where: { id }, data: { position: i + 1, updatedBy: admin.email } });
       const nameOf = new Map(all.map((t) => [t.id, t.name]));
-      await MilestoneTemplateService.audit(tx, admin, null, MilestoneTemplateService.ACTIONS.reordered, all.map((t) => t.name), ids.map((id) => nameOf.get(id)));
+      await MilestoneTemplateService.audit(tx, admin, scope, null, MilestoneTemplateService.ACTIONS.reordered, all.map((t) => t.name), ids.map((id) => nameOf.get(id)));
     });
   }
 
-  static async addItem(templateId: string, name: string, admin: Viewer, db: PrismaClient = Db.client): Promise<TemplateItemDto> {
+  static async addItem(templateId: string, name: string, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<TemplateItemDto> {
     AdminPolicy.assertAdmin(admin);
     const clean = MilestoneTemplateService.itemName(name);
     return db.$transaction(async (tx) => {
-      await MilestoneTemplateService.load(tx, templateId);
+      await MilestoneTemplateService.load(tx, templateId, scope);
       const items = await MilestoneTemplateService.items(tx, templateId);
       if (items.length >= MilestoneRules.MAX_STEPS) throw new TemplateValidationError(`At most ${MilestoneRules.MAX_STEPS} steps`);
       const position = items.reduce((m, i) => Math.max(m, i.position), 0) + 1;
       const item = await tx.milestoneTemplateItem.create({ data: { templateId, name: clean, position } });
       await MilestoneTemplateService.touch(tx, templateId, admin);
-      await MilestoneTemplateService.audit(tx, admin, templateId, MilestoneTemplateService.ACTIONS.itemAdded, null, { name: clean, position });
+      await MilestoneTemplateService.audit(tx, admin, scope, templateId, MilestoneTemplateService.ACTIONS.itemAdded, null, { name: clean, position });
       return { id: item.id, name: item.name, position: item.position };
     });
   }
 
-  static async renameItem(itemId: string, name: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
+  static async renameItem(itemId: string, name: string, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<void> {
     AdminPolicy.assertAdmin(admin);
     const clean = MilestoneTemplateService.itemName(name);
     await db.$transaction(async (tx) => {
-      const item = await MilestoneTemplateService.loadItem(tx, itemId);
+      const item = await MilestoneTemplateService.loadItem(tx, itemId, scope);
       if (item.name === clean) return;
       await tx.milestoneTemplateItem.update({ where: { id: itemId }, data: { name: clean } });
       await MilestoneTemplateService.touch(tx, item.templateId, admin);
-      await MilestoneTemplateService.audit(tx, admin, item.templateId, MilestoneTemplateService.ACTIONS.itemRenamed, { name: item.name }, { name: clean });
+      await MilestoneTemplateService.audit(tx, admin, scope, item.templateId, MilestoneTemplateService.ACTIONS.itemRenamed, { name: item.name }, { name: clean });
     });
   }
 
-  static async removeItem(itemId: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
+  static async removeItem(itemId: string, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<void> {
     AdminPolicy.assertAdmin(admin);
     await db.$transaction(async (tx) => {
-      const item = await MilestoneTemplateService.loadItem(tx, itemId);
+      const item = await MilestoneTemplateService.loadItem(tx, itemId, scope);
       await tx.milestoneTemplateItem.delete({ where: { id: itemId } });
       const rest = await MilestoneTemplateService.items(tx, item.templateId);
       for (const [i, r] of rest.entries()) if (r.position !== i + 1) await tx.milestoneTemplateItem.update({ where: { id: r.id }, data: { position: i + 1 } });
       await MilestoneTemplateService.touch(tx, item.templateId, admin);
-      await MilestoneTemplateService.audit(tx, admin, item.templateId, MilestoneTemplateService.ACTIONS.itemDeleted, { name: item.name, position: item.position }, null);
+      await MilestoneTemplateService.audit(tx, admin, scope, item.templateId, MilestoneTemplateService.ACTIONS.itemDeleted, { name: item.name, position: item.position }, null);
     });
   }
 
-  static async reorderItems(templateId: string, itemIds: readonly string[], admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
+  static async reorderItems(templateId: string, itemIds: readonly string[], admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<void> {
     AdminPolicy.assertAdmin(admin);
     await db.$transaction(async (tx) => {
-      await MilestoneTemplateService.load(tx, templateId);
+      await MilestoneTemplateService.load(tx, templateId, scope);
       const items = await MilestoneTemplateService.items(tx, templateId);
       MilestoneTemplateService.assertSameSet(items.map((i) => i.id), itemIds);
       if (items.map((i) => i.id).join("|") === itemIds.join("|")) return;
       for (const [i, id] of itemIds.entries()) await tx.milestoneTemplateItem.update({ where: { id }, data: { position: i + 1 } });
       const nameOf = new Map(items.map((i) => [i.id, i.name]));
       await MilestoneTemplateService.touch(tx, templateId, admin);
-      await MilestoneTemplateService.audit(tx, admin, templateId, MilestoneTemplateService.ACTIONS.itemsReordered, items.map((i) => i.name), itemIds.map((id) => nameOf.get(id)));
+      await MilestoneTemplateService.audit(tx, admin, scope, templateId, MilestoneTemplateService.ACTIONS.itemsReordered, items.map((i) => i.name), itemIds.map((id) => nameOf.get(id)));
     });
   }
 
   /** Recent template changes, newest first (admin only). */
-  static async history(admin: Viewer, limit = 20, db: Pick<Prisma.TransactionClient, "milestoneTemplateHistory"> = Db.client): Promise<TemplateChange[]> {
+  static async history(admin: Viewer, limit = 20, db: Pick<Prisma.TransactionClient, "milestoneTemplateHistory"> = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<TemplateChange[]> {
     AdminPolicy.assertAdmin(admin);
-    const rows = await db.milestoneTemplateHistory.findMany({ orderBy: { changedAt: "desc" }, take: limit });
+    const rows = await db.milestoneTemplateHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: limit });
     return rows.map((r) => ({ templateId: r.templateId, action: r.action, oldValue: r.oldValue, newValue: r.newValue, changedAt: r.changedAt, changedBy: r.changedBy }));
   }
 
@@ -205,15 +209,17 @@ export class MilestoneTemplateService {
     return clean;
   }
 
-  private static async load(tx: Tx, id: string) {
+  /** A template of `scope`; another line's template is "not found". */
+  private static async load(tx: Tx, id: string, scope: Scope) {
     const t = await tx.milestoneTemplate.findUnique({ where: { id } });
-    if (!t) throw new TemplateNotFoundError();
+    if (!t || !ServiceLineAccess.inScope(t, scope)) throw new TemplateNotFoundError();
     return t;
   }
 
-  private static async loadItem(tx: Tx, id: string) {
+  private static async loadItem(tx: Tx, id: string, scope: Scope) {
     const item = await tx.milestoneTemplateItem.findUnique({ where: { id } });
     if (!item) throw new TemplateNotFoundError();
+    await MilestoneTemplateService.load(tx, item.templateId, scope);
     return item;
   }
 
@@ -231,9 +237,10 @@ export class MilestoneTemplateService {
     if (a !== b || new Set(next).size !== next.length) throw new TemplateValidationError("The list changed; reload and try again");
   }
 
-  private static async audit(tx: Tx, admin: Viewer, templateId: string | null, action: string, oldValue: unknown, newValue: unknown): Promise<void> {
+  private static async audit(tx: Tx, admin: Viewer, scope: Scope, templateId: string | null, action: string, oldValue: unknown, newValue: unknown): Promise<void> {
     await tx.milestoneTemplateHistory.create({
       data: {
+        serviceLineId: scope.id,
         templateId,
         action,
         oldValue: (oldValue ?? undefined) as Prisma.InputJsonValue | undefined,

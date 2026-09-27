@@ -2,7 +2,7 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { ProjectPeopleEditor } from "@/components/ProjectPeopleEditor";
-import { AppConfig } from "@/lib/config/AppConfig";
+import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
 import type { ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
@@ -23,7 +23,11 @@ type OwnerCell = Extract<RowCell, { kind: "owner" }>;
 describe("ContractsLead", () => {
   it("fixed pick-list; resolve is case and space tolerant and returns the canonical name", () => {
     expect(ContractsLead.options()).toEqual(["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"]);
-    expect(ContractsLead.options()).toBe(AppConfig.CONTRACTS_LEADS);
+    // CVPSL keeps the current list (now per-line data, seeded by migration 0016).
+    expect(ContractsLead.options()).toBe(ServiceLine.CVPSL_CONTRACTS_LEADS);
+    expect(ContractsLead.options(["Pat Lee"])).toEqual(["Pat Lee"]);
+    expect(ContractsLead.resolve("pat lee", ["Pat Lee"])).toBe("Pat Lee");
+    expect(ContractsLead.resolve("Shea Waldron", ["Pat Lee"])).toBeUndefined();
     expect(ContractsLead.resolve("  shea   WALDRON ")).toBe("Shea Waldron");
     expect(ContractsLead.resolve("")).toBeNull();
     expect(ContractsLead.resolve(null)).toBeNull();

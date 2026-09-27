@@ -1,6 +1,5 @@
 import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
-import { AppConfig } from "@/lib/config/AppConfig";
 import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
 import type { CompletedRow, ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
@@ -90,7 +89,7 @@ export class SampleReportData {
         note: note === "LONG" ? SampleReportData.LONG_NOTE : note,
         inforRequestNumber: SampleReportData.INFOR[i] ?? null,
         // Cycles the pick-list (Mellisa Gonzales included, the longest name); every fifth row is "To assign".
-        contractsLead: i % 5 === 4 ? null : AppConfig.CONTRACTS_LEADS[(i + 2) % AppConfig.CONTRACTS_LEADS.length],
+        contractsLead: i % 5 === 4 ? null : ServiceLine.CVPSL_CONTRACTS_LEADS[(i + 2) % ServiceLine.CVPSL_CONTRACTS_LEADS.length],
         changed,
         overdue,
         updatedOn,

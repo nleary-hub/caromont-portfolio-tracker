@@ -3,6 +3,10 @@ import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { restoreProjectForm, unhideProjectForm } from "@/app/actions/admin";
+import { RestoreServiceLineButton } from "@/components/RestoreServiceLineButton";
+import { ServiceLineSlot } from "@/components/ServiceLineSlot";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLineHistoryText } from "@/lib/admin/ServiceLineHistoryText";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
@@ -32,6 +36,8 @@ class AuditFormat {
   };
 
   static field(e: AuditEvent): string {
+    if (e.kind === "serviceLine") return `Service line: ${ServiceLineHistoryText.action(e.field.replace(/^serviceLine\./, ""))}`;
+    if (e.kind === "template") return `Template: ${e.field.replace(/^template\./, "").replace(/_/g, " ")}`;
     return AuditFormat.FIELD_LABELS[e.field] ?? e.field;
   }
 }
@@ -41,12 +47,17 @@ export default async function AuditPage() {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
-  const data = await AdminAuditService.load(viewer);
+  const scope = await ServiceLineAccess.activeOrDefault(viewer);
+  const data = await AdminAuditService.load(viewer, undefined, scope);
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
-      <div className="flex items-center justify-between">
-        <h1 className="type-title">Audit: hidden and deleted</h1>
+      <div className="flex items-center justify-between gap-4">
+        <div className="flex min-w-0 items-center gap-3">
+          <ServiceLineSlot viewer={viewer} active={scope} />
+          <div className="h-6 w-px bg-line" />
+          <h1 className="type-title whitespace-nowrap">Audit: hidden and deleted</h1>
+        </div>
         <div className="flex items-center gap-3">
           <AdminMenuSlot viewer={viewer} />
           <Link href="/" className="text-muted type-table-strong hover:text-fg">
@@ -84,6 +95,40 @@ export default async function AuditPage() {
             </form>
           )}
         />
+      </section>
+
+      <section className="flex flex-col gap-2" id="deleted-service-lines">
+        <h2 className="type-heading">Deleted service lines</h2>
+        {data.deletedLines.length === 0 ? (
+          <p className="text-muted type-caption">No deleted service lines.</p>
+        ) : (
+          <div className="overflow-hidden rounded-card border border-line bg-card">
+            <table className="w-full border-separate border-spacing-0 type-table">
+              <thead>
+                <tr className="text-left text-muted type-label uppercase">
+                  {["Service line", "Short name", "Deleted", "Deleted by", ""].map((h, i) => (
+                    <th key={i} className="border-b border-line px-3 py-2">
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {data.deletedLines.map((l) => (
+                  <tr key={l.id}>
+                    <td className="border-b border-line px-3 py-2 type-table-strong">{l.name}</td>
+                    <td className="border-b border-line px-3 py-2">{l.shortName}</td>
+                    <td className="border-b border-line px-3 py-2">{AuditFormat.when(l.deletedAt)}</td>
+                    <td className="border-b border-line px-3 py-2">{l.deletedBy ?? "–"}</td>
+                    <td className="border-b border-line px-3 py-2">
+                      <RestoreServiceLineButton id={l.id} name={l.name} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
       </section>
 
       <section className="flex flex-col gap-2">

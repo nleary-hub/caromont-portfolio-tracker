@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { AdminPolicy } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { FreezeService } from "@/lib/services/FreezeService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
@@ -16,6 +17,7 @@ export async function freezeNow(): Promise<FreezeNowState> {
   if (!viewer?.isAdmin) return { ok: false, message: "Not authorized." };
   try {
     AdminPolicy.assertAdmin(viewer);
+    // Freeze is the scheduled report: always the default line (CVPSL), whatever line the admin has open.
     const result = await FreezeService.run({ trigger: "manual", actor: viewer.email });
     revalidatePath("/reports");
     const delivery = result.delivery ? ` Delivery: ${result.delivery.status.replace("_", " ")}.` : "";
@@ -31,7 +33,8 @@ export async function setShowKeyPageForm(form: FormData): Promise<void> {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) return;
   try {
-    await ReportOptionsService.update({ showKeyPage: form.get("showKeyPage") === "on" }, viewer);
+    const scope = await ServiceLineAccess.activeFor(viewer);
+    await ReportOptionsService.update({ showKeyPage: form.get("showKeyPage") === "on" }, viewer, undefined, scope);
     revalidatePath("/reports");
   } catch (e) {
     ReportLog.error("report_options.update.failed", { error: e instanceof Error ? e.message : String(e) });
@@ -40,7 +43,10 @@ export async function setShowKeyPageForm(form: FormData): Promise<void> {
 
 /** Admin "Report" settings: departments in report and totals grid placement (applies to the next freeze and to drafts). */
 export async function saveReportOptions(_prev: ReportOptionsFormState, form: FormData): Promise<ReportOptionsFormState> {
-  const state = await ReportOptionsForm.submit(await CurrentViewer.get(), { departments: form.getAll("departments"), totalsGrid: form.get("totalsGrid") });
+  const viewer = await CurrentViewer.get();
+  if (!viewer?.isAdmin) return { ok: false, message: ReportOptionsForm.NOT_AUTHORIZED };
+  const scope = await ServiceLineAccess.activeFor(viewer);
+  const state = await ReportOptionsForm.submit(viewer, { departments: form.getAll("departments"), totalsGrid: form.get("totalsGrid") }, undefined, scope);
   if (state?.ok) {
     revalidatePath("/admin/settings");
     revalidatePath("/reports");

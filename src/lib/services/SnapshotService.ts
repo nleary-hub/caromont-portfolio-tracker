@@ -1,3 +1,4 @@
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import type { Prisma, PrismaClient, ReportSnapshot } from "@/generated/prisma/client";
 import { Db } from "@/lib/db/Db";
@@ -44,12 +45,15 @@ export class SnapshotService {
     try {
       return await db.$transaction(
         async (tx) => {
-          const data = await ReportDataLoader.load(tx, generatedAt);
+          // Scheduled reports are for the default line (CVPSL) only.
+          const line = await ServiceLineAccess.scheduledReportLine(tx);
+          const data = await ReportDataLoader.load(tx, generatedAt, line);
           // Same transaction as the snapshot: the block is frozen in completedJson and its projects are
           // marked so the next freeze does not list them again (all or nothing).
           await ProjectService.markCompletionReported(tx, data.completed.map((c) => c.projectId), generatedAt);
           return tx.reportSnapshot.create({
             data: {
+              serviceLineId: line.id,
               periodStart,
               periodEnd,
               generatedAt,

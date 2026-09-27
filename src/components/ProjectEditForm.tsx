@@ -4,6 +4,8 @@ import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import type { ServiceArea } from "@/generated/prisma/enums";
+import { PickList } from "@/lib/people/PickList";
 import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
 import { MilestoneEditorModel } from "@/lib/projects/MilestoneEditorModel";
 import type { MilestoneSaveActionResult } from "@/app/actions/admin";
@@ -24,6 +26,8 @@ export type ProjectFormSubmit = (
 
 export interface ProjectEditFormProps {
   mode: "edit" | "new";
+  /** The service line's departments (default: all). A stored department not in the list stays selectable. */
+  departments?: readonly ServiceArea[];
   /** Stored values (ProjectFormModel.empty() for a new project). */
   original: ProjectFormValues;
   /** Stored checklist steps ([] for a new project or one without steps). */
@@ -60,6 +64,7 @@ const TEXTAREA = "block w-full min-w-0 resize-none rounded-control border border
  */
 export function ProjectEditForm({
   mode,
+  departments,
   original: originalProp,
   milestones,
   templates,
@@ -185,7 +190,7 @@ export function ProjectEditForm({
           <Field field="serviceArea" label="Department" errors={shown("serviceArea")}>
             <select id="pf-serviceArea" className={INPUT} value={values.serviceArea} onChange={(e) => set("serviceArea", e.target.value)} onBlur={() => touch("serviceArea")}>
               {(isNew || values.serviceArea === "") && <option value="">{isNew ? "Select a department" : ServiceAreaInfo.UNASSIGNED}</option>}
-              {ServiceAreaInfo.all().map((a) => (
+              {PickList.withCurrent(departments ?? ServiceAreaInfo.all(), (originalProp.serviceArea || null) as ServiceArea | null).map((a) => (
                 <option key={a} value={a}>
                   {ServiceAreaInfo.label(a)}
                 </option>

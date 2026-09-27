@@ -282,7 +282,8 @@ export class ProjectCsv {
   }
 
   /** Convert the present cells of a row to ProjectInput values. Validation proper is ProjectValidator's job. */
-  static toInput(row: CsvRow, opts: { blankStatus?: ProjectStatus } = {}): RowConversion {
+  /** `contractsLeads`: the service line's pick-list (default: the CVPSL list). */
+  static toInput(row: CsvRow, opts: { blankStatus?: ProjectStatus; contractsLeads?: readonly string[] } = {}): RowConversion {
     const input: Partial<ProjectInput> = {};
     const errors: RowConversion["errors"] = {};
     const fail = (col: CsvColumn, msg: string) => (errors[col] ??= []).push(msg);
@@ -343,9 +344,9 @@ export class ProjectCsv {
           break;
         }
         case "contracts_lead": {
-          const lead = ContractsLead.resolve(value);
+          const lead = ContractsLead.resolve(value, opts.contractsLeads);
           if (lead === undefined) {
-            fail(col, ContractsLead.invalidMessage(value));
+            fail(col, ContractsLead.invalidMessage(value, opts.contractsLeads));
             input.contractsLead = value;
           } else input.contractsLead = lead;
           break;

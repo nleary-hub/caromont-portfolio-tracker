@@ -4,6 +4,8 @@ import { Db } from "@/lib/db/Db";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ReportDataLoader } from "@/lib/report/ReportDataLoader";
 import { ReportSchedule } from "@/lib/report/ReportSchedule";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 
 export interface DraftPdf {
   bytes: Buffer;
@@ -17,9 +19,11 @@ export interface DraftPdf {
  * Returns null for non-admins so the route can answer 404.
  */
 export class DraftReportService {
-  static async render(viewer: Viewer | null, db: PrismaClient = Db.client, now: Date = new Date()): Promise<DraftPdf | null> {
+  static async render(viewer: Viewer | null, db: PrismaClient = Db.client, now: Date = new Date(), scope?: ServiceLineScope): Promise<DraftPdf | null> {
     if (!viewer?.isAdmin) return null;
-    const data = await ReportDataLoader.load(db, now);
+    // The admin's active line (any line has on-demand PDFs; only the default line has scheduled ones).
+    const line = scope ?? (await ServiceLineAccess.activeFor(viewer, db));
+    const data = await ReportDataLoader.load(db, now, line);
     const period = ReportSchedule.upcomingPeriod(now);
     const bytes = await PdfReportRenderer.renderDocument({
       rows: data.rows,
@@ -29,6 +33,7 @@ export class DraftReportService {
       showKeyPage: data.options.showKeyPage,
       departments: data.options.departments,
       totalsGrid: data.options.totalsGrid,
+      ...(line.isDefault ? {} : { lineDepartments: line.departments }),
       serviceLine: data.serviceLine,
       reportDate: data.reportDate,
       periodStart: period.periodStart,
@@ -36,6 +41,6 @@ export class DraftReportService {
       generatedAt: now,
       draft: true,
     });
-    return { bytes, fileName: PdfReportRenderer.draftFileName(data.reportDate) };
+    return { bytes, fileName: line.isDefault ? PdfReportRenderer.draftFileName(data.reportDate) : PdfReportRenderer.lineDraftFileName(line.shortName, data.reportDate) };
   }
 }

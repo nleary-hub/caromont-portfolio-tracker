@@ -8,7 +8,19 @@ import type { ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
 import { DepartmentChecklist } from "./DashboardFilterControls";
 
 /** Admin "Report" section: departments in report (checkbox list, one always checked) and the totals grid placement. */
-export function ReportSettingsForm({ departments, totalsGrid }: { departments: ServiceArea[]; totalsGrid: TotalsGridMode }) {
+export function ReportSettingsForm({
+  departments,
+  totalsGrid,
+  options,
+  scheduled = true,
+}: {
+  departments: ServiceArea[];
+  totalsGrid: TotalsGridMode;
+  /** The active line's department filter options. */
+  options?: readonly ServiceArea[];
+  /** False for lines other than the default: they have on-demand PDFs only. */
+  scheduled?: boolean;
+}) {
   const [state, action, pending] = useActionState<ReportOptionsFormState, FormData>(saveReportOptions, null);
   const [selected, setSelected] = useState<ServiceArea[]>(departments);
   const [mode, setMode] = useState<TotalsGridMode>(totalsGrid);
@@ -17,7 +29,7 @@ export function ReportSettingsForm({ departments, totalsGrid }: { departments: S
       <fieldset className="flex flex-col gap-1">
         <legend className="mb-1 type-label text-muted">Departments in report</legend>
         <div className="max-w-[260px]">
-          <DepartmentChecklist value={selected} onChange={setSelected} name="departments" />
+          <DepartmentChecklist value={selected} onChange={setSelected} name="departments" options={options} />
         </div>
       </fieldset>
       <fieldset className="flex flex-col gap-1.5">
@@ -42,7 +54,11 @@ export function ReportSettingsForm({ departments, totalsGrid }: { departments: S
           </span>
         )}
       </div>
-      <p className="type-caption text-muted">Used by Generate PDF now and the biweekly report. Frozen reports keep the settings they were frozen with.</p>
+      <p className="type-caption text-muted">
+        {scheduled
+          ? "Used by Generate PDF now and the biweekly report. Frozen reports keep the settings they were frozen with."
+          : "Used by Generate PDF now. The biweekly report is for CVPSL only."}
+      </p>
     </form>
   );
 }

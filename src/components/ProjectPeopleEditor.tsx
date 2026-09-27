@@ -6,6 +6,7 @@ import { Assignee } from "@/lib/domain/Assignee";
 import { ContractsLead } from "@/lib/domain/ContractsLead";
 import { Requester } from "@/lib/domain/Requester";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
+import { PickList } from "@/lib/people/PickList";
 import { PeopleComboboxModel, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
 import { PeopleDirectory, type PeopleRole } from "@/lib/people/PeopleDirectory";
 import { SelectControl } from "./FieldControl";
@@ -27,6 +28,10 @@ export interface ProjectPeopleEditorProps {
   requesterSuggestions: readonly string[];
   /** Resolves to an error message, or null on success. */
   saveAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
+  /** The service line's contracts leads (default: the CVPSL list). A stored name not in the list stays selectable. */
+  contractsLeads?: readonly string[];
+  /** The service line's departments (default: all). A stored department not in the list stays selectable. */
+  departments?: readonly ServiceArea[];
   /** Edit form: Department is edited in the Project section, so the panel omits it and its outer rule. */
   inForm?: boolean;
 }
@@ -89,8 +94,8 @@ function Row({ label, htmlFor, state, children }: { label: string; htmlFor: stri
   );
 }
 
-/** Contracts lead: the fixed pick-list (AppConfig.CONTRACTS_LEADS) plus a blank "To assign" option. */
-function ContractsLeadSelect({ projectId, contractsLead, saveAction }: ProjectPeopleEditorProps) {
+/** Contracts lead: the service line's pick-list plus a blank "To assign" option. */
+function ContractsLeadSelect({ projectId, contractsLead, contractsLeads, saveAction }: ProjectPeopleEditorProps) {
   const [value, setValue] = useState<string>(contractsLead ?? "");
   const [state, save] = useFieldState();
   const id = `contractsLead-${projectId}`;
@@ -112,7 +117,7 @@ function ContractsLeadSelect({ projectId, contractsLead, saveAction }: ProjectPe
         }}
       >
         <option value="">{Assignee.TO_ASSIGN}</option>
-        {ContractsLead.options().map((n) => (
+        {PickList.withCurrent(ContractsLead.options(contractsLeads), contractsLead).map((n) => (
           <option key={n} value={n}>
             {n}
           </option>
@@ -122,7 +127,7 @@ function ContractsLeadSelect({ projectId, contractsLead, saveAction }: ProjectPe
   );
 }
 
-function DepartmentSelect({ projectId, serviceArea, saveAction }: ProjectPeopleEditorProps) {
+function DepartmentSelect({ projectId, serviceArea, departments, saveAction }: ProjectPeopleEditorProps) {
   // "" = Unassigned (clears the department).
   const [value, setValue] = useState<string>(serviceArea ?? "");
   const [state, save] = useFieldState();
@@ -144,7 +149,7 @@ function DepartmentSelect({ projectId, serviceArea, saveAction }: ProjectPeopleE
           });
         }}
       >
-        {ServiceAreaInfo.all().map((a) => (
+        {PickList.withCurrent(departments ?? ServiceAreaInfo.all(), serviceArea).map((a) => (
           <option key={a} value={a}>
             {ServiceAreaInfo.label(a)}
           </option>

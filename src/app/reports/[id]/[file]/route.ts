@@ -1,3 +1,4 @@
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ReportHttp } from "@/lib/report/ReportHttp";
 import { ReportArchiveService } from "@/lib/services/ReportArchiveService";
@@ -10,6 +11,6 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   const viewer = await CurrentViewer.get();
   const { id, file } = await ctx.params;
   if (!viewer || (file !== "pdf" && file !== "handoff")) return ReportHttp.notFound();
-  const artifact = await ReportArchiveService.file(viewer, id, file);
+  const artifact = await ReportArchiveService.file(viewer, id, file, undefined, await ServiceLineAccess.activeOrDefault(viewer));
   return artifact ? ReportHttp.artifact(artifact) : ReportHttp.notFound();
 }

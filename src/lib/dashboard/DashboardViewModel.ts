@@ -155,6 +155,14 @@ export class DashboardViewModel {
   }
 
   /**
+   * A service line other than the default with no projects at all: the dashboard shows only the "No projects
+   * in X yet" banner (no tiles, toolbar or table) until the first project exists. CVPSL never shows it.
+   */
+  static isEmptyLine(line: { isDefault: boolean } | null | undefined, projectCount: number, loadError: boolean): boolean {
+    return Boolean(line && !line.isDefault) && projectCount === 0 && !loadError;
+  }
+
+  /**
    * Status tile counts. Pass only rows() output (visible rows). No flag totals: flags
    * are shown per row, and a flag tile would read as extra projects that do not add into the total.
    */

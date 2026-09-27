@@ -7,7 +7,7 @@ import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { Chevron, FieldControlStyle } from "./FieldControl";
 
 /** Open/close state for a popover anchored in `rootRef`: closes on an outside click or Escape. */
-function usePopover(): { open: boolean; setOpen: (open: boolean) => void; rootRef: React.RefObject<HTMLDivElement | null> } {
+export function usePopover(): { open: boolean; setOpen: (open: boolean) => void; rootRef: React.RefObject<HTMLDivElement | null> } {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
@@ -49,16 +49,19 @@ export function DepartmentChecklist({
   value,
   onChange,
   name,
+  options = DepartmentFilter.OPTIONS,
 }: {
   value: readonly ServiceArea[];
   onChange: (next: ServiceArea[]) => void;
   /** Form field name (admin form posts the checked departments). */
   name?: string;
+  /** The service line's filter options (DepartmentFilter.OPTIONS for the default line). */
+  options?: readonly ServiceArea[];
 }) {
   const locked = DepartmentFilter.lockedOption(value);
   return (
     <ul className="vp-list">
-      {DepartmentFilter.OPTIONS.map((a) => {
+      {options.map((a) => {
         const on = value.includes(a);
         const disabled = locked === a;
         return (
@@ -71,7 +74,7 @@ export function DepartmentChecklist({
                 value={a}
                 checked={on}
                 disabled={disabled}
-                onChange={() => onChange(DepartmentFilter.toggle(value, a))}
+                onChange={() => onChange(DepartmentFilter.toggle(value, a, options))}
               />
               {/* A disabled checkbox is not posted; keep the value in the form. */}
               {disabled && name && <input type="hidden" name={name} value={a} />}
@@ -86,9 +89,17 @@ export function DepartmentChecklist({
 }
 
 /** Dashboard "Departments" select: closed box in the shared select style, popover with the checkbox list. */
-export function DepartmentsSelect({ value, onChange }: { value: readonly ServiceArea[]; onChange: (next: ServiceArea[]) => void }) {
+export function DepartmentsSelect({
+  value,
+  onChange,
+  options = DepartmentFilter.OPTIONS,
+}: {
+  value: readonly ServiceArea[];
+  onChange: (next: ServiceArea[]) => void;
+  options?: readonly ServiceArea[];
+}) {
   const { open, setOpen, rootRef } = usePopover();
-  const all = DepartmentFilter.isAll(value);
+  const all = DepartmentFilter.isAll(value, options);
   return (
     <div ref={rootRef} className="relative w-[200px] shrink-0" data-testid="departments-select">
       <button
@@ -98,7 +109,7 @@ export function DepartmentsSelect({ value, onChange }: { value: readonly Service
         onClick={() => setOpen(!open)}
         className={`${FieldControlStyle.BOX} text-left text-fg ${open ? "border-accent" : ""}`}
       >
-        {DepartmentFilter.summary(value)}
+        {DepartmentFilter.summary(value, DepartmentFilter.SUMMARY_MAX_CHARS, options)}
       </button>
       <span aria-hidden="true" className={`pointer-events-none ${FieldControlStyle.CHEVRON_SLOT}`}>
         <Chevron open={open} />
@@ -108,7 +119,7 @@ export function DepartmentsSelect({ value, onChange }: { value: readonly Service
           <ul className="vp-list">
             <li>
               <label className="vp-check">
-                <input type="checkbox" className="sr-only" checked={all} onChange={() => onChange(DepartmentFilter.all())} />
+                <input type="checkbox" className="sr-only" checked={all} onChange={() => onChange(DepartmentFilter.all(options))} />
                 <SmallCheck on={all} />
                 <span className="vp-lbl">{DepartmentFilter.ALL_LABEL}</span>
               </label>
@@ -116,7 +127,7 @@ export function DepartmentsSelect({ value, onChange }: { value: readonly Service
           </ul>
           <div className="df-divider" />
           <div className="df-scroll">
-            <DepartmentChecklist value={value} onChange={onChange} />
+            <DepartmentChecklist value={value} onChange={onChange} options={options} />
           </div>
         </div>
       )}

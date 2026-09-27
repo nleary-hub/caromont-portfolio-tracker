@@ -117,4 +117,9 @@ export class PdfReportRenderer {
   static draftFileName(reportDate: string): string {
     return `cardiac-portfolio-report-draft-${reportDate}.pdf`;
   }
+
+  /** Draft file name for a line other than the default: "onc-portfolio-report-draft-2026-09-29.pdf". */
+  static lineDraftFileName(shortName: string, reportDate: string): string {
+    return `${shortName.toLowerCase().replace(/[^a-z0-9]+/g, "")}-portfolio-report-draft-${reportDate}.pdf`;
+  }
 }

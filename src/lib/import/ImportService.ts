@@ -1,3 +1,6 @@
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
+import { PickList } from "@/lib/people/PickList";
 import { Requester } from "@/lib/domain/Requester";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { Db } from "@/lib/db/Db";
@@ -103,32 +106,34 @@ export class ImportService {
 
   // ---------------------------------------------------------------- create
 
-  static async previewCreate(csv: string, db: Reader = Db.client): Promise<CreatePreview> {
-    return ImportService.buildCreatePreview(ProjectCsv.parse(csv, ProjectCsv.REQUIRED_FOR_CREATE), db);
+  /** Imports go into `scope` (the admin's active service line); duplicates are checked within that line. */
+  static async previewCreate(csv: string, db: Reader = Db.client, scope: ServiceLineScope = ServiceLine.defaultScope()): Promise<CreatePreview> {
+    return ImportService.buildCreatePreview(ProjectCsv.parse(csv, ProjectCsv.REQUIRED_FOR_CREATE), db, scope);
   }
 
   static async commitCreate(
     csv: string,
     adminEmail: string,
     db: PrismaClient = Db.client,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<{ created: number; skipped: number; preview: CreatePreview }> {
     const parsed = ProjectCsv.parse(csv, ProjectCsv.REQUIRED_FOR_CREATE);
     const actor: Actor = { changedBy: adminEmail, comment: ImportService.SOURCE_CREATE };
     return db.$transaction(async (tx) => {
-      const preview = await ImportService.buildCreatePreview(parsed, tx);
+      const preview = await ImportService.buildCreatePreview(parsed, tx, scope);
       if (!preview.canCommit) throw new ImportBlockedError(preview);
       for (const row of preview.rows) {
-        if (row.status === "ready" && row.input) await ProjectService.createInTx(tx, row.input, actor);
+        if (row.status === "ready" && row.input) await ProjectService.createInTx(tx, row.input, actor, undefined, undefined, scope);
       }
       return { created: preview.counts.ready, skipped: preview.counts.skipped, preview };
     }, ImportService.TX_OPTIONS);
   }
 
-  private static async buildCreatePreview(parsed: ParsedCsv, db: Reader): Promise<CreatePreview> {
+  private static async buildCreatePreview(parsed: ParsedCsv, db: Reader, scope: ServiceLineScope): Promise<CreatePreview> {
     const rows: CreateRowResult[] = [];
     if (parsed.fileErrors.length === 0) {
       const existing = await db.project.findMany({
-        where: { archivedAt: null },
+        where: { archivedAt: null, ...ServiceLineAccess.where(scope) },
         select: { name: true, serviceArea: true },
       });
       const existingKeys = new Set(existing.map((p) => ImportService.duplicateKey(p.name, p.serviceArea)));
@@ -142,7 +147,7 @@ export class ImportService {
           result.warnings.push("Template example row skipped. Delete it from your file.");
           continue;
         }
-        const { input, errors } = ImportService.validateRow(row);
+        const { input, errors } = ImportService.validateRow(row, scope);
         result.errors = errors;
         if (Object.keys(errors).length) {
           result.status = "error";
@@ -188,37 +193,39 @@ export class ImportService {
 
   // ---------------------------------------------------------------- wording update
 
-  static async previewWording(csv: string, db: Reader = Db.client): Promise<WordingPreview> {
-    return ImportService.buildWordingPreview(ProjectCsv.parse(csv, ProjectCsv.REQUIRED_FOR_WORDING), db);
+  /** Wording updates only match projects of `scope`; an id from another line reads "No project has this id". */
+  static async previewWording(csv: string, db: Reader = Db.client, scope: ServiceLineScope = ServiceLine.defaultScope()): Promise<WordingPreview> {
+    return ImportService.buildWordingPreview(ProjectCsv.parse(csv, ProjectCsv.REQUIRED_FOR_WORDING), db, scope);
   }
 
   static async commitWording(
     csv: string,
     adminEmail: string,
     db: PrismaClient = Db.client,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<{ updated: number; unchanged: number; preview: WordingPreview }> {
     const parsed = ProjectCsv.parse(csv, ProjectCsv.REQUIRED_FOR_WORDING);
     const actor: Actor = { changedBy: adminEmail, comment: ImportService.SOURCE_WORDING };
     return db.$transaction(async (tx) => {
-      const preview = await ImportService.buildWordingPreview(parsed, tx);
+      const preview = await ImportService.buildWordingPreview(parsed, tx, scope);
       if (!preview.canCommit) throw new ImportBlockedError(preview);
       for (const row of preview.rows) {
         if (row.status !== "change") continue;
         const patch: Partial<ProjectInput> = {};
         for (const c of row.changes) patch[ImportService.WORDING_FIELD[c.column]] = c.new;
-        await ProjectService.updateInTx(tx, row.id, patch, actor);
+        await ProjectService.updateInTx(tx, row.id, patch, actor, undefined, undefined, scope);
       }
       return { updated: preview.counts.changed, unchanged: preview.counts.unchanged, preview };
     }, ImportService.TX_OPTIONS);
   }
 
-  private static async buildWordingPreview(parsed: ParsedCsv, db: Reader): Promise<WordingPreview> {
+  private static async buildWordingPreview(parsed: ParsedCsv, db: Reader, scope: ServiceLineScope): Promise<WordingPreview> {
     const rows: WordingRowResult[] = [];
     if (parsed.fileErrors.length === 0) {
       const ids = [...new Set(parsed.rows.map((r) => (r.cells.id ?? "").trim().toLowerCase()))].filter((id) =>
         ImportService.UUID_RE.test(id),
       );
-      const found = ids.length ? await db.project.findMany({ where: { id: { in: ids } } }) : [];
+      const found = ids.length ? await db.project.findMany({ where: { id: { in: ids }, ...ServiceLineAccess.where(scope) } }) : [];
       const byId = new Map<string, ProjectRecord>(found.map((p) => [p.id.toLowerCase(), p]));
       const seenIds = new Map<string, number>();
 
@@ -265,8 +272,10 @@ export class ImportService {
         }
 
         // Every column other than description/note/next_milestone/accomplishment must match the database exactly (after normalization).
-        const { input: fileInput, errors: conversionErrors } = ProjectCsv.toInput(row);
         const dbInput = ProjectValidator.toInput(existing);
+        // A stored lead that has since left the line's list still matches (grandfathered).
+        const leads = PickList.withCurrent(scope.contractsLeads, dbInput.contractsLead ?? null);
+        const { input: fileInput, errors: conversionErrors } = ProjectCsv.toInput(row, { contractsLeads: leads });
         const dbCells = ProjectCsv.toCells(existing);
         for (const [col, messages] of Object.entries(conversionErrors)) {
           for (const m of messages ?? []) reject(col as CsvColumn, m);
@@ -302,7 +311,7 @@ export class ImportService {
         }
 
         // Validate the merged project with the same rules as every save (note, description, milestone max...).
-        const validation = ProjectValidator.validate({ ...dbInput, ...wordingPatch });
+        const validation = ProjectValidator.validate({ ...dbInput, ...wordingPatch }, ProjectValidator.rulesOf(scope), dbInput);
         if (!validation.ok) {
           for (const [col, messages] of Object.entries(ProjectCsv.columnErrors(validation.errors))) {
             for (const m of messages ?? []) reject(col as CsvColumn, m);
@@ -326,10 +335,10 @@ export class ImportService {
   // ---------------------------------------------------------------- helpers
 
   /** Convert a row and run ProjectValidator, returning errors keyed by CSV column. */
-  private static validateRow(row: CsvRow): { input: Partial<ProjectInput>; errors: RowErrors } {
-    const { input, errors: conversionErrors } = ProjectCsv.toInput(row, { blankStatus: "OnTrack" });
+  private static validateRow(row: CsvRow, scope: ServiceLineScope): { input: Partial<ProjectInput>; errors: RowErrors } {
+    const { input, errors: conversionErrors } = ProjectCsv.toInput(row, { blankStatus: "OnTrack", contractsLeads: scope.contractsLeads });
     const errors: RowErrors = { ...conversionErrors };
-    const validation = ProjectValidator.validate(input);
+    const validation = ProjectValidator.validate(input, ProjectValidator.rulesOf(scope));
     if (!validation.ok) {
       for (const [col, messages] of Object.entries(ProjectCsv.columnErrors(validation.errors))) {
         // A conversion error already explains this column; skip the generic validator message.
