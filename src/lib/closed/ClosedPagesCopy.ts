@@ -24,7 +24,7 @@ export class ClosedPagesCopy {
   /** Empty states. */
   static readonly NO_MATCH = "No projects match these filters.";
   static readonly CLEAR_FILTERS = "Clear filters";
-  static readonly MOVE_HINT = "Projects move here after the report that includes them is frozen.";
+  static readonly MOVE_HINT = "Projects show up here as soon as they're marked Complete.";
   static readonly CANCELLED_HINT = "Projects show up here as soon as they're cancelled.";
 
   /** Restore to active (Cancelled page, admins only). */

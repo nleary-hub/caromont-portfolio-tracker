@@ -133,9 +133,12 @@ export function ClosedProjectsView({
         <div className="flex flex-wrap items-start justify-between gap-4">
           <div className="min-w-0">
             <h1 className="type-title whitespace-nowrap">{C.title(kind.status)}</h1>
-            <p className="mt-1 text-muted type-caption" data-testid="closed-summary">
-              {ClosedPageModel.summary(state)}
-            </p>
+            {/* No summary line when the list is empty (nothing in the FY, or the filters hide everything). */}
+            {!state.empty && (
+              <p className="mt-1 text-muted type-caption" data-testid="closed-summary">
+                {ClosedPageModel.summary(state)}
+              </p>
+            )}
           </div>
           <div className="flex items-center gap-2">
             <FyPicker years={years} current={current} value={view.fy} onChange={(fy) => setView({ ...view, fy })} initialOpen={demo?.fyOpen} />

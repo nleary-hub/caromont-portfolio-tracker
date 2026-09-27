@@ -221,10 +221,11 @@ describe("Completed and Cancelled pages: render", () => {
   it("empty states: current FY with its gray line, past FY, filtered with Clear filters", () => {
     const cur = W.html(ClosedPageModel.COMPLETED, []);
     expect(cur).toContain("No projects completed in FY27 yet.");
-    expect(cur).toContain("Projects move here after the report that includes them is frozen.");
+    expect(cur).toContain("Projects show up here as soon as they&#x27;re marked Complete.");
+    expect(ClosedPagesCopy.MOVE_HINT).toBe("Projects show up here as soon as they're marked Complete.");
     const past = W.html(ClosedPageModel.COMPLETED, [], { fy: "FY26", departments: [...OPTIONS] });
     expect(past).toContain("No projects were completed in FY26.");
-    expect(past).not.toContain("Projects move here");
+    expect(past).not.toContain("marked Complete");
     const cCur = W.html(ClosedPageModel.CANCELLED, []);
     expect(cCur).toContain("No projects cancelled in FY27 yet.");
     expect(cCur).toContain("Projects show up here as soon as they&#x27;re cancelled.");
@@ -233,7 +234,17 @@ describe("Completed and Cancelled pages: render", () => {
     expect(cPast).not.toContain("Projects show up here");
     const filtered = W.html(ClosedPageModel.COMPLETED, done, { fy: "FY27", departments: ["Echo"] });
     expect(filtered).toContain("No projects match these filters.");
-    expect(filtered).toContain("Clear filters");
+    expect(filtered).toContain("Clear filters");  });
+
+  it("hides the summary line whenever the list is empty (FY-empty and filtered-empty), on both pages", () => {
+    const cancelled = [W.row({ id: "x", name: "Xray", status: "Cancelled" })];
+    for (const [kind, rows] of [[ClosedPageModel.COMPLETED, done], [ClosedPageModel.CANCELLED, cancelled]] as const) {
+      expect(W.html(kind, [...rows])).toContain('data-testid="closed-summary"');
+      for (const html of [W.html(kind, []), W.html(kind, [], { fy: "FY26", departments: [...OPTIONS] }), W.html(kind, [...rows], { fy: "FY27", departments: ["INU"] })]) {
+        expect(html).not.toContain('data-testid="closed-summary"');
+        expect(html).not.toMatch(/0 projects in 0 departments/);
+      }
+    }
   });
 
   it("Cancelled: the row menu column only for admins", () => {
