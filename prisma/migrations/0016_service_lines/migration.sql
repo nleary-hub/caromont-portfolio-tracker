@@ -1,8 +1,10 @@
 -- Multiple service lines. Adds the service_line table, seeds the default line (CVPSL) and moves every
 -- existing project, milestone template, report option and report snapshot into it. No data is changed or
 -- removed: existing tables only gain a "serviceLineId" column, filled with the CVPSL id by the column default
--- (no UPDATE runs, so the append-only and snapshot triggers are not involved), then the default is dropped so
--- every new row must name its line. The legacy service_line_settings tables stay as they are (read here once).
+-- (no UPDATE runs, so the append-only and snapshot triggers are not involved). The CVPSL default stays: prisma
+-- migrate deploy runs while the previous deployment still serves (cron freeze, edits), and its writes do not name a
+-- line. The app always passes the line explicitly. The legacy service_line_settings tables stay as they are (read
+-- here once).
 --
 -- CVPSL keeps its current name and short name (copied from service_line_settings when that row exists), all
 -- seven departments, and the contracts lead list that used to be the code constant AppConfig.CONTRACTS_LEADS.
