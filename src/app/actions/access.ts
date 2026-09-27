@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { DepartmentAccessService } from "@/lib/services/DepartmentAccessService";
 import { LineAccessService, type AccessResult } from "@/lib/services/LineAccessService";
 
 /**
@@ -35,4 +36,16 @@ export async function addAccessUser(email: string): Promise<AccessResult> {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
   return AccessAction.run(() => LineAccessService.addUser(viewer, email), LineAccessCopy.SAVE_ERROR);
+}
+
+export async function setAllDepartments(email: string, serviceLineId: string, on: boolean): Promise<AccessResult> {
+  const viewer = await CurrentViewer.get();
+  if (!viewer?.isAdmin) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
+  return AccessAction.run(() => DepartmentAccessService.setAll(viewer, email, serviceLineId, on === true), LineAccessCopy.SAVE_ERROR);
+}
+
+export async function setDepartmentAccess(email: string, serviceLineId: string, departmentId: string, on: boolean): Promise<AccessResult> {
+  const viewer = await CurrentViewer.get();
+  if (!viewer?.isAdmin) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
+  return AccessAction.run(() => DepartmentAccessService.setDepartment(viewer, email, serviceLineId, departmentId, on === true), LineAccessCopy.SAVE_ERROR);
 }

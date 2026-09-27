@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState, useTransition } from "react";
-import { addUserAccount, resetUserPassword, setPasswordSignIn, unlockUser } from "@/app/actions/password";
+import { addUserAccount, resetUserPassword, setPasswordSignIn, unlockUser } from "@/app/actions/accounts";
 import { usePopover } from "@/components/DashboardFilterControls";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";

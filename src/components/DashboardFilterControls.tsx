@@ -97,12 +97,15 @@ export function DepartmentsSelect({
   onChange,
   options = DepartmentFilter.OPTIONS,
   list,
+  limited = false,
 }: {
   value: readonly DepartmentKey[];
   onChange: (next: DepartmentKey[]) => void;
   options?: readonly DepartmentKey[];
   /** The line's departments (labels). Absent = ServiceAreaInfo.LEGACY. */
   list?: DepartmentList;
+  /** Viewer limited to some departments (options are only theirs): all selected reads "My departments (N)". */
+  limited?: boolean;
 }) {
   const { open, setOpen, rootRef } = usePopover();
   const all = DepartmentFilter.isAll(value, options);
@@ -115,7 +118,7 @@ export function DepartmentsSelect({
         onClick={() => setOpen(!open)}
         className={`${FieldControlStyle.BOX} text-left text-fg ${open ? "border-accent" : ""}`}
       >
-        {DepartmentFilter.summary(value, DepartmentFilter.SUMMARY_MAX_CHARS, options, list)}
+        {DepartmentFilter.summary(value, DepartmentFilter.SUMMARY_MAX_CHARS, options, list, limited)}
       </button>
       <span aria-hidden="true" className={`pointer-events-none ${FieldControlStyle.CHEVRON_SLOT}`}>
         <Chevron open={open} />

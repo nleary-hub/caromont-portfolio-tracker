@@ -17,7 +17,7 @@ export const metadata: Metadata = { title: ContractsLeadRules.PAGE_TITLE };
 export const dynamic = "force-dynamic";
 
 /** Admin > People: Access (every line) at the top, then the active line's Owners, Requesters and Contracts leads. Non-admins get a 404. */
-export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string; rename?: string; role?: string }> }) {
+export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string; rename?: string; role?: string; access?: string; menu?: string }> }) {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
@@ -28,7 +28,6 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   // Password tags and row menus for everyone in the grid. ?menu=<email> opens that row's ⋯ menu.
   const passwords = await UserAccountService.statuses(viewer, [...grid.admins, ...grid.users].map((r) => r.email));
   const accessGrid = UserAccountService.withPasswordAdmins(grid, passwords);
-  const { menu } = params as { menu?: string };
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-5 px-6 py-6">
@@ -48,8 +47,9 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
         owners={lists.owners}
         requesters={lists.requesters}
         initial={{ add: params.add === "1" ? true : section(params.add), role: section(params.role), remove: params.remove ?? null, rename: params.rename ?? null }}
-        // Access (item 8) covers every line, so it is not keyed to the active one. ?add=user opens its Add row.
-        top={<AccessAdmin grid={accessGrid} initialAdd={params.add === "user"} passwords={passwords} initialMenu={menu?.trim().toLowerCase() || null} />}
+        // Access (item 8) covers every line, so it is not keyed to the active one. ?add=user opens its Add row;
+        // ?access=<email> opens that person's department panel; ?menu=<email> opens that row's ⋯ menu.
+        top={<AccessAdmin grid={accessGrid} initialAdd={params.add === "user"} initialExpanded={params.access?.trim().toLowerCase() || null} passwords={passwords} initialMenu={params.menu?.trim().toLowerCase() || null} />}
       />
     </main>
   );

@@ -32,13 +32,14 @@ class AuditFormat {
     deletedBy: "Deleted by",
     hiddenFromDashboard: "Hidden from dashboard",
     hiddenFromReport: "Hidden from report",
-    viewSettings: "View settings",
+    viewSettings: "Dashboard view",
     ...MilestoneRules.FIELD_LABELS,
   };
 
   static field(e: AuditEvent): string {
     if (e.kind === "serviceLine") return `Service line: ${ServiceLineHistoryText.action(e.field.replace(/^serviceLine\./, ""))}`;
     if (e.kind === "layout") return `Layout: ${AuditLayoutText.action(e.field.replace(/^layout\./, ""))}`;
+    if (e.kind === "access") return e.comment ?? "Access";
     if (e.kind === "template") return `Template: ${e.field.replace(/^template\./, "").replace(/_/g, " ")}`;
     return AuditFormat.FIELD_LABELS[e.field] ?? e.field;
   }
@@ -168,7 +169,7 @@ export default async function AuditPage() {
       </section>
 
       <section className="flex flex-col gap-2">
-        <h2 className="type-heading">Hidden by view settings</h2>
+        <h2 className="type-heading">Hidden by dashboard view</h2>
         <ul className="rounded-card border border-line bg-card px-3 py-2 type-table">
           {ViewSettings.CONTEXTS.map((c) => {
             const v = data.viewSettings[c];

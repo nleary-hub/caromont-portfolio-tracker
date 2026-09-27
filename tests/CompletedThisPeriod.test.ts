@@ -8,6 +8,7 @@ import { ImportService } from "@/lib/import/ImportService";
 import { ProjectCsv } from "@/lib/import/ProjectCsv";
 import { CompletedThisPeriod } from "@/lib/report/CompletedThisPeriod";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
+import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
 import { CompletedBlockStyle, ReportLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
@@ -44,8 +45,8 @@ class Setup {
     const fake = new FakeDb();
     return { fake, db: fake.asClient() };
   }
-  static completed(s: { completedJson: unknown }): string[] {
-    return (s.completedJson as CompletedRow[]).map((c) => c.name);
+  static rows(s: { rowsJson: unknown }): string[] {
+    return (s.rowsJson as ReportRow[]).map((r) => r.name);
   }
 }
 
@@ -61,12 +62,12 @@ describe("Completed this period: clock", () => {
     const project = fake.state.projects.find((x) => x.id === p.id)!;
     expect(CompletedThisPeriod.completedAt(project as never, fake.state.history as never)).toEqual(new Date("2026-09-20T15:00:00Z"));
 
-    // Not yet Complete at the cutoff: not listed. After: listed, dated with completedOn (display only).
+    // Not yet Complete at the cutoff: not listed. After: a regular row in its department (Complete chip).
     const before = await SnapshotService.create(Clock.period("2026-09-15", "2026-09-15T21:00:00Z"), db);
-    expect(Setup.completed(before)).toEqual([]);
+    expect(Setup.rows(before)).toEqual([]);
     const after = await SnapshotService.create({ ...Clock.period("2026-09-29", "2026-09-29T21:00:00Z"), periodStart: "2026-09-15" }, db);
-    const [row] = after.completedJson as unknown as CompletedRow[];
-    expect(row).toMatchObject({ name: "Changed later", completedOn: "2026-01-05", completedInAppOn: "2026-09-20" });
+    expect((after.rowsJson as unknown as ReportRow[])[0]).toMatchObject({ name: "Changed later", status: "Complete", completedInPeriod: true });
+    expect(after.completedJson).toEqual([]);
   });
 
   it("uses the creation or import time when the project was created as Complete", async () => {
@@ -76,7 +77,7 @@ describe("Completed this period: clock", () => {
     const project = fake.state.projects.find((x) => x.id === p.id)!;
     expect(CompletedThisPeriod.completedAt(project as never, fake.state.history as never)).toEqual(new Date("2026-09-12T14:00:00Z"));
     const s = await SnapshotService.create(Clock.period("2026-09-15", "2026-09-15T21:00:00Z"), db);
-    expect((s.completedJson as unknown as CompletedRow[])[0]).toMatchObject({ completedOn: "2026-09-12", completedInAppOn: "2026-09-12" });
+    expect(Setup.rows(s)).toEqual(["Imported done"]);
   });
 
   it("CSV import of a Complete row starts the clock at the import", async () => {
@@ -116,16 +117,16 @@ describe("Completed this period: once only", () => {
     expect(fake.state.projects[0].completionReportedAt).toBeNull();
 
     const s1 = await SnapshotService.create(Clock.period("2026-09-15", "2026-09-15T21:00:00Z"), db);
-    expect(Setup.completed(s1)).toEqual(["Done once"]);
+    expect(Setup.rows(s1)).toEqual(["Done once"]);
     expect(fake.state.projects[0].completionReportedAt).toEqual(new Date("2026-09-15T21:00:00Z"));
 
     const s2 = await SnapshotService.create({ ...Clock.period("2026-09-29", "2026-09-29T21:00:00Z"), periodStart: "2026-09-15" }, db);
-    expect(Setup.completed(s2)).toEqual([]);
+    expect(Setup.rows(s2)).toEqual([]);
     // No history row for the bookkeeping stamp.
     expect(fake.state.history.some((h) => h.field === "completionReportedAt")).toBe(false);
   });
 
-  it("reopening clears completionReportedAt, so a re-completion is listed again", async () => {
+  it("reopening and completing again lists the project again in the next report", async () => {
     const { fake, db } = await Setup.db();
     const p = await ProjectService.create({ ...base, name: "Reopened", status: "Complete" }, actor, db);
     Clock.set(fake, p.id, "2026-09-10T14:00:00Z");
@@ -137,10 +138,10 @@ describe("Completed this period: once only", () => {
     await ProjectService.update(p.id, { status: "Complete" }, actor, db);
     Clock.set(fake, p.id, "2026-09-20T14:00:00Z", "status");
     const s2 = await SnapshotService.create({ ...Clock.period("2026-09-29", "2026-09-29T21:00:00Z"), periodStart: "2026-09-15" }, db);
-    expect(Setup.completed(s2)).toEqual(["Reopened"]);
+    expect(Setup.rows(s2)).toEqual(["Reopened"]);
   });
 
-  it("re-running the same freeze keeps the block in the frozen snapshot and PDF", async () => {
+  it("re-running the same freeze keeps the frozen rows; handoff.json lists no block", async () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const { fake, db } = await Setup.db();
@@ -155,62 +156,60 @@ describe("Completed this period: once only", () => {
     };
     const r1 = await FreezeService.run(opts, db);
     expect(r1.outcome).toBe("created");
-    // Lose the artifacts to force the "complete missing steps" path; the block must survive.
+    // Lose the artifacts to force the "complete missing steps" path; the frozen rows must survive.
     fake.state.artifacts.length = 0;
     const r2 = await FreezeService.run({ ...opts, trigger: "manual", actor: "admin@example.org", now: new Date("2026-09-29T22:00:00Z") }, db);
     expect(r2.outcome).toBe("already_frozen");
     expect(fake.state.snapshots).toHaveLength(1);
-    expect(Setup.completed(fake.state.snapshots[0] as never)).toEqual(["Frozen done"]);
+    expect(Setup.rows(fake.state.snapshots[0] as never)).toEqual(["Frozen done"]);
     const handoff = JSON.parse(Buffer.from(fake.state.artifacts.find((a) => a.kind === "handoff")!.bytes as Uint8Array).toString("utf8"));
-    expect(handoff.completedThisPeriod).toEqual({
-      count: 1,
-      projects: [{ name: "Frozen done", serviceArea: "Cath", completedOn: "2026-09-20", accomplishment: null }],
-    });
+    expect(handoff.completedThisPeriod).toEqual({ count: 0, projects: [] });
+    expect(handoff.totals).toEqual({ projects: 1, byStatus: { Complete: 1 } });
+    expect(handoff.byArea.find((a: { area: string }) => a.area === "Cath")).toMatchObject({ projects: 1, byStatus: { Complete: 1 } });
   });
 
-  it("is not listed when Complete is shown in the report (regular rows instead) or hidden from the report", async () => {
+  it("is not listed when hidden from the report; with Complete shown it is still listed only for its period", async () => {
     const { fake, db } = await Setup.db();
     const a = await ProjectService.create({ ...base, name: "Hidden done", status: "Complete" }, actor, db);
     await ProjectService.setHidden(a.id, "report", true, Factory.ADMIN, db);
     Clock.set(fake, a.id, "2026-09-10T14:00:00Z");
     const s1 = await SnapshotService.create(Clock.period("2026-09-15", "2026-09-15T21:00:00Z"), db);
-    expect(Setup.completed(s1)).toEqual([]);
+    expect(Setup.rows(s1)).toEqual([]);
 
     const settings = ViewSettings.defaults("report");
     const shown = { ...settings, hiddenStatuses: settings.hiddenStatuses.filter((x) => x !== "Complete") };
-    expect(ViewSettings.isStatusVisible(shown, "Complete")).toBe(true);
-    const rows = CompletedThisPeriod.select({
-      projects: [{ ...Factory.project({ status: "Complete" }), completionReportedAt: null, createdAt: new Date("2026-09-01") }],
-      history: [],
-      viewSettings: shown,
-      cutoff: new Date("2026-09-15"),
-    });
-    expect(rows).toEqual([]);
+    const project = Factory.project({ status: "Complete" });
+    const { rows } = ReportBuilder.build({ projects: [project], history: [], previousSnapshotGeneratedAt: null, reportDate: "2026-09-15", viewSettings: shown, completedInPeriod: new Set([project.id]) });
+    expect(rows).toHaveLength(1);
+    expect(rows[0].completedInPeriod).toBe(true);
+    // Showing Complete in the settings does not bring back a project completed before the period.
+    expect(ReportBuilder.build({ projects: [project], history: [], previousSnapshotGeneratedAt: null, reportDate: "2026-09-15", viewSettings: shown }).rows).toEqual([]);
   });
 });
 
 describe("Completed this period: counts", () => {
-  it("never feeds the status counts, totals or projects line", async () => {
+  it("counts in its department, the totals and the projects line; the grid gets a Complete column", async () => {
     const { fake, db } = await Setup.db();
     await ProjectService.create({ ...base, name: "Active" }, actor, db);
     const p = await ProjectService.create({ ...base, name: "Done", status: "Complete" }, actor, db);
     Clock.set(fake, p.id, "2026-09-10T14:00:00Z");
     const s = await SnapshotService.create(Clock.period("2026-09-15", "2026-09-15T21:00:00Z"), db);
     const header = s.headerJson as unknown as ReportHeader;
-    expect((s.rowsJson as unknown as ReportRow[]).map((r) => r.name)).toEqual(["Active"]);
-    expect(header.totalProjects).toBe(1);
-    expect(header.totals.Complete).toBe(0);
+    expect((s.rowsJson as unknown as ReportRow[]).map((r) => r.name)).toEqual(["Active", "Done"]);
+    expect(header.totalProjects).toBe(2);
+    expect(header.totals.Complete).toBe(1);
     const layout = ReportLayout.layout(
       SampleReportData.docInput({ rows: s.rowsJson as unknown as ReportRow[], header, completed: s.completedJson as unknown as CompletedRow[] }),
       m,
     );
-    expect(layout.header.projectsLine).toBe("1 project across 1 department");
-    // The frozen header carries the FY-to-date count (the completed project counts there too).
+    expect(layout.header.projectsLine).toBe("2 projects across 1 department");
     expect(layout.header.completedFy).toMatchObject({ label: expect.stringMatching(/^Completed FY\d\d to date$/), count: 1 });
     const total = layout.header.grid.rows.at(-1)!;
-    expect(total.cells.at(-1)).toBe(1);
+    expect(total.cells.at(-1)).toBe(2);
+    expect(layout.header.grid.columns.map((c) => c.key)).toContain("Complete");
     const section = layout.pages[0].blocks.find((b) => b.kind === "section")!;
-    expect(section.kind === "section" && section.count).toBe(1);
+    expect(section.kind === "section" && section.count).toBe(2);
+    expect(layout.pages.flatMap((pg) => pg.blocks).some((b) => b.kind === "completed")).toBe(false);
   });
 
   it("section head text omits the completed part when zero", () => {

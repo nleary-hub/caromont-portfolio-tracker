@@ -5,6 +5,7 @@ import { DepartmentCopy, DepartmentRules, DepartmentValidationError, type Depart
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { LineLayout, RowOrder } from "@/lib/layout/LineLayout";
+import { DepartmentAccessService } from "@/lib/services/DepartmentAccessService";
 
 type Tx = Prisma.TransactionClient;
 type Scope = Pick<ServiceLineScope, "id" | "shortName">;
@@ -198,6 +199,8 @@ export class DepartmentService {
         });
         await DepartmentService.moveRowOrder(tx, scope.id, id, to.id, active.map((p) => p.id), admin.email);
       }
+      // Department-level access: people limited to this department get the one its projects moved to (Audit log).
+      if (to) await DepartmentAccessService.moveOnDelete(tx, scope.id, { id: row.id, name: row.name }, { id: to.id, name: to.name }, admin.email);
       await tx.department.update({ where: { id }, data: { deletedAt: new Date(), deletedBy: admin.email, updatedBy: admin.email } });
       await DepartmentService.log(tx, scope.id, id, DepartmentService.ACTIONS.deleted, DepartmentService.snapshot(row), to ? { movedTo: to.name, moved: active.length } : null, admin);
       return { name: row.name, moved: active.length, to: to?.name ?? null };

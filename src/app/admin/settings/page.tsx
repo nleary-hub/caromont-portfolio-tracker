@@ -14,7 +14,7 @@ import { ReportSettingsCopy } from "@/lib/admin/ReportSettingsCopy";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { ServiceLineService } from "@/lib/services/ServiceLineService";
 
-export const metadata: Metadata = { title: AdminMenu.REPORT_SETTINGS };
+export const metadata: Metadata = { title: AdminMenu.REPORT_CONTENTS };
 
 class SettingsFormat {
   private static readonly WHEN = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/New_York" });
@@ -42,7 +42,7 @@ export default async function AdminSettingsPage() {
         <div className="flex min-w-0 items-center gap-3">
           <ServiceLineSlot viewer={viewer} active={scope} />
           <div className="h-6 w-px bg-line" />
-          <h1 className="type-title whitespace-nowrap">{AdminMenu.REPORT_SETTINGS}</h1>
+          <h1 className="type-title whitespace-nowrap">{AdminMenu.REPORT_CONTENTS}</h1>
         </div>
         <div className="flex items-center gap-3">
           <AdminMenuSlot viewer={viewer} />

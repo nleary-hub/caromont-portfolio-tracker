@@ -25,7 +25,7 @@ class AdminMenuIcons {
     people: <path d="M6 7.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM1.5 14c0-2.5 2-4 4.5-4s4.5 1.5 4.5 4M11 7.5a2 2 0 100-4M12 10c1.5.4 2.5 1.7 2.5 4" />,
     audit: <path d="M3 1.5h10v13H3zM5.5 5h5M5.5 8h5M5.5 11h3" />,
     tag: <path d="M1.5 2.5v5l7 7 6-6-7-7h-5zM4.5 5.5h.01" />,
-    // Document with a gear (Report settings), distinct from the sliders of Settings.
+    // Document with a gear (Report contents), distinct from the sliders of Dashboard view.
     reportSettings: (
       <>
         <path d="M9.5 14.5H3V1.5h5.5l3 3V7M8.5 1.5v3h3M5 6h3M5 8.5h2" />

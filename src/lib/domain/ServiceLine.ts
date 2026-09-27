@@ -28,6 +28,13 @@ export interface ServiceLineScope extends ServiceLineValue {
   owners: string[];
   /** Requester pick-list (Admin > People). "Not applicable" and "To assign" are built in and not stored here. */
   requesters: string[];
+  /**
+   * Department-level access (migration 0024): present only when the viewer is limited to some of the line's
+   * departments. Then `departments` lists only those, and projects of other departments are never read. Unassigned
+   * projects (no department) stay visible to everyone with the line.
+   * Absent: every department (admins, and anyone with "All departments").
+   */
+  departmentLimit?: readonly string[];
 }
 
 /** A line as the admin list shows it. */
@@ -198,6 +205,14 @@ export class ServiceLine {
   /** Case-insensitive name key for uniqueness (matches the DB index on lower(btrim(name))). */
   static nameKey(name: string): string {
     return ServiceLine.clean(name).toLowerCase();
+  }
+
+  /**
+   * What the line switcher (a client component) needs of a line: its id and names only. Keeps the line's departments
+   * and pick-lists out of the page payload, so a department-limited viewer never receives other departments' names.
+   */
+  static switcherEntry(line: Pick<ServiceLineScope, "id" | "name" | "shortName" | "isDefault">): Pick<ServiceLineScope, "id" | "name" | "shortName" | "isDefault"> {
+    return { id: line.id, name: line.name, shortName: line.shortName, isDefault: line.isDefault };
   }
 
   /** Switcher order: the default line first, then the rest A to Z by name. */

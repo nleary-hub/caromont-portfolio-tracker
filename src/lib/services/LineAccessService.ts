@@ -10,11 +10,19 @@ import { ServiceLine } from "@/lib/domain/ServiceLine";
 type Env = Record<string, string | undefined>;
 type Tx = Pick<Prisma.TransactionClient, "appUser" | "serviceLine" | "serviceLineAccessGrant" | "serviceLineAccessHistory">;
 
+/** A department in the Access panel (open departments of the line, A to Z). */
+export interface AccessDepartment {
+  id: string;
+  name: string;
+}
+
 /** A line column in the Access grid: short code in the header, full name as its tooltip. */
 export interface AccessLine {
   id: string;
   shortName: string;
   name: string;
+  /** The line's open departments (not archived or deleted), A to Z: the panel's checkboxes and the "of 7" in "3 of 7". */
+  departments: AccessDepartment[];
 }
 
 /** One person in the Access grid. Admin rows are read-only ("All lines"). */
@@ -24,6 +32,11 @@ export interface AccessRow {
   isAdmin: boolean;
   /** Open lines this person has access rows for (empty for admins: they see every line). */
   lineIds: string[];
+  /**
+   * Lines where "All departments" is off (migration 0024): line id to the open departments they may see. A line
+   * in `lineIds` and not here covers every department, including ones added later.
+   */
+  limits: Record<string, string[]>;
 }
 
 export interface AccessGrid {
@@ -95,18 +108,30 @@ export class LineAccessService {
     AdminPolicy.assertAdmin(viewer);
     const [lineRows, users] = await Promise.all([
       db.serviceLine.findMany({ where: { archivedAt: null, deletedAt: null }, include: ServiceLineAccess.INCLUDE }),
-      db.appUser.findMany({ include: { access: true } }),
+      db.appUser.findMany({ include: { access: { include: { departments: true } } } }),
     ]);
-    const lines = ServiceLine.sortForSwitcher(lineRows.map((r) => ServiceLineAccess.toScope(r))).map(({ id, shortName, name }) => ({ id, shortName, name }));
-    const open = new Set(lines.map((l) => l.id));
+    const lines: AccessLine[] = ServiceLine.sortForSwitcher(lineRows.map((r) => ServiceLineAccess.toScope(r))).map(({ id, shortName, name, departments }) => ({
+      id,
+      shortName,
+      name,
+      departments: LineAccessService.panelDepartments(departments),
+    }));
+    const open = new Map(lines.map((l) => [l.id, l]));
     const rows = new Map<string, AccessRow>();
     for (const u of users) {
       const isAdmin = AdminPolicy.isAdmin(u.email, env);
-      rows.set(u.email, { email: u.email, name: LineAccessService.displayName(u), isAdmin, lineIds: isAdmin ? [] : u.access.map((a) => a.serviceLineId).filter((id) => open.has(id)) });
+      const access = isAdmin ? [] : u.access.filter((a) => open.has(a.serviceLineId));
+      const limits: Record<string, string[]> = {};
+      for (const a of access) {
+        if (a.allDepartments !== false) continue;
+        const granted = new Set((a.departments ?? []).map((d) => d.departmentId));
+        limits[a.serviceLineId] = open.get(a.serviceLineId)!.departments.filter((d) => granted.has(d.id)).map((d) => d.id);
+      }
+      rows.set(u.email, { email: u.email, name: LineAccessService.displayName(u), isAdmin, lineIds: access.map((a) => a.serviceLineId), limits });
     }
     // Admins listed by exact email in ADMIN_EMAILS show up even before their first sign-in.
     for (const email of AdminPolicy.fromEnv(env).exactEmails()) {
-      if (!rows.has(email) && AdminPolicy.isAdmin(email, env)) rows.set(email, { email, name: DisplayName.fromEmail(email), isAdmin: true, lineIds: [] });
+      if (!rows.has(email) && AdminPolicy.isAdmin(email, env)) rows.set(email, { email, name: DisplayName.fromEmail(email), isAdmin: true, lineIds: [], limits: {} });
     }
     const byName = (a: AccessRow, b: AccessRow) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }) || a.email.localeCompare(b.email);
     const all = [...rows.values()];
@@ -116,6 +141,14 @@ export class LineAccessService {
       users: all.filter((r) => !r.isAdmin).sort(byName),
       canAdd: LineAccessService.CAN_ADD_BEFORE_SIGN_IN,
     };
+  }
+
+  /** Open departments (not archived or deleted), A to Z by full name, as the panel lists them. */
+  static panelDepartments(list: readonly { id: string; name: string; archived?: boolean; deleted?: boolean }[]): AccessDepartment[] {
+    return list
+      .filter((d) => !d.archived && !d.deleted)
+      .map((d) => ({ id: d.id, name: d.name }))
+      .sort((a, b) => a.name.localeCompare(b.name, "en", { sensitivity: "base" }));
   }
 
   /** Check or uncheck one cell. Idempotent. The last-line confirm is the page's job; the server allows it. */

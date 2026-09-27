@@ -1,7 +1,7 @@
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
-import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
+import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceLineLabel } from "./ServiceLineLabel";
 import { ServiceLineSwitcher } from "./ServiceLineSwitcher";
 
@@ -13,5 +13,5 @@ export async function ServiceLineSlot({ viewer, active, lines: given }: { viewer
   if (!viewer) return <ServiceLineLabel value={active} />;
   const lines = given ?? (Db.isConfigured() ? await ServiceLineAccess.usableLines(viewer).catch(() => [active]) : [active]);
   if (!viewer.isAdmin && lines.length < 2) return <ServiceLineLabel value={active} />;
-  return <ServiceLineSwitcher lines={lines.length ? lines : [active]} active={active} manage={viewer.isAdmin} />;
+  return <ServiceLineSwitcher lines={(lines.length ? lines : [active]).map(ServiceLine.switcherEntry)} active={ServiceLine.switcherEntry(active)} manage={viewer.isAdmin} />;
 }

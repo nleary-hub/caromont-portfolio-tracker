@@ -140,8 +140,8 @@ class TableMeasure {
 /**
  * The grouped dashboard table: one <table> with one <colgroup> from DashboardColumnModel, one sticky
  * column header, then one <tbody> per department (DashboardGroups, PDF order) with a sticky 36px group
- * header and the rows (keyed by project id). Completed and Cancelled projects are listed in the FY sections below
- * the table (FiscalYearSections), not here.
+ * header and the rows (keyed by project id). A project completed since the latest freeze keeps its row here (Complete
+ * chip, Changed flag only, never Overdue or Stale); older completed projects and every cancelled one are on the Completed and Cancelled pages.
  * The first column is the 24px gutter with the row drag grip (admins, manual order only).
  *
  * Layout (one per service line, LineLayout): columns follow the saved order; with saved width shares every
@@ -624,6 +624,8 @@ function GroupHeader({ group, span }: { group: DashboardGroup<DashboardRow>; spa
 }
 
 const CELL = "border-b border-line px-3 py-[10px] align-top";
+/** Project names wrap onto as many lines as they need, never truncated (dashboard and the Completed and Cancelled pages). */
+export const NAME_WRAP = "whitespace-normal [overflow-wrap:anywhere] hyphens-none";
 
 function ProjectRow({
   row,
@@ -677,7 +679,8 @@ function ProjectRow({
           case "project":
             return (
               <td key={c.key} data-col={c.key} className={`${td} type-table-strong ${selected ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}>
-                <div className="truncate" title={row.name}>
+                {/* The full name wraps between words (a single over-long word breaks anywhere, no hyphens); the row grows. */}
+                <div data-part="project-name" className={NAME_WRAP}>
                   {row.name}
                 </div>
                 {renderMeta(row)}

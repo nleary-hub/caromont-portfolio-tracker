@@ -18,7 +18,18 @@ describe("VisibilityPolicy", () => {
     expect(dash).toEqual(["live", "hidRep", "notInReport"]);
     expect(rep).toEqual(["live", "hidDash"]);
     const showAll = ViewSettings.normalize("dashboard", { hiddenStatuses: [] });
-    expect(VisibilityPolicy.visibleProjects(all, "dashboard", showAll).map((p) => p.id)).toContain("done");
+    // Closed statuses ignore the settings: Complete only while completed in the period, Cancelled never.
+    expect(VisibilityPolicy.visibleProjects(all, "dashboard", showAll).map((p) => p.id)).not.toContain("done");
+    expect(VisibilityPolicy.visibleProjects(all, "dashboard", showAll, new Set(["done"])).map((p) => p.id)).toContain("done");
+    const gone = Factory.project({ id: "gone", status: "Cancelled", nextMilestone: null });
+    for (const ctx of ["dashboard", "report"] as const) {
+      expect(VisibilityPolicy.isVisible(gone, ctx, ViewSettings.normalize(ctx, { hiddenStatuses: [] }), new Set(["gone"]))).toBe(false);
+    }
+    // Still openable (History) from the Cancelled and Completed pages, unless deleted or hidden from the dashboard.
+    expect(VisibilityPolicy.isViewable(gone, ViewSettings.defaults("dashboard"))).toBe(true);
+    expect(VisibilityPolicy.isViewable(done, ViewSettings.defaults("dashboard"))).toBe(true);
+    expect(VisibilityPolicy.isViewable({ ...gone, hiddenFromDashboard: true }, ViewSettings.defaults("dashboard"))).toBe(false);
+    expect(VisibilityPolicy.isViewable({ ...done, archivedAt: new Date() }, ViewSettings.defaults("dashboard"))).toBe(false);
   });
 
   it("filters history for non-admins: only visible projects, never hide/delete events", () => {

@@ -279,14 +279,15 @@ describe("Infor request number: dashboard", () => {
     expect(out).not.toContain("\u00b7");
   });
 
-  it("no number: the slot and gap stay, blank (no dash), so Updated lines up with numbered rows", () => {
+  it("no number: no slot and no gap, Updated starts at the left edge under the name (no dash)", () => {
     const out = html(row({ inforRequestNumber: null }));
-    expect(slot(out)?.[1]).toBe("");
-    expect(out).toContain("width:9ch;margin-right:8px");
+    expect(slot(out)).toBeNull();
+    expect(out).not.toContain("9ch");
+    expect(out).not.toContain("margin-right");
     expect(text(out)).toBe("Updated Sep 24");
     expect(text(out)).not.toMatch(/[\u2013\u2014-]/);
-    // Same markup before "Updated" apart from the slot text, so the start of "Updated" is identical.
-    expect(html(row()).replace("REQ-5081", "")).toBe(out);
+    // Same markup as with the column hidden: Updated is the first thing on the line.
+    expect(out).toBe(html(row(), false));
   });
 
   it("hidden by show/hide: no slot and no gap, Updated starts at the left edge", () => {
@@ -352,12 +353,13 @@ describe("Infor request number: report PDF", () => {
     ]);
   });
 
-  it("Updated lines up whether or not the project has a number (blank slot, no dash); row height unchanged", () => {
+  it("no number: Updated starts at x = 0, the left edge under the name (no blank slot, no dash); row height unchanged", () => {
     const withNumber = layout(99999);
     const none = layout(null);
     const noneMeta = project(none.cells).meta;
-    expect(noneMeta.map((r) => r.text)).toEqual(["Updated Sep 24"]);
-    expect(noneMeta[0].x).toBe(project(withNumber.cells).meta[1].x);
+    expect(noneMeta.map((r) => [r.text, r.x])).toEqual([["Updated Sep 24", 0]]);
+    expect(project(withNumber.cells).meta[1].x).toBe(g.INFOR_SLOT_W + g.INFOR_GAP);
+    expect(ReportLayout.metaLine(m, true, null, "Updated Sep 24", true)[0].x).toBe(0);
     expect(withNumber.height).toBe(none.height);
   });
 

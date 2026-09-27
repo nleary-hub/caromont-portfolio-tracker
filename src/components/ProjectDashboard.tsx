@@ -6,7 +6,6 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type React
 import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
-import type { DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
 import { PreviouslyLine, ProjectHistorySection, useProjectTimeline, type HistoryLoader } from "./ProjectHistory";
@@ -29,11 +28,15 @@ import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { DashboardTable, type DashboardLayoutControl } from "./DashboardTable";
-import { FiscalYearSectionsView } from "./FiscalYearSections";
+import { MainNav } from "./MainNav";
+import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
+import { ClosedPagesCopy } from "@/lib/closed/ClosedPagesCopy";
+import { ClosedPageModel } from "@/lib/closed/ClosedPageModel";
 import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardSort";
 import { LayoutCopy, LineLayout, type ColumnLayoutValue, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentsSelect, TileVisibilityButton } from "./DashboardFilterControls";
+import { OnDemandPdfLink } from "@/lib/report/OnDemandPdfLink";
 import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { Flags, StatusPill } from "./StatusPill";
@@ -103,15 +106,13 @@ export class NewRowFlash {
 interface Props {
   /** Already filtered by VisibilityPolicy on the server. */
   rows: DashboardRow[];
-  /** Completed and Cancelled rows of every fiscal year (FY sections below the department groups). */
-  fiscalYearRows?: DashboardFyRow[];
   /** Visible dashboard columns in order. */
   columns: ViewColumn[];
   today: string;
   userEmail: string;
   userName: string | null;
   latestReport: LatestReport | null;
-  /** "Completed FY27 to date N": the current year's Completed section count (dashboard visibility). */
+  /** "Completed FY27 to date N": the Completed page's count for the current year (dashboard visibility). Links there. */
   completedFiscalYear?: FiscalYearCount | null;
   loadError: string | null;
   /** Service line name setting (top bar lockup). */
@@ -126,6 +127,8 @@ interface Props {
   signOutAction: () => Promise<void>;
   /** Project detail > History for the signed-in viewer (everyone; the server applies the visibility rules). */
   historyAction?: HistoryLoader;
+  /** A project link (/?project=<id>) the server checked: its detail opens on load. */
+  initialProjectId?: string;
 }
 
 /** Browser localStorage, or null (server render, private mode, or storage blocked). */
@@ -149,7 +152,6 @@ class Initials {
 
 export function ProjectDashboard({
   rows,
-  fiscalYearRows = [],
   today,
   userEmail,
   userName,
@@ -164,9 +166,10 @@ export function ProjectDashboard({
   layout: layoutProp,
   signOutAction,
   historyAction,
+  initialProjectId,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
   const searchRef = useRef<HTMLInputElement>(null);
   // Admin edit mode. Non-admins stay in "view" (there is no way to switch).
   const [mode, setMode] = useState<DrawerMode>("view");
@@ -240,18 +243,34 @@ export function ProjectDashboard({
   // Department filter first (the Departments dropdown is the only department filter): tiles, rows and the
   // Unassigned group all follow it. Options are the line's departments (every department for CVPSL).
   const deptRows = useMemo(() => DepartmentFilter.apply(rows, departments, deptOptions), [rows, departments, deptOptions]);
-  // The FY sections follow the same department filter and search as the rows.
-  const deptFy = useMemo(() => DepartmentFilter.apply(fiscalYearRows, departments, deptOptions), [fiscalYearRows, departments, deptOptions]);
   const summary = useMemo(() => DashboardViewModel.summarize(deptRows), [deptRows]);
   const visible = useMemo(() => DashboardViewModel.filter(deptRows, query), [deptRows, query]);
-  const visibleFy = useMemo(() => DashboardViewModel.filter(deptFy, query), [deptFy, query]);
   const tiles = DashboardPrefs.visibleTiles(hiddenTiles, Boolean(completedFiscalYear));
   const tileTemplate = DashboardPrefs.gridTemplate(tiles);
-  const emptyLine = DashboardViewModel.isEmptyLine(line, rows.length + fiscalYearRows.length, Boolean(loadError));
+  const emptyLine = DashboardViewModel.isEmptyLine(line, rows.length, Boolean(loadError));
   // Non-admins get only the visible columns in order; that is the same model with nothing hidden.
   const dashboardView: ViewSettingsValue = settings?.dashboard ?? { columnOrder: columnsProp, hiddenColumns: [], hiddenStatuses: [] };
   const showInfor = ViewSettings.visibleColumns(dashboardView).includes("inforNumber");
-  const selected = rows.find((r) => r.id === selectedId) ?? fiscalYearRows.find((r) => r.id === selectedId) ?? null;
+  const selected = rows.find((r) => r.id === selectedId) ?? null;
+  // Completed and Cancelled pages keep this view: current FY, and the dashboard's department filter.
+  const closedView = { fy: FiscalYear.of(today).label, departments };
+  const closedQuery = ClosedPageModel.query(closedView, today, deptOptions, line?.departments ?? ServiceAreaInfo.LEGACY);
+  const [toast, setToast] = useState<ActionToastValue | null>(null);
+  // Set when an edit form save changes the status to Cancelled: the project leaves the dashboard at once.
+  const cancelledRef = useRef<{ id: string; name: string } | null>(null);
+  const submitForm = (id: string, name: string, changes: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) =>
+    admin!.saveProjectFormAction(id, changes, milestones).then(
+      (r) => {
+        const cancelling = changes.status === "Cancelled";
+        if (cancelling && r.ok) cancelledRef.current = { id, name: String(changes.name ?? name) };
+        if (cancelling && !r.ok) setToast({ text: ClosedPagesCopy.CANCEL_ERROR, error: true });
+        return r;
+      },
+      (e) => {
+        if (changes.status === "Cancelled") setToast({ text: ClosedPagesCopy.CANCEL_ERROR, error: true });
+        throw e;
+      },
+    );
 
   /** Optimistic: apply locally, persist, roll back on failure. */
   const saveSettings = async (context: ViewContext, value: ViewSettingsValue): Promise<string | null> => {
@@ -275,7 +294,7 @@ export function ProjectDashboard({
       return err;
     } catch {
       setSettings((s) => (s ? { ...s, [context]: previous } : s));
-      return "Could not save view settings.";
+      return "Couldn't save the dashboard view. Try again.";
     }
   };
 
@@ -322,6 +341,18 @@ export function ProjectDashboard({
   };
   const onSaved = (id: string) => {
     const created = mode === "new";
+    const cancelled = cancelledRef.current;
+    cancelledRef.current = null;
+    if (cancelled && cancelled.id === id) {
+      // Set to Cancelled: close the drawer, fade the row out (it is gone once the rows refresh) and say where it went.
+      closeDrawer();
+      RowFade.out(id);
+      setToast({
+        text: ClosedPagesCopy.cancelledToast(cancelled.name),
+        link: { href: ClosedPageModel.href(ClosedPageModel.CANCELLED.path, closedView, today, deptOptions, line?.departments ?? ServiceAreaInfo.LEGACY), label: ClosedPagesCopy.VIEW_ON_CANCELLED },
+      });
+      return;
+    }
     leaveForm();
     setMode("view");
     if (created && id) {
@@ -421,19 +452,17 @@ export function ProjectDashboard({
             layoutReset={{ shortName: serviceLine.shortName, onResetColumns: () => saveColumns(null), onResetRows: resetRows }}
           />
         )}
-        <Link href="/reports" className="shrink-0 whitespace-nowrap type-table-strong text-muted hover:text-fg">
-          Reports
-        </Link>
-        {admin && (
-          <a
-            href="/api/reports/preview"
-            download
-            title="Download a draft PDF from live data. Not an official snapshot; nothing is saved or sent."
-            className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"
-          >
-            Generate PDF now
-          </a>
-        )}
+        <MainNav active="dashboard" closedQuery={closedQuery} />
+        {/* Everyone who can see the dashboard: only the departments they are viewing (the server keeps only ones
+            they can see; an admin viewing every department gets the admin report setting; DraftReportService). */}
+        <a
+          href={OnDemandPdfLink.href(departments)}
+          download
+          title={OnDemandPdfLink.TOOLTIP}
+          className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"
+        >
+          Generate PDF now
+        </a>
         {admin && admin.menuItems.length > 0 && (
           // 12px left of the user block (header gap is 16px).
           <div className="-mr-1">
@@ -467,7 +496,7 @@ export function ProjectDashboard({
           <section className="grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
             {tiles.map((t) =>
               t === "completedFy" ? (
-                completedFiscalYear && <CompletedFiscalYearCard key={t} fy={completedFiscalYear} />
+                completedFiscalYear && <CompletedFiscalYearCard key={t} fy={completedFiscalYear} href={ClosedPageModel.tileHref()} />
               ) : (
                 <div key={t} data-tile={t} className="flex min-w-0 flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
                   <div className="type-metric">{summary.byStatus[t]}</div>
@@ -504,7 +533,7 @@ export function ProjectDashboard({
             </select>
           </label>
           <div className="ml-2">
-            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} list={line?.departments} />
+            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} list={line?.departments} limited={Boolean(line?.departmentLimit)} />
           </div>
           {admin && (
             <button
@@ -534,19 +563,10 @@ export function ProjectDashboard({
               flashId={flashId}
               onSelect={selectRow}
               today={today}
-              emptyText={rows.length === 0 && fiscalYearRows.length === 0 ? "No projects yet." : "No projects match the current filter."}
+              emptyText={rows.length === 0 ? "No projects yet." : "No projects match the current filter."}
               renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
               layout={layoutControl}
               departments={line?.departments}
-            />
-            <FiscalYearSectionsView
-              rows={visibleFy}
-              allRows={fiscalYearRows}
-              today={today}
-              departments={line?.departments}
-              selectedId={selectedId}
-              onSelect={selectRow}
-              renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
             />
           </div>
           <div className="flex justify-between border-t border-line px-3 py-2.5 text-muted type-caption">
@@ -664,7 +684,7 @@ export function ProjectDashboard({
                       onGone={closeDrawer}
                     />
                   }
-                  onSubmit={(changes, milestones) => admin.saveProjectFormAction(selected.id, changes, milestones)}
+                  onSubmit={(changes, milestones) => submitForm(selected.id, selected.name, changes, milestones)}
                   saveMilestones={(edit) => admin.saveMilestonesAction(selected.id, edit)}
                   onSaved={onSaved}
                   onCancel={() =>
@@ -683,6 +703,7 @@ export function ProjectDashboard({
           />
         )
       )}
+      {toast && <ActionToast value={toast} onDone={() => setToast(null)} />}
     </div>
   );
 }
@@ -691,12 +712,22 @@ export function ProjectDashboard({
  * Owner or requester name, or "To assign" when blank: regular weight, same size as a name, in the secondary
  * text color (--dark-text-secondary). Not a warning, so no amber, icon or chip.
  */
-/** Summary strip card: teal check and count, "Completed FY27 to date" under it. */
-export function CompletedFiscalYearCard({ fy }: { fy: FiscalYearCount }) {
-  return (
-    <div data-testid="completed-fy" className="flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
+/** Summary strip card: teal check and count, "Completed FY27 to date" under it. With `href`, a link to the Completed page. */
+export function CompletedFiscalYearCard({ fy, href }: { fy: FiscalYearCount; href?: string }) {
+  const body = (
+    <>
       <div className="type-metric text-(--status-on-track-dark-fg)">{fy.count}</div>
       <span className="type-caption text-(--status-on-track-dark-fg)">&#10003; {FiscalYear.completedLabel(fy.label)}</span>
+    </>
+  );
+  const box = "flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5";
+  return href ? (
+    <Link href={href} data-testid="completed-fy" aria-label={ClosedPagesCopy.tileLink(fy.label)} className={`${box} hover:border-(--dark-text-secondary)`}>
+      {body}
+    </Link>
+  ) : (
+    <div data-testid="completed-fy" className={box}>
+      {body}
     </div>
   );
 }
@@ -723,8 +754,8 @@ export class DashboardMetaLine {
 /**
  * Small gray line under the project name: "REQ-5081  Updated Sep 24". The number sits left-aligned in a
  * fixed-width monospace slot (9px, slightly brighter) followed by a fixed gap, so "Updated" lines up on
- * every row. No number: the slot and gap stay, blank (no dash). Column hidden in the view settings: no
- * slot and no gap, so "Updated" starts at the left edge. Stale amber applies to the Updated date only.
+ * numbered row. No number, or the column hidden in the view settings: no slot and no gap, so "Updated"
+ * starts at the left edge under the name. Stale amber applies to the Updated date only.
  */
 export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInfor: boolean }) {
   const updated = DateFormat.short(row.updatedOn);
@@ -732,13 +763,13 @@ export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInf
   if (!updated && !(showInfor && req)) return null;
   return (
     <div className="truncate text-[10px] leading-3 font-normal text-muted">
-      {showInfor && (
+      {showInfor && req && (
         <span
           data-testid="infor-slot"
           className="font-mono text-[9px] text-[#B8BEC8]"
           style={{ display: "inline-block", width: DashboardMetaLine.INFOR_SLOT_WIDTH, marginRight: DashboardMetaLine.INFOR_GAP, textAlign: "left" }}
         >
-          {req ?? ""}
+          {req}
         </span>
       )}
       {updated && (
@@ -748,7 +779,7 @@ export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInf
   );
 }
 
-function ProjectDrawer({
+export function ProjectDrawer({
   row,
   today,
   onClose,
@@ -758,7 +789,10 @@ function ProjectDrawer({
   form,
   departments,
   historyAction,
+  headerAction,
 }: {
+  /** A secondary action in the header, right of the title (Restore to active on the Cancelled page). */
+  headerAction?: ReactNode;
   /** Null for the New project form. */
   row: DashboardRow | null;
   /** Loads the History section and the "Previously" Infor numbers (detail view only). */
@@ -816,11 +850,14 @@ function ProjectDrawer({
           <div className="text-muted type-caption">{ServiceAreaInfo.label(row.serviceArea, departments)} · Project detail</div>
           <h2 className="mt-1 type-heading text-base">{row.name}</h2>
         </div>
-        {onEdit ? (
+        {onEdit || headerAction ? (
           <div className="flex shrink-0 items-center gap-1.5">
-            <button type="button" onClick={onEdit} className="h-7 rounded-[6px] px-2.5 text-muted type-table-strong hover:bg-input hover:text-fg">
-              Edit
-            </button>
+            {headerAction}
+            {onEdit && (
+              <button type="button" onClick={onEdit} className="h-7 rounded-[6px] px-2.5 text-muted type-table-strong hover:bg-input hover:text-fg">
+                Edit
+              </button>
+            )}
             {closeButton}
           </div>
         ) : (
