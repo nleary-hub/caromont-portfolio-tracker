@@ -365,6 +365,13 @@ export class YearEndReportData {
       status,
       finalUpdate: date ? ClosedProjects.finalUpdate(p) : p.note?.trim() || null,
     });
+    // Carried in / Carried into rows: the status as of the section's day. A row that was Complete by then shows the
+    // final update (the Completed section's text) instead of the latest note; an unknown status ("Open") doesn't.
+    const carriedRow = (c: { p: YearEndProject; status: ProjectStatus; unknown?: boolean }): YearEndRow => {
+      const r = row(c.p, null, c.status);
+      if (c.unknown) return { ...r, statusUnknown: true };
+      return c.status === "Complete" ? { ...r, finalUpdate: ClosedProjects.finalUpdate({ ...c.p, status: "Complete" }) } : r;
+    };
     const byDate = (a: { p: YearEndProject; date: string }, b: { p: YearEndProject; date: string }) => b.date.localeCompare(a.date) || a.p.name.localeCompare(b.p.name);
     const since = trackedSince ?? input.today;
     const columns = YearEndCategories.columns(input.categories);
@@ -373,7 +380,7 @@ export class YearEndReportData {
     const carriedInSection = (carriedIn ?? [])
       .map((c) => ({ p: c.p, ...YearEndReportData.outcomeAt(c.p, through, input.history) }))
       .sort((a, b) => a.p.name.localeCompare(b.p.name))
-      .map((c) => ({ area: c.p.serviceArea, row: { ...row(c.p, null, c.status), ...(c.unknown ? { statusUnknown: true } : {}) } }));
+      .map((c) => ({ area: c.p.serviceArea, row: carriedRow(c) }));
     const allSections: YearEndSection[] = [
       YearEndReportData.section("carriedIn", YearEndCopy.carriedInFrom(prev), inTracked ? YearEndCopy.emptyCarriedIn(prev) : YearEndCopy.carriedNotTracked(since), carriedInSection, input.departments),
       YearEndReportData.section("completed", YearEndCopy.completedIn(fy.label), YearEndCopy.emptyCompleted(fy.label, toDate), [...completed].sort(byDate).map((c) => ({ area: c.p.serviceArea, row: row(c.p, c.date, c.p.status) })), input.departments),
@@ -381,7 +388,7 @@ export class YearEndReportData {
         "carried",
         YearEndCopy.openAtEnd(next, toDate),
         !toDate && !outTracked ? YearEndCopy.carriedNotTracked(since) : YearEndCopy.emptyCarried(next, toDate),
-        [...carried].sort((a, b) => a.p.name.localeCompare(b.p.name)).map((c) => ({ area: c.p.serviceArea, row: { ...row(c.p, null, c.status), ...(c.unknown ? { statusUnknown: true } : {}) } })),
+        [...carried].sort((a, b) => a.p.name.localeCompare(b.p.name)).map((c) => ({ area: c.p.serviceArea, row: carriedRow(c) })),
         input.departments,
       ),
     ];

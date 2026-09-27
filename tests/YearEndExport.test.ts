@@ -471,3 +471,46 @@ describe("table: wider Final update that wraps in full, and completed rows tinte
     expect(d.sections[0].count).toBe(d.totals.carriedIn);
   });
 });
+
+describe("Carried in / Carried into rows that were Complete by the section's day show the final update", () => {
+  const D = ServiceAreaInfo.CVPSL_IDS;
+  const old = new Date("2025-03-01T12:00:00Z");
+  const rowsOf = (d: YearEndData, kind: string) => Object.fromEntries(d.sections.find((s) => s.kind === kind)!.groups.flatMap((g) => g.rows.map((r) => [r.name, [r.status, r.statusUnknown ?? false, r.finalUpdate]])));
+
+  it("current year: a carried-in project completed since shows the Completed section's text; open and cancelled rows keep the latest update", () => {
+    const done = p({ name: "Done", serviceArea: D.Cath, status: "Complete", completedOn: "2026-08-15", accomplishment: "Shipped to all labs.", note: "Old weekly note.", createdAt: old });
+    const doneNoText = p({ name: "Done no text", serviceArea: D.Cath, status: "Complete", completedOn: "2026-08-20", accomplishment: null, note: "Only a note.", createdAt: old });
+    const open = p({ name: "Open", serviceArea: D.EP, status: "AtRisk", accomplishment: "Not used.", note: "Waiting on vendor.", createdAt: old });
+    const stopped = p({ name: "Stopped", serviceArea: D.IR, status: "Cancelled", accomplishment: "Not used.", note: "Vendor withdrew.", createdAt: old });
+    const history = [status(stopped.id, "2026-08-01T15:00:00Z", "OnHold", "Cancelled"), status(done.id, "2026-08-15T15:00:00Z", "OnTrack", "Complete"), status(doneNoText.id, "2026-08-20T15:00:00Z", "OnTrack", "Complete")];
+    const d = build([done, doneNoText, open, stopped], history, "FY27");
+    const completed = rowsOf(d, "completed");
+    expect(rowsOf(d, "carriedIn")).toEqual({
+      Done: ["Complete", false, "Shipped to all labs."],
+      "Done no text": ["Complete", false, "Only a note."],
+      Open: ["AtRisk", false, "Waiting on vendor."],
+      // The Cancelled chip stays (the row count must match the column); its text is the latest update.
+      Stopped: ["Cancelled", false, "Vendor withdrew."],
+    });
+    // Same source text as the Completed section.
+    expect(completed.Done[2]).toBe("Shipped to all labs.");
+    expect(completed["Done no text"][2]).toBe("Only a note.");
+    // Headers unchanged: Status and Latest update.
+    expect(YearEndLayout.columnLabels("carriedIn")).toEqual(["Project", "Owner", "Requester", "Status", "Latest update"]);
+    const laid = YearEndLayout.layout(d, AT, "Nick Leary").pages.flatMap((pg) => pg.blocks).filter((b): b is Extract<YearEndBlock, { kind: "row" }> => b.kind === "row" && b.row.name[0] === "Done");
+    expect(laid.map((b) => b.row.update.join(" "))).toEqual(["Shipped to all labs.", "Shipped to all labs."]);
+  });
+
+  it("closed year: Complete as of Jun 30 (even if reopened since) shows the final update; a gray 'Open' (status not on record) keeps the latest update", () => {
+    const reopened = p({ name: "Reopened", serviceArea: D.Cath, status: "OnTrack", accomplishment: "Phase one live.", note: "Phase two started.", createdAt: old });
+    const later = p({ name: "Completed later", serviceArea: D.Echo, status: "Complete", completedOn: "2026-09-10", accomplishment: "Done in September.", note: "Still testing.", createdAt: old });
+    const history = [status(reopened.id, "2026-06-01T15:00:00Z", "OnTrack", "Complete"), status(reopened.id, "2026-08-02T15:00:00Z", "Complete", "OnTrack")];
+    const d = build([reopened, later], history, "FY26");
+    expect(rowsOf(d, "carriedIn")).toEqual({
+      Reopened: ["Complete", false, "Phase one live."],
+      "Completed later": ["Complete", true, "Still testing."],
+    });
+    // Carried into rows are open at Jun 30 by definition; the unknown one keeps its latest update too.
+    expect(rowsOf(d, "carried")).toEqual({ "Completed later": ["Complete", true, "Still testing."] });
+  });
+});

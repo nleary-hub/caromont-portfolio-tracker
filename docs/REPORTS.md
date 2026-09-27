@@ -277,7 +277,9 @@ Carried in and Carried into are one shared computation (`YearEndReportData.openO
    as closed at D.
 
 In the Carried into and Carried in tables, a past year's row shows the status it had at D. When a project was only closed later by an
-entered completion date and no status was on record for that day, the status cell says "Open" in gray, not a guessed chip.
+entered completion date and no status was on record for that day, the status cell says "Open" in gray, not a guessed chip. A
+Carried in or Carried into row whose status was Complete by that day shows the project's final update (the Completed
+section's text) in the update column instead of the latest note; the column header stays "Latest update".
 
 **Notes under the grid** (small gray text, left-aligned under the Total row), for the shown columns only, in both
 report types:
