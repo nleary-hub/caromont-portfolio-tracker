@@ -52,10 +52,13 @@ export class ServiceLineForms {
   }
 
   static async restore(viewer: Viewer | null, id: string, db: PrismaClient = Db.client): Promise<ServiceLineActionResult> {
-    return ServiceLineForms.run(viewer, async (v) => {
+    const result = await ServiceLineForms.run(viewer, async (v) => {
       await ServiceLineService.restore(id, v, db);
       return { ok: true, message: "Restored." };
     });
+    // A line created after the delete may have taken the name or short name; say so plainly on the Audit page.
+    if (!result.ok && result.errors && (result.errors.name || result.errors.shortName)) return { ...result, message: ServiceLineCopy.RESTORE_CONFLICT };
+    return result;
   }
 
   static async switchTo(viewer: Viewer | null, id: string, db: PrismaClient = Db.client): Promise<ServiceLineActionResult> {
@@ -93,7 +96,7 @@ export class ServiceLineForms {
       return await work(viewer);
     } catch (e) {
       if (e instanceof ServiceLineValidationError) {
-        return { ok: false, message: e.errors._form ?? "Fix the fields below.", errors: e.errors };
+        return { ok: false, message: e.errors._form ?? ServiceLineCopy.FORM_ERROR, errors: e.errors };
       }
       if (e instanceof ServiceLineNotFoundError || e instanceof ServiceLineAccessError) return { ok: false, message: "That service line is not available." };
       console.error("Service line action failed", e);

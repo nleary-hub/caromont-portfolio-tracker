@@ -5,6 +5,7 @@ import { setShowKeyPageForm } from "@/app/actions/reports";
 import { FreezeNowButton } from "@/components/FreezeNowButton";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { ServiceLineCopy } from "@/lib/domain/ServiceLine";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
@@ -53,7 +54,7 @@ export default async function ReportsPage() {
       <p className="text-muted type-caption">
         {scope.isDefault
           ? `Frozen every other Tuesday at 5 PM ET. Next scheduled freeze: ${ReportFormat.longDate(next)}.`
-          : `Scheduled reports are for ${ServiceLineAccess.DEFAULT_SHORT_NAME} only. ${scope.shortName} has on-demand PDFs: use Generate PDF now.`}
+          : ServiceLineCopy.onDemandNote(scope.shortName)}
       </p>
       {viewer.isAdmin && options && (
         <section id="report-admin" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">

@@ -5,6 +5,7 @@ import { useEffect, useRef, useState, useTransition } from "react";
 import { archiveServiceLine, deleteServiceLine, saveServiceLine, unarchiveServiceLine } from "@/app/actions/serviceLine";
 import { ServiceLine, ServiceLineCopy } from "@/lib/domain/ServiceLine";
 import type { ServiceLineActionResult, ServiceLineErrorKey } from "@/lib/services/ServiceLineForms";
+import { ServiceLineTable } from "@/lib/admin/ServiceLineTable";
 import { usePopover } from "./DashboardFilterControls";
 
 /** A line as the admin page receives it (dates as ISO strings). */
@@ -149,25 +150,28 @@ function LinesTable({
 }) {
   return (
     <div className="rounded-card border border-line bg-card">
-      <table className={`w-full border-separate border-spacing-0 type-table ${muted ? "text-muted" : ""}`}>
+      <table className={`w-full table-fixed border-separate border-spacing-0 type-table ${muted ? "text-muted" : ""}`}>
+        {/* Shared column definition, so the active and archived tables line up. */}
+        <colgroup>
+          {ServiceLineTable.COLUMNS.map((c) => (
+            <col key={c.key} style={ServiceLineTable.widthStyle(c)} />
+          ))}
+        </colgroup>
         <thead>
           <tr className="text-left text-muted type-label uppercase">
-            {ServiceLineCopy.COLUMNS.map((h) => (
-              <th key={h} className={`border-b border-line px-3 py-2 ${h === "Projects" ? "text-right" : ""}`}>
-                {h}
+            {ServiceLineTable.COLUMNS.map((c) => (
+              <th key={c.key} className={`border-b border-line px-3 py-2 ${c.align === "right" ? "text-right" : ""}`}>
+                {c.key === "actions" ? <span className="sr-only">{c.label}</span> : c.label}
               </th>
             ))}
-            <th className="w-10 border-b border-line px-3 py-2">
-              <span className="sr-only">Actions</span>
-            </th>
           </tr>
         </thead>
         <tbody>
           {lines.map((l) => (
             <tr key={l.id} data-line={l.shortName}>
               <td className="border-b border-line px-3 py-2">
-                <span className="inline-flex items-center gap-2">
-                  <span className={muted ? "" : "type-table-strong"}>{l.name}</span>
+                <span className="inline-flex max-w-full items-center gap-2">
+                  <span className={`truncate ${muted ? "" : "type-table-strong"}`}>{l.name}</span>
                   {l.isDefault && <LockIcon />}
                 </span>
               </td>
@@ -265,6 +269,7 @@ function ServiceLineDrawer({
 
   const shown = shortTouched ? shortName : ServiceLine.suggestShortName(name);
   const previewShort = shown || "SHORT";
+  const formError = ServiceLineCopy.footerError(errors);
 
   const save = () =>
     start(async () => {
@@ -328,8 +333,9 @@ function ServiceLineDrawer({
             }}
             className={`${INPUT} max-w-[160px] uppercase`}
           />
-          <span className={`type-caption ${errors.shortName ? "text-danger" : "text-muted"}`}>{errors.shortName ?? "2 to 12 letters or digits."}</span>
-          <span className="flex flex-col text-[12px] leading-4 text-(--dark-text-secondary)" data-testid="short-preview">
+          <span className={`type-caption ${errors.shortName ? "text-danger" : "text-muted"}`}>{errors.shortName ?? ServiceLineCopy.SHORT_HINT}</span>
+          <span className="mt-2 flex flex-col text-[12px] leading-4 text-(--dark-text-secondary)" data-testid="short-preview">
+            <span className="mb-0.5 text-[11px] leading-4 font-medium tracking-[.04em] uppercase">{ServiceLineCopy.PREVIEW_LABEL}</span>
             <span>{ServiceLine.topBarPreview(previewShort)}</span>
             <span>{ServiceLine.runningHeaderPreview(previewShort)}</span>
           </span>
@@ -352,8 +358,8 @@ function ServiceLineDrawer({
         )}
       </form>
       <footer className="flex shrink-0 items-center gap-2 border-t border-line px-6 py-3">
-        <span className="min-w-0 flex-1 truncate text-danger type-table" role={errors._form ? "alert" : undefined}>
-          {errors._form ?? ""}
+        <span className="min-w-0 flex-1 truncate text-danger type-table" role={formError ? "alert" : undefined}>
+          {formError}
         </span>
         <button type="button" onClick={onClose} className={GHOST}>
           Cancel
@@ -382,9 +388,9 @@ function DeleteDialog({ line, onCancel, onDeleted }: { line: ServiceLineRowDto; 
         <h2 id="sl-delete-title" className="type-heading">
           {ServiceLineCopy.deleteTitle(line.name)}
         </h2>
-        <p className="type-table text-muted">{ServiceLineCopy.deleteBody(line.projectCount)}</p>
+        <p className="type-table text-muted">{ServiceLineCopy.deleteBody(line.name, line.projectCount)}</p>
         <label className="flex flex-col gap-1">
-          <span className="type-label text-muted">{ServiceLineCopy.CONFIRM_LABEL}</span>
+          <span className="type-label text-muted">{ServiceLineCopy.confirmLabel(line.name)}</span>
           <input autoFocus value={typed} onChange={(e) => setTyped(e.target.value)} className={INPUT} autoComplete="off" spellCheck={false} />
         </label>
         {error && (

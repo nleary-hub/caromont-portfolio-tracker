@@ -117,7 +117,7 @@ export class ServiceLineService {
     AdminPolicy.assertAdmin(admin);
     await db.$transaction(async (tx) => {
       const row = await ServiceLineService.load(tx, id);
-      if (row.isDefault) throw new ServiceLineValidationError({ _form: ServiceLineCopy.LOCK_TOOLTIP + "." });
+      if (row.isDefault) throw new ServiceLineValidationError({ _form: ServiceLineCopy.LOCK_TOOLTIP });
       if (row.deletedAt) return;
       if (!ServiceLineCopy.confirmMatches(String(confirmName ?? ""), row.name)) {
         throw new ServiceLineValidationError({ confirm: "The name doesn't match." });
@@ -180,7 +180,7 @@ export class ServiceLineService {
     await db.$transaction(async (tx) => {
       const row = await ServiceLineService.load(tx, id);
       if (row.deletedAt) throw new ServiceLineNotFoundError();
-      if (row.isDefault) throw new ServiceLineValidationError({ _form: ServiceLineCopy.LOCK_TOOLTIP + "." });
+      if (row.isDefault) throw new ServiceLineValidationError({ _form: ServiceLineCopy.LOCK_TOOLTIP });
       if (Boolean(row.archivedAt) === archived) return;
       await tx.serviceLine.update({ where: { id }, data: { archivedAt: archived ? new Date() : null, updatedBy: admin.email } });
       const action = archived ? ServiceLineService.ACTIONS.archived : ServiceLineService.ACTIONS.unarchived;

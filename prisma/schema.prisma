@@ -45,7 +45,8 @@ enum RecipientLine {
 model Project {
   id                     String        @id @default(uuid()) @db.Uuid
   /// Service line the project belongs to (migration 0016). Every read and write is scoped through
-  /// ServiceLineAccess; there is no DB default, so a new row must name its line.
+  /// ServiceLineAccess, which always passes the line. The DB default (CVPSL) only covers writes from the previous
+  /// deployment while migration 0016 is deployed.
   serviceLineId          String        @default(dbgenerated("'00000000-0000-4000-8000-000000000001'::uuid")) @db.Uuid
   name                   String
   /// What the project is. Optional. Length limit is AppConfig.DESCRIPTION_MAX_LENGTH (200), enforced in app validation.

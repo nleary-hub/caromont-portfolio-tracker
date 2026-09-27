@@ -9,7 +9,8 @@
   .sl-switch:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: 1px; }
   .sl-switch > svg { color: var(--dark-text-secondary); flex: none; }
   /* Opaque: the top bar already blurs its backdrop, so a nested glass popover would show the page through it. */
-  .sl-pop { width: 280px; left: 0; right: auto; padding: 8px; background: var(--dark-card); backdrop-filter: none; }
+  /* 280px minimum, grows to fit the longest name up to 360px; names truncate with an ellipsis only past that. */
+  .sl-pop { width: max-content; min-width: 280px; max-width: 360px; left: 0; right: auto; padding: 8px; background: var(--dark-card); backdrop-filter: none; }
   .sl-row { cursor: pointer; gap: 8px; }
   .sl-row:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: -2px; }
   .sl-check { width: 12px; display: grid; place-items: center; color: var(--dark-accent); flex: none; }

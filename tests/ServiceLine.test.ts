@@ -14,6 +14,9 @@ import { ProjectService } from "@/lib/services/ProjectService";
 import { ServiceLineForms } from "@/lib/services/ServiceLineForms";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLineService } from "@/lib/services/ServiceLineService";
+import { AdminAuditService } from "@/lib/services/AdminAuditService";
+import { ServiceLineTable } from "@/lib/admin/ServiceLineTable";
+import { DashboardViewModel } from "@/lib/dashboard/DashboardViewModel";
 import { SnapshotService } from "@/lib/services/SnapshotService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
@@ -52,8 +55,10 @@ describe("ServiceLine (pure rules)", () => {
       shortName: "Short name must be 2 to 12 characters.",
     });
     expect(errorsOf({ name: "Heart", shortName: "H" })?.shortName).toBe("Short name must be 2 to 12 characters.");
-    expect(errorsOf({ name: "Heart", shortName: "hvsl" })?.shortName).toBe("Use uppercase letters and digits only.");
-    expect(errorsOf({ name: "Heart", shortName: "H-V" })?.shortName).toBe("Use uppercase letters and digits only.");
+    // Letters are uppercased; spaces and symbols are rejected.
+    expect(ServiceLine.parse({ name: "Heart", shortName: "hvsl" }).shortName).toBe("HVSL");
+    expect(errorsOf({ name: "Heart", shortName: "H-V" })?.shortName).toBe("Use letters and numbers only, with no spaces or symbols.");
+    expect(errorsOf({ name: "Heart", shortName: "H V" })?.shortName).toBe("Use letters and numbers only, with no spaces or symbols.");
   });
 
   it("suggests the short name from the name's initials (one word: its first three letters)", () => {
@@ -95,9 +100,17 @@ describe("ServiceLineCopy (Writing Bot rules)", () => {
   it("fixed strings", () => {
     expect(ServiceLineCopy.PAGE_TITLE).toBe("Service lines");
     expect(ServiceLineCopy.NEW_BUTTON).toBe("+ New service line");
-    expect(ServiceLineCopy.LOCK_TOOLTIP).toBe("The default service line can't be archived or deleted");
+    expect(ServiceLineCopy.LOCK_TOOLTIP).toBe("The default service line can't be archived or deleted.");
     expect(ServiceLineCopy.NEW_LINE_HELP).toBe("Departments, people and templates start empty. Add them from Admin after switching to this line.");
-    expect(ServiceLineCopy.CONFIRM_LABEL).toBe("Type the service line name to confirm");
+    expect(ServiceLineCopy.confirmLabel("Bariatric Health")).toBe("Type Bariatric Health to confirm");
+    expect(ServiceLineCopy.SHORT_HINT).toBe("2 to 12 letters or numbers, no spaces.");
+    expect(ServiceLineCopy.SHORT_FORMAT_ERROR).toBe("Use letters and numbers only, with no spaces or symbols.");
+    expect(ServiceLineCopy.PREVIEW_LABEL).toBe("Preview");
+    expect(ServiceLineCopy.FORM_ERROR).toBe("Fix the fields marked in red.");
+    expect(ServiceLineCopy.onDemandNote("BHSL")).toBe("BHSL uses on-demand PDFs. Click Generate PDF now to make one.");
+    expect(ServiceLineCopy.footerError({})).toBe("");
+    expect(ServiceLineCopy.footerError({ shortName: "x" })).toBe("Fix the fields marked in red.");
+    expect(ServiceLineCopy.footerError({ _form: "That name is taken." , name: "x" })).toBe("That name is taken.");
     expect(ServiceLineCopy.MANAGE_LINK).toBe("Manage service lines");
     expect(ServiceLineCopy.COLUMNS).toEqual(["Name", "Short name", "Projects", "Updated"]);
     expect(ServiceLineCopy.archivedHeading(2)).toBe("Archived (2)");
@@ -106,9 +119,9 @@ describe("ServiceLineCopy (Writing Bot rules)", () => {
 
   it("delete confirm: title, plural, singular and zero-project bodies", () => {
     expect(ServiceLineCopy.deleteTitle("Oncology Service Line")).toBe("Delete Oncology Service Line?");
-    expect(ServiceLineCopy.deleteBody(3)).toBe("Its 3 projects, people lists and templates will be hidden everywhere. You can restore it from the audit log.");
-    expect(ServiceLineCopy.deleteBody(1)).toBe("Its 1 project, people lists and templates will be hidden everywhere. You can restore it from the audit log.");
-    expect(ServiceLineCopy.deleteBody(0)).toBe("Its people lists and templates will be hidden everywhere. You can restore it from the audit log.");
+    expect(ServiceLineCopy.deleteBody("Bariatric Health", 3)).toBe("This hides Bariatric Health and its 3 projects, people lists and templates everywhere. You can restore it from Audit.");
+    expect(ServiceLineCopy.deleteBody("Bariatric Health", 1)).toBe("This hides Bariatric Health and its 1 project, people lists and templates everywhere. You can restore it from Audit.");
+    expect(ServiceLineCopy.deleteBody("Bariatric Health", 0)).toBe("This hides Bariatric Health and its people lists and templates everywhere. You can restore it from Audit.");
   });
 
   it("the typed name must match exactly (case-sensitive, outer spaces trimmed)", () => {
@@ -123,9 +136,11 @@ describe("ServiceLineCopy (Writing Bot rules)", () => {
     const all = [
       ...Object.values(ServiceLineCopy).filter((v): v is string => typeof v === "string"),
       ...ServiceLineCopy.COLUMNS,
-      ServiceLineCopy.deleteBody(0),
-      ServiceLineCopy.deleteBody(1),
-      ServiceLineCopy.deleteBody(2),
+      ServiceLineCopy.deleteBody("X", 0),
+      ServiceLineCopy.deleteBody("X", 1),
+      ServiceLineCopy.deleteBody("X", 2),
+      ServiceLineCopy.confirmLabel("X"),
+      ServiceLineCopy.onDemandNote("X"),
       ServiceLineCopy.deleteTitle("X"),
     ];
     for (const text of all) expect(text).not.toContain("\u2014");
@@ -268,6 +283,36 @@ describe("ServiceLineForms (the Server Action bodies)", () => {
     expect(await ServiceLineForms.remove(ADMIN, onc.id as string, "Oncology Service Line", db)).toEqual({ ok: true, message: "Switched to CVPSL", switchedTo: "CVPSL" });
     // A deleted or archived line can't be switched to.
     expect(await ServiceLineForms.switchTo(ADMIN, onc.id as string, db)).toEqual({ ok: false, message: "That service line is not available." });
+  });
+
+  it("a deleted line is restored from Audit as it was; a taken name or short name blocks it with a plain message", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    const onc = fake.addLine({ name: "Oncology Service Line", shortName: "ONC", archivedAt: new Date("2026-09-20T12:00:00Z") });
+    await ServiceLineForms.remove(ADMIN, onc.id as string, "Oncology Service Line", db);
+    // Listed on the Audit page.
+    const audit = await AdminAuditService.load(ADMIN, db);
+    expect(audit.deletedLines.map((l) => l.name)).toEqual(["Oncology Service Line"]);
+    // Someone reuses the short name meanwhile: restore is refused, with a message the Audit page shows.
+    const other = fake.addLine({ name: "Oncology Two", shortName: "ONC" });
+    expect(await ServiceLineForms.restore(ADMIN, onc.id as string, db)).toMatchObject({ ok: false, message: ServiceLineCopy.RESTORE_CONFLICT });
+    fake.state.serviceLines.find((l) => l.id === other.id)!.shortName = "ONC2";
+    expect(await ServiceLineForms.restore(ADMIN, onc.id as string, db)).toEqual({ ok: true, message: "Restored." });
+    const back = fake.state.serviceLines.find((l) => l.id === onc.id)!;
+    expect(back).toMatchObject({ deletedAt: null, deletedBy: null });
+    // It comes back as it was (here: archived), with its projects and settings untouched.
+    expect(back.archivedAt).toEqual(new Date("2026-09-20T12:00:00Z"));
+    expect((await AdminAuditService.load(ADMIN, db)).deletedLines).toEqual([]);
+  });
+
+  it("layout rules: shared admin table columns and the empty-line dashboard", () => {
+    expect(ServiceLineTable.COLUMNS.map((c) => c.label)).toEqual([...ServiceLineCopy.COLUMNS, "Actions"]);
+    expect(ServiceLineTable.COLUMNS.filter((c) => c.width === null).map((c) => c.key)).toEqual(["name"]);
+    expect(DashboardViewModel.isEmptyLine({ isDefault: false }, 0, false)).toBe(true);
+    expect(DashboardViewModel.isEmptyLine({ isDefault: false }, 1, false)).toBe(false);
+    expect(DashboardViewModel.isEmptyLine({ isDefault: true }, 0, false)).toBe(false);
+    expect(DashboardViewModel.isEmptyLine({ isDefault: false }, 0, true)).toBe(false);
+    expect(DashboardViewModel.isEmptyLine(undefined, 0, false)).toBe(false);
   });
 
   it("non-admins always work in the default line (the seam for per-line access)", async () => {

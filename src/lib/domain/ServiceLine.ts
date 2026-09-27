@@ -90,7 +90,8 @@ export class ServiceLine {
   /** Validated, cleaned value; throws ServiceLineValidationError with per-field messages. */
   static parse(raw: { name?: unknown; shortName?: unknown }): ServiceLineValue {
     const name = ServiceLine.clean(raw.name);
-    const shortName = ServiceLine.clean(raw.shortName);
+    // Letters are uppercased (the field uppercases as you type; this covers other callers).
+    const shortName = ServiceLine.clean(raw.shortName).toUpperCase();
     const errors: Partial<Record<ServiceLineField, string>> = {};
     if (!name) errors.name = "Name is required.";
     else if (name.length > ServiceLine.NAME_MAX_LENGTH) errors.name = `Name must be ${ServiceLine.NAME_MAX_LENGTH} characters or fewer.`;
@@ -106,7 +107,7 @@ export class ServiceLine {
     if (shortName.length < ServiceLine.SHORT_MIN_LENGTH || shortName.length > ServiceLine.SHORT_MAX_LENGTH) {
       return `Short name must be ${ServiceLine.SHORT_MIN_LENGTH} to ${ServiceLine.SHORT_MAX_LENGTH} characters.`;
     }
-    if (!ServiceLine.SHORT_PATTERN.test(shortName)) return "Use uppercase letters and digits only.";
+    if (!ServiceLine.SHORT_PATTERN.test(shortName)) return ServiceLineCopy.SHORT_FORMAT_ERROR;
     return null;
   }
 
@@ -218,9 +219,15 @@ export class ServiceLine {
 export class ServiceLineCopy {
   static readonly PAGE_TITLE = "Service lines";
   static readonly NEW_BUTTON = "+ New service line";
-  static readonly LOCK_TOOLTIP = "The default service line can't be archived or deleted";
+  static readonly LOCK_TOOLTIP = "The default service line can't be archived or deleted.";
   static readonly NEW_LINE_HELP = "Departments, people and templates start empty. Add them from Admin after switching to this line.";
-  static readonly CONFIRM_LABEL = "Type the service line name to confirm";
+  static readonly SHORT_HINT = "2 to 12 letters or numbers, no spaces.";
+  static readonly SHORT_FORMAT_ERROR = "Use letters and numbers only, with no spaces or symbols.";
+  static readonly PREVIEW_LABEL = "Preview";
+  /** Audit restore blocked because an open line now uses the same name or short name. */
+  static readonly RESTORE_CONFLICT = "Another service line now uses this name or short name. Rename that line, then restore this one.";
+  /** Drawer footer when fields have errors. */
+  static readonly FORM_ERROR = "Fix the fields marked in red.";
   static readonly MANAGE_LINK = "Manage service lines";
   static readonly COLUMNS = ["Name", "Short name", "Projects", "Updated"] as const;
 
@@ -228,11 +235,30 @@ export class ServiceLineCopy {
     return `Delete ${name}?`;
   }
 
-  /** Writing Bot's rule: singular for one project, no count for zero. */
-  static deleteBody(projectCount: number): string {
-    const tail = "will be hidden everywhere. You can restore it from the audit log.";
-    if (projectCount <= 0) return `Its people lists and templates ${tail}`;
-    return `Its ${projectCount} ${projectCount === 1 ? "project" : "projects"}, people lists and templates ${tail}`;
+  /**
+   * Writing Bot's copy: singular for one project, no count for zero. Restore is real: the Audit page lists
+   * deleted lines with a Restore button (ServiceLineService.restore), and the line comes back as it was.
+   */
+  static deleteBody(name: string, projectCount: number): string {
+    const tail = "everywhere. You can restore it from Audit.";
+    if (projectCount <= 0) return `This hides ${name} and its people lists and templates ${tail}`;
+    return `This hides ${name} and its ${projectCount} ${projectCount === 1 ? "project" : "projects"}, people lists and templates ${tail}`;
+  }
+
+  /** Drawer footer text: a form-level message, else FORM_ERROR when any field has an error, else nothing. */
+  static footerError(errors: Partial<Record<string, string | undefined>>): string {
+    if (errors._form) return errors._form;
+    return Object.entries(errors).some(([k, v]) => k !== "_form" && Boolean(v)) ? ServiceLineCopy.FORM_ERROR : "";
+  }
+
+  /** Label of the delete confirmation field: "Type Bariatric Health to confirm". */
+  static confirmLabel(name: string): string {
+    return `Type ${name} to confirm`;
+  }
+
+  /** Report archive note for lines other than the default. */
+  static onDemandNote(shortName: string): string {
+    return `${shortName} uses on-demand PDFs. Click Generate PDF now to make one.`;
   }
 
   /** The danger button enables only on an exact, case-sensitive match (outer spaces trimmed). */

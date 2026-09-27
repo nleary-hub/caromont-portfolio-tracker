@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { restoreProjectForm, unhideProjectForm } from "@/app/actions/admin";
-import { restoreServiceLineForm } from "@/app/actions/serviceLine";
+import { RestoreServiceLineButton } from "@/components/RestoreServiceLineButton";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLineHistoryText } from "@/lib/admin/ServiceLineHistoryText";
@@ -121,12 +121,7 @@ export default async function AuditPage() {
                     <td className="border-b border-line px-3 py-2">{AuditFormat.when(l.deletedAt)}</td>
                     <td className="border-b border-line px-3 py-2">{l.deletedBy ?? "–"}</td>
                     <td className="border-b border-line px-3 py-2">
-                      <form action={restoreServiceLineForm}>
-                        <input type="hidden" name="serviceLineId" value={l.id} />
-                        <button type="submit" className="text-accent type-table-strong">
-                          Restore
-                        </button>
-                      </form>
+                      <RestoreServiceLineButton id={l.id} name={l.name} />
                     </td>
                   </tr>
                 ))}

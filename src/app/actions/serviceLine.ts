@@ -44,8 +44,3 @@ export async function saveLineDepartments(id: string, departments: string[]): Pr
 export async function saveContractsLeads(id: string, text: string): Promise<ServiceLineActionResult> {
   return ServiceLineRevalidate.after(await ServiceLineForms.contractsLeads(await CurrentViewer.get(), id, text));
 }
-
-/** Form wrapper for the audit page (field: serviceLineId). */
-export async function restoreServiceLineForm(formData: FormData): Promise<void> {
-  await restoreServiceLine(String(formData.get("serviceLineId") ?? ""));
-}

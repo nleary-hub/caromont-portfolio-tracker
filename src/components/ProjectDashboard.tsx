@@ -189,6 +189,7 @@ export function ProjectDashboard({
   const visibleCompleted = useMemo(() => DashboardViewModel.filter(deptCompleted, query), [deptCompleted, query]);
   const tiles = DashboardPrefs.visibleTiles(hiddenTiles, Boolean(completedFiscalYear));
   const tileTemplate = DashboardPrefs.gridTemplate(tiles);
+  const emptyLine = DashboardViewModel.isEmptyLine(line, rows.length + completed.length, Boolean(loadError));
   // Non-admins get only the visible columns in order; that is the same model with nothing hidden.
   const dashboardView: ViewSettingsValue = settings?.dashboard ?? { columnOrder: columnsProp, hiddenColumns: [], hiddenStatuses: [] };
   const showInfor = ViewSettings.visibleColumns(dashboardView).includes("inforNumber");
@@ -385,9 +386,10 @@ export function ProjectDashboard({
           </p>
         )}
 
-        {line && !line.isDefault && rows.length === 0 && completed.length === 0 && !loadError && <EmptyLineState line={line} admin={Boolean(admin)} onNew={openNew} />}
+        {emptyLine && <EmptyLineState line={line!} admin={Boolean(admin)} onNew={openNew} />}
 
-        {tileTemplate && (
+        {/* A line with no projects shows only the banner; tiles, toolbar and table appear with the first project. */}
+        {!emptyLine && tileTemplate && (
           <section className="grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
             {tiles.map((t) =>
               t === "completedFy" ? (
@@ -402,6 +404,7 @@ export function ProjectDashboard({
           </section>
         )}
 
+        {!emptyLine && (
         <section className="flex items-center gap-1.5" aria-label="Department filter">
           <div className="flex-1" />
           <span className="type-caption text-muted">Showing {visible.length} projects</span>
@@ -424,7 +427,9 @@ export function ProjectDashboard({
             onChange={setHiddenTiles}
           />
         </section>
+        )}
 
+        {!emptyLine && (
         <section className="overflow-hidden rounded-card border border-line bg-card">
           <div className="max-h-[calc(100vh-260px)] overflow-auto">
             <DashboardTable
@@ -446,6 +451,7 @@ export function ProjectDashboard({
             <span>Changed = any edit since the last report</span>
           </div>
         </section>
+        )}
       </main>
 
       {mode === "new" && admin ? (
