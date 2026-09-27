@@ -611,7 +611,7 @@ model AppUser {
   /// Display name from the identity provider at the last sign-in, when it has a real one.
   name          String?
   firstSignInAt DateTime?
-  /// Admin who added the email before its first sign-in, or the migration's day-one grant.
+  /// Admin who added the email before its first sign-in (null when recorded at first sign-in).
   addedBy       String?
   createdAt     DateTime                 @default(now())
   access        ServiceLineAccessGrant[]

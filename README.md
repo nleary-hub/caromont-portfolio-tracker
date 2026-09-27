@@ -142,8 +142,8 @@ Notes:
   handoff.json and Drive delivery (no viewer; always CVPSL), signed `/api/share` links, and the CSV
   export (admin web route, or `npm run export:csv` straight from `DATABASE_URL`). Every change is logged
   to `service_line_access_history`.
-- Migration 0023 STEP 2 is the day-one grant: every email the database already knows as a person gets every
-  open line. Delete that block before deploying for "everyone starts with none" instead.
+- Migration 0023 grants nobody anything (start with none): on day one only admins (`ADMIN_EMAILS`) see
+  lines; everyone else sees the no-access card until an admin checks their lines.
 
 ## Data model (prisma/schema.prisma)
 

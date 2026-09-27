@@ -20,16 +20,6 @@ class M23 {
     return readFileSync(path.join(DIR, folder, "migration.sql"), "utf8");
   }
 
-  /** The migration with STEP 2 (the day-one grant) deleted: Nick's "start with none" alternative. */
-  static withoutGrant(): string {
-    const s = M23.sql();
-    const a = s.indexOf("-- ===== BEGIN STEP 2");
-    const b = s.indexOf("-- ===== END STEP 2 =====");
-    expect(a).toBeGreaterThan(0);
-    expect(b).toBeGreaterThan(a);
-    return s.slice(0, a) + s.slice(b + "-- ===== END STEP 2 =====".length);
-  }
-
   /** Production today: the production-shaped fixture (0015) with 0016 to 0022 applied. */
   static async at0022(extra = ""): Promise<PGlite> {
     const db = await PGlite.create();
@@ -94,56 +84,26 @@ describe("0023_line_access on production-shaped data (PGlite)", () => {
     expect(await M23.snapshot(db, cols)).toEqual(before);
   });
 
-  it("day-one grant (default pending Nick): the 2 people the fixture knows get the 1 open line; system actors skipped", async () => {
-    const db = await M23.at0022();
-    await db.exec(M23.sql());
-    const users = await db.query<{ email: string; addedBy: string; firstSignInAt: Date | null }>(`select email, "addedBy", "firstSignInAt" from app_user order by 1`);
-    expect(users.rows).toEqual([
-      { email: "editor@example.org", addedBy: "system (migration 0023)", firstSignInAt: null },
-      { email: "nick@example.org", addedBy: "system (migration 0023)", firstSignInAt: null },
-    ]);
-    expect(await M23.grants(db)).toEqual(["editor@example.org CVPSL", "nick@example.org CVPSL"]);
-    const log = await db.query<{ n: number }>(`select count(*)::int as n from service_line_access_history where action = 'granted' and "changedBy" = 'system (migration 0023)'`);
-    expect(log.rows[0].n).toBe(2);
-    // A person first seen after the migration starts with no lines.
-    await db.exec(`insert into app_user (email, "firstSignInAt") values ('new.person@example.org', now())`);
-    expect((await M23.grants(db)).filter((g) => g.startsWith("new.person"))).toEqual([]);
-  });
-
-  it("grants open lines only (not archived or deleted), and only real emails", async () => {
+  it("start with none (Nick, 9/27): tables only, no person, grant or history row, even with extra lines and actors", async () => {
     const db = await M23.at0022(`
       insert into service_line (id, name, "shortName", "isDefault", "updatedAt", "updatedBy") values
         ('00000000-0000-4000-8000-0000000000a2', 'Electrophysiology Service Line', 'EP', false, now(), 'nick@example.org');
-      insert into service_line (id, name, "shortName", "isDefault", "archivedAt", "updatedAt", "updatedBy") values
-        ('00000000-0000-4000-8000-0000000000a3', 'Archived Line', 'ARC', false, now(), now(), 'Viewer.Person@Example.org ');
-      insert into service_line (id, name, "shortName", "isDefault", "deletedAt", "deletedBy", "updatedAt", "updatedBy") values
-        ('00000000-0000-4000-8000-0000000000a4', 'Deleted Line', 'DEL', false, now(), 'nick@example.org', now(), 'nick@example.org');
       insert into service_line_user_state (email, "serviceLineId", "updatedAt") values ('switcher@example.org', '00000000-0000-4000-8000-0000000000a2', now());
     `);
     await db.exec(M23.sql());
-    expect(await M23.grants(db)).toEqual([
-      "editor@example.org CVPSL",
-      "editor@example.org EP",
-      "nick@example.org CVPSL",
-      "nick@example.org EP",
-      "switcher@example.org CVPSL",
-      "switcher@example.org EP",
-      "viewer.person@example.org CVPSL",
-      "viewer.person@example.org EP",
-    ]);
-    const odd = await db.query(`select email from app_user where email !~ '^[^@[:space:]]+@[^@[:space:]]+$'`);
-    expect(odd.rows).toEqual([]);
-  });
-
-  it("'start with none' is the same migration with STEP 2 deleted: tables only, no rows", async () => {
-    const db = await M23.at0022();
-    await db.exec(M23.withoutGrant());
     for (const t of NEW_TABLES) expect((await db.query<{ n: number }>(`select count(*)::int as n from "${t}"`)).rows[0].n, t).toBe(0);
+    expect(M23.sql()).not.toMatch(/INSERT INTO/i);
+    // A person first seen after the migration also starts with no lines.
+    await db.exec(`insert into app_user (email, "firstSignInAt") values ('new.person@example.org', now())`);
+    expect(await M23.grants(db)).toEqual([]);
   });
 
   it("guards: normalized emails, the history is append-only, removing a person removes their access rows", async () => {
     const db = await M23.at0022();
     await db.exec(M23.sql());
+    await db.exec(`insert into app_user (email, "addedBy") values ('editor@example.org', 'nick@example.org'), ('nick@example.org', 'nick@example.org')`);
+    await db.exec(`insert into service_line_access (email, "serviceLineId", "grantedBy") select u.email, l.id, 'nick@example.org' from app_user u cross join service_line l`);
+    await db.exec(`insert into service_line_access_history (id, email, "serviceLineId", action, "changedBy") select gen_random_uuid(), email, "serviceLineId", 'granted', 'nick@example.org' from service_line_access`);
     await expect(db.exec(`insert into app_user (email) values ('Mixed@Example.org')`)).rejects.toThrow(/app_user_email_normalized/);
     await expect(db.exec(`update service_line_access_history set action = 'revoked'`)).rejects.toThrow(/not allowed/);
     await expect(db.exec(`delete from service_line_access_history`)).rejects.toThrow(/not allowed/);
@@ -174,6 +134,6 @@ describe("0023_line_access on production-shaped data (PGlite)", () => {
     expect(await M23.tables(db)).toEqual(cols);
     expect(await M23.snapshot(db, cols)).toEqual(before);
     await db.exec(M23.sql());
-    expect(await M23.grants(db)).toEqual(["editor@example.org CVPSL", "nick@example.org CVPSL"]);
+    expect(await M23.grants(db)).toEqual([]);
   });
 });
