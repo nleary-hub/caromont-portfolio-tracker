@@ -20,8 +20,9 @@ type Grouped = { serviceArea: DepartmentKey | null };
  * Groups dashboard rows by department exactly like the PDF body (ReportLayout.layout): departments in
  * ServiceAreaInfo.groups() order with Unassigned last, projects assigned with ServiceAreaInfo.groupOf, and a
  * department without rows left out. Rows keep their incoming order (report order from ReportBuilder.sortProjects)
- * unless a comparator is given; a comparator sorts within each group and never mixes groups. The dashboard has no
- * "Completed this period" block (FiscalYearSections lists Completed and Cancelled projects); the PDF keeps it.
+ * unless a comparator is given; a comparator sorts within each group and never mixes groups. Neither the dashboard
+ * nor the PDF has a separate "Completed this period" block: completed projects are rows in their group. The
+ * Completed and Cancelled pages group their rows with this too.
  */
 export class DashboardGroups {
   static group<R extends Grouped>(

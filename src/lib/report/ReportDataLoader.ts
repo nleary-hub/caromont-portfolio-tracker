@@ -8,7 +8,7 @@ import type { DepartmentKey } from "@/lib/domain/ServiceAreaInfo";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
 import { ChampionCheck } from "@/lib/report/ChampionCheck";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
-import { CompletedThisPeriod } from "@/lib/report/CompletedThisPeriod";
+import { PeriodClosure } from "@/lib/report/PeriodClosure";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { MilestoneService } from "@/lib/services/MilestoneService";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
@@ -25,8 +25,14 @@ export interface LiveReportData {
   rows: ReportRow[];
   header: ReportHeader;
   missingChampions: MissingChampion[];
-  /** "Completed this period" rows (read-only here; only a freeze marks them reported). */
+  /**
+   * The old "Completed this period" block. Always empty now: projects completed during the period are
+   * regular rows in their department group (`completedInPeriod` on the row). Kept so the snapshot and handoff.json keep
+   * their shape; snapshots frozen before this change still render their stored block.
+   */
   completed: CompletedRow[];
+  /** Ids of the projects listed because they were completed during the period (a freeze marks the completed ones reported). */
+  completedInPeriodIds: string[];
   viewSettings: ViewSettingsValue;
   options: ReportOptionsValue;
   /** The line's column layout and manual row order (frozen into the snapshot as layoutJson). */
@@ -81,6 +87,8 @@ export class ReportDataLoader {
     const serviceLine = ServiceLine.valueOf(line);
 
     const previousSnapshotGeneratedAt = previous?.generatedAt ?? null;
+    // Completed since the previous freeze (every Complete project for the first report): regular rows; Changed only, never Overdue or Stale.
+    const completedInPeriod = PeriodClosure.ids(projects, history, previousSnapshotGeneratedAt, now);
     const { rows, header } = ReportBuilder.build({
       projects,
       history,
@@ -88,15 +96,17 @@ export class ReportDataLoader {
       reportDate,
       viewSettings,
       departments: line.departments,
+      completedInPeriod,
     });
     // Only visible rows: the list names projects, so hidden/deleted ones must not appear in it.
     const missingChampions = ChampionCheck.findMissing(
       VisibilityPolicy.visibleProjects(projects, "report", viewSettings),
       recipients,
     );
-    const completed = CompletedThisPeriod.select({ projects, history, viewSettings, cutoff: now, departments: line.departments });
+    const completed: CompletedRow[] = [];
+    const completedInPeriodIds = rows.filter((r) => r.completedInPeriod).map((r) => r.projectId);
     // Frozen with the header (headerJson), so a frozen report keeps its count.
     header.completedFiscalYear = CompletedFiscalYear.count({ projects, history, reportDate });
-    return { rows, header, missingChampions, completed, viewSettings, options, layout, serviceLine, scope: line, reportDate, previousSnapshotGeneratedAt };
+    return { rows, header, missingChampions, completed, completedInPeriodIds, viewSettings, options, layout, serviceLine, scope: line, reportDate, previousSnapshotGeneratedAt };
   }
 }

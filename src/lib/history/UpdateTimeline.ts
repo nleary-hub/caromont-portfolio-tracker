@@ -3,6 +3,8 @@ import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { HistoryEntries } from "@/lib/history/HistoryEntries";
+import { ClosedPagesCopy } from "@/lib/closed/ClosedPagesCopy";
+import { RestoreRules } from "@/lib/closed/RestoreRules";
 import { UpdateHistoryCopy as C } from "@/lib/history/UpdateHistoryCopy";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
@@ -278,6 +280,10 @@ export class UpdateTimeline {
         return { text: after === "true" ? C.HIDDEN_REPORT : C.SHOWN_REPORT };
       case "includeInReport":
         return before === after ? null : { text: C.inReportByCsv(after !== "false") };
+    }
+    if (field === "status" && RestoreRules.isRestoreComment(row.comment) && after) {
+      const status = UpdateTimeline.value("status", after) ?? after;
+      return { text: ClosedPagesCopy.restoreHistory(status, row.comment === RestoreRules.COMMENT) };
     }
     if (field === "serviceArea" && row.comment && UpdateTimeline.DEPARTMENT_DELETED.test(row.comment) && before && after) {
       return { text: C.movedOnDelete(before, after) };

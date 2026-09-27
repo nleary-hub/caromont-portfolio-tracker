@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { DashboardViewModel, DateFormat } from "@/lib/dashboard/DashboardViewModel";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
 import { Factory } from "./helpers/factories";
 
@@ -65,8 +66,10 @@ describe("DashboardViewModel", () => {
     expect(visible.filter((r) => r.changed)).toHaveLength(0);
 
     const showClosed = ViewSettings.normalize("dashboard", { hiddenStatuses: ["AtRisk"] });
-    const v2 = DashboardViewModel.rows(all, showClosed, [], null, "2026-10-07");
-    expect(v2.map((r) => r.id)).toEqual(["d", "a", "r", "e"]);
+    // Showing closed statuses in the settings does not bring them back: Complete only when completed this period, Cancelled never.
+    expect(DashboardViewModel.rows(all, showClosed, [], null, "2026-10-07").map((r) => r.id)).toEqual(["a", "r"]);
+    const v2 = DashboardViewModel.rows(all, showClosed, [], null, "2026-10-07", [], ServiceAreaInfo.LEGACY, new Set(["d", "e"]));
+    expect(v2.map((r) => r.id)).toEqual(["d", "a", "r"]);
     expect(DashboardViewModel.summarize(v2).byStatus.AtRisk).toBe(0);
   });
 

@@ -32,18 +32,20 @@ describe("SnapshotService.create", () => {
 
     const s1 = await SnapshotService.create(period1, db);
     const rows1 = s1.rowsJson as unknown as ReportRow[];
-    expect(rows1.map((r) => r.name)).toEqual(["Active"]);
-    expect(rows1.every((r) => r.changed)).toBe(true);
+    // First report: the already-complete project is a regular row in its department (Complete chip; Changed only, never Overdue or Stale).
+    expect(rows1.map((r) => r.name)).toEqual(["Active", "Done"]);
+    expect(rows1.find((r) => r.name === "Active")!.changed).toBe(true);
+    expect(rows1.find((r) => r.name === "Done")).toMatchObject({ status: "Complete", changed: true, overdue: false, stale: false, completedInPeriod: true });
     const header1 = s1.headerJson as unknown as ReportHeader;
-    expect(header1.totals).toMatchObject({ OnTrack: 1, Complete: 0 });
+    expect(header1.totals).toMatchObject({ OnTrack: 1, Complete: 1 });
     expect(Sum.counts(header1)).toBe(rows1.length);
     expect(header1.totalProjects).toBe(rows1.length);
     expect(JSON.stringify(s1)).not.toContain("Hidden:");
     expect((s1.missingChampionsJson as unknown as MissingChampion[]).map((m) => m.name)).toEqual(["Dr. Missing"]);
     expect(fake.state.recipients).toHaveLength(1);
-    // The Complete project is not a row or a count; it is listed once in "Completed this period", and the
-    // freeze stamps completionReportedAt on it (no history entry). Nothing else about projects changes.
-    expect((s1.completedJson as unknown as CompletedRow[]).map((c) => c.name)).toEqual(["Done"]);
+    // No separate "Completed this period" block any more; the freeze still stamps completionReportedAt on the
+    // completed row it listed (no history entry). Nothing else about projects changes.
+    expect(s1.completedJson as unknown as CompletedRow[]).toEqual([]);
     const after = fake.state.projects.map((p) => ({ ...p, completionReportedAt: null }));
     // updatedAt is Prisma's automatic row timestamp (not used by the app); ignore it in the comparison.
     // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -54,9 +56,10 @@ describe("SnapshotService.create", () => {
 
     const s2 = await SnapshotService.create(period2, db);
     const rows2 = s2.rowsJson as unknown as ReportRow[];
+    // After the freeze that included it, the completed project leaves the report.
     expect(rows2.map((r) => r.name)).toEqual(["Active"]);
     expect(rows2[0].changed).toBe(false);
-    expect(s2.completedJson).toEqual([]); // listed once
+    expect(s2.completedJson).toEqual([]);
     expect(s2.pdfStorageKey).toBeNull(); // rendering happens later, in FreezeService
   });
 

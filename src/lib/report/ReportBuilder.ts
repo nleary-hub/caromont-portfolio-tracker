@@ -1,10 +1,14 @@
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
+import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { HistoryEntryRecord, ProjectRecord, ReportHeader, ReportRow, StatusCounts } from "@/lib/domain/types";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { ClosedProjects } from "@/lib/report/ClosedProjects";
+import type { CompletableProject } from "@/lib/report/CompletedThisPeriod";
+import { PeriodClosure } from "@/lib/report/PeriodClosure";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 export interface ReportBuildInput {
@@ -20,6 +24,12 @@ export interface ReportBuildInput {
   departments?: DepartmentList;
   /** Report-context view settings in effect (frozen into the snapshot alongside the result). */
   viewSettings: ViewSettingsValue;
+  /**
+   * Ids of projects completed during the period (PeriodClosure). They are listed in their department group with
+   * their Complete status even when Complete is hidden. They keep Changed but never get Overdue or Stale. Cancelled
+   * projects are excluded entirely.
+   */
+  completedInPeriod?: ReadonlySet<string>;
 }
 
 export interface ReportBuildResult {
@@ -41,6 +51,38 @@ export interface SortableRow {
   /** YYYY-MM-DD or null */
   dueDate: string | null;
   name: string;
+}
+
+/** What CompletedChangedRule reads from a project (createdAt is optional: older records fall back to history). */
+export type CompletedChangedProject = Pick<ProjectRecord, "id" | "status" | "completedOn"> & { createdAt?: Date };
+
+/**
+ * Changed on a completed row. Nick's decision (Sep 27, 2026):
+ * - First report of a line (no earlier freeze): every project already completed this fiscal year (the fiscal year of
+ *   the report date, same attribution as the "Completed FYxx to date" tile) gets Changed.
+ * - From the second report on: only projects completed within that period (in the app since the previous freeze, the
+ *   same clock PeriodClosure uses to list them) get Changed.
+ * FIRST_REPORT_CHANGED = false would turn off the first-report part (none of the already-complete ones get Changed then).
+ */
+export class CompletedChangedRule {
+  static readonly FIRST_REPORT_CHANGED: boolean = true;
+
+  static changed(
+    project: CompletedChangedProject,
+    history: readonly HistoryEntryRecord[],
+    previousSnapshotGeneratedAt: Date | null,
+    reportDate: string,
+    firstReportChanged: boolean = CompletedChangedRule.FIRST_REPORT_CHANGED,
+  ): boolean {
+    if (project.status !== "Complete") return false;
+    const p = project as CompletableProject;
+    if (previousSnapshotGeneratedAt === null) {
+      if (!firstReportChanged) return false;
+      return ClosedProjects.closedIn(p, history, reportDate)?.fiscalYear === FiscalYear.of(reportDate).label;
+    }
+    const at = PeriodClosure.completedAt(p, history);
+    return at !== null && at.getTime() > previousSnapshotGeneratedAt.getTime();
+  }
 }
 
 /** Pure report-row selection, flagging and ordering. No I/O. */
@@ -69,6 +111,20 @@ export class ReportBuilder {
       overdue: rows.filter((r) => r.overdue).length,
       changed: rows.filter((r) => r.changed).length,
       stale: rows.filter((r) => r.stale).length,
+    };
+  }
+
+  /**
+   * Flags a row may carry. A Complete row (listed only while completed during the period) keeps Changed, so it shows in
+   * the PDF, on the dashboard and in handoff.json's changed list, but never gets Overdue (or Stale, see isStale). A
+   * Cancelled row never carries a flag (it is not listed anywhere).
+   */
+  static flags(project: Pick<ProjectRecord, "id" | "dueDate" | "status"> & Partial<Pick<ProjectRecord, "completedOn">> & { createdAt?: Date }, history: readonly HistoryEntryRecord[], previousSnapshotGeneratedAt: Date | null, reportDate: string): RowFlags {
+    if (project.status === "Cancelled") return { changed: false, overdue: false };
+    if (project.status === "Complete") return { changed: CompletedChangedRule.changed({ completedOn: null, ...project }, history, previousSnapshotGeneratedAt, reportDate), overdue: false };
+    return {
+      changed: ReportBuilder.isChanged(project.id, history, previousSnapshotGeneratedAt),
+      overdue: ReportBuilder.isOverdue(project, reportDate),
     };
   }
 
@@ -177,7 +233,7 @@ export class ReportBuilder {
     return from;
   }
 
-  static toRow(project: ProjectRecord, flags: RowFlags, details: Pick<ReportRow, "updatedOn" | "statusFrom" | "stale"> = {}): ReportRow {
+  static toRow(project: ProjectRecord, flags: RowFlags, details: Pick<ReportRow, "updatedOn" | "statusFrom" | "stale" | "completedInPeriod"> = {}): ReportRow {
     return {
       projectId: project.id,
       name: project.name,
@@ -201,7 +257,14 @@ export class ReportBuilder {
       updatedOn: details.updatedOn ?? null,
       statusFrom: details.statusFrom ?? null,
       stale: details.stale ?? false,
+      // Only on rows completed during the period, so every other row's JSON is exactly as before.
+      ...(details.completedInPeriod ? { completedInPeriod: true as const } : {}),
     };
+  }
+
+  /** A Complete project completed during the period (the only Complete projects a new report lists). */
+  static isCompletedInPeriod(project: Pick<ProjectRecord, "id" | "status">, completedInPeriod?: ReadonlySet<string>): boolean {
+    return Boolean(completedInPeriod?.has(project.id)) && project.status === "Complete";
   }
 
   static details(
@@ -220,14 +283,14 @@ export class ReportBuilder {
 
   static build(input: ReportBuildInput): ReportBuildResult {
     if (!DateOnly.isIso(input.reportDate)) throw new Error(`Invalid reportDate: ${input.reportDate}`);
-    const visible = VisibilityPolicy.visibleProjects(input.projects, "report", input.viewSettings);
+    const visible = VisibilityPolicy.visibleProjects(input.projects, "report", input.viewSettings, input.completedInPeriod);
     const history = VisibilityPolicy.publicHistory(input.history, visible.map((p) => p.id));
     const rows = ReportBuilder.sort(
       visible.map((p) =>
-        ReportBuilder.toRow(p, {
-          changed: ReportBuilder.isChanged(p.id, history, input.previousSnapshotGeneratedAt),
-          overdue: ReportBuilder.isOverdue(p, input.reportDate),
-        }, ReportBuilder.details(p, history, input.previousSnapshotGeneratedAt, input.reportDate)),
+        ReportBuilder.toRow(p, ReportBuilder.flags(p, history, input.previousSnapshotGeneratedAt, input.reportDate), {
+          ...ReportBuilder.details(p, history, input.previousSnapshotGeneratedAt, input.reportDate),
+          completedInPeriod: ReportBuilder.isCompletedInPeriod(p, input.completedInPeriod) || undefined,
+        }),
       ),
       input.departments,
     );
