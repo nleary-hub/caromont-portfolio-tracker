@@ -76,10 +76,11 @@ class M25 {
 }
 
 describe("0025_password_sign_in on production-shaped data (PGlite)", () => {
-  it("is the latest migration and follows 0024_department_access (applied on top of it)", () => {
+  it("follows 0024_department_access (applied on top of it)", () => {
     const f = M25.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0024_department_access");
+    const i = f.indexOf(M);
+    expect(i).toBeGreaterThan(0);
+    expect(f[i - 1]).toBe("0024_department_access");
   });
 
   it("is additive: five new tables; every existing table, column and row unchanged", async () => {

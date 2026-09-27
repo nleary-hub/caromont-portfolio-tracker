@@ -37,6 +37,10 @@ export interface ProjectRecord {
   deletedBy: string | null;
   hiddenFromDashboard: boolean;
   hiddenFromReport: boolean;
+  /** Start date (DB DATE, America/New_York day; migration 0026). Absent on rows read without it. Drawer only. */
+  startDate?: Date | null;
+  /** True while startDate is the import default (drawer "Default" tag). */
+  startDateIsDefault?: boolean;
 }
 
 export interface RecipientRecord {

@@ -85,6 +85,15 @@ model Project {
   /// only once. Cleared when the status leaves Complete. Bookkeeping only (no history row).
   completionReportedAt   DateTime?
   includeInReport        Boolean       @default(true)
+  /// When work on the project began: an America/New_York calendar day (migration 0026). The New project form
+  /// pre-fills today (ET); CSV-created projects get the import day. Existing projects got their createdAt as an ET
+  /// day. Changing it is not a status update (ProjectService.applyStartDate): no Changed, no Stale reset, no
+  /// "Updated" date, no public history row; the change is audited in an admin-only "startDate" history row.
+  /// The DB default (today, ET) only covers inserts from the previous deployment while 0026 is deployed.
+  startDate              DateTime      @default(dbgenerated("((now() AT TIME ZONE 'America/New_York'::text))::date")) @db.Date
+  /// True while startDate is the import default (the import day, not a date someone entered). Shown as a "Default"
+  /// tag in the drawer so an admin can correct it; cleared when someone saves another start date.
+  startDateIsDefault     Boolean       @default(false)
   createdAt              DateTime      @default(now())
   updatedAt              DateTime      @updatedAt
   updatedBy              String

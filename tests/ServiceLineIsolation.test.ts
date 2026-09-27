@@ -47,7 +47,8 @@ class Lines {
   }
 
   static files(dir: string): string[] {
-    return readdirSync(dir).flatMap((name) => {
+    // Directory enumeration order is filesystem-dependent. Sort every level so failures are reproducible.
+    return readdirSync(dir).sort((a, b) => a.localeCompare(b)).flatMap((name) => {
       const p = join(dir, name);
       return statSync(p).isDirectory() ? Lines.files(p) : /\.(ts|tsx)$/.test(name) ? [p] : [];
     });
@@ -195,7 +196,10 @@ describe("service line isolation", () => {
 
   it("every server action and line page resolves the service line explicitly", () => {
     const root = join(process.cwd(), "src/app");
-    const actions = Lines.files(join(root, "actions")).filter((f) => !/auth|signin|password/i.test(f));
+    // Password changes operate on the global User credential, not a service-line resource. Keep this exact
+    // action out of the line-scoped scan while continuing to inspect every other action.
+    const globallyScopedActions = new Set([join(root, "actions/password.ts")]);
+    const actions = Lines.files(join(root, "actions")).filter((f) => !/auth|signin/i.test(f) && !globallyScopedActions.has(f));
     const pages = ["page.tsx", "reports/page.tsx", "admin/import/page.tsx", "admin/import/actions.ts", "admin/import/export/route.ts", "admin/templates/page.tsx", "admin/settings/page.tsx", "admin/audit/page.tsx", "admin/service-lines/page.tsx", "admin/departments/page.tsx", "admin/people/page.tsx", "reports/[id]/[file]/route.ts", "reports/year-end/[id]/route.ts"].map((p) => join(root, p));
     const missing = [...actions, ...pages].filter((f) => {
       const src = readFileSync(f, "utf8");

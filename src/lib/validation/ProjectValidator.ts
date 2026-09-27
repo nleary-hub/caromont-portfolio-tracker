@@ -36,6 +36,11 @@ export interface ProjectInput {
   /** Optional "YYYY-MM-DD". Display only. */
   completedOn?: string | null;
   includeInReport?: boolean;
+  /**
+   * "YYYY-MM-DD" (America/New_York day), migration 0026. Not part of the schema below: ProjectService applies it
+   * with StartDate rules, outside the tracked (public) history. Omitted = the import day, marked as a default.
+   */
+  startDate?: string | null;
 }
 
 /** Normalized, validated, Prisma-ready project fields. */
