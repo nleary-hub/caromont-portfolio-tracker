@@ -751,7 +751,9 @@ export class ReportLayout {
       const inner = col.w - g.CELL_PAD_R;
       switch (col.key) {
         case "project": {
-          const lines = TextMeasure.wrap(m, row.name, inner, S.table, 600, 4);
+          // The full name, never cut off: as many lines as it needs (between words; an over-long word breaks mid-word, no
+          // hyphen). The row grows; rows never split across a page break (the paging below moves the whole row).
+          const lines = TextMeasure.wrap(m, row.name, inner, S.table, 600);
           const updated = row.updatedOn ? `Updated ${ReportFormat.shortDate(row.updatedOn, reportDate)}` : null;
           const stale = Boolean(row.stale);
           const showInfor = ViewSettings.isColumnVisible(settings, "inforNumber");

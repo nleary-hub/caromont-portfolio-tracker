@@ -15,7 +15,7 @@ import type { RestoreActionResult } from "@/app/actions/closed";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
 import { DepartmentsSelect, usePopover } from "./DashboardFilterControls";
-import { GroupedTableStyle } from "./DashboardTable";
+import { GroupedTableStyle, NAME_WRAP } from "./DashboardTable";
 import { MainNav } from "./MainNav";
 import { ProjectDrawer } from "./ProjectDashboard";
 import type { HistoryLoader } from "./ProjectHistory";
@@ -269,7 +269,7 @@ function ClosedRow({ row, today, selected, onSelect, menu }: { row: DashboardFyR
   return (
     <tr data-row-key={row.id} onClick={onSelect} aria-selected={selected} className="cursor-pointer hover:[&>td]:bg-row-selected/60">
       <td className={`${td} type-table-strong ${selected ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}>
-        <div className="truncate" title={row.name}>
+        <div data-part="project-name" className={NAME_WRAP}>
           {row.name}
         </div>
         {req && <div className="truncate text-[12px] leading-4 font-normal text-muted" data-testid="closed-infor">{req}</div>}

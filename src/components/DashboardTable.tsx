@@ -624,6 +624,8 @@ function GroupHeader({ group, span }: { group: DashboardGroup<DashboardRow>; spa
 }
 
 const CELL = "border-b border-line px-3 py-[10px] align-top";
+/** Project names wrap onto as many lines as they need, never truncated (dashboard and the Completed and Cancelled pages). */
+export const NAME_WRAP = "whitespace-normal [overflow-wrap:anywhere] hyphens-none";
 
 function ProjectRow({
   row,
@@ -677,7 +679,8 @@ function ProjectRow({
           case "project":
             return (
               <td key={c.key} data-col={c.key} className={`${td} type-table-strong ${selected ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}>
-                <div className="truncate" title={row.name}>
+                {/* The full name wraps between words (a single over-long word breaks anywhere, no hyphens); the row grows. */}
+                <div data-part="project-name" className={NAME_WRAP}>
                   {row.name}
                 </div>
                 {renderMeta(row)}
