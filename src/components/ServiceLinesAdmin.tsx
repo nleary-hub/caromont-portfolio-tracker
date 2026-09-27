@@ -118,11 +118,16 @@ export function ServiceLinesAdmin({ active, archived, initialNew = false, initia
 
 function LockIcon() {
   return (
-    <span title={ServiceLineCopy.LOCK_TOOLTIP} aria-label={ServiceLineCopy.LOCK_TOOLTIP} role="img" className="inline-grid text-muted" data-testid="default-lock">
+    // Tooltip on hover and keyboard focus (a styled tip, not the native title, so it shows at once and matches the app).
+    <span tabIndex={0} aria-describedby="sl-lock-tip" className="sl-lock text-muted" data-testid="default-lock">
       <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
         <rect x="2.5" y="5.5" width="7" height="5" rx="1" stroke="currentColor" strokeWidth="1.2" />
         <path d="M4 5.5V4a2 2 0 1 1 4 0v1.5" stroke="currentColor" strokeWidth="1.2" />
       </svg>
+      <span className="sr-only">Locked</span>
+      <span id="sl-lock-tip" role="tooltip" className="sl-tip">
+        {ServiceLineCopy.LOCK_TOOLTIP}
+      </span>
     </span>
   );
 }

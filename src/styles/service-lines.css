@@ -8,7 +8,8 @@
   .sl-switch:hover, .sl-switch[aria-expanded="true"] { background: var(--dark-row-selected); }
   .sl-switch:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: 1px; }
   .sl-switch > svg { color: var(--dark-text-secondary); flex: none; }
-  .sl-pop { width: 280px; left: 0; right: auto; padding: 8px; }
+  /* Opaque: the top bar already blurs its backdrop, so a nested glass popover would show the page through it. */
+  .sl-pop { width: 280px; left: 0; right: auto; padding: 8px; background: var(--dark-card); backdrop-filter: none; }
   .sl-row { cursor: pointer; gap: 8px; }
   .sl-row:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: -2px; }
   .sl-check { width: 12px; display: grid; place-items: center; color: var(--dark-accent); flex: none; }
@@ -22,5 +23,15 @@
     background: var(--dark-topbar-glass); backdrop-filter: blur(20px); box-shadow: 0 12px 32px rgba(0, 0, 0, 0.45);
     font: var(--app-table-strong); color: var(--dark-text-primary);
   }
+  .sl-lock { position: relative; display: inline-grid; place-items: center; border-radius: 4px; }
+  .sl-lock:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: 2px; }
+  .sl-tip {
+    position: absolute; left: 50%; bottom: calc(100% + 6px); transform: translateX(-50%); z-index: 30;
+    width: max-content; max-width: 260px; padding: 4px 8px; border-radius: 6px; border: 1px solid var(--dark-border);
+    background: var(--dark-card); box-shadow: 0 8px 20px rgba(0, 0, 0, 0.45);
+    font-size: 12px; line-height: 16px; font-weight: 500; color: var(--dark-text-primary); white-space: nowrap;
+    opacity: 0; visibility: hidden; pointer-events: none; transition: opacity 120ms ease;
+  }
+  .sl-lock:hover .sl-tip, .sl-lock:focus-visible .sl-tip { opacity: 1; visibility: visible; }
   .sl-scrim { position: fixed; inset: 0; z-index: 40; background: rgba(0, 0, 0, 0.5); display: grid; place-items: center; }
 }
