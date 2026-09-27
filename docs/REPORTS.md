@@ -234,12 +234,14 @@ year).
 | Closed year (e.g. FY26) | Carried in from FY25 | Completed FY26 | Carried into FY27 |
 | Current year (e.g. FY27) | Carried in from FY26 | Completed FY27 | Still in progress |
 
-For the current year only, the Generate dialog has "Show in totals" checkboxes: Carried in from FY26, Completed FY27,
-Still in progress (all checked by default, at least one required; with none checked, Generate is disabled and the hint
-reads "Pick at least one."). Unchecked totals are left out of both the header and the grid; the rest keep the order
-above. The Total row sums each column over departments. There is no sum across columns: the categories overlap (a
-carried-in project can also be completed or still in progress). The selection is passed to the server action,
-validated, and not saved; a missing selection means all three. A closed year always shows all three.
+For every fiscal year, the Generate dialog has "Show in totals" checkboxes: Carried in from FY26, Completed FY27,
+Still in progress (current year), or Carried in from FY25, Completed FY26, Carried into FY27 (closed year). All are
+checked by default and at least one is required; with none checked, Generate is disabled and the hint reads "Pick at
+least one." Unchecked totals are left out of both the header and the grid; the rest keep the order above. The Total
+row sums each column over departments. There is no sum across columns: the categories overlap (a carried-in project
+can also be completed, carried out or still in progress). The selection is passed to the server action, validated,
+and not saved; a missing selection means all three. The options change totals only: the sections never change, and
+there is no Cancelled option.
 
 Rows: one per department that has a project in any shown column, in the line's department order (for CVPSL: Cath, EP,
 Echo, CVSS, INU, CardioNeuro, IR), Unassigned last, plus Total. Empty departments are left out, as in the weekly
@@ -267,19 +269,21 @@ Carried in and Carried into are one shared computation (`YearEndReportData.openO
 In the Carried table, a past year's row shows the status it had at D. When a project was only closed later by an
 entered completion date and no status was on record for D, the status cell says "Open" in gray, not a guessed chip.
 
-**Notes under the grid** (small gray text, left-aligned under the Total row):
+**Notes under the grid** (small gray text, left-aligned under the Total row), for the shown columns only, in both
+report types:
 
-- What the columns count, one line with only the sentences that apply: "Carried in includes projects later closed
-  without being completed." when Carried in is shown, and "The other columns include projects started this year." when
-  any other column is shown. A closed year shows both.
-- **Tracking rule.** Project history only goes back to the first tracked day: the earliest project creation or history
-  entry (Sep 26, 2026 in production, when the tracker's data was imported; imports don't set creation dates). Both
-  reports get it from one place: `YearEndReportData.build` calls `trackedSince` once over the projects and history
-  that `YearEndReportService.load` reads for the line. A shown
-  carried total whose boundary is before that prints a dash, in the grid and the header, never 0, with a note such as
-  "Tracking started Sep 26, 2026, so Carried in from FY26 isn't available." (or "... so Carried into FY27 isn't
-  available."). An empty Carried section then reads "Tracking started Sep 26, 2026, so this list isn't available."
-  Still in progress is always known.
+1. **Tracking line.** Project history only goes back to the first tracked day: the earliest project creation or
+   history entry (Sep 26, 2026 in production, when the tracker's data was imported; imports don't set creation dates).
+   Both reports get it from one place: `YearEndReportData.build` calls `trackedSince` once over the projects and
+   history that `YearEndReportService.load` reads for the line. A shown carried total whose boundary is before that
+   prints a dash, in the grid and the header, never 0. One dashed column: "Tracking started Sep 26, 2026, so Carried
+   in from FY26 isn't available." Both dashed: "Tracking started Sep 26, 2026, so Carried in from FY25 and Carried
+   into FY27 aren't available." An empty Carried section then reads "Tracking started Sep 26, 2026, so this list isn't
+   available." Still in progress is always known.
+2. **What the columns count**, one line with the sentences that apply: "Carried in includes projects later closed
+   without being completed." only when Carried in is shown with a real number (not a dash). Then, when any other column
+   is shown: "The other columns include projects started in FY26." if Carried in is on the page (number or dash), or
+   "These totals include projects started in FY26." if it isn't (the report's fiscal year).
 
 Empty lines: "No projects are still in progress." (current year) and "No projects carried into FY27." (closed year).
 

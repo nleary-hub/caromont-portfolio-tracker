@@ -75,6 +75,8 @@ export interface YearEndData {
   carriedInNote: string | null;
   /** Why the middle column is blank (its boundary is before tracking began), or null when it has numbers. */
   openAtEndNote: string | null;
+  /** The notes under the grid for the shown columns (YearEndCopy.gridNotes). */
+  summaryNotes: string[];
   /** The totals the header and grid show, in order (YearEndCategories.columns). */
   columns: SummaryKey[];
   /** Middle column, band detail and Carried section heading: "Carried into FY27", or "Still in progress" for the current year. */
@@ -151,22 +153,53 @@ export class YearEndCopy {
     return `Tracking started ${ReportFormat.mediumDate(trackedSince)}, so this list isn't available.`;
   }
 
-  /** Always under the grid: what the columns count. */
-  /** Generate dialog: the current-year category checkboxes. */
+  /** Generate dialog: the "Show in totals" checkboxes (every fiscal year). */
   static readonly CATEGORIES_LABEL = "Show in totals";
   static readonly CATEGORIES_NONE = "Pick at least one.";
-  static categoryLabel(c: YearEndCategory, fy: string): string {
-    return c === "carriedIn" ? YearEndCopy.carriedInFrom(YearEndReportData.previousLabel(fy)) : c === "completed" ? YearEndCopy.completedFy(fy) : YearEndCopy.STILL_IN_PROGRESS;
+  /** "Carried in from FY26", "Completed FY27", then "Still in progress" (current year) or "Carried into FY28" (closed year). */
+  static categoryLabel(c: YearEndCategory, fy: string, toDate: boolean): string {
+    if (c === "carriedIn") return YearEndCopy.carriedInFrom(YearEndReportData.previousLabel(fy));
+    if (c === "completed") return YearEndCopy.completedFy(fy);
+    return YearEndCopy.openAtEnd(FiscalYear.nextLabel(fy), toDate);
   }
 
-  /** Under the grid when Carried in is shown. */
-  static readonly GRID_NOTE_CARRIED_IN = "Carried in includes projects later closed without being completed.";
-  /** Under the grid when any other column (Completed, Carried into or Still in progress) is shown. */
-  static readonly GRID_NOTE_OTHERS = "The other columns include projects started this year.";
+  /** Both carried columns dashed: "Tracking started Sep 26, 2026, so Carried in from FY25 and Carried into FY27 aren't available." */
+  static notTrackedBoth(trackedSince: string, first: string, second: string): string {
+    return `Tracking started ${ReportFormat.mediumDate(trackedSince)}, so ${first} and ${second} aren't available.`;
+  }
 
-  /** What the shown columns count: one line with only the sentences that apply to them. */
-  static gridExplainer(columns: readonly SummaryKey[]): string {
-    return [columns.includes("carriedIn") ? YearEndCopy.GRID_NOTE_CARRIED_IN : null, columns.some((k) => k !== "carriedIn") ? YearEndCopy.GRID_NOTE_OTHERS : null].filter(Boolean).join(" ");
+  /** Under the grid when Carried in is shown with a real number (not a dash). */
+  static readonly GRID_NOTE_CARRIED_IN = "Carried in includes projects later closed without being completed.";
+
+  /**
+   * Under the grid when a column other than Carried in is shown: "The other columns include projects started in
+   * FY26." with Carried in on the page (number or dash), else "These totals include projects started in FY26."
+   */
+  static gridNoteOthers(fy: string, carriedInShown: boolean): string {
+    return carriedInShown ? `The other columns include projects started in ${fy}.` : `These totals include projects started in ${fy}.`;
+  }
+
+  /**
+   * The notes under the grid for the shown columns, in order: one tracking line (merged when both carried columns
+   * are dashed), then one line with the sentences that apply (Carried in only with a real number; the other
+   * sentence only when a non-Carried-in column is shown).
+   */
+  static gridNotes(n: {
+    fy: string;
+    columns: readonly SummaryKey[];
+    carriedIn: number | null;
+    trackedSince: string;
+    inLabel: string;
+    outLabel: string;
+    inDashed: boolean;
+    outDashed: boolean;
+  }): string[] {
+    const inShown = n.columns.includes("carriedIn");
+    const inDash = inShown && n.inDashed;
+    const outDash = n.columns.includes("openAtEnd") && n.outDashed;
+    const tracking = inDash && outDash ? YearEndCopy.notTrackedBoth(n.trackedSince, n.inLabel, n.outLabel) : inDash ? YearEndCopy.notTracked(n.trackedSince, n.inLabel) : outDash ? YearEndCopy.notTracked(n.trackedSince, n.outLabel) : null;
+    const explainer = [inShown && n.carriedIn !== null ? YearEndCopy.GRID_NOTE_CARRIED_IN : null, n.columns.some((k) => k !== "carriedIn") ? YearEndCopy.gridNoteOthers(n.fy, inShown) : null].filter(Boolean).join(" ");
+    return [tracking, explainer].filter((x): x is string => Boolean(x));
   }
 
   static completedIn(fy: string): string {
@@ -218,15 +251,19 @@ type YearEndProject = ProjectRecord & Pick<CompletableProject, "createdAt"> & { 
 /** A summary total: a grid column and a header total. */
 export type SummaryKey = "carriedIn" | "completed" | "openAtEnd";
 
-/** Current-year run option: which totals the header and grid show. */
-export type YearEndCategory = "carriedIn" | "completed" | "inProgress";
+/**
+ * Run option: which totals the header and grid show. "openAtEnd" is Still in progress (current year) or Carried
+ * into FY N+1 (closed year).
+ */
+export type YearEndCategory = SummaryKey;
 
 /**
- * The current-year category option (Generate dialog checkboxes). Any non-empty combination; the order is fixed
- * (Carried in, Completed, Still in progress). Missing means all three, so older callers keep working. Not saved.
+ * The "Show in totals" option (Generate dialog checkboxes), for every fiscal year. Any non-empty combination; the
+ * order is fixed (Carried in, Completed, then Still in progress or Carried into). Missing means all three, so older
+ * callers keep working. Not saved. Totals only: the sections never change.
  */
 export class YearEndCategories {
-  static readonly ALL: readonly YearEndCategory[] = ["carriedIn", "completed", "inProgress"];
+  static readonly ALL: readonly YearEndCategory[] = ["carriedIn", "completed", "openAtEnd"];
 
   /** Validated selection in the fixed order; undefined/null = all three; anything else invalid or empty = null. */
   static parse(value: unknown): YearEndCategory[] | null {
@@ -237,15 +274,9 @@ export class YearEndCategories {
     return YearEndCategories.ALL.filter((c) => value.includes(c));
   }
 
-  /**
-   * The totals shown, in order: Carried in, Completed, then Carried into (closed year) or Still in progress
-   * (current year). Only a current-year report takes a selection; a closed year always shows all three.
-   */
-  static columns(toDate: boolean, categories: readonly YearEndCategory[] = YearEndCategories.ALL): SummaryKey[] {
-    const all: SummaryKey[] = ["carriedIn", "completed", "openAtEnd"];
-    if (!toDate) return all;
-    const key = (c: YearEndCategory): SummaryKey => (c === "inProgress" ? "openAtEnd" : c);
-    return all.filter((k) => categories.some((c) => key(c) === k));
+  /** The totals shown, in order: Carried in, Completed, then Carried into (closed year) or Still in progress (current year). */
+  static columns(categories: readonly YearEndCategory[] = YearEndCategories.ALL): SummaryKey[] {
+    return YearEndCategories.ALL.filter((k) => categories.includes(k));
   }
 }
 
@@ -285,7 +316,7 @@ export class YearEndReportData {
     today: string;
     departments: DepartmentList;
     serviceLineName: string | null;
-    /** Current year only: which totals to show (default all three). */
+    /** Which totals to show (default all three). */
     categories?: readonly YearEndCategory[];
   }): YearEndData {
     const fy = FiscalYear.fromLabel(input.fiscalYear);
@@ -367,11 +398,21 @@ export class YearEndReportData {
         carriedInRows?.map((c) => c.p.serviceArea) ?? null,
         carriedOutRows?.map((c) => c.p.serviceArea) ?? null,
         totals,
-      ).filter((r) => r.area === "total" || YearEndCategories.columns(toDate, input.categories).some((k) => (r[k] ?? 0) > 0)),
+      ).filter((r) => r.area === "total" || YearEndCategories.columns(input.categories).some((k) => (r[k] ?? 0) > 0)),
       carriedInNote: inNote,
       openAtEndNote: outNote,
+      summaryNotes: YearEndCopy.gridNotes({
+        fy: fy.label,
+        columns: YearEndCategories.columns(input.categories),
+        carriedIn: totals.carriedIn,
+        trackedSince: since,
+        inLabel: YearEndCopy.carriedInFrom(prev),
+        outLabel: YearEndCopy.carriedInto(next),
+        inDashed: inNote !== null,
+        outDashed: outNote !== null,
+      }),
       openAtEndLabel: YearEndCopy.openAtEnd(next, toDate),
-      columns: YearEndCategories.columns(toDate, input.categories),
+      columns: YearEndCategories.columns(input.categories),
       sections,
       totals,
     };

@@ -27,10 +27,10 @@ export function YearEndReportButton({ years, current, initialOpen = false }: { y
 function YearEndDialog({ years, current, onClose }: { years: readonly string[]; current: string; onClose: () => void }) {
   const router = useRouter();
   const [fy, setFy] = useState(current);
-  // Current year only: which totals the header and grid show (not saved; all three each time the dialog opens).
+  // Which totals the header and grid show, any fiscal year (not saved; all three each time the dialog opens).
   const [categories, setCategories] = useState<YearEndCategory[]>([...YearEndCategories.ALL]);
   const isCurrent = fy === current;
-  const none = isCurrent && categories.length === 0;
+  const none = categories.length === 0;
   const hintId = useId();
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -60,27 +60,25 @@ function YearEndDialog({ years, current, onClose }: { years: readonly string[]; 
         <p id={helpId} className="type-caption text-muted">
           {YearEndCopy.HELPER}
         </p>
-        {isCurrent && (
-          <fieldset className="flex flex-col gap-1" data-testid="year-end-categories">
-            <legend className="type-label text-muted">{YearEndCopy.CATEGORIES_LABEL}</legend>
-            {YearEndCategories.ALL.map((c) => (
-              <label key={c} className="flex items-center gap-2 type-table">
-                <input
-                  type="checkbox"
-                  checked={categories.includes(c)}
-                  onChange={(e) => setCategories((cur) => YearEndCategories.ALL.filter((x) => (x === c ? e.target.checked : cur.includes(x))))}
-                  data-testid={`year-end-category-${c}`}
-                />
-                {YearEndCopy.categoryLabel(c, fy)}
-              </label>
-            ))}
-            {none && (
-              <p id={hintId} className="type-caption text-muted" data-testid="year-end-categories-hint">
-                {YearEndCopy.CATEGORIES_NONE}
-              </p>
-            )}
-          </fieldset>
-        )}
+        <fieldset className="flex flex-col gap-1" data-testid="year-end-categories">
+          <legend className="type-label text-muted">{YearEndCopy.CATEGORIES_LABEL}</legend>
+          {YearEndCategories.ALL.map((c) => (
+            <label key={c} className="flex items-center gap-2 type-table">
+              <input
+                type="checkbox"
+                checked={categories.includes(c)}
+                onChange={(e) => setCategories((cur) => YearEndCategories.ALL.filter((x) => (x === c ? e.target.checked : cur.includes(x))))}
+                data-testid={`year-end-category-${c}`}
+              />
+              {YearEndCopy.categoryLabel(c, fy, isCurrent)}
+            </label>
+          ))}
+          {none && (
+            <p id={hintId} className="type-caption text-muted" data-testid="year-end-categories-hint">
+              {YearEndCopy.CATEGORIES_NONE}
+            </p>
+          )}
+        </fieldset>
         {error && (
           <p role="alert" className="text-danger type-caption">
             {error}
@@ -99,7 +97,7 @@ function YearEndDialog({ years, current, onClose }: { years: readonly string[]; 
             onClick={() =>
               start(async () => {
                 setError(null);
-                const r = await generateYearEndReport(fy, isCurrent ? categories : undefined).catch(() => null);
+                const r = await generateYearEndReport(fy, categories).catch(() => null);
                 if (!r || !r.ok) {
                   setError(YearEndCopy.ERROR);
                   return;
