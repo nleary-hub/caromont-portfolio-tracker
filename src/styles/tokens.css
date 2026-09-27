@@ -19,6 +19,7 @@
   --light-text-secondary: #5B6270;
   --light-divider: #D9DCE1;
   --light-section-bg: #F4F5F7;
+  --light-section-bg-strong: #E1E5EB; /* PDF department heading bars */
 
   /* Status pills: -dark-* for dark UI, -light-* for print/light */
   --status-not-started-dark-bg: #2A2F38; --status-not-started-dark-fg: #C3C8D1;

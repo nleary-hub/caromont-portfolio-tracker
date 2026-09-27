@@ -217,17 +217,20 @@ describe("ReportLayout pagination", () => {
     expect(status && status.kind === "status" && status.change?.text).toBe("\u2193 from On track");
   });
 
-  it("marks a draft on every page and never uses em dashes or a 'Hidden:' line", () => {
+  it("drafts carry no watermark or header line (footer only), and never use em dashes or a 'Hidden:' line", () => {
     const l = Many.layout(rows, { draft: true, exampleData: false });
-    expect(l.header.draftLine).toMatch(/^Draft, generated Sep 29, 2026, 5:00 PM ET\. Not an official snapshot\.$/);
-    expect(l.header.badge).toBe("DRAFT");
+    expect(l.header.badge).toBeNull();
+    expect(l.header.footerLeft).toMatch(/^Generated Sep 29, 2026, 5:00 PM ET \u00b7 /);
     const json = JSON.stringify(l);
+    expect(l.header.footerLeft).not.toContain("Draft");
+    expect(json).not.toContain("DRAFT");
+    expect(json).not.toContain("Not an official snapshot");
     expect(json).not.toContain("\u2014");
     expect(json).not.toContain("Hidden:");
     const official = Many.layout(rows, { exampleData: false });
-    expect(official.header.draftLine).toBeNull();
     expect(official.header.badge).toBeNull();
-    expect(official.pages[0].headerHeight).toBeLessThan(l.pages[0].headerHeight);
+    expect(official.header.footerLeft).toMatch(/^Generated Sep 29, 2026, 5:00 PM ET \u00b7 /);
+    expect(official.pages.map((p) => p.headerHeight)).toEqual(l.pages.map((p) => p.headerHeight));
   });
 
   it("adds the status and flag key as the numbered last page only when the option is on", () => {
@@ -249,7 +252,7 @@ describe("ReportLayout pagination", () => {
     const l = Many.layout([], { showKeyPage: false });
     expect(l.pages).toHaveLength(1);
     expect(l.pages[0].blocks[0].kind).toBe("empty");
-    expect(l.header.projectsLine).toBe("0 across 0 service areas");
+    expect(l.header.projectsLine).toBe("0 projects across 0 departments");
   });
 });
 
@@ -327,7 +330,7 @@ describe("ReportLayout status visibility in counts", () => {
     expect(stripStatuses(l).has("Cancelled")).toBe(false);
     expect(stripTotal(l)).toBe(open.length);
     const areas = new Set(open.map((r) => r.serviceArea)).size;
-    expect(l.header.projectsLine).toBe(`${open.length} across ${areas} service areas`);
+    expect(l.header.projectsLine).toBe(`${open.length} projects across ${areas} departments`);
     const total = allAreasRow(l);
     expect(total.cells.at(-1)).toBe(open.length);
     // Flags are per row, not grid totals: every cell adds into Total.

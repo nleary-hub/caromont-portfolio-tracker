@@ -1,3 +1,4 @@
+import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -74,14 +75,15 @@ describe("Unassigned department", () => {
     expect(lines.slice(2).every((l) => l.includes(",,") )).toBe(true);
   });
 
-  it("report header counts Unassigned separately; the projects line does not count it as a service area", () => {
+  it("report header counts Unassigned separately; the projects line counts its projects but not it as a department", () => {
     const rows = Rows.withUnassigned();
     const header = ReportBuilder.header(rows);
     expect(header.byArea.Unassigned!.OffTrack + header.byArea.Unassigned!.AtRisk + header.byArea.Unassigned!.OnTrack + header.byArea.Unassigned!.NotStarted + header.byArea.Unassigned!.OnHold).toBe(2);
     const layout = ReportLayout.layout(SampleReportData.docInput({ rows, header }), m);
     const areas = new Set(rows.filter((r) => r.serviceArea).map((r) => r.serviceArea));
     expect(areas.size).toBe(7);
-    expect(layout.header.projectsLine).toMatch(/^\d+ across 7 service areas$/);
+    const listed = rows.filter((r) => ViewSettings.isStatusVisible(ViewSettings.defaults("report"), r.status));
+    expect(layout.header.projectsLine).toBe(`${listed.length} projects across 7 departments`);
     const grid = layout.header.grid.rows;
     expect(grid.at(-2)).toMatchObject({ label: "Unassigned", muted: true });
     expect(grid.at(-1)!.label).toBe("All areas");
@@ -129,13 +131,11 @@ describe("Unassigned department", () => {
     expect(h.byArea.at(-1)).toMatchObject({ area: "Unassigned", label: "Unassigned", projects: 2 });
   });
 
-  it("dashboard: summary, filter and sort handle Unassigned", () => {
-    const row = (id: string, serviceArea: DashboardRow["serviceArea"]) => ({ id, serviceArea }) as DashboardRow;
+  it("dashboard: summary and search handle Unassigned", () => {
+    const row = (id: string, serviceArea: DashboardRow["serviceArea"]) => ({ id, serviceArea, name: id, status: "OnTrack" }) as DashboardRow;
     const rows = [row("a", "EP"), row("b", null), row("c", null)];
-    const s = DashboardViewModel.summarize(rows);
-    expect(s.byArea.Unassigned).toBe(2);
-    expect(s.byArea.EP).toBe(1);
-    expect(DashboardViewModel.filter(rows.map((r) => ({ ...r, name: r.id }) as DashboardRow), "Unassigned", "").map((r) => r.id)).toEqual(["b", "c"]);
+    expect(DashboardViewModel.summarize(rows).total).toBe(3);
+    expect(DashboardViewModel.filter(rows, "c").map((r) => r.id)).toEqual(["c"]);
   });
 
   it("drawer: department select offers Unassigned, and saving it clears the department with history", async () => {

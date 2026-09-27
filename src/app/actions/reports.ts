@@ -6,6 +6,7 @@ import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { FreezeService } from "@/lib/services/FreezeService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
+import { ReportOptionsForm, type ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
 
 export type FreezeNowState = { ok: boolean; message: string } | null;
 
@@ -35,4 +36,14 @@ export async function setShowKeyPageForm(form: FormData): Promise<void> {
   } catch (e) {
     ReportLog.error("report_options.update.failed", { error: e instanceof Error ? e.message : String(e) });
   }
+}
+
+/** Admin "Report" settings: departments in report and totals grid placement (applies to the next freeze and to drafts). */
+export async function saveReportOptions(_prev: ReportOptionsFormState, form: FormData): Promise<ReportOptionsFormState> {
+  const state = await ReportOptionsForm.submit(await CurrentViewer.get(), { departments: form.getAll("departments"), totalsGrid: form.get("totalsGrid") });
+  if (state?.ok) {
+    revalidatePath("/admin/settings");
+    revalidatePath("/reports");
+  }
+  return state;
 }

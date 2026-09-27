@@ -132,7 +132,11 @@ Notes:
 
 ## Data model (prisma/schema.prisma)
 
-- `ServiceArea`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR (this is the report order).
+- `ServiceArea`: Cath, EP, Echo, CVSS, INU, CardioNeuro, IR (this is the report order). This enum is the only
+  list of departments: the dashboard Departments filter, the admin "Departments in report" list, the PDF
+  sections, grid and counts all read it (`ServiceAreaInfo.all()`). Adding a department means adding an enum
+  value (schema plus a migration); nothing else changes. Saved department selections (dashboard
+  localStorage, report options, snapshots) store the EXCLUDED departments, so a new one starts included.
 - `ProjectStatus`: NotStarted, OnTrack, AtRisk, OffTrack, OnHold, Complete, Cancelled
   (labels in `ProjectStatusInfo`).
 - `Project`: optional `description` (what the project is; migration `0010_project_description`; not shown
@@ -227,7 +231,7 @@ to a PGlite Postgres instance and exercising the services and guards.
     Complete, Cancelled), then due date ascending with nulls last, then name.
 - `VisibilityPolicy` (`src/lib/visibility`): THE central visibility gate. Deleted projects, projects hidden
   per context, and projects whose status is hidden are invisible to non-admins and excluded from every
-  count, total, tile, chip count, report header count, flag and history view. History of invisible
+  count, total, tile, report header count, flag and history view. History of invisible
   projects and hide/delete events are admin-only; `snapshotForViewer` strips the frozen view settings.
   Every read path (dashboard, report, snapshot, history, audit) uses it; future exports, handoff.json and
   agendas must build on it too.
@@ -257,7 +261,7 @@ utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes a
 `dashboard.css`.
 
 - `/signin`: provider buttons, access-denied message.
-- `/`: status and flag tiles, service-area filter chips, search (`/` shortcut), one row per project,
+- `/`: status tiles, the Departments dropdown with "Showing N projects" (the only department filter), search (`/` shortcut), one row per project,
   detail drawer. Copy avoids em dashes.
 - Project meta line (small gray text under the project name, same row height): "REQ-5081", then "Updated Sep 24".
   The number is monospace, 9px, slightly brighter, left-aligned in a fixed slot (`DashboardMetaLine.INFOR_SLOT_WIDTH`,
@@ -345,7 +349,7 @@ See [docs/REPORTS.md](docs/REPORTS.md): renderer (`@react-pdf/renderer`, embedde
 - Header (Figma spec): page 1 draws `service_line_name` as an 8 pt UPPERCASE overline with
   **"Project Status Report"** as its own title line underneath. The 80-character maximum fits on one line at
   8 pt beside the badge; anything wider shrinks to 6.5 pt, then wraps (two lines at most) and page 1 grows.
-  Pages 2+ lead the running header with the short name: "CVPSL · Project Status Report · Report of ... (continued)";
+  Pages 2+ lead the running header with the short name: "CVPSL · Project Status Report · Reporting period Sep 15–29, 2026 (continued)";
   the footer uses the same short form. The combined "<name>: Project Status Report" is only the PDF metadata
   title and the handoff.json title. No em dashes in report copy.
 - Light theme, US Letter **landscape**, 0.5 in side margins (10.0 in content width).

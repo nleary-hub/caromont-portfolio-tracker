@@ -1,4 +1,6 @@
-import type { ProjectStatus } from "@/generated/prisma/enums";
+import type { ProjectStatus, ServiceArea } from "@/generated/prisma/enums";
+import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
+import { TotalsGridPlacement, type TotalsGridMode } from "@/lib/domain/TotalsGridPlacement";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { Assignee } from "@/lib/domain/Assignee";
 import { FlagSlots, type FlagKind } from "@/lib/domain/FlagSlots";
@@ -29,7 +31,7 @@ export interface ReportDocInput {
   periodStart: string | null;
   periodEnd: string | null;
   generatedAt: Date;
-  /** Unofficial live preview (admin "Generate PDF now"): marked as a draft on every page. */
+  /** Unofficial live preview (admin "Generate PDF now"). Laid out exactly like a report (footer "Generated ..."). */
   draft?: boolean;
   /** Fictional sample data (design review renders). */
   exampleData?: boolean;
@@ -47,6 +49,14 @@ export interface ReportDocInput {
    * short name) keeps the legacy header: one combined title line (PdfReportLayout.TITLE) everywhere.
    */
   serviceLine?: ServiceLineValue | null;
+  /**
+   * Report department filter (admin setting, frozen into snapshots). Absent or all selected: every
+   * department, exactly as before. Otherwise only the included departments are listed, gridded and counted,
+   * and page 1 gets a "Departments" detail naming them.
+   */
+  departments?: readonly ServiceArea[];
+  /** Totals grid placement (admin setting). Absent = "top", today's layout. */
+  totalsGrid?: TotalsGridMode;
 }
 
 /** Geometry in PDF points (1 in = 72 pt). Mirrors portfolio-tracker-mockups/report.css. */
@@ -69,7 +79,6 @@ export class ReportGeometry {
   /** Horizontal gap kept between the overline and the badge. */
   static readonly BADGE_GAP = 12;
   static readonly RUNHEAD_H = 19.5; // 12 line + 6 padding + 1.5 rule
-  static readonly DRAFT_LINE_H = 12;
   static readonly HEADER_BODY_PAD = 8;
   static readonly META_ROW_H = 12;
   static readonly META_GAP = 3;
@@ -88,6 +97,35 @@ export class ReportGeometry {
   static readonly STRIP_PAD = 5;
   static readonly STRIP_LINE_H = 11;
   static readonly COLHEAD_H = 27;
+  /**
+   * One-band page 1 header (Totals grid Hidden or Last page): the overline and title on the left, the
+   * details right-aligned on the right (7 pt uppercase label over a 9 pt value, 16 pt apart, value
+   * baselines on the title baseline), then a 0.5 pt light-border rule and a 10 pt gap.
+   */
+  static readonly BAND = {
+    minH: 39.6,
+    padBelow: 6,
+    ruleW: 0.5,
+    gapAfter: 10,
+    detailGap: 16,
+    labelSize: 7,
+    labelLH: 9,
+    labelTracking: 0.4,
+    labelWeight: 500,
+    valueSize: 9,
+    minValueSize: 8,
+    valueLH: 12,
+    valueWeight: 500,
+    /** Minimum space kept between the left block (overline, title, badge) and the details. */
+    leftGap: 16,
+  } as const;
+  /** Inter vertical metrics (em), used to put detail baselines on the title baseline. */
+  static readonly INTER_ASCENT = 0.96875;
+  static readonly INTER_DESCENT = 0.2421875;
+  /** One-line status and flag key (Hidden mode below the band; Last page mode under the grid). */
+  static readonly KEYLINE = { gapAbove: 6, h: 10.5, rowGap: 2, gapAfter: 10, itemGap: 10, size: 7, icon: 7, iconGap: 3, textGap: 4 } as const;
+  /** Last page mode summary block: gap, "SUMMARY" overline, grid, gap, key line. Never split. */
+  static readonly SUMMARY = { gapAbove: 14, overlineLH: 10, overlineGap: 4, gapBeforeKey: 8, label: "SUMMARY" } as const;
   static readonly FOOTER_H = 13.5;
   static readonly FOOTER_GAP = 6;
 
@@ -305,7 +343,8 @@ export type BodyBlock =
     }
   | { kind: "completed"; y: number; height: number; area: AreaGroup; headerH: number; rows: CompletedRowLayout[] }
   | { kind: "row"; y: number; height: number; area: AreaGroup; row: RowLayout }
-  | { kind: "empty"; y: number; height: number; text: string };
+  | { kind: "empty"; y: number; height: number; text: string }
+  | { kind: "summary"; y: number; height: number; summary: SummaryBlockLayout };
 
 export interface GridColumn {
   key: ProjectStatus | "total";
@@ -349,6 +388,8 @@ export interface HeaderModel {
   reportDateLong: string;
   reportDateMedium: string;
   period: string | null;
+  /** Compact range for the running header ("Sep 15\u201329, 2026"). */
+  periodRange: string | null;
   projectsLine: string;
   /**
    * "[check] Completed FY27 to date N" beside the Projects line on page 1 (teal, number bold). Null for
@@ -361,9 +402,16 @@ export interface HeaderModel {
    * when it fits, otherwise on its own row under it (value column). Null when not shown.
    */
   completedAt: { row: number; x: number } | null;
-  preparedBy: string;
-  badge: "DRAFT" | "EXAMPLE DATA" | null;
-  draftLine: string | null;
+  /** Only the fictional sample shows a badge. Drafts carry no watermark, and the footer reads "Generated" on every PDF. */
+  badge: "EXAMPLE DATA" | null;
+  /** Report department filter detail ("Cath, EP"); null when every department is included. */
+  departments: string | null;
+  /** Totals grid placement in effect. */
+  totalsGrid: TotalsGridMode;
+  /** One-band page 1 header (Hidden and Last page modes); null in Top mode. */
+  band: BandModel | null;
+  /** One-line status and flag key (Hidden and Last page modes); null in Top mode. */
+  keyLine: KeyLineModel | null;
   /** Page 1 summary grid: status counts and Total only (flags are per row, explained by the legend). */
   grid: { columns: GridColumn[]; rows: GridRow[]; width: number };
   /** Page 1 legend chips beside "Flags:" (they explain the row flags). */
@@ -378,6 +426,56 @@ export interface HeaderModel {
   footerLeft: string;
 }
 
+export interface BandDetail {
+  label: string;
+  value: string;
+  /** x of the detail's left edge (content coordinates); label and value are right-aligned within `w`. */
+  x: number;
+  w: number;
+  /** Teal value with a check (the FY completed count). */
+  accent: boolean;
+  /** x of the check before an accent value. */
+  checkX: number;
+}
+
+export interface BandModel {
+  /** Band height above the rule. */
+  height: number;
+  /** Title top (the overline sits above it). */
+  titleY: number;
+  titleWidth: number;
+  labelY: number;
+  valueY: number;
+  valueSize: number;
+  details: BandDetail[];
+  /** Badge left edge (after the title) when a badge is shown. */
+  badgeX: number | null;
+}
+
+/** `row` is 0, or 1 when the key wraps (only after every explanation is cut). */
+export type KeyLineItem =
+  | { kind: "status"; x: number; row: number; status: ProjectStatus; label: string; textX: number; w: number }
+  | { kind: "flag"; x: number; row: number; flag: FlagBox; text: string | null; textX: number; w: number };
+
+export interface KeyLineModel {
+  items: KeyLineItem[];
+  /** Widest row. */
+  width: number;
+  /** Explanatory flag texts were cut so the key fits. */
+  cut: boolean;
+  /** 1, or 2+ only when it still does not fit with every explanation cut. */
+  rows: number;
+  /** rows * KEYLINE.h plus KEYLINE.rowGap between rows. */
+  height: number;
+}
+
+export interface SummaryBlockLayout {
+  /** Gap above the overline (0 when the block starts a page). */
+  gapAbove: number;
+  gridTop: number;
+  keyTop: number;
+}
+
 export interface KeyModel {
   title: string;
   statuses: { pill: PillBox; meaning: string }[];
@@ -389,6 +487,8 @@ export interface KeyModel {
 export interface PageLayout {
   /** "report" pages list projects; the optional last "key" page explains statuses and flags. */
   kind: "report" | "key";
+  /** Report pages draw the column head, except a page holding only the Last page summary block. */
+  columnHead?: boolean;
   number: number;
   total: number;
   first: boolean;
@@ -414,9 +514,18 @@ export interface DocumentLayout {
  * visible rows handed in, so hidden items leave no trace.
  */
 export class ReportLayout {
-  static readonly PREPARED_BY = "Cardiac Procedure Services";
   /** Space between the Projects value and the FY completed count on page 1. */
   static readonly COMPLETED_META_GAP = 14;
+  /**
+   * "12 projects across 2 departments", "1 project across 1 department". M counts the departments that
+   * have listed projects; Unassigned is never counted.
+   */
+  static projectsLine(projects: number, departments: number): string {
+    return `${projects} project${projects === 1 ? "" : "s"} across ${departments} department${departments === 1 ? "" : "s"}`;
+  }
+
+  /** Page 1 label for the period (uppercased in the one-band header). */
+  static readonly PERIOD_LABEL = "Reporting period";
 
   static readonly COLUMN_LABELS: Record<LayoutColumn["key"], { label: string; sub: (s: ViewSettingsValue) => string | null }> = {
     project: { label: "PROJECT", sub: () => null },
@@ -856,9 +965,9 @@ export class ReportLayout {
     const settings = input.viewSettings;
     const statuses = ProjectStatusInfo.all().filter((s) => ViewSettings.isStatusVisible(settings, s));
     const columns = ReportLayout.gridColumns(m, statuses);
-    // Departments, then an Unassigned row (gray) only when some listed project has no department.
+    // Departments with listed projects, then an Unassigned row (gray) only when some listed project has no department.
     // Every cell adds into Total: no flag counts here (a flagged project would read as an extra project).
-    const areaRows: GridRow[] = ReportLayout.gridAreas(input.rows).map((a) => {
+    const areaRows: GridRow[] = ReportLayout.gridAreas(input.rows, input.departments).map((a) => {
       const counts = ReportBuilder.areaCounts(header, a);
       const total = statuses.reduce((sum, s) => sum + counts[s], 0);
       return {
@@ -876,7 +985,7 @@ export class ReportLayout {
     const gridWidth = g.GRID_AREA_W + columns.reduce((s, c) => s + c.width, 0);
 
     const areasWithRows = ServiceAreaInfo.groups().filter((a) => input.rows.some((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a));
-    // "N across M service areas": Unassigned is not a service area.
+    // "N projects across M departments": only departments with listed projects; Unassigned never counts.
     const departments = areasWithRows.filter((a) => a !== ServiceAreaInfo.UNASSIGNED);
     const strip = ReportLayout.strip(m, header, areasWithRows, statuses);
 
@@ -890,13 +999,14 @@ export class ReportLayout {
     const n = header.totalProjects;
     const metaWidth = g.CONTENT_W - gridWidth - g.HEADER_GAP;
     const period = input.periodStart && input.periodEnd ? ReportFormat.period(input.periodStart, input.periodEnd) : null;
-    const projectsLine = `${n} across ${departments.length} service ${departments.length === 1 ? "area" : "areas"}`;
+    const periodRange = input.periodStart && input.periodEnd ? ReportFormat.dateRange(input.periodStart, input.periodEnd) : null;
+    const projectsLine = ReportLayout.projectsLine(n, departments.length);
     const metaRows: [string, string][] = [
       ["Report date", ReportFormat.longDate(input.reportDate)],
-      ["Period covered", period ?? "Not set"],
+      [ReportLayout.PERIOD_LABEL, period ?? "Not set"],
       ["Projects", projectsLine],
-      ["Prepared by", ReportLayout.PREPARED_BY],
     ];
+    const departmentsDetail = DepartmentFilter.reportDetail(input.departments);
     let meta = ReportLayout.meta(m, metaRows, metaWidth);
     let completedAt: HeaderModel["completedAt"] = null;
     const fy = header.completedFiscalYear;
@@ -911,31 +1021,60 @@ export class ReportLayout {
         completedAt = { row: projectsRow + 1, x: 0 };
       }
     }
-    const badge: HeaderModel["badge"] = input.draft ? "DRAFT" : input.exampleData ? "EXAMPLE DATA" : null;
+    if (departmentsDetail) {
+      metaRows.push(["Departments", departmentsDetail]);
+      meta = { ...ReportLayout.meta(m, metaRows, metaWidth), rows: metaRows };
+    }
+    const badge: HeaderModel["badge"] = input.exampleData ? "EXAMPLE DATA" : null;
+    const totalsGrid = TotalsGridPlacement.normalize(input.totalsGrid);
+    const legend = { changed: ReportLayout.flag(m, "changed"), overdue: ReportLayout.flag(m, "overdue"), stale: ReportLayout.flag(m, "stale") };
     const sl = input.serviceLine ?? null;
     const overline = sl ? ReportLayout.overline(m, sl.name, badge) : null;
     const runningTitle = sl ? ServiceLine.runningTitle(sl) : PdfReportLayout.TITLE;
+    const title = sl ? ServiceLine.REPORT_TITLE_SUFFIX : PdfReportLayout.TITLE;
+    const titleBarHeight = ReportLayout.titleBarHeight(overline);
+    const usesBand = TotalsGridPlacement.usesBand(totalsGrid);
+    const band = usesBand
+      ? ReportLayout.band(m, {
+          overline,
+          title,
+          titleBarHeight,
+          badge,
+          details: [
+            { label: "Report date", value: ReportFormat.longDate(input.reportDate), accent: false },
+            { label: ReportLayout.PERIOD_LABEL, value: period ?? "Not set", accent: false },
+            { label: "Projects", value: projectsLine, accent: false },
+            ...(completedFy ? [{ label: completedFy.label, value: String(completedFy.count), accent: true }] : []),
+            ...(departmentsDetail
+              ? [{ label: "Departments", value: departmentsDetail, accent: false, short: DepartmentFilter.countText(input.departments!) }]
+              : []),
+          ],
+        })
+      : null;
     return {
       overline,
-      title: sl ? ServiceLine.REPORT_TITLE_SUFFIX : PdfReportLayout.TITLE,
-      titleBarHeight: ReportLayout.titleBarHeight(overline),
+      title,
+      titleBarHeight,
       runningTitle,
       reportDateLong: ReportFormat.longDate(input.reportDate),
       reportDateMedium: ReportFormat.mediumDate(input.reportDate),
       period,
+      periodRange,
       projectsLine,
       completedFy,
       completedAt,
-      preparedBy: ReportLayout.PREPARED_BY,
       badge,
-      draftLine: input.draft ? `Draft, generated ${generated}. Not an official snapshot.` : null,
+      departments: departmentsDetail,
+      totalsGrid,
+      band,
+      keyLine: usesBand ? ReportLayout.keyLine(m, statuses, legend) : null,
       grid: { columns, rows: [...areaRows, totalRow], width: gridWidth },
-      legend: { changed: ReportLayout.flag(m, "changed"), overdue: ReportLayout.flag(m, "overdue"), stale: ReportLayout.flag(m, "stale") },
+      legend,
       metaWidth,
       meta,
       strip,
       columns: cols,
-      footerLeft: `${input.draft ? "Draft" : "Generated"} ${generated} \u00b7 ${runningTitle}${
+      footerLeft: `Generated ${generated} \u00b7 ${runningTitle}${
         input.exampleData ? " \u00b7 Example data (fictional sample projects)" : ""
       }`,
     };
@@ -1010,10 +1149,15 @@ export class ReportLayout {
     return lines;
   }
 
-  /** Page 1 area table rows: every department, then Unassigned only when a listed row has no department. */
-  static gridAreas(rows: readonly ReportRow[]): AreaGroup[] {
-    const unassigned = rows.some((r) => r.serviceArea === null);
-    return ServiceAreaInfo.groups().filter((a) => a !== ServiceAreaInfo.UNASSIGNED || unassigned);
+  /**
+   * Page 1 area table rows: each included department that has listed projects, in report order, then
+   * Unassigned when a listed row has no department. An included department with no projects gets no row
+   * (and no section in the body). handoff.json keeps its own list (HandoffBuilder.areas).
+   */
+  static gridAreas(rows: readonly ReportRow[], departments?: readonly ServiceArea[]): AreaGroup[] {
+    return ServiceAreaInfo.groups()
+      .filter((a) => rows.some((r) => ServiceAreaInfo.groupOf(r.serviceArea) === a))
+      .filter((a) => !departments || DepartmentFilter.includesGroup(departments, a));
   }
 
   /** Width the badge takes at the top right (text at 7 pt semibold with 0.4 pt tracking, padding, border). */
@@ -1051,19 +1195,182 @@ export class ReportLayout {
     return g.TITLE_BAR_H + (overline ? overline.lines.length * g.OVERLINE.lineH + g.OVERLINE.gap : 0);
   }
 
-  static firstHeaderHeight(input: ReportDocInput, titleBarHeight: number = ReportGeometry.TITLE_BAR_H): number {
+  /**
+   * Page 1 header height. Top: title bar, then the meta block (report date, period, projects, the FY
+   * count row when it does not fit beside Projects, Departments when filtered) and legend beside the grid.
+   * Hidden: band, rule, key line. Last page: band and rule. No draft line (drafts carry no watermark).
+   */
+  static firstHeaderHeight(input: ReportDocInput, header: Pick<HeaderModel, "titleBarHeight" | "meta" | "band" | "keyLine" | "totalsGrid">): number {
     const g = ReportGeometry;
-    // Up to one extra meta row for "Completed FY27 to date N" (still shorter than the grid).
-    const rows = input.header?.completedFiscalYear ? 5 : 4;
+    if (header.band) {
+      const base = header.band.height + g.BAND.ruleW;
+      if (header.totalsGrid === "hidden" && header.keyLine) return base + g.KEYLINE.gapAbove + header.keyLine.height + g.KEYLINE.gapAfter;
+      return base + g.BAND.gapAfter;
+    }
+    const rows = header.meta.rows.length;
     const meta = rows * g.META_ROW_H + (rows - 1) * g.META_GAP + 6 + 3 * g.LEGEND_LINE_H;
-    const grid = g.GRID_HEAD_H + (ReportLayout.gridAreas(input.rows).length + 1) * g.GRID_ROW_H + 1;
-    return titleBarHeight + (input.draft ? g.DRAFT_LINE_H : 0) + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
+    const grid = ReportLayout.gridHeight(ReportLayout.gridAreas(input.rows, input.departments).length + 1);
+    return header.titleBarHeight + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
   }
 
-  static continuationHeaderHeight(input: ReportDocInput, header: HeaderModel): number {
+  /** Grid height for `rows` rows (departments plus the All areas row). */
+  static gridHeight(rows: number): number {
+    const g = ReportGeometry;
+    return g.GRID_HEAD_H + rows * g.GRID_ROW_H + 1;
+  }
+
+  static continuationHeaderHeight(_input: ReportDocInput, header: HeaderModel): number {
     const g = ReportGeometry;
     const strip = header.strip.length ? g.STRIP_PAD + header.strip.length * g.STRIP_LINE_H + g.STRIP_PAD : g.STRIP_PAD;
-    return g.RUNHEAD_H + (input.draft ? g.DRAFT_LINE_H : 0) + strip;
+    return g.RUNHEAD_H + strip;
+  }
+
+  /** Running header on pages 2+: "CVPSL · Project Status Report · Reporting period Sep 15\u201329, 2026 (continued)". No report date. */
+  static runningHeaderText(header: Pick<HeaderModel, "runningTitle" | "periodRange">): { lead: string; rest: string } {
+    return { lead: header.runningTitle, rest: `${header.periodRange ? ` \u00b7 Reporting period ${header.periodRange}` : ""} (continued)` };
+  }
+
+  /** Inter cap height (em). */
+  static readonly CAP_HEIGHT = 0.727;
+
+  /** Baseline offset from a line box's top for Inter at `size` in a `lh` box (react-pdf centers the content box). */
+  static baseline(size: number, lh: number): number {
+    const g = ReportGeometry;
+    return (lh - (g.INTER_ASCENT + g.INTER_DESCENT) * size) / 2 + g.INTER_ASCENT * size;
+  }
+
+  /** Width of an uppercase band label as drawn (tracking after every glyph but the last). */
+  static bandLabelWidth(m: Measurer, text: string): number {
+    const b = ReportGeometry.BAND;
+    return m.width(text.toUpperCase(), b.labelSize, b.labelWeight) + b.labelTracking * Math.max(0, text.length - 1);
+  }
+
+  /**
+   * One-band header: details laid right to left from the right margin, 16 pt apart, each as wide as its
+   * label or value. Value baselines sit on the title baseline. When the details would reach the left block
+   * the values drop to 8 pt, then the widest value is shortened with an ellipsis (never overlaps).
+   */
+  static band(
+    m: Measurer,
+    input: {
+      overline: OverlineModel | null;
+      title: string;
+      titleBarHeight: number;
+      badge: HeaderModel["badge"];
+      /** `short` replaces the value when the details do not fit (e.g. "3 of 7" for Departments). */
+      details: { label: string; value: string; accent: boolean; short?: string }[];
+    },
+  ): BandModel {
+    const g = ReportGeometry;
+    const b = g.BAND;
+    const titleY = input.titleBarHeight - g.TITLE_BAR_H;
+    const titleWidth = m.width(input.title, g.SIZE.title, 700);
+    // The one band has no room for the sample badge; the footer still says "Example data" on every page.
+    const badgeX = null as number | null;
+    const overlineW = input.overline ? Math.max(...input.overline.lines.map((l) => ReportLayout.overlineWidth(m, l, input.overline!.size))) : 0;
+    const titleBlockW = titleWidth;
+    // The labels' cap tops sit below the overline baseline (uppercase, no descenders), so the details may
+    // run under the end of a long overline; they only keep clear of it when the rows would touch.
+    const labelCapTop = titleY + ReportLayout.baseline(g.SIZE.title, g.TITLE_H) - ReportLayout.baseline(b.valueSize, b.valueLH) - b.labelLH + ReportLayout.baseline(b.labelSize, b.labelLH) - ReportLayout.CAP_HEIGHT * b.labelSize;
+    const overlineBottom = input.overline ? (input.overline.lines.length - 1) * g.OVERLINE.lineH + ReportLayout.baseline(input.overline.size, g.OVERLINE.lineH) : 0;
+    const leftW = labelCapTop >= overlineBottom + 1 ? titleBlockW : Math.max(overlineW, titleBlockW);
+    const room = g.CONTENT_W - leftW - b.leftGap;
+    const check = CompletedBlockStyle.CHECK + 3;
+    const weight = (accent: boolean) => (accent ? 700 : b.valueWeight);
+    const measure = (size: number, values: string[]) =>
+      input.details.map((d, i) => Math.max(ReportLayout.bandLabelWidth(m, d.label), m.width(values[i], size, weight(d.accent)) + (d.accent ? check : 0)));
+    const total = (ws: number[]) => ws.reduce((s, w) => s + w, 0) + b.detailGap * Math.max(0, ws.length - 1);
+    let valueSize: number = b.valueSize;
+    let values = input.details.map((d) => d.value);
+    let widths = measure(valueSize, values);
+    if (total(widths) > room) {
+      valueSize = b.minValueSize;
+      widths = measure(valueSize, values);
+    }
+    if (total(widths) > room && input.details.some((d) => d.short)) {
+      values = input.details.map((d) => d.short ?? d.value);
+      widths = measure(valueSize, values);
+    }
+    while (total(widths) > room) {
+      // Shorten the widest value that is wider than its label (labels are never cut).
+      const candidates = widths.map((w, j) => (w > ReportLayout.bandLabelWidth(m, input.details[j].label) + 1 ? w : -1));
+      const i = candidates.indexOf(Math.max(...candidates));
+      if (candidates[i] < 0) break;
+      const labelW = ReportLayout.bandLabelWidth(m, input.details[i].label);
+      const target = Math.max(labelW, widths[i] - (total(widths) - room));
+      const next = TextMeasure.fitLine(m, input.details[i].value, target, valueSize, b.valueWeight);
+      if (next === values[i]) break;
+      values = values.map((v, j) => (j === i ? next : v));
+      widths = measure(valueSize, values);
+    }
+    const valueY = titleY + ReportLayout.baseline(g.SIZE.title, g.TITLE_H) - ReportLayout.baseline(valueSize, b.valueLH);
+    const labelY = valueY - b.labelLH;
+    let x = g.CONTENT_W;
+    const details: BandDetail[] = [];
+    for (let i = input.details.length - 1; i >= 0; i--) {
+      x -= widths[i];
+      const accent = input.details[i].accent;
+      const checkX = x + widths[i] - m.width(values[i], valueSize, weight(accent)) - check;
+      details.unshift({ label: input.details[i].label.toUpperCase(), value: values[i], x, w: widths[i], accent, checkX });
+      x -= b.detailGap;
+    }
+    const height = Math.max(b.minH, titleY + g.TITLE_H + b.padBelow);
+    return { height, titleY, titleWidth, labelY, valueY, valueSize, details, badgeX };
+  }
+
+  /**
+   * Status and flag key: each visible status (shape and label), then each flag chip with its explanation,
+   * KEYLINE.itemGap apart, on one line. If it is wider than `maxW` the explanations are cut, last first.
+   * The status labels are never dropped: if it still does not fit with every explanation cut, it wraps
+   * (an item that would cross `maxW` starts the next row at x 0).
+   */
+  static keyLine(m: Measurer, statuses: readonly ProjectStatus[], legend: Record<FlagKind, FlagBox>, maxW: number = ReportGeometry.CONTENT_W): KeyLineModel {
+    const k = ReportGeometry.KEYLINE;
+    const flags = FlagSlots.ORDER;
+    type Placed = "x" | "row" | "textX";
+    type Piece = (Omit<Extract<KeyLineItem, { kind: "status" }>, Placed> | Omit<Extract<KeyLineItem, { kind: "flag" }>, Placed>) & { textOffset: number };
+    const build = (keepTexts: number, wrap: boolean): KeyLineModel => {
+      const pieces: Piece[] = [];
+      for (const s of statuses) {
+        const label = ProjectStatusInfo.label(s);
+        pieces.push({ kind: "status", status: s, label, w: k.icon + k.iconGap + m.width(label, k.size, 400), textOffset: k.icon + k.iconGap });
+      }
+      flags.forEach((kind, i) => {
+        const flag = legend[kind];
+        const text = i < keepTexts ? ReportLayout.legendText(kind) : null;
+        pieces.push({ kind: "flag", flag, text, w: flag.width + (text ? k.textGap + m.width(text, k.size, 400) : 0), textOffset: flag.width + k.textGap });
+      });
+      let x = 0;
+      let row = 0;
+      let width = 0;
+      const items = pieces.map(({ textOffset, ...p }) => {
+        if (wrap && x > 0 && x + p.w > maxW) {
+          row += 1;
+          x = 0;
+        }
+        const item = { ...p, x, row, textX: x + textOffset } as KeyLineItem;
+        width = Math.max(width, x + p.w);
+        x += p.w + k.itemGap;
+        return item;
+      });
+      const rows = row + 1;
+      return { items, width, cut: keepTexts < flags.length, rows, height: rows * k.h + (rows - 1) * k.rowGap };
+    };
+    for (let keep = flags.length; keep >= 0; keep--) {
+      const line = build(keep, false);
+      if (line.width <= maxW) return line;
+    }
+    return build(0, true);
+  }
+
+  /** Last page summary block height (gap only when it does not start the page). */
+  static summaryBlock(header: HeaderModel, atTop: boolean): { height: number; summary: SummaryBlockLayout } {
+    const g = ReportGeometry;
+    const s = g.SUMMARY;
+    const gapAbove = atTop ? 0 : s.gapAbove;
+    const gridTop = gapAbove + s.overlineLH + s.overlineGap;
+    const keyTop = gridTop + ReportLayout.gridHeight(header.grid.rows.length) + s.gapBeforeKey;
+    return { height: keyTop + (header.keyLine?.height ?? g.KEYLINE.h), summary: { gapAbove, gridTop, keyTop } };
   }
 
   static bodyHeight(headerHeight: number): number {
@@ -1076,28 +1383,34 @@ export class ReportLayout {
     // Only statuses visible in the report view settings are listed or counted anywhere. Rows from
     // ReportBuilder already satisfy this; the header is always recomputed from the listed rows so
     // every count (grid, strip, projects line, flags) matches what is on the page.
-    const rows = input.rows.filter((r) => ViewSettings.isStatusVisible(input.viewSettings, r.status));
-    input = { ...input, rows };
+    // The department filter applies the same way (rows from ReportDataLoader already satisfy it).
+    const departments = input.departments ? DepartmentFilter.normalize(input.departments) : undefined;
+    const rows = input.rows.filter(
+      (r) => ViewSettings.isStatusVisible(input.viewSettings, r.status) && (!departments || DepartmentFilter.includes(departments, r.serviceArea)),
+    );
+    const completedRows = departments && input.completed ? DepartmentFilter.apply(input.completed, departments) : input.completed;
+    input = { ...input, rows, ...(completedRows ? { completed: completedRows } : {}), ...(departments ? { departments } : {}) };
     // The FY-to-date count is not derived from rows: it comes from the (frozen) header as stored.
-    const header = { ...ReportBuilder.header(rows), completedFiscalYear: input.header?.completedFiscalYear };
+    const header = { ...ReportBuilder.header(input.rows), completedFiscalYear: input.header?.completedFiscalYear };
     const model = ReportLayout.header(m, input, header);
-    const firstH = ReportLayout.firstHeaderHeight(input, model.titleBarHeight);
+    const firstH = ReportLayout.firstHeaderHeight(input, model);
     const contH = ReportLayout.continuationHeaderHeight(input, model);
 
     const pages: PageLayout[] = [];
     let page!: PageLayout;
     let y = 0;
-    const newPage = () => {
+    const newPage = (columnHead = true) => {
       const first = pages.length === 0;
       const headerHeight = first ? firstH : contH;
       page = {
         kind: "report",
+        columnHead,
         number: pages.length + 1,
         total: 0,
         first,
         headerHeight,
-        bodyTop: headerHeight + g.COLHEAD_H,
-        bodyHeight: ReportLayout.bodyHeight(headerHeight),
+        bodyTop: headerHeight + (columnHead ? g.COLHEAD_H : 0),
+        bodyHeight: columnHead ? ReportLayout.bodyHeight(headerHeight) : g.CONTENT_H - headerHeight - g.FOOTER_GAP - g.FOOTER_H,
         blocks: [],
       };
       pages.push(page);
@@ -1148,6 +1461,18 @@ export class ReportLayout {
         page.blocks.push({ ...block, y });
         y += block.height;
       }
+    }
+
+    if (model.totalsGrid === "lastPage") {
+      // The summary (overline, grid, key line) is one unsplittable block: under the final rows when it
+      // fits, otherwise alone at the top of a new page (running header, no column head).
+      let block = ReportLayout.summaryBlock(model, y === 0);
+      if (y + block.height > page.bodyHeight) {
+        newPage(false);
+        block = ReportLayout.summaryBlock(model, true);
+      }
+      page.blocks.push({ kind: "summary", y, height: block.height, summary: block.summary });
+      y += block.height;
     }
 
     const key = input.showKeyPage ? ReportLayout.key(m, input.viewSettings) : null;

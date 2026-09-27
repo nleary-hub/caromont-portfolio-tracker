@@ -118,7 +118,13 @@ A Complete project is listed once, in the first FROZEN report after it became Co
   period count (see "Completed FY to date"). Nothing here feeds the status grid, totals or the projects line.
 - **Unassigned:** projects with no department form an "Unassigned" group after every department (section
   head and page 1 table row in secondary gray; the table row appears only when there is one). It is not
-  counted in "N across M service areas". The Completed block works there like in any other group.
+  counted as a department in "N projects across M departments" (its projects do count in N). The Completed
+  block works there like in any other group.
+- **Departments:** every value of the `ServiceArea` enum (schema order is report order). A department with no
+  listed projects gets no section and no page 1 table row. Page 1 reads "N projects across M departments":
+  N is every listed project (Unassigned included), M the departments with listed projects (singular forms
+  for 1). The page 1 period label is "Reporting period"; pages 2+ read "Reporting period Sep 15–29, 2026
+  (continued)" (`ReportFormat.dateRange`). handoff.json keeps its own lists and is unchanged.
 - **handoff.json:** `completedThisPeriod: { count, projects: [{ name, serviceArea, completedOn, accomplishment }] }`.
 
 ## Completed FY to date
@@ -147,8 +153,8 @@ applicable clears the name (validator plus a CHECK constraint). History records 
 ## Draft PDF (admin "Generate PDF now")
 
 `GET /api/reports/preview`, admin only (404 for everyone else). Same loader, builder, visibility gate,
-report view settings, options and renderer as the freeze, on live data. Marked on every page:
-"Draft, generated <date time> ET. Not an official snapshot." Download only: no snapshot, no artifact,
+report view settings, options and renderer as the freeze, on live data. The PDF is laid out exactly like a
+frozen report (footer "Generated <date>, <time> ET"); only the file name says draft. Download only: no snapshot, no artifact,
 no Drive call, no handoff.json, no archive entry, no audit row.
 
 ## handoff.json

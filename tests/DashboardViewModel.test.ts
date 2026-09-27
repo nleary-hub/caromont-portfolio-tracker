@@ -30,17 +30,15 @@ describe("DashboardViewModel", () => {
     expect(s.total).toBe(2);
     expect(s.byStatus.AtRisk).toBe(1);
     expect(s.byStatus.OnTrack).toBe(1);
-    expect(s.byArea.Cath).toBe(1);
-    expect(s.byArea.IR).toBe(0);
-    // No flag totals (flags stay on each row).
-    expect(Object.keys(s).sort()).toEqual(["byArea", "byStatus", "total"]);
+    // No flag totals (flags stay on each row) and no per-department chip counts (the Departments dropdown filters).
+    expect(Object.keys(s).sort()).toEqual(["byStatus", "total"]);
     expect(rows.filter((r) => r.overdue)).toHaveLength(1);
   });
 
-  it("filters by area and search text", () => {
-    expect(DashboardViewModel.filter(rows, "EP", "").map((r) => r.id)).toEqual(["a"]);
-    expect(DashboardViewModel.filter(rows, "All", "sample b").map((r) => r.id)).toEqual(["b"]);
-    expect(DashboardViewModel.filter(rows, "Cath", "owner d")).toEqual([]);
+  it("filters by search text only (departments are filtered by the Departments dropdown)", () => {
+    expect(DashboardViewModel.filter(rows, "").map((r) => r.id)).toEqual(["b", "a"]);
+    expect(DashboardViewModel.filter(rows, "sample b").map((r) => r.id)).toEqual(["b"]);
+    expect(DashboardViewModel.filter(rows, "no such text")).toEqual([]);
   });
 
   it("non-admin counts exclude hidden statuses, hidden projects and deleted projects", () => {
@@ -62,7 +60,6 @@ describe("DashboardViewModel", () => {
     const s = DashboardViewModel.summarize(visible);
     expect(s.total).toBe(3);
     expect(s.byStatus).toMatchObject({ Complete: 0, Cancelled: 0, OffTrack: 0, AtRisk: 1, OnTrack: 2 });
-    expect(s.byArea).toMatchObject({ IR: 0, Echo: 1, Cath: 1, EP: 1 });
     // Hotel's overdue/changed flags and Alpha's hide event do not leak into the visible rows' flags.
     expect(visible.filter((r) => r.overdue)).toHaveLength(1);
     expect(visible.filter((r) => r.changed)).toHaveLength(0);

@@ -59,16 +59,21 @@ describe("Generate PDF now (draft preview)", () => {
     expect(fake.state.snapshots).toHaveLength(0);
   });
 
-  it("uses the same builder and report settings as the freeze, and is labeled a draft", async () => {
+  it("uses the same builder and report settings as the freeze; only the file name says draft", async () => {
     const now = new Date("2026-09-26T16:00:00Z");
     expect(await DraftReportService.render(Factory.MEMBER, fake.asClient(), now)).toBeNull();
     const draft = await DraftReportService.render(Factory.ADMIN, fake.asClient(), now);
     expect(draft!.fileName).toBe("cardiac-portfolio-report-draft-2026-09-26.pdf");
-    // Layout for the same live input: draft line, visible rows only.
+    // Layout for the same live input: visible rows only.
     const { ReportDataLoader } = await import("@/lib/report/ReportDataLoader");
     const data = await ReportDataLoader.load(fake.asClient(), now);
     const layout = ReportLayout.layout({ ...data, periodStart: "2026-09-15", periodEnd: "2026-09-29", generatedAt: now, draft: true });
-    expect(layout.header.draftLine).toBe("Draft, generated Sep 26, 2026, 12:00 PM ET. Not an official snapshot.");
+    // No DRAFT watermark and no generated time in any header; the footer reads "Generated <date>, <time> ET"
+    // exactly like a frozen report (the word "Draft" appears nowhere in the PDF).
+    expect(layout.header.badge).toBeNull();
+    expect(layout.header.footerLeft).toMatch(/^Generated Sep 26, 2026, 12:00 PM ET \u00b7 /);
+    expect(layout.header.footerLeft).toBe(ReportLayout.layout({ ...data, periodStart: "2026-09-15", periodEnd: "2026-09-29", generatedAt: now }).header.footerLeft);
+    expect(JSON.stringify(layout)).not.toMatch(/draft/i);
     expect(JSON.stringify(layout)).not.toContain("SecretHidden");
     expect(data.rows.map((r) => r.name)).toEqual(["Live project"]);
   });

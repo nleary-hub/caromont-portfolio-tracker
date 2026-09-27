@@ -163,6 +163,7 @@ export class FreezeService {
         baseUrl,
         reportRecipient,
         serviceLineName: input.serviceLine?.name,
+        departments: input.options.departments,
       });
       handoff = await ReportArtifactService.store(
         {

@@ -7,25 +7,15 @@ export type AreaGroup = ServiceArea | "Unassigned";
 export class ServiceAreaInfo {
   static readonly UNASSIGNED = "Unassigned" as const;
 
-  static readonly ORDER: readonly ServiceArea[] = [
-    ServiceArea.Cath,
-    ServiceArea.EP,
-    ServiceArea.Echo,
-    ServiceArea.CVSS,
-    ServiceArea.INU,
-    ServiceArea.CardioNeuro,
-    ServiceArea.IR,
-  ];
+  /**
+   * Departments in report order: the single source of truth is the ServiceArea enum in prisma/schema.prisma
+   * (Postgres enum "ServiceArea"), read in schema order. A department added there shows up everywhere
+   * (dashboard filter, admin "Departments in report", PDF sections and grid, counts) with no other change.
+   */
+  static readonly ORDER: readonly ServiceArea[] = Object.values(ServiceArea) as ServiceArea[];
 
-  private static readonly LABELS: Record<ServiceArea, string> = {
-    Cath: "Cath",
-    EP: "EP",
-    Echo: "Echo",
-    CVSS: "CVSS",
-    INU: "INU",
-    CardioNeuro: "CardioNeuro",
-    IR: "IR",
-  };
+  /** Display names that differ from the enum value; any other department shows its enum value. */
+  private static readonly LABELS: Readonly<Partial<Record<ServiceArea, string>>> = {};
 
   /**
    * Other names accepted for a department on import (display names used in the tracker spreadsheet), in
@@ -51,7 +41,7 @@ export class ServiceAreaInfo {
   }
 
   static label(area: AreaGroup | null | undefined): string {
-    return area && area !== ServiceAreaInfo.UNASSIGNED ? ServiceAreaInfo.LABELS[area] : ServiceAreaInfo.UNASSIGNED;
+    return area && area !== ServiceAreaInfo.UNASSIGNED ? (ServiceAreaInfo.LABELS[area] ?? area) : ServiceAreaInfo.UNASSIGNED;
   }
 
   /** Position in report order (0-based). Unassigned (null) sorts after every department; unknown values last. */
