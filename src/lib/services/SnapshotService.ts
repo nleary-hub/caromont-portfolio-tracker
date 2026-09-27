@@ -50,9 +50,9 @@ export class SnapshotService {
           // Scheduled reports are for the default line (CVPSL) only.
           const line = await ServiceLineAccess.scheduledReportLine(tx);
           const data = await ReportDataLoader.load(tx, generatedAt, line);
-          // Same transaction as the snapshot: the block is frozen in completedJson and its projects are
-          // marked so the next freeze does not list them again (all or nothing).
-          await ProjectService.markCompletionReported(tx, data.completed.map((c) => c.projectId), generatedAt);
+          // Same transaction as the snapshot: projects completed during the period are listed in this report and
+          // marked reported (all or nothing). completedJson stays an empty list (no separate block any more).
+          await ProjectService.markCompletionReported(tx, data.completedInPeriodIds, generatedAt);
           return tx.reportSnapshot.create({
             data: {
               serviceLineId: line.id,

@@ -96,6 +96,11 @@ export interface ReportRow {
   statusFrom?: ProjectStatus | null;
   /** Latest update (updatedOn) is AppConfig.STALE_AFTER_DAYS or more before the report date. Absent before 0004. */
   stale?: boolean;
+  /**
+   * Completed since the previous report's freeze (PeriodClosure): listed in its department group with its Complete
+   * chip even though Complete is hidden in the report. Present only when true.
+   */
+  completedInPeriod?: true;
 }
 
 /** One row of a "Completed this period" block, as stored in ReportSnapshot.completedJson. */

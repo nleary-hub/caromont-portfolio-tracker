@@ -354,6 +354,16 @@ export class FakeDb {
           }
           return rows.map((r) => pick(r, select));
         },
+        // Only the shape the pages use: by projectId, latest changedAt.
+        groupBy: async ({ where }: { by: string[]; where?: Row; _max?: Record<string, boolean> }) => {
+          const max = new Map<string, Date>();
+          for (const h of this.state.history.filter((x) => matches(x, where))) {
+            const at = h.changedAt as Date;
+            const id = h.projectId as string;
+            if (!max.has(id) || max.get(id)!.getTime() < at.getTime()) max.set(id, at);
+          }
+          return [...max].map(([projectId, changedAt]) => ({ projectId, _max: { changedAt } }));
+        },
       },
       reportSnapshot: {
         findFirst: async ({ where, select, orderBy }: { where?: Row; select?: Record<string, boolean>; orderBy?: Record<string, "asc" | "desc"> } = {}) => {

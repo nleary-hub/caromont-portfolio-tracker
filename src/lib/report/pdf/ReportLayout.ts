@@ -564,12 +564,16 @@ export class ReportLayout {
     Cancelled: "Stopped; no further work.",
   };
 
-  /** Status and flag key. Lists only statuses the report can show (hidden statuses never appear). */
-  static key(m: Measurer, settings: ViewSettingsValue): KeyModel {
+  /**
+   * Status and flag key. Lists only statuses the report can show (hidden statuses never appear), plus the statuses
+   * of rows listed because they were completed during the period (`listed`). The "Completed this period" line only explains
+   * the old block, so it shows only for snapshots frozen with one (`completedBlock`).
+   */
+  static key(m: Measurer, settings: ViewSettingsValue, listed: readonly ProjectStatus[] = [], completedBlock = true): KeyModel {
     return {
       title: "Status and flag key",
       statuses: ProjectStatusInfo.all()
-        .filter((s) => ViewSettings.isStatusVisible(settings, s))
+        .filter((s) => ViewSettings.isStatusVisible(settings, s) || listed.includes(s))
         .map((s) => ({ pill: ReportLayout.statusPill(m, s), meaning: ReportLayout.STATUS_MEANINGS[s] })),
       flags: [
         { flag: ReportLayout.flag(m, "changed"), meaning: "Something about the project changed since the last report." },
@@ -585,7 +589,7 @@ export class ReportLayout {
         { sample: "\u2193 from On track", meaning: "Status moved since the last report (\u2193 worse, \u2191 better)." },
         { sample: "No change.", meaning: "Nothing changed since the last report; the note is repeated." },
         { sample: "Due in red", meaning: "Overdue due date." },
-        { sample: "Completed this period", meaning: "Completed since the last report. Listed once, not in the status counts." },
+        ...(completedBlock ? [{ sample: "Completed this period", meaning: "Completed since the last report. Listed once, not in the status counts." }] : []),
       ],
       footnote: "Status is always shown as text and a shape, never color alone. Counts include only the projects listed in this report.",
     };
@@ -711,8 +715,8 @@ export class ReportLayout {
 
   /**
    * The project meta line: "REQ-5081" left-aligned in a fixed slot (ReportGeometry.INFOR_SLOT_W), a fixed
-   * gap (INFOR_GAP), then "Updated <date>", so Updated lines up on every row. No number: the slot and gap
-   * stay blank (no dash). Column hidden (showInfor false): no slot and no gap, Updated starts at x = 0.
+   * gap (INFOR_GAP), then "Updated <date>", so Updated lines up on every numbered row. No number, or the column
+   * hidden (showInfor false): no slot and no gap, Updated starts at x = 0 under the name.
    * The slot fits the widest value (5 digits), so the line never wraps. Empty result = no meta line.
    */
   static metaLine(m: Measurer, showInfor: boolean, number: number | null, updated: string | null, stale: boolean): MetaRun[] {
@@ -724,7 +728,7 @@ export class ReportLayout {
     if (updated) {
       runs.push({
         text: updated,
-        x: showInfor ? g.INFOR_SLOT_W + g.INFOR_GAP : 0,
+        x: req ? g.INFOR_SLOT_W + g.INFOR_GAP : 0,
         font: "sans",
         weight: stale ? 500 : 400,
         tone: stale ? "stale" : "muted",
@@ -747,7 +751,9 @@ export class ReportLayout {
       const inner = col.w - g.CELL_PAD_R;
       switch (col.key) {
         case "project": {
-          const lines = TextMeasure.wrap(m, row.name, inner, S.table, 600, 4);
+          // The full name, never cut off: as many lines as it needs (between words; an over-long word breaks mid-word, no
+          // hyphen). The row grows; rows never split across a page break (the paging below moves the whole row).
+          const lines = TextMeasure.wrap(m, row.name, inner, S.table, 600);
           const updated = row.updatedOn ? `Updated ${ReportFormat.shortDate(row.updatedOn, reportDate)}` : null;
           const stale = Boolean(row.stale);
           const showInfor = ViewSettings.isColumnVisible(settings, "inforNumber");
@@ -1047,7 +1053,9 @@ export class ReportLayout {
   static header(m: Measurer, input: ReportDocInput, header: ReportHeader): HeaderModel {
     const g = ReportGeometry;
     const settings = input.viewSettings;
-    const statuses = ProjectStatusInfo.all().filter((s) => ViewSettings.isStatusVisible(settings, s));
+    // Visible statuses, plus Complete when a row completed during the period is listed, so every
+    // listed row is counted in a column and the cells still add into Total.
+    const statuses = ProjectStatusInfo.all().filter((s) => ViewSettings.isStatusVisible(settings, s) || input.rows.some((r) => r.status === s));
     const columns = ReportLayout.gridColumns(m, statuses);
     // Departments with listed projects, then an Unassigned row (gray) only when some listed project has no department.
     // Every cell adds into Total: no flag counts here (a flagged project would read as an extra project).
@@ -1485,7 +1493,9 @@ export class ReportLayout {
     const options = ReportLayout.departmentOptions(input);
     const departments = input.departments ? DepartmentFilter.normalize(input.departments, options) : undefined;
     const rows = input.rows.filter(
-      (r) => ViewSettings.isStatusVisible(input.viewSettings, r.status) && (!departments || DepartmentFilter.includes(departments, r.serviceArea, options)),
+      (r) =>
+        (ViewSettings.isStatusVisible(input.viewSettings, r.status) || Boolean(r.completedInPeriod)) &&
+        (!departments || DepartmentFilter.includes(departments, r.serviceArea, options)),
     );
     const completedRows = departments && input.completed ? DepartmentFilter.apply(input.completed, departments, options) : input.completed;
     input = { ...input, rows, ...(completedRows ? { completed: completedRows } : {}), ...(departments ? { departments } : {}) };
@@ -1583,7 +1593,9 @@ export class ReportLayout {
       y += block.height;
     }
 
-    const key = input.showKeyPage ? ReportLayout.key(m, input.viewSettings) : null;
+    const key = input.showKeyPage
+      ? ReportLayout.key(m, input.viewSettings, input.rows.filter((r) => r.completedInPeriod).map((r) => r.status), completed.length > 0)
+      : null;
     if (key) {
       pages.push({
         kind: "key",

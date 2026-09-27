@@ -1,14 +1,10 @@
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { ProjectDashboard } from "@/components/ProjectDashboard";
 import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
-import { FiscalYearSections, FySectionCopy, type DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
+import { FiscalYearSections, type DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
 import type { HistoryEntryRecord, ProjectRecord } from "@/lib/domain/types";
-import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ClosedProjects } from "@/lib/report/ClosedProjects";
 import { YearEndLayout } from "@/lib/report/pdf/YearEndLayout";
 import { YearEndRenderer } from "@/lib/report/YearEndRenderer";
@@ -97,24 +93,8 @@ describe("FiscalYear labels", () => {
   });
 });
 
-describe("Dashboard FY sections", () => {
+describe("FY sections (Completed and Cancelled pages, tile)", () => {
   const done = (over: Over) => Fy.p({ status: "Complete", ...over });
-
-  it("uses the spec copy", () => {
-    expect(FySectionCopy.heading("Complete", "FY27", 12)).toBe("Completed FY27 (12)");
-    expect(FySectionCopy.heading("Cancelled", "FY27", 3)).toBe("Cancelled FY27 (3)");
-    expect(FySectionCopy.option("FY27", "FY27")).toBe("FY27 (current)");
-    expect(FySectionCopy.option("FY26", "FY27")).toBe("FY26");
-    expect(FySectionCopy.PICKER_LABEL).toBe("Fiscal year");
-    expect(FySectionCopy.dateHeader("Complete")).toBe("Completed");
-    expect(FySectionCopy.dateHeader("Cancelled")).toBe("Cancelled");
-    expect(FySectionCopy.FINAL_UPDATE).toBe("Final update");
-    expect(FySectionCopy.empty("Complete", "FY27", "FY27")).toBe("No projects completed in FY27 yet.");
-    expect(FySectionCopy.empty("Cancelled", "FY27", "FY27")).toBe("No projects cancelled in FY27 yet.");
-    expect(FySectionCopy.empty("Complete", "FY26", "FY27")).toBe("No projects were completed in FY26.");
-    expect(FySectionCopy.empty("Cancelled", "FY26", "FY27")).toBe("No projects were cancelled in FY26.");
-    expect(FiscalYearSections.DEFAULT_OPEN).toEqual({ Complete: true, Cancelled: false });
-  });
 
   it("sorts newest first, splits by year, and the tile equals the current Completed section", () => {
     const rows = Fy.rows([
@@ -148,37 +128,6 @@ describe("Dashboard FY sections", () => {
       done({ name: "Report-hidden", completedOn: "2026-08-01", hiddenFromReport: true }),
     ]);
     expect(rows.map((r) => r.name).sort()).toEqual(["Report-hidden", "Shown"]);
-  });
-
-  it("renders the sections below the department groups, filtered by department and search", () => {
-    const fy = Fy.rows([
-      done({ name: "Cath win", serviceArea: "Cath", completedOn: "2026-08-01", accomplishment: "Opened room 4." }),
-      done({ name: "Echo win", serviceArea: "Echo", completedOn: "2026-08-02" }),
-      Fy.p({ name: "Echo stop", serviceArea: "Echo", status: "Cancelled" }),
-    ], []);
-    const html = renderToStaticMarkup(
-      createElement(ProjectDashboard, {
-        rows: [],
-        fiscalYearRows: fy,
-        columns: ViewSettings.visibleColumns(ViewSettings.defaults("dashboard")),
-        today: TODAY,
-        userEmail: "member@example.org",
-        userName: "Member",
-        latestReport: null,
-        completedFiscalYear: FiscalYearRows.tile(fy, TODAY),
-        loadError: null,
-        serviceLine: ServiceLine.defaults(),
-        signOutAction: async () => {},
-      }),
-    );
-    expect(html).toContain('data-testid="fy-sections"');
-    expect(html).toContain("Completed FY27 (2)");
-    expect(html).toContain('aria-label="Fiscal year"');
-    expect(html).toContain("Opened room 4.");
-    // Cancelled is collapsed by default; its row is not rendered.
-    expect(html).toContain('aria-label="Cancelled FY27 (0)"');
-    expect(html).not.toContain("Completed this period");
-    expect(html).not.toContain("\u2014");
   });
 });
 
