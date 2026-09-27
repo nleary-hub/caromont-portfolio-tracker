@@ -10,6 +10,7 @@ import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { HistoryDiff, type FieldChange } from "@/lib/history/HistoryDiff";
+import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { MilestoneRules, MilestoneValidationError, type MilestoneEdit } from "@/lib/domain/MilestoneRules";
@@ -470,6 +471,9 @@ export class ProjectService {
    * case and spacing, gets `to`, with a history entry each (so it reads like an edit in the drawer). Runs inside the
    * caller's transaction; returns how many projects changed. Frozen reports are snapshots and keep the old name.
    */
+  /** ProjectHistory.comment on rows written by a People page rename (the History timeline reads it). */
+  static readonly PEOPLE_RENAME_COMMENT = UpdateTimeline.PEOPLE_RENAME_COMMENT;
+
   static async renamePerson(tx: Tx, scope: Pick<ServiceLineScope, "id">, field: "owner" | "physicianChampion", from: string, to: string, admin: Viewer): Promise<number> {
     AdminPolicy.assertAdmin(admin);
     const key = PeopleDirectory.normalizeName(from).toLowerCase();
@@ -481,7 +485,7 @@ export class ProjectService {
       const existing = ProjectRows.fromDb(row);
       const data = { [field]: to };
       await tx.project.update({ where: { id: row.id }, data: { ...data, updatedBy: admin.email } });
-      await ProjectService.writeHistory(tx, row.id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin), at);
+      await ProjectService.writeHistory(tx, row.id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin, ProjectService.PEOPLE_RENAME_COMMENT), at);
     }
     return hits.length;
   }

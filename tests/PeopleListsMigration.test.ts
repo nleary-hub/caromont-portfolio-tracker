@@ -92,10 +92,9 @@ class M20 {
 }
 
 describe("0020_people_lists on production-shaped data (PGlite)", () => {
-  it("is the latest migration and follows 0019", () => {
+  it("follows 0019", () => {
     const f = M20.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0019_year_end_report");
+    expect(f[f.indexOf(M) - 1]).toBe("0019_year_end_report");
   });
 
   it("is additive: two list columns on service_line, every existing column and value unchanged", async () => {

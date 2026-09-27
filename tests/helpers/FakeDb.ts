@@ -30,6 +30,7 @@ interface State {
   departments: Row[];
   departmentHistory: Row[];
   yearEndReports: Row[];
+  priorInforNumbers: Row[];
 }
 
 /** Scoped tables: a row stored without serviceLineId (tests that push rows directly) belongs to the default line. */
@@ -69,6 +70,7 @@ export class FakeDb {
     departments: FakeDb.defaultDepartmentRows(),
     departmentHistory: [],
     yearEndReports: [],
+    priorInforNumbers: [],
   };
   writes: { model: string; op: string; inTx: boolean; txId: number | null }[] = [];
   /** Simulate a database without migration 0015 (project_milestones missing). */
@@ -167,6 +169,7 @@ export class FakeDb {
       departments: c(state.departments),
       departmentHistory: c(state.departmentHistory),
       yearEndReports: c(state.yearEndReports),
+      priorInforNumbers: c(state.priorInforNumbers),
     };
   }
 
@@ -380,6 +383,17 @@ export class FakeDb {
           const r = this.state.yearEndReports.find((x) => matches(x, where));
           return r ? { ...r } : null;
         },
+      },
+      // Migration 0021: append-only (create and reads only).
+      projectPriorInforNumber: {
+        create: async ({ data }: { data: Row }) => {
+          rec("projectPriorInforNumber", "create");
+          const row = { id: randomUUID(), recordedAt: null, createdAt: new Date(), ...data };
+          this.state.priorInforNumbers.push(row);
+          return { ...row };
+        },
+        findMany: async ({ where, select, orderBy }: { where?: Row; select?: Record<string, boolean>; orderBy?: Record<string, "asc" | "desc"> } = {}) =>
+          sortBy(this.state.priorInforNumbers.filter((r) => matches(r, where)), orderBy).map((r) => pick(r, select)),
       },
       reportArtifact: {
         findFirst: async ({ where }: { where?: Row } = {}) => {
