@@ -1,4 +1,5 @@
 import { ServiceAreaInfo, type DepartmentInfo } from "@/lib/domain/ServiceAreaInfo";
+import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 
 /** Service line name shown in the top bar and the report header (frozen into snapshots). */
 export interface ServiceLineValue {
@@ -23,6 +24,10 @@ export interface ServiceLineScope extends ServiceLineValue {
   departments: DepartmentInfo[];
   /** Contracts lead pick-list. */
   contractsLeads: string[];
+  /** Owner pick-list (Admin > People; migration 0020). "To assign" is built in and not stored here. */
+  owners: string[];
+  /** Requester pick-list (Admin > People). "Not applicable" and "To assign" are built in and not stored here. */
+  requesters: string[];
 }
 
 /** A line as the admin list shows it. */
@@ -81,6 +86,8 @@ export class ServiceLine {
       isDefault: true,
       departments: ServiceAreaInfo.LEGACY.map((d) => ({ ...d })),
       contractsLeads: [...ServiceLine.CVPSL_CONTRACTS_LEADS],
+      owners: [...PeopleDirectory.OWNER_SEED].sort((a, b) => a.localeCompare(b, "en", { sensitivity: "base" })),
+      requesters: [],
     };
   }
 

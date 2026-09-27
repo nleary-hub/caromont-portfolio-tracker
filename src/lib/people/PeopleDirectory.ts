@@ -10,9 +10,8 @@ export interface NameSegment {
 }
 
 /**
- * The owner and requester pick-lists. Today the lists are derived from the names already in use on
- * projects (plus a small built-in owner seed), so a newly added name shows up once a project uses it.
- * A later managed People table can back these same static methods without touching the UI.
+ * Name rules shared by the owner and requester pick-lists. The lists themselves are managed per line on
+ * Admin > People (ServiceLineScope.owners / requesters, migration 0020); merge() cleans them for the comboboxes.
  */
 export class PeopleDirectory {
   /** Built-in owners (department leaders), merged with the owners in use. Requesters start empty. */
@@ -35,6 +34,11 @@ export class PeopleDirectory {
     return typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
   }
 
+  /** Names that are never offered or added (people who no longer work at CaroMont). Projects keep them. */
+  static isBlocked(raw: string | null | undefined): boolean {
+    return PeopleDirectory.NEVER_SUGGEST.has(PeopleDirectory.key(raw));
+  }
+
   static isToAssignText(raw: string | null | undefined): boolean {
     return PeopleDirectory.TO_ASSIGN_WORDS.has(PeopleDirectory.key(raw));
   }
@@ -48,7 +52,6 @@ export class PeopleDirectory {
     return PeopleDirectory.isToAssignText(raw) || PeopleDirectory.isNotApplicableText(raw);
   }
 
-  /** Owner options: the seed plus distinct owners in use. */
   /** Owner options: the seed (built-in owners; ServiceLineAccess.ownerSeed gives none for a new line) plus owners in use. */
   static owners(inUse: readonly (string | null | undefined)[], seed: readonly string[] = PeopleDirectory.OWNER_SEED): string[] {
     return PeopleDirectory.merge([...seed, ...inUse]);
@@ -87,10 +90,10 @@ export class PeopleDirectory {
     return key ? options.find((n) => n.toLowerCase() === key) : undefined;
   }
 
-  /** The normalized name to offer as "Add 'X'", or null (blank, sentinel, too long, or already listed). */
+  /** The normalized name to offer as "Add 'X'", or null (blank, sentinel, blocked, too long, or already listed). */
   static addCandidate(options: readonly string[], query: string): string | null {
     const name = PeopleDirectory.normalizeName(query);
-    if (!name || PeopleDirectory.isSentinel(name) || name.length > PeopleDirectory.NAME_MAX) return null;
+    if (!name || PeopleDirectory.isSentinel(name) || PeopleDirectory.isBlocked(name) || name.length > PeopleDirectory.NAME_MAX) return null;
     return PeopleDirectory.find(options, name) ? null : name;
   }
 

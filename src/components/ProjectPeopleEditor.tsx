@@ -21,9 +21,9 @@ export interface ProjectPeopleEditorProps {
   requesterNotApplicable: boolean;
   contractsLead: string | null;
   serviceArea: DepartmentKey | null;
-  /** Owner combobox options (PeopleDirectory.owners: built-in owners plus owners in use). */
+  /** Owner combobox options: the line's Owners list (Admin > People), cleaned by PeopleDirectory.merge. */
   ownerSuggestions: readonly string[];
-  /** Requester combobox options (PeopleDirectory.requesters: requesters in use). */
+  /** Requester combobox options: the line's Requesters list (Admin > People), cleaned by PeopleDirectory.merge. */
   requesterSuggestions: readonly string[];
   /** Resolves to an error message, or null on success. */
   saveAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
@@ -162,7 +162,7 @@ function DepartmentSelect({ projectId, serviceArea, departments, saveAction }: P
 /**
  * Shared owner and requester combobox wiring: holds the value, saves a pick through the admin server
  * action (reverting on error) and adds a newly added name to the local list right away. The server
- * list catches up on revalidate because options are derived from the names in use.
+ * adds it to the line's list too ("Add 'X'"), so it catches up on revalidate.
  */
 function usePeoplePicker(role: PeopleRole, props: ProjectPeopleEditorProps, initial: PeopleValue, suggestions: readonly string[]) {
   const [value, setValue] = useState<PeopleValue>(initial);
@@ -185,7 +185,7 @@ function usePeoplePicker(role: PeopleRole, props: ProjectPeopleEditorProps, init
   return { value, options, state, onPick };
 }
 
-/** Owner: combobox of the built-in owners plus owners in use, "Clear (To assign)" pinned, "Add 'X'" for a new name. */
+/** Owner: combobox of the line's Owners list, "Clear (To assign)" pinned, "Add 'X'" for a new name. */
 export function OwnerPicker(props: ProjectPeopleEditorProps) {
   const { value, options, state, onPick } = usePeoplePicker("owner", props, PeopleComboboxModel.valueOf(props.owner), props.ownerSuggestions);
   const id = `owner-${props.projectId}`;
@@ -197,7 +197,7 @@ export function OwnerPicker(props: ProjectPeopleEditorProps) {
 }
 
 /**
- * Requester (stored as physicianChampion): combobox of the requesters in use with "Not applicable"
+ * Requester (stored as physicianChampion): combobox of the line's Requesters list with "Not applicable"
  * (prints blank on the dashboard and report) and "Clear (To assign)" pinned, "Add 'X'" for a new name.
  */
 export function RequesterPicker(props: ProjectPeopleEditorProps) {

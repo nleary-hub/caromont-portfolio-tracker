@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient, ServiceLine as ServiceLineRow } from "@/gene
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
+import type { PeopleRole } from "@/lib/people/PeopleDirectory";
 import { ServiceLine, ServiceLineCopy, ServiceLineValidationError, type ServiceLineScope, type ServiceLineSummary, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 
 type Tx = Prisma.TransactionClient;
@@ -42,6 +43,8 @@ export class ServiceLineService {
     restored: "restored",
     departments: "departments_changed",
     contractsLeads: "contracts_leads_changed",
+    owners: "owners_changed",
+    requesters: "requesters_changed",
   } as const;
 
   /** Admin list: open lines (default first, then A to Z) and archived ones. Deleted lines are left out. */
@@ -77,7 +80,7 @@ export class ServiceLineService {
     return db.$transaction(async (tx) => {
       await ServiceLineService.assertUnique(tx, value, null);
       const row = await tx.serviceLine.create({
-        data: { name: value.name, shortName: value.shortName, isDefault: false, departments: [], contractsLeads: [], updatedBy: admin.email },
+        data: { name: value.name, shortName: value.shortName, isDefault: false, departments: [], contractsLeads: [], owners: [], requesters: [], updatedBy: admin.email },
       });
       await ServiceLineService.log(tx, row.id, ServiceLineService.ACTIONS.created, null, value, admin);
       return ServiceLineAccess.toScope(row);
@@ -150,6 +153,25 @@ export class ServiceLineService {
       await ServiceLineService.log(tx, id, ServiceLineService.ACTIONS.contractsLeads, before, next, admin);
       return ServiceLineAccess.toScope(updated);
     });
+  }
+
+  /** A line's owner or requester pick-list (Admin > People). Projects keep a stored name that is later removed. */
+  static async setPeopleList(id: string, role: PeopleRole, names: readonly unknown[], admin: Viewer, db: PrismaClient = Db.client): Promise<ServiceLineScope> {
+    AdminPolicy.assertAdmin(admin);
+    return db.$transaction(async (tx) => ServiceLineService.writePeopleList(tx, id, role, names, admin));
+  }
+
+  /** setPeopleList inside the caller's transaction (a rename also updates projects in the same transaction). */
+  static async writePeopleList(tx: Tx, id: string, role: PeopleRole, names: readonly unknown[], admin: Viewer): Promise<ServiceLineScope> {
+    AdminPolicy.assertAdmin(admin);
+    const next = ServiceLine.parseContractsLeads(names);
+    const column = role === "owner" ? "owners" : "requesters";
+    const row = await ServiceLineService.load(tx, id);
+    const before = row[column] ?? [];
+    if (before.join("\n") === next.join("\n")) return ServiceLineAccess.toScope(row);
+    const updated = await tx.serviceLine.update({ where: { id }, data: { [column]: next, updatedBy: admin.email } });
+    await ServiceLineService.log(tx, id, ServiceLineService.ACTIONS[column], before, next, admin);
+    return ServiceLineAccess.toScope(updated);
   }
 
   /** Recent changes to one line, newest first (admin only). */

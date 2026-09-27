@@ -87,6 +87,8 @@ export class FakeDb {
       isDefault: true,
       departments: s.departments.map((d) => d.id),
       contractsLeads: [...s.contractsLeads],
+      owners: [...s.owners],
+      requesters: [...s.requesters],
       archivedAt: null,
       deletedAt: null,
       deletedBy: null,
@@ -124,6 +126,8 @@ export class FakeDb {
       isDefault: false,
       departments: [],
       contractsLeads: [],
+      owners: [],
+      requesters: [],
       archivedAt: null,
       deletedAt: null,
       deletedBy: null,
@@ -678,7 +682,7 @@ export class FakeDb {
         create: async ({ data }: { data: Row }) => {
           rec("serviceLine", "create");
           const now = new Date();
-          const row = { id: randomUUID(), isDefault: false, departments: [], contractsLeads: [], archivedAt: null, deletedAt: null, deletedBy: null, createdAt: now, updatedAt: now, ...data };
+          const row = { id: randomUUID(), isDefault: false, departments: [], contractsLeads: [], owners: [], requesters: [], archivedAt: null, deletedAt: null, deletedBy: null, createdAt: now, updatedAt: now, ...data };
           this.state.serviceLines.push(row);
           return { ...row };
         },

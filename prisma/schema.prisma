@@ -414,6 +414,10 @@ model ServiceLine {
   departments    ServiceArea[] @default([])
   /// Contracts lead pick-list (exact spelling; stored canonical on projects).
   contractsLeads String[]      @default([])
+  /// Owner pick-list (Admin > People). "To assign" is built in and never stored here.
+  owners         String[]      @default([])
+  /// Requester pick-list (Admin > People). "Not applicable" and "To assign" are built in and never stored here.
+  requesters     String[]      @default([])
   archivedAt     DateTime?
   deletedAt      DateTime?
   deletedBy      String?

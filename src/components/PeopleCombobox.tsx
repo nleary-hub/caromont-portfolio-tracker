@@ -31,6 +31,7 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = `${id}-listbox`;
   const shown = PeopleComboboxModel.display(value);
+  const offList = !open && PeopleComboboxModel.offList(value, options);
 
   const rows = PeopleComboboxModel.rows(role, options, query, filtering, value);
   const opts = PeopleComboboxModel.options(rows);
@@ -108,8 +109,18 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
         onClick={() => (open ? undefined : openList())}
         onKeyDown={onKeyDown}
         onBlur={close}
-        className={`${FieldControlStyle.BOX} placeholder:text-muted ${shown.muted ? "text-muted" : "text-fg"}`}
+        aria-describedby={offList ? `${id}-offlist` : undefined}
+        className={`${offList ? FieldControlStyle.BOX.replace("pr-7", "pr-[96px]") : FieldControlStyle.BOX} placeholder:text-muted ${shown.muted ? "text-muted" : "text-fg"}`}
       />
+      {offList && (
+        <span
+          id={`${id}-offlist`}
+          data-testid={`${role}-not-on-list`}
+          className="pointer-events-none absolute top-1/2 right-7 -translate-y-1/2 rounded-[4px] border border-line bg-card px-1.5 text-[11px] leading-4 font-medium whitespace-nowrap text-muted"
+        >
+          {PeopleComboboxModel.NOT_ON_LIST}
+        </span>
+      )}
       <button
         type="button"
         tabIndex={-1}
