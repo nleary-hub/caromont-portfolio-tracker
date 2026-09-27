@@ -56,15 +56,16 @@ export interface YearEndDocumentLayout {
   /** Grid column heads (the labels of summaryKeys). */
   summaryHeads: string[];
   summary: YearEndSummaryRow[];
-  /** Notes under the grid for a blank column ("Carried in from FY26: Not tracked before Sep 26, 2026."). */
+  /** Notes under the grid (YearEndCopy.gridNotes): tracking line, what the columns count, overlap line. */
   summaryNotes: string[];
   pages: YearEndPage[];
 }
 
 /**
  * Year-end report layout: the weekly PDF's page, tokens and one-band page 1 header (overline, title, details
- * right-aligned: Period, then the grid's three totals), the weekly heading bars for departments, the weekly running
- * header and footer. Body: the summary grid, then the Completed and Carried (or Still in progress) sections.
+ * right-aligned: Period, then the grid's shown totals), the weekly heading bars for departments, the weekly running
+ * header and footer. Body: the summary grid, then one section per shown column, in column order: Carried in, Completed,
+ * then Carried into (or Still in progress).
  * The weekly layout (ReportLayout) is only read from, never changed.
  */
 export class YearEndLayout {
@@ -138,7 +139,7 @@ export class YearEndLayout {
       y += b.height;
     };
 
-    // Tracking note (shown dashed columns only), then what the shown columns count (YearEndCopy.gridNotes).
+    // Tracking note (shown dashed columns only), what the shown columns count, then the overlap line (YearEndCopy.gridNotes).
     const summaryNotes = data.summaryNotes;
     const summaryH = YearEndLayout.SUMMARY_LABEL_H + YearEndLayout.GRID.headH + data.summary.length * YearEndLayout.GRID.rowH + (summaryNotes.length ? 3 + summaryNotes.length * YearEndLayout.SUMMARY_NOTE_H : 0);
     push({ kind: "summary", height: summaryH });

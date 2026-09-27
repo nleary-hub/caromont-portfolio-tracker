@@ -44,9 +44,9 @@ export interface YearEndSection {
 }
 
 /**
- * One row of the summary grid, always three columns: Carried in from FY N-1 | open at the period end | Completed FY N.
- * The middle column is "Carried into FY N+1" for a closed year (open at Jun 30 of N) and "Still in progress" for the
- * current year (open today). A figure is null when its boundary is before the first tracked day; the grid prints a
+ * One row of the summary grid. Columns, in order: Carried in from FY N-1 | Completed FY N | open at the period end
+ * (only the checked ones are shown; YearEndData.columns). The last is "Carried into FY N+1" for a closed year (open at
+ * Jun 30 of N) and "Still in progress" for the current year (open today). A figure is null when its boundary is before the first tracked day; the grid prints a
  * dash and a note (YearEndData.carriedInNote / openAtEndNote).
  */
 export interface YearEndSummaryRow {
@@ -72,9 +72,9 @@ export interface YearEndData {
   /** "FY26" for an FY27 report. */
   previousFiscalYear: string;
   summary: YearEndSummaryRow[];
-  /** Why Carried in is blank ("Not tracked before Sep 26, 2026."), or null when it has numbers. */
+  /** Why Carried in is a dash ("Tracking started Sep 26, 2026, so Carried in from FY26 isn't available."), or null when it has numbers. */
   carriedInNote: string | null;
-  /** Why the middle column is blank (its boundary is before tracking began), or null when it has numbers. */
+  /** Why Carried into is a dash (its boundary is before tracking began), or null when it has numbers. */
   openAtEndNote: string | null;
   /** The notes under the grid for the shown columns (YearEndCopy.gridNotes). */
   summaryNotes: string[];
@@ -183,7 +183,7 @@ export class YearEndCopy {
   /**
    * The notes under the grid for the shown columns, in order: one tracking line (merged when both carried columns
    * are dashed), then one line with the sentences that apply (Carried in only with a real number; the other
-   * sentence only when a non-Carried-in column is shown).
+   * sentence only when a non-Carried-in column is shown), then the overlap line when two or more columns are shown.
    */
   static gridNotes(n: {
     fy: string;
@@ -200,11 +200,23 @@ export class YearEndCopy {
     const outDash = n.columns.includes("openAtEnd") && n.outDashed;
     const tracking = inDash && outDash ? YearEndCopy.notTrackedBoth(n.trackedSince, n.inLabel, n.outLabel) : inDash ? YearEndCopy.notTracked(n.trackedSince, n.inLabel) : outDash ? YearEndCopy.notTracked(n.trackedSince, n.outLabel) : null;
     const explainer = [inShown && n.carriedIn !== null ? YearEndCopy.GRID_NOTE_CARRIED_IN : null, n.columns.some((k) => k !== "carriedIn") ? YearEndCopy.gridNoteOthers(n.fy, inShown) : null].filter(Boolean).join(" ");
-    return [tracking, explainer].filter((x): x is string => Boolean(x));
+    const overlap = n.columns.length >= 2 ? YearEndCopy.GRID_NOTE_OVERLAP : null;
+    return [tracking, explainer, overlap].filter((x): x is string => Boolean(x));
   }
 
   static completedIn(fy: string): string {
     return `Completed in ${fy}`;
+  }
+
+  /** Under the grid when two or more columns are shown (the categories overlap). */
+  static readonly GRID_NOTE_OVERLAP = "A project can be counted in more than one column.";
+
+  /**
+   * A Carried in / Carried into row that is also listed in the Completed section: "Completed Aug 15, 2026. Its final
+   * update is under Completed in FY27." `completedHeading` is the Completed section's own heading string.
+   */
+  static seeCompleted(completedOn: string, completedHeading: string): string {
+    return `Completed ${ReportFormat.mediumDate(completedOn)}. Its final update is under ${completedHeading}.`;
   }
 
 
@@ -365,16 +377,23 @@ export class YearEndReportData {
       status,
       finalUpdate: date ? ClosedProjects.finalUpdate(p) : p.note?.trim() || null,
     });
+    const columns = YearEndCategories.columns(input.categories);
+    // The Completed section's heading, also quoted by the pointer below so the two can't drift.
+    const completedHeading = YearEndCopy.completedIn(fy.label);
+    // Completion dates of the projects listed in the Completed section, only when that section is included.
+    const inCompleted = new Map(columns.includes("completed") ? completed.map((c) => [c.p.id, c.date] as const) : []);
     // Carried in / Carried into rows: the status as of the section's day. A row that was Complete by then shows the
     // final update (the Completed section's text) instead of the latest note; an unknown status ("Open") doesn't.
+    // When the project is also listed in the included Completed section, a short pointer replaces the full text.
     const carriedRow = (c: { p: YearEndProject; status: ProjectStatus; unknown?: boolean }): YearEndRow => {
       const r = row(c.p, null, c.status);
       if (c.unknown) return { ...r, statusUnknown: true };
-      return c.status === "Complete" ? { ...r, finalUpdate: ClosedProjects.finalUpdate({ ...c.p, status: "Complete" }) } : r;
+      if (c.status !== "Complete") return r;
+      const completedOn = inCompleted.get(c.p.id);
+      return { ...r, finalUpdate: completedOn ? YearEndCopy.seeCompleted(completedOn, completedHeading) : ClosedProjects.finalUpdate({ ...c.p, status: "Complete" }) };
     };
     const byDate = (a: { p: YearEndProject; date: string }, b: { p: YearEndProject; date: string }) => b.date.localeCompare(a.date) || a.p.name.localeCompare(b.p.name);
     const since = trackedSince ?? input.today;
-    const columns = YearEndCategories.columns(input.categories);
     // Carried in rows: the same openOn list as the Carried in count, with each project's status at the end of the
     // report period (today for the current year, Jun 30 for a closed one), like the Carried into rows.
     const carriedInSection = (carriedIn ?? [])
@@ -383,7 +402,7 @@ export class YearEndReportData {
       .map((c) => ({ area: c.p.serviceArea, row: carriedRow(c) }));
     const allSections: YearEndSection[] = [
       YearEndReportData.section("carriedIn", YearEndCopy.carriedInFrom(prev), inTracked ? YearEndCopy.emptyCarriedIn(prev) : YearEndCopy.carriedNotTracked(since), carriedInSection, input.departments),
-      YearEndReportData.section("completed", YearEndCopy.completedIn(fy.label), YearEndCopy.emptyCompleted(fy.label, toDate), [...completed].sort(byDate).map((c) => ({ area: c.p.serviceArea, row: row(c.p, c.date, c.p.status) })), input.departments),
+      YearEndReportData.section("completed", completedHeading, YearEndCopy.emptyCompleted(fy.label, toDate), [...completed].sort(byDate).map((c) => ({ area: c.p.serviceArea, row: row(c.p, c.date, c.p.status) })), input.departments),
       YearEndReportData.section(
         "carried",
         YearEndCopy.openAtEnd(next, toDate),
@@ -538,8 +557,8 @@ export class YearEndReportData {
   }
 
   /**
-   * Grid rows: departments with a completed or carried project (line order, Unassigned last), then Total. A null
-   * list is a blank column (every cell null).
+   * Grid rows: departments with a carried-in, completed or carried project (line order, Unassigned last), then Total.
+   * A null list is a dashed column (every cell null). build() then keeps only departments with a project in a shown column.
    */
   private static summary(
     list: DepartmentList,

@@ -279,7 +279,12 @@ Carried in and Carried into are one shared computation (`YearEndReportData.openO
 In the Carried into and Carried in tables, a past year's row shows the status it had at D. When a project was only closed later by an
 entered completion date and no status was on record for that day, the status cell says "Open" in gray, not a guessed chip. A
 Carried in or Carried into row whose status was Complete by that day shows the project's final update (the Completed
-section's text) in the update column instead of the latest note; the column header stays "Latest update".
+section's text) in the update column instead of the latest note; the column header stays "Latest update". When the
+Completed section is also included and lists that project, the row shows a short pointer instead: "Completed Aug 15,
+2026. Its final update is under Completed in FY27." The heading part comes from the same function as the Completed
+section heading (`YearEndCopy.completedIn`), and the date is the completion date. The row keeps its Complete chip and
+plain update style. With Completed unchecked, or a project not listed there (for example Complete on Jun 30 but
+reopened since), the full final update shows.
 
 **Notes under the grid** (small gray text, left-aligned under the Total row), for the shown columns only, in both
 report types:
@@ -296,6 +301,8 @@ report types:
    without being completed." only when Carried in is shown with a real number (not a dash). Then, when any other column
    is shown: "The other columns include projects started in FY26." if Carried in is on the page (number or dash), or
    "These totals include projects started in FY26." if it isn't (the report's fiscal year).
+3. **Overlap line**, last, only when two or more columns are shown: "A project can be counted in more than one
+   column."
 
 Empty lines: "No projects carried in from FY26.", "No projects are still in progress." (current year) and "No projects
 carried into FY27." (closed year).
