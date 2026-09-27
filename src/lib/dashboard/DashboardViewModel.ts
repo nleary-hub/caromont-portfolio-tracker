@@ -93,6 +93,15 @@ export class DashboardViewModel {
     return projects.map((p) => DashboardViewModel.toRow(p, publicHistory, publicUpdates, previousSnapshotGeneratedAt, today));
   }
 
+  /**
+   * History for the row flags: the public entries since the latest freeze (one per project is enough for Changed on
+   * active rows) plus the status and created entries of closed projects, which Changed on a completed row needs (when it
+   * was completed, and in which fiscal year; see CompletedChangedRule).
+   */
+  static flagHistory(history: readonly HistoryEntryRecord[], closedHistory: readonly HistoryEntryRecord[]): HistoryEntryRecord[] {
+    return [...history, ...closedHistory];
+  }
+
   private static toRow(
     p: ProjectRecord,
     publicHistory: readonly HistoryEntryRecord[],
@@ -101,7 +110,7 @@ export class DashboardViewModel {
     today: string,
   ): DashboardRow {
     const updatedOn = ReportBuilder.updatedOn(p.id, publicUpdates);
-    // Same flag rules as the report: Complete and Cancelled rows carry none.
+    // Same flag rules as the report (ReportBuilder.flags): Complete keeps Changed only, Cancelled carries none.
     const flags = ReportBuilder.flags(p, publicHistory, previousSnapshotGeneratedAt, today);
     return {
       id: p.id,

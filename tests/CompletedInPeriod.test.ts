@@ -35,6 +35,8 @@ class World {
   /** Put every history row of a project (optionally one field) at a fixed time. */
   at(id: string, iso: string, field?: string): void {
     for (const h of this.fake.state.history) if (h.projectId === id && (!field || h.field === field)) h.changedAt = new Date(iso);
+    // Created then too, so nothing falls back to the real clock.
+    if (!field) for (const p of this.fake.state.projects) if (p.id === id) p.createdAt = new Date(iso);
   }
 
   async setStatus(id: string, status: string, iso: string): Promise<void> {
@@ -58,8 +60,16 @@ class World {
     const history = this.fake.state.history as unknown as HistoryEntryRecord[];
     const latest = [...this.fake.state.snapshots].sort((a, b) => (b.generatedAt as Date).getTime() - (a.generatedAt as Date).getTime())[0];
     const prev = (latest?.generatedAt as Date | undefined) ?? null;
-    const ids = PeriodClosure.ids(projects, history, prev, now);
-    return DashboardViewModel.rows(projects, ViewSettings.defaults("dashboard"), history, prev, "2026-09-27", history, undefined, ids);
+    const closedIds = new Set(projects.filter((p) => p.status === "Complete" || p.status === "Cancelled").map((p) => p.id));
+    const closedHistory = history.filter((h) => closedIds.has(h.projectId) && (h.field === "status" || h.field === "created"));
+    const ids = PeriodClosure.ids(projects, closedHistory, prev, now);
+    // Like the page: public history since the freeze, one entry per project, without old/new values.
+    const seen = new Set<string>();
+    const recent = history
+      .filter((h) => !prev || h.changedAt.getTime() > prev.getTime())
+      .filter((h) => !seen.has(h.projectId) && seen.add(h.projectId))
+      .map((h) => ({ projectId: h.projectId, changedAt: h.changedAt, field: h.field }));
+    return DashboardViewModel.rows(projects, ViewSettings.defaults("dashboard"), DashboardViewModel.flagHistory(recent, closedHistory), prev, "2026-09-27", history, undefined, ids);
   }
 
   static names(s: Snap): string[] {

@@ -139,7 +139,7 @@ class DashboardData {
         rows: DashboardViewModel.rows(
           projects,
           settings.dashboard,
-          history,
+          DashboardViewModel.flagHistory(history, closedHistory),
           latest?.generatedAt ?? null,
           today,
           latestUpdates,
