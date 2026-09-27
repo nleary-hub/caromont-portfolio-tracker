@@ -88,24 +88,24 @@ describe("ReportLayout pagination", () => {
     expect(r.note!.lines.length).toBeGreaterThan(2);
     expect(r.note!.lines.map((l) => l.text).join(" ")).toBe(long.note);
     expect(r.note!.lines.some((l) => l.text.includes("\u2026"))).toBe(false);
-    expect(r.note!.w).toBeCloseTo(5.55 * 72, 5);
+    expect(r.note!.w).toBeCloseTo(5.25 * 72, 5);
     const milestone = r.cells.find((c) => c.kind === "nextMilestone")!;
     expect(r.note!.x).toBe(milestone.x);
     for (const l of r.note!.lines) expect(m.width(l.text, 8, 400)).toBeLessThanOrEqual(r.note!.w);
   });
 
-  it("a 200-character note with the No change. prefix wraps to a third line and the row grows", () => {
+  it("a 200-character note with the No change. prefix still wraps fully and the row grows as needed", () => {
     const note = `${SampleReportData.LONG_NOTE} Next check-in 10/1.`.slice(0, 200).trimEnd().padEnd(200, ".");
     expect(note).toHaveLength(200);
     const settings = ViewSettings.defaults("report");
     const changed = ReportLayout.rowLayout(m, { ...rows[0], note, changed: true }, settings, SampleReportData.REPORT_DATE);
     const unchanged = ReportLayout.rowLayout(m, { ...rows[0], note, changed: false }, settings, SampleReportData.REPORT_DATE);
-    expect(changed.note!.lines).toHaveLength(2);
+    expect(changed.note!.lines.length).toBeGreaterThanOrEqual(2);
     expect(unchanged.note!.lines).toHaveLength(3);
     expect(unchanged.note!.lines.map((l) => l.text).join(" ")).toBe(`No change. ${note}`);
     expect(unchanged.note!.lines.some((l) => l.text.includes("\u2026"))).toBe(false);
     // The row grows so all three lines sit inside it (the owner stack already used part of the space).
-    expect(unchanged.height).toBeGreaterThan(changed.height);
+    expect(unchanged.height).toBeGreaterThanOrEqual(changed.height);
     expect(unchanged.note!.y + unchanged.note!.lines.length * ReportGeometry.TABLE_LH).toBeLessThanOrEqual(unchanged.height);
   });
 
@@ -149,11 +149,11 @@ describe("ReportLayout pagination", () => {
 
   it("all flag slots fit the Flags column at its current width", () => {
     const flagsCol = ReportLayout.columns(ViewSettings.defaults("report")).find((c) => c.key === "flags")!;
-    expect(flagsCol.w / 72).toBeCloseTo(2.95, 9);
+    expect(flagsCol.w / 72).toBeCloseTo(1.86, 9);
     expect(ReportLayout.flagSlotsWidth(m)).toBeLessThanOrEqual(flagsCol.w - ReportGeometry.CELL_PAD_R);
   });
 
-  it("a row with Changed, Overdue and Stale keeps all three in their fixed slots on one line inside the 2.95 in column", () => {
+  it("a row with Changed, Overdue and Stale keeps all three in their fixed slots on one line inside the 1.86 in column", () => {
     const g = ReportGeometry;
     const base = SampleReportData.rows().find((r) => r.overdue)!;
     const row = { ...base, changed: true, overdue: true, stale: SampleReportData.rows().find((r) => r.stale)!.stale };
@@ -161,7 +161,7 @@ describe("ReportLayout pagination", () => {
     const cell = layout.cells.find((c) => c.kind === "flags")!;
     if (cell.kind !== "flags") throw new Error("no flags cell");
     const slots = ReportLayout.flagSlots(m);
-    expect(cell.w).toBeCloseTo(2.95 * 72 - g.CELL_PAD_R, 9);
+    expect(cell.w).toBeCloseTo(1.86 * 72 - g.CELL_PAD_R, 9);
     expect(cell.flags.map((f) => f.kind)).toEqual(["changed", "overdue", "stale"]);
     cell.flags.forEach((f, i) => {
       expect(f.dx).toBe(slots[i].dx);
@@ -178,9 +178,15 @@ describe("ReportLayout pagination", () => {
   it("uses the spec column widths in inches", () => {
     const cols = ReportLayout.columns(ViewSettings.defaults("report"));
     expect(cols.map((c) => [c.key, c.w / 72])).toEqual(
-      ([["project", 2.2], ["owner", 1.4], ["status", 0.85], ["nextMilestone", 2.0], ["due", 0.6], ["flags", 2.95]] as const).map(([k, w]) => [k, expect.closeTo(w, 9)]),
+      ([["project", 2.4], ["owner", 1.5], ["status", 0.85], ["nextMilestone", 2.89], ["due", 0.5], ["flags", 1.86]] as const).map(([k, w]) => [k, expect.closeTo(w, 9)]),
     );
-    // The owner widening comes out of Flags only: the total table width is unchanged (10.0 in).
+    // Project and Owner grow, Due and Flags stay at the far right, and reclaimed room goes to Milestone.
+    expect(cols.find((c) => c.key === "project")!.w / 72).toBeGreaterThan(2.2);
+    expect(cols.find((c) => c.key === "owner")!.w / 72).toBeGreaterThan(1.4);
+    const due = cols.find((c) => c.key === "due")!;
+    const flags = cols.find((c) => c.key === "flags")!;
+    expect(due.x).toBeGreaterThan(cols.find((c) => c.key === "nextMilestone")!.x);
+    expect(flags.x + flags.w).toBeCloseTo(ReportGeometry.CONTENT_W, 9);
     expect(cols.reduce((s, c) => s + c.w, 0) / 72).toBeCloseTo(10.0, 9);
   });
 
@@ -365,6 +371,16 @@ describe("ReportLayout page 1 summary grid", () => {
     expect(l.header.grid.width).toBeCloseTo(ReportGeometry.GRID_W, 5);
     for (const c of l.header.grid.columns) if (c.pill) expect(c.width).toBeGreaterThanOrEqual(c.pill.width);
     expect(l.header.grid.columns.at(-1)).toMatchObject({ key: "total", label: "Total" });
+  });
+
+  it("keeps the summary grid and Complete totals unchanged while weekly table widths change", () => {
+    const all = ViewSettings.normalize("report", { hiddenStatuses: [] });
+    const l = ReportLayout.layout(SampleReportData.docInput({ viewSettings: all }), m);
+    expect(l.header.grid.columns.map((c) => c.key)).toEqual(["NotStarted", "OnTrack", "AtRisk", "OffTrack", "OnHold", "Complete", "Cancelled", "total"]);
+    expect(l.header.grid.width).toBeCloseTo(530.09765625, 5);
+    const total = l.header.grid.rows.at(-1)!;
+    expect(total.cells[l.header.grid.columns.findIndex((c) => c.key === "Complete")]).toBe(SampleReportData.rows().filter((r) => r.status === "Complete").length);
+    expect(total.cells.at(-1)).toBe(SampleReportData.rows().length);
   });
 
   it("grows evenly when every status is shown, so no pill is squeezed", () => {

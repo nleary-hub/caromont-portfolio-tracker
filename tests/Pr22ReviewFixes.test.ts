@@ -92,10 +92,10 @@ describe("PR #22 review fixes: flags under the FLAGS header (custom layout)", ()
     expect(PdfReportLayout.withLayout(REPORT, null)).toBe(REPORT);
   });
 
-  it("never squeezes Due: a wider Due/Flags splits in today's 0.6 : 2.95 ratio, and at the minimum both keep today's widths", () => {
-    expect(PdfReportLayout.dueShareIn(3.55)).toBeCloseTo(0.6, 9);
-    expect(PdfReportLayout.dueShareIn(7.1)).toBeCloseTo(1.2, 9);
-    expect(PdfReportLayout.dueShareIn(2)).toBe(0.6);
+  it("never squeezes Due: a wider Due/Flags splits in today's 0.5 : 1.86 ratio, and at the minimum both keep today's widths", () => {
+    expect(PdfReportLayout.dueShareIn(3.55)).toBeCloseTo((3.55 * 0.5) / (0.5 + 1.86), 9);
+    expect(PdfReportLayout.dueShareIn(7.1)).toBeCloseTo((7.1 * 0.5) / (0.5 + 1.86), 9);
+    expect(PdfReportLayout.dueShareIn(2)).toBe(0.5);
   });
 });
 
