@@ -1,7 +1,7 @@
 "use server";
 
 import { AdminGate } from "@/lib/auth/AdminGate";
-import { AdminPolicy } from "@/lib/auth/AdminPolicy";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ImportBlockedError, ImportService, type ImportPreview } from "@/lib/import/ImportService";
@@ -27,15 +27,15 @@ class ImportActionsSupport {
   }
 
   /** Imports work on the admin's active service line. */
-  static async scope(adminEmail: string): Promise<ServiceLineScope> {
-    return ServiceLineAccess.activeOrDefault(AdminPolicy.viewerFor(adminEmail));
+  static async scope(admin: Viewer): Promise<ServiceLineScope> {
+    return ServiceLineAccess.activeOrDefault(admin);
   }
 }
 
 // Server Functions can be POSTed directly, so each one re-checks the admin session (404 for non-admins).
 
 export async function previewImport(mode: ImportMode, csv: string): Promise<PreviewResult> {
-  const admin = await AdminGate.requireAdmin();
+  const admin = await AdminGate.requireAdminViewer();
   const problem = ImportActionsSupport.check(mode, csv);
   if (problem) return { ok: false, error: problem };
   try {
@@ -49,16 +49,16 @@ export async function previewImport(mode: ImportMode, csv: string): Promise<Prev
 }
 
 export async function commitImport(mode: ImportMode, csv: string): Promise<CommitResult> {
-  const admin = await AdminGate.requireAdmin();
+  const admin = await AdminGate.requireAdminViewer();
   const problem = ImportActionsSupport.check(mode, csv);
   if (problem) return { ok: false, error: problem };
   try {
     const scope = await ImportActionsSupport.scope(admin);
     if (mode === "create") {
-      const r = await ImportService.commitCreate(csv, admin, undefined, scope);
+      const r = await ImportService.commitCreate(csv, admin.email, undefined, scope);
       return { ok: true, mode, created: r.created, skipped: r.skipped };
     }
-    const r = await ImportService.commitWording(csv, admin, undefined, scope);
+    const r = await ImportService.commitWording(csv, admin.email, undefined, scope);
     return { ok: true, mode, updated: r.updated, unchanged: r.unchanged };
   } catch (e) {
     if (e instanceof ImportBlockedError) {
