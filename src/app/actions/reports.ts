@@ -9,6 +9,7 @@ import { FreezeService } from "@/lib/services/FreezeService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { ReportOptionsForm, type ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
+import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
 import { YearEndCategories, YearEndCopy } from "@/lib/report/YearEndReportData";
 
 export type FreezeNowState = { ok: boolean; message: string } | null;
@@ -30,14 +31,24 @@ export async function freezeNow(): Promise<FreezeNowState> {
   }
 }
 
-/** Admin toggle for the status and flag key page (applies to the next freeze and to drafts). */
+/** Admin report freeze options (applies to the next freeze and to drafts). */
 export async function setShowKeyPageForm(form: FormData): Promise<void> {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) return;
   try {
     const scope = await ServiceLineAccess.activeFor(viewer);
-    await ReportOptionsService.update({ showKeyPage: form.get("showKeyPage") === "on" }, viewer, undefined, scope);
+    const totalsGrid = form.get("totalsGrid");
+    await ReportOptionsService.update(
+      {
+        showKeyPage: form.get("showKeyPage") === "on",
+        ...(totalsGrid !== null ? { totalsGrid: TotalsGridPlacement.normalize(totalsGrid) } : {}),
+      },
+      viewer,
+      undefined,
+      scope,
+    );
     revalidatePath("/reports");
+    revalidatePath("/admin/settings");
   } catch (e) {
     ReportLog.error("report_options.update.failed", { error: e instanceof Error ? e.message : String(e) });
   }

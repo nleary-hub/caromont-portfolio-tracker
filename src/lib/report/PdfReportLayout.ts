@@ -40,24 +40,25 @@ export class PdfReportLayout {
   /** Owner column before the Contracts lead line (Figma spec). */
   static readonly OWNER_BASE_IN = 1.0;
   /**
-   * Extra owner width so "Contracts: Mellisa Gonzales" (the longest name, with its label) fits on one line at
-   * 7 pt. Taken in full from the Flags column, so the total table width is unchanged.
+   * Extra owner width so "Contracts: Mellisa Gonzales" (the longest seeded name, with its label) fits on one
+   * line at 7 pt with useful padding. Taken from the old Flags width, so the total table width is unchanged.
    */
-  static readonly OWNER_CONTRACTS_EXTRA_IN = 0.4;
-  static readonly FLAGS_BASE_IN = 3.35;
+  static readonly OWNER_CONTRACTS_EXTRA_IN = 0.5;
+  /** Minimum Flags width: all three fixed slots measured with the embedded font plus the cell's right padding. */
+  static readonly FLAGS_MIN_IN = 1.86;
 
   /** Column widths in inches, line 1 of each row. Owner cell shows requester and contracts lead in small gray beneath. */
   static readonly COLUMNS_IN = {
-    project: 2.2,
-    owner: PdfReportLayout.OWNER_BASE_IN + PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 1.4
+    project: 2.4,
+    owner: PdfReportLayout.OWNER_BASE_IN + PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 1.5
     status: 0.85,
-    nextMilestone: 2.0,
-    due: 0.6,
-    flags: PdfReportLayout.FLAGS_BASE_IN - PdfReportLayout.OWNER_CONTRACTS_EXTRA_IN, // 2.95
+    nextMilestone: 2.89,
+    due: 0.5,
+    flags: PdfReportLayout.FLAGS_MIN_IN, // 1.86
   };
 
   /**
-   * Line 2: note starts under Next milestone and runs to the right margin (2.0 + 0.6 + 2.95 = 5.55 in). A note
+   * Line 2: note starts under Next milestone and runs to the right margin (2.89 + 0.5 + 1.86 = 5.25 in). A note
    * is never cut off: it wraps to as many lines as it needs and the row grows. Usually one or two lines; a
    * 200-character note with the "No change." prefix takes three.
    */
@@ -100,7 +101,7 @@ export class PdfReportLayout {
 
   /**
    * PDF minimums (inches) for a custom layout. Project 1.6 and Next milestone 2.0 (design), Due / Flags at today's
-   * width (the visible parts of 0.6 + 2.95). Status keeps today's 0.85 so the widest pill fits, and the owner stack
+   * width (the visible parts of 0.5 + 1.86). Status keeps today's 0.85 so the widest pill fits, and the owner stack
    * keeps its 1.0 base width.
    */
   static readonly LAYOUT_MIN_IN: Readonly<Record<Exclude<LayoutKey, "dueFlags">, number>> = {
@@ -154,7 +155,7 @@ export class PdfReportLayout {
     for (const item of fitted) {
       const cols = parts(item.key);
       if (item.key === "dueFlags" && cols.length === 2) {
-        // Due and Flags split the width in today's 0.6 : 2.95 ratio, so a wider Due/Flags column never squeezes
+        // Due and Flags split the width in today's 0.5 : 1.86 ratio, so a wider Due/Flags column never squeezes
         // the date; at the minimum both keep today's widths.
         out.due = PdfReportLayout.dueShareIn(item.width);
         out.flags = item.width - out.due;
@@ -165,7 +166,7 @@ export class PdfReportLayout {
     return out;
   }
 
-  /** Due's part of a custom Due/Flags width (inches): today's ratio, never below today's 0.6 in. */
+  /** Due's part of a custom Due/Flags width (inches): today's ratio, never below today's 0.5 in. */
   static dueShareIn(widthIn: number): number {
     const { due, flags } = PdfReportLayout.COLUMNS_IN;
     return Math.max(due, (widthIn * due) / (due + flags));

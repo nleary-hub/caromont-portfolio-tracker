@@ -174,18 +174,17 @@ describe("PDF widths from shares", () => {
     expect(JSON.stringify(Fixture.layout({ layout: { columns: { order: [...KEYS], shares: null }, rows: {} } }))).toBe(JSON.stringify(base));
   });
 
-  it("applies the shares to the 10 in printable width, keeping Due at 0.6 in and Flags the rest", () => {
+  it("applies the shares to the 10 in printable width, keeping Due at 0.5 in and Flags the rest", () => {
     const shares = Fixture.shares({ project: 250, people: 150, status: 100, milestoneUpdate: 300, dueFlags: 200 });
     const w = PdfReportLayout.layoutWidthsIn(REPORT, shares);
     expect(sum(Object.values(w) as number[])).toBeCloseTo(10, 9);
     expect(w.owner).toBeCloseTo(1.5, 9);
     expect(w.status).toBeCloseTo(1.0, 9);
-    expect(w.due).toBe(0.6);
-    // Due / Flags got 2.0 in, below its 3.55 in minimum: raised by 1.55 in. Next milestone (widest, 3.0 in) pays
-    // first down to Project's 2.5, then both pay until Next milestone reaches its 2.0 in minimum, then Project.
-    expect(w.flags! + w.due!).toBeCloseTo(3.55, 9);
-    expect(w.nextMilestone).toBeCloseTo(2.0, 9);
-    expect(w.project).toBeCloseTo(1.95, 9);
+    expect(w.due).toBe(0.5);
+    // Due / Flags got 2.0 in, below its 2.36 in minimum: the widest columns pay until all minimums hold.
+    expect(w.flags! + w.due!).toBeCloseTo(2.36, 9);
+    expect(w.nextMilestone).toBeCloseTo(2.64, 9);
+    expect(w.project).toBeCloseTo(2.5, 9);
   });
 
   it("enforces Project 1.6 in, Next milestone 2.0 in and Due / Flags at today's width, taking from the widest column first", () => {
@@ -195,10 +194,10 @@ describe("PDF widths from shares", () => {
     const w = PdfReportLayout.layoutWidthsIn(REPORT, shares);
     expect(w.project).toBeCloseTo(1.6, 9);
     expect(w.nextMilestone).toBeCloseTo(2.0, 9);
-    expect(w.due! + w.flags!).toBeCloseTo(3.55, 9);
+    expect(w.due! + w.flags!).toBeCloseTo(2.36, 9);
     expect(w.status).toBeCloseTo(0.85, 9);
     // Everything came out of People (the widest).
-    expect(w.owner).toBeCloseTo(10 - 1.6 - 2.0 - 3.55 - 0.85, 9);
+    expect(w.owner).toBeCloseTo(10 - 1.6 - 2.0 - 2.36 - 0.85, 9);
     expect(sum(Object.values(w) as number[])).toBeCloseTo(10, 9);
   });
 

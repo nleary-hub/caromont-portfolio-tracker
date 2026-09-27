@@ -134,10 +134,12 @@ export class ReportGeometry {
   /** Inter vertical metrics (em), used to put detail baselines on the title baseline. */
   static readonly INTER_ASCENT = 0.96875;
   static readonly INTER_DESCENT = 0.2421875;
-  /** One-line status and flag key (Hidden mode below the band; Last page mode under the grid). */
+  /** One-line status and flag key for Hidden mode below the band. */
   static readonly KEYLINE = { gapAbove: 6, h: 10.5, rowGap: 2, gapAfter: 10, itemGap: 10, size: 7, icon: 7, iconGap: 3, textGap: 4 } as const;
-  /** Last page mode summary block: gap, "SUMMARY" overline, grid, gap, key line. Never split. */
-  static readonly SUMMARY = { gapAbove: 14, overlineLH: 10, overlineGap: 4, gapBeforeKey: 8, label: "SUMMARY" } as const;
+  /** Last page mode grid-only block. The title uses the same style as the status and flag key heading. */
+  static readonly SUMMARY = { gapAbove: 14, overlineLH: 10, headingLH: 14, overlineGap: 4, gapBeforeKey: 8, label: "SUMMARY", heading: "Summary by area" } as const;
+  /** Combined key page placement: grid heading, grid, 24 pt gap, then the full key. */
+  static readonly KEY_PAGE_SUMMARY = { top: 8, headingH: 14, headingGap: 4, gapAfterGrid: 24 } as const;
   static readonly FOOTER_H = 13.5;
   static readonly FOOTER_GAP = 6;
 
@@ -428,7 +430,7 @@ export interface HeaderModel {
   totalsGrid: TotalsGridMode;
   /** One-band page 1 header (Hidden and Last page modes); null in Top mode. */
   band: BandModel | null;
-  /** One-line status and flag key (Hidden and Last page modes); null in Top mode. */
+  /** One-line status and flag key for Hidden mode; null in Top and Last page modes. */
   keyLine: KeyLineModel | null;
   /** Page 1 summary grid: status counts and Total only (flags are per row, explained by the legend). */
   grid: { columns: GridColumn[]; rows: GridRow[]; width: number };
@@ -488,8 +490,15 @@ export interface KeyLineModel {
 }
 
 export interface SummaryBlockLayout {
-  /** Gap above the overline (0 when the block starts a page). */
+  /** Gap above the heading (0 when the block starts a page). */
   gapAbove: number;
+  headingY: number;
+  gridTop: number;
+  keyTop: number;
+}
+
+export interface KeyPageSummaryLayout {
+  headingY: number;
   gridTop: number;
   keyTop: number;
 }
@@ -507,6 +516,12 @@ export interface PageLayout {
   kind: "report" | "key";
   /** Report pages draw the column head, except a page holding only the Last page summary block. */
   columnHead?: boolean;
+  /** Combined Last page mode puts the summary grid above the full key on this page. */
+  summaryOnKeyPage?: KeyPageSummaryLayout;
+  /** If the combined summary and key do not fit, the key continues on a following page. */
+  keySummaryOnly?: boolean;
+  /** Combined key pages omit the area count strip to make room for the summary and key. */
+  keyNoStrip?: boolean;
   number: number;
   total: number;
   first: boolean;
@@ -1160,7 +1175,7 @@ export class ReportLayout {
       departments: departmentsDetail,
       totalsGrid,
       band,
-      keyLine: usesBand ? ReportLayout.keyLine(m, statuses, legend) : null,
+      keyLine: usesBand && input.showKeyPage === false ? ReportLayout.keyLine(m, statuses, legend) : null,
       grid: { columns, rows: [...areaRows, totalRow], width: gridWidth },
       legend,
       metaWidth,
@@ -1469,14 +1484,38 @@ export class ReportLayout {
     return build(0, true);
   }
 
-  /** Last page summary block height (gap only when it does not start the page). */
+  /** Combined key-page placement for Last page mode with the key on. */
+  static keyPageSummary(header: HeaderModel): KeyPageSummaryLayout {
+    const s = ReportGeometry.KEY_PAGE_SUMMARY;
+    const headingY = s.top;
+    const gridTop = headingY + s.headingH + s.headingGap;
+    const keyTop = gridTop + ReportLayout.gridHeight(header.grid.rows.length) + s.gapAfterGrid;
+    return { headingY, gridTop, keyTop };
+  }
+
+  /** Height of the existing key content from its title start through its footnote. */
+  static keyContentHeight(key: KeyModel): number {
+    const g = ReportGeometry;
+    let y = 14;
+    y += 24;
+    y += 16 + key.statuses.length * 16;
+    y += 8;
+    y += 16 + key.flags.length * 16;
+    y += 8;
+    y += 16 + key.details.length * 15;
+    y += 10;
+    return y + g.SMALL_LH - 14;
+  }
+
+  /** Last page summary block height; the key is included only when the key-page option is on. */
   static summaryBlock(header: HeaderModel, atTop: boolean): { height: number; summary: SummaryBlockLayout } {
     const g = ReportGeometry;
     const s = g.SUMMARY;
     const gapAbove = atTop ? 0 : s.gapAbove;
-    const gridTop = gapAbove + s.overlineLH + s.overlineGap;
-    const keyTop = gridTop + ReportLayout.gridHeight(header.grid.rows.length) + s.gapBeforeKey;
-    return { height: keyTop + (header.keyLine?.height ?? g.KEYLINE.h), summary: { gapAbove, gridTop, keyTop } };
+    const headingY = gapAbove;
+    const gridTop = headingY + s.headingLH + s.overlineGap;
+    const keyTop = gridTop + ReportLayout.gridHeight(header.grid.rows.length) + (header.keyLine ? s.gapBeforeKey : 0);
+    return { height: keyTop + (header.keyLine?.height ?? 0), summary: { gapAbove, headingY, gridTop, keyTop } };
   }
 
   static bodyHeight(headerHeight: number): number {
@@ -1581,9 +1620,9 @@ export class ReportLayout {
       }
     }
 
-    if (model.totalsGrid === "lastPage") {
-      // The summary (overline, grid, key line) is one unsplittable block: under the final rows when it
-      // fits, otherwise alone at the top of a new page (running header, no column head).
+    const showKey = input.showKeyPage === true;
+    if (model.totalsGrid === "lastPage" && !showKey) {
+      // With the key off, Last page remains a grid-only report page.
       let block = ReportLayout.summaryBlock(model, y === 0);
       if (y + block.height > page.bodyHeight) {
         newPage(false);
@@ -1593,20 +1632,52 @@ export class ReportLayout {
       y += block.height;
     }
 
-    const key = input.showKeyPage
+    const key = showKey
       ? ReportLayout.key(m, input.viewSettings, input.rows.filter((r) => r.completedInPeriod).map((r) => r.status), completed.length > 0)
       : null;
     if (key) {
-      pages.push({
-        kind: "key",
-        number: pages.length + 1,
-        total: 0,
-        first: false,
-        headerHeight: contH,
-        bodyTop: contH,
-        bodyHeight: g.CONTENT_H - contH - g.FOOTER_GAP - g.FOOTER_H,
-        blocks: [],
-      });
+      if (model.totalsGrid === "lastPage") {
+        const summary = ReportLayout.keyPageSummary(model);
+        const bodyTop = g.RUNHEAD_H;
+        const bodyHeight = g.CONTENT_H - bodyTop - g.FOOTER_GAP - g.FOOTER_H;
+        const keySummaryOnly = summary.keyTop + ReportLayout.keyContentHeight(key) > bodyHeight;
+        pages.push({
+          kind: "key",
+          number: pages.length + 1,
+          total: 0,
+          first: false,
+          headerHeight: bodyTop,
+          bodyTop,
+          bodyHeight,
+          blocks: [],
+          summaryOnKeyPage: summary,
+          keySummaryOnly,
+          keyNoStrip: true,
+        });
+        if (keySummaryOnly) {
+          pages.push({
+            kind: "key",
+            number: pages.length + 1,
+            total: 0,
+            first: false,
+            headerHeight: contH,
+            bodyTop: contH,
+            bodyHeight: g.CONTENT_H - contH - g.FOOTER_GAP - g.FOOTER_H,
+            blocks: [],
+          });
+        }
+      } else {
+        pages.push({
+          kind: "key",
+          number: pages.length + 1,
+          total: 0,
+          first: false,
+          headerHeight: contH,
+          bodyTop: contH,
+          bodyHeight: g.CONTENT_H - contH - g.FOOTER_GAP - g.FOOTER_H,
+          blocks: [],
+        });
+      }
     }
     for (const p of pages) p.total = pages.length;
     return { header: model, key, pages };

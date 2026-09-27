@@ -36,9 +36,9 @@ export function ReportSettingsForm({
         </div>
       </fieldset>
       <fieldset className="flex flex-col gap-1.5">
-        <legend className="mb-1 type-label text-muted">Totals grid</legend>
+        <legend className="mb-1 type-label text-muted">Summary grid</legend>
         <input type="hidden" name="totalsGrid" value={mode} />
-        <div role="radiogroup" aria-label="Totals grid" className="vp-seg df-seg3">
+        <div role="radiogroup" aria-label="Summary grid" className="vp-seg df-seg3">
           {TotalsGridPlacement.MODES.map((m) => (
             <button key={m} type="button" role="radio" aria-checked={mode === m} className={mode === m ? "vp-act" : ""} onClick={() => setMode(m)}>
               {TotalsGridPlacement.LABELS[m]}
