@@ -141,7 +141,7 @@ class TableMeasure {
  * The grouped dashboard table: one <table> with one <colgroup> from DashboardColumnModel, one sticky
  * column header, then one <tbody> per department (DashboardGroups, PDF order) with a sticky 36px group
  * header and the rows (keyed by project id). A project completed since the latest freeze keeps its row here (Complete
- * chip, no flags); older completed projects and every cancelled one are on the Completed and Cancelled pages.
+ * chip, Changed flag only, never Overdue or Stale); older completed projects and every cancelled one are on the Completed and Cancelled pages.
  * The first column is the 24px gutter with the row drag grip (admins, manual order only).
  *
  * Layout (one per service line, LineLayout): columns follow the saved order; with saved width shares every

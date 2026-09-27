@@ -68,7 +68,7 @@ export class DashboardViewModel {
     departments: DepartmentList = ServiceAreaInfo.LEGACY,
     /**
      * Ids of projects completed since the line's latest freeze (PeriodClosure). They keep their normal row in their
-     * department group, with their Complete chip and no flags, until the next freeze. Cancelled projects never show.
+     * department group, with their Complete chip and the Changed flag only (never Overdue or Stale), until the next freeze. Cancelled projects never show.
      */
     completedInPeriod?: ReadonlySet<string>,
   ): DashboardRow[] {

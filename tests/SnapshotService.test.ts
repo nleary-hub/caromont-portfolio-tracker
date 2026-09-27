@@ -32,10 +32,10 @@ describe("SnapshotService.create", () => {
 
     const s1 = await SnapshotService.create(period1, db);
     const rows1 = s1.rowsJson as unknown as ReportRow[];
-    // First report: the already-complete project is a regular row in its department (Complete chip, no flags).
+    // First report: the already-complete project is a regular row in its department (Complete chip; Changed only, never Overdue or Stale).
     expect(rows1.map((r) => r.name)).toEqual(["Active", "Done"]);
     expect(rows1.find((r) => r.name === "Active")!.changed).toBe(true);
-    expect(rows1.find((r) => r.name === "Done")).toMatchObject({ status: "Complete", changed: false, overdue: false, stale: false, completedInPeriod: true });
+    expect(rows1.find((r) => r.name === "Done")).toMatchObject({ status: "Complete", changed: true, overdue: false, stale: false, completedInPeriod: true });
     const header1 = s1.headerJson as unknown as ReportHeader;
     expect(header1.totals).toMatchObject({ OnTrack: 1, Complete: 1 });
     expect(Sum.counts(header1)).toBe(rows1.length);

@@ -6,7 +6,7 @@ type ClosableProject = Pick<ProjectRecord, "id" | "status"> & Pick<CompletablePr
 
 /**
  * "During the period": a project completed since the previous report's freeze stays in its department group
- * (dashboard and weekly PDF), in its normal row position, with its Complete chip and no flags. Once a frozen report
+ * (dashboard and weekly PDF), in its normal row position, with its Complete chip and only the Changed flag (never Overdue or Stale). Once a frozen report
  * has included it (the next freeze after it was completed), it leaves the dashboard and later reports, and is
  * listed on the Completed page only.
  *

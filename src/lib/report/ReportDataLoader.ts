@@ -83,7 +83,7 @@ export class ReportDataLoader {
     const serviceLine = ServiceLine.valueOf(line);
 
     const previousSnapshotGeneratedAt = previous?.generatedAt ?? null;
-    // Completed since the previous freeze (every Complete project for the first report): regular rows, no flags.
+    // Completed since the previous freeze (every Complete project for the first report): regular rows; Changed only, never Overdue or Stale.
     const completedInPeriod = PeriodClosure.ids(projects, history, previousSnapshotGeneratedAt, now);
     const { rows, header } = ReportBuilder.build({
       projects,

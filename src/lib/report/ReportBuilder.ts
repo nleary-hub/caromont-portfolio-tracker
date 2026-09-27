@@ -22,7 +22,8 @@ export interface ReportBuildInput {
   viewSettings: ViewSettingsValue;
   /**
    * Ids of projects completed during the period (PeriodClosure). They are listed in their department group with
-   * their Complete status even when Complete is hidden, and never carry a flag. Cancelled projects never are.
+   * their Complete status even when Complete is hidden. They keep Changed but never get Overdue or Stale. Cancelled
+   * projects are excluded entirely.
    */
   completedInPeriod?: ReadonlySet<string>;
 }
@@ -46,6 +47,23 @@ export interface SortableRow {
   /** YYYY-MM-DD or null */
   dueDate: string | null;
   name: string;
+}
+
+/**
+ * Changed on a completed row (listed only while completed during the period). One switch for Nick's open question:
+ * - FIRST_REPORT_CHANGED = true (current default): on a line's first report (no earlier freeze) every already-complete
+ *   project counts as completed this period, so each one gets Changed like any row with history.
+ * - false: only projects completed since the last freeze get Changed; on the first report none of the already-complete
+ *   ones do (they are still listed, with no Changed flag).
+ * After the first freeze both settings behave the same: the usual Changed rule (any public history since the last freeze).
+ */
+export class CompletedChangedRule {
+  static readonly FIRST_REPORT_CHANGED: boolean = true;
+
+  static changed(projectId: string, history: readonly HistoryEntryRecord[], previousSnapshotGeneratedAt: Date | null, firstReportChanged: boolean = CompletedChangedRule.FIRST_REPORT_CHANGED): boolean {
+    if (previousSnapshotGeneratedAt === null && !firstReportChanged) return false;
+    return ReportBuilder.isChanged(projectId, history, previousSnapshotGeneratedAt);
+  }
 }
 
 /** Pure report-row selection, flagging and ordering. No I/O. */
@@ -78,11 +96,13 @@ export class ReportBuilder {
   }
 
   /**
-   * Flags a row may carry. Complete and Cancelled rows never carry a flag (Changed, Overdue or Stale): a project
-   * completed during the period is listed as a plain row with its status chip, and the handoff.json flag lists skip it.
+   * Flags a row may carry. A Complete row (listed only while completed during the period) keeps Changed, so it shows in
+   * the PDF, on the dashboard and in handoff.json's changed list, but never gets Overdue (or Stale, see isStale). A
+   * Cancelled row never carries a flag (it is not listed anywhere).
    */
   static flags(project: Pick<ProjectRecord, "id" | "dueDate" | "status">, history: readonly HistoryEntryRecord[], previousSnapshotGeneratedAt: Date | null, reportDate: string): RowFlags {
-    if (ProjectStatusInfo.isClosed(project.status)) return { changed: false, overdue: false };
+    if (project.status === "Cancelled") return { changed: false, overdue: false };
+    if (project.status === "Complete") return { changed: CompletedChangedRule.changed(project.id, history, previousSnapshotGeneratedAt), overdue: false };
     return {
       changed: ReportBuilder.isChanged(project.id, history, previousSnapshotGeneratedAt),
       overdue: ReportBuilder.isOverdue(project, reportDate),

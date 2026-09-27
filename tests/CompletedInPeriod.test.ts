@@ -5,7 +5,7 @@ import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import type { HistoryEntryRecord, ProjectRecord, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { PeriodClosure } from "@/lib/report/PeriodClosure";
-import { ReportBuilder } from "@/lib/report/ReportBuilder";
+import { CompletedChangedRule, ReportBuilder } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
 import { ReportLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
@@ -81,7 +81,7 @@ class World {
 afterEach(() => vi.restoreAllMocks());
 
 describe("Completed during the period: stays in its department group", () => {
-  it("dashboard and weekly PDF keep the row in its group, normal position, Complete chip, no flags", async () => {
+  it("dashboard and weekly PDF keep the row in its group, normal position, Complete chip; Changed kept, never Overdue or Stale", async () => {
     const w = new World();
     await w.add("Alpha", "Cath");
     const done = await w.add("Bravo done", "Cath", "OnTrack", { dueDate: "2026-09-01" });
@@ -94,12 +94,13 @@ describe("Completed during the period: stays in its department group", () => {
     const dash = w.dashboard();
     expect(dash.map((r) => r.name)).toEqual(["Alpha", "Charlie", "Bravo done"]);
     const row = dash.find((r) => r.id === done)!;
-    expect(row).toMatchObject({ status: "Complete", serviceArea: "Cath", overdue: false, changed: false, stale: false });
+    // Past due (Sep 1) and no update since Aug: still no Overdue or Stale; completing it is a change, so Changed.
+    expect(row).toMatchObject({ status: "Complete", serviceArea: "Cath", overdue: false, changed: true, stale: false });
 
     const s = await w.freeze();
     expect(World.names(s)).toEqual(["Alpha", "Charlie", "Bravo done"]);
     const frozen = (s.rowsJson as ReportRow[]).find((r) => r.projectId === done)!;
-    expect(frozen).toMatchObject({ status: "Complete", statusLabel: "Complete", serviceArea: "Cath", changed: false, overdue: false, stale: false, completedInPeriod: true });
+    expect(frozen).toMatchObject({ status: "Complete", statusLabel: "Complete", serviceArea: "Cath", changed: true, overdue: false, stale: false, completedInPeriod: true });
     // Other rows' JSON has no new key.
     expect((s.rowsJson as ReportRow[]).filter((r) => r.projectId !== done).every((r) => !("completedInPeriod" in r))).toBe(true);
     expect(s.completedJson).toEqual([]);
@@ -196,24 +197,69 @@ describe("Cancelled: off the dashboard and the report at once", () => {
   });
 });
 
-describe("Closed rows get no flags", () => {
-  it("a completed project past its due date and a stale cancelled one: no Changed, Overdue or Stale", () => {
-    const done = Factory.project({ id: "d", status: "Complete", dueDate: Factory.date("2026-08-01"), nextMilestone: null });
-    const cancelled = Factory.project({ id: "c", status: "Cancelled", dueDate: Factory.date("2026-07-01"), nextMilestone: null });
-    const history: HistoryEntryRecord[] = [
-      { projectId: "d", changedAt: new Date("2026-09-20T14:00:00Z"), field: "status", oldValue: "OnTrack", newValue: "Complete" },
-      { projectId: "c", changedAt: new Date("2026-05-01T14:00:00Z"), field: "note" },
-    ];
-    for (const p of [done, cancelled]) {
-      expect(ReportBuilder.flags(p, history, new Date(PREV), "2026-09-29")).toEqual({ changed: false, overdue: false });
-      expect(ReportBuilder.isStale({ status: p.status, updatedOn: "2026-05-01" }, "2026-09-29")).toBe(false);
-    }
+describe("Completed rows keep Changed but never get Overdue or Stale; cancelled projects are excluded entirely", () => {
+  const done = Factory.project({ id: "d", name: "Done late", status: "Complete", dueDate: Factory.date("2026-08-01"), nextMilestone: null });
+  const cancelled = Factory.project({ id: "c", status: "Cancelled", dueDate: Factory.date("2026-07-01"), nextMilestone: null });
+  const history: HistoryEntryRecord[] = [
+    { projectId: "d", changedAt: new Date("2026-09-20T14:00:00Z"), field: "status", oldValue: "OnTrack", newValue: "Complete" },
+    { projectId: "c", changedAt: new Date("2026-09-21T14:00:00Z"), field: "status", oldValue: "OnTrack", newValue: "Cancelled" },
+  ];
+
+  it("completed this period, past due and stale: Changed only, on the dashboard and in the report", () => {
+    expect(ReportBuilder.flags(done, history, new Date(PREV), "2026-09-29")).toEqual({ changed: true, overdue: false });
+    expect(ReportBuilder.flags(cancelled, history, new Date(PREV), "2026-09-29")).toEqual({ changed: false, overdue: false });
+    for (const p of [done, cancelled]) expect(ReportBuilder.isStale({ status: p.status, updatedOn: "2026-05-01" }, "2026-09-29")).toBe(false);
     const r = ReportBuilder.build({ projects: [done, cancelled], history, previousSnapshotGeneratedAt: new Date(PREV), reportDate: "2026-09-29", viewSettings: ViewSettings.defaults("report"), completedInPeriod: new Set(["d", "c"]) });
     expect(r.rows.map((x) => x.projectId)).toEqual(["d"]);
-    expect(r.rows[0]).toMatchObject({ changed: false, overdue: false, stale: false });
-    expect(r.header).toMatchObject({ changed: 0, overdue: 0, stale: 0 });
+    expect(r.rows[0]).toMatchObject({ changed: true, overdue: false, stale: false });
+    expect(r.header).toMatchObject({ changed: 1, overdue: 0, stale: 0 });
     const dash = DashboardViewModel.rows([done, cancelled], ViewSettings.defaults("dashboard"), history, new Date(PREV), "2026-09-29", history, undefined, new Set(["d"]));
-    expect(dash.map((x) => [x.id, x.changed, x.overdue, x.stale])).toEqual([["d", false, false, false]]);
+    expect(dash.map((x) => [x.id, x.changed, x.overdue, x.stale])).toEqual([["d", true, false, false]]);
+  });
+
+  it("past due and past the Stale threshold: still never Stale or Overdue", async () => {
+    const w = new World();
+    const id = await w.add("Old news", "EP", "OnTrack", { dueDate: "2026-06-01" });
+    w.at(id, "2026-05-01T14:00:00Z");
+    // First report (no earlier freeze), completed Sep 1: its last update is 26+ days old, past due since June.
+    await w.setStatus(id, "Complete", "2026-09-01T14:00:00Z");
+    const dash = w.dashboard();
+    expect(dash.find((r) => r.id === id)).toMatchObject({ changed: true, overdue: false, stale: false });
+    const s = await w.freeze();
+    expect((s.rowsJson as ReportRow[]).find((r) => r.projectId === id)).toMatchObject({ changed: true, overdue: false, stale: false, updatedOn: "2026-09-01" });
+    // The same row while active would be Stale and Overdue.
+    expect(ReportBuilder.isStale({ status: "OnTrack", updatedOn: "2026-09-01" }, "2026-09-29")).toBe(true);
+    expect(ReportBuilder.isStale({ status: "Complete", updatedOn: "2026-05-01" }, "2026-10-20")).toBe(false);
+  });
+
+  it("is listed in handoff.json's changed list with the same shape; not in overdue or stale", async () => {
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "warn").mockImplementation(() => {});
+    const w = new World();
+    await w.add("Active", "Cath");
+    const id = await w.add("Done this period", "EP", "OnTrack", { dueDate: "2026-08-01" });
+    for (const p of w.fake.state.projects) w.at(p.id as string, "2026-05-01T14:00:00Z");
+    await w.previousFreeze();
+    await w.setStatus(id, "Complete", "2026-09-20T14:00:00Z");
+    const r = await FreezeService.run({ trigger: "cron", actor: "cron", env: { SHARE_LINK_SECRET: "x".repeat(48), APP_BASE_URL: "https://tracker.example.org/" }, now: FREEZE, fetch: vi.fn() }, w.db);
+    expect(r.outcome).toBe("created");
+    const art = w.fake.state.artifacts.filter((a) => a.kind === "handoff").at(-1)!;
+    const handoff = JSON.parse(Buffer.from(art.bytes as Uint8Array).toString("utf8"));
+    expect(handoff.flags.changed.projects).toContainEqual({ name: "Done this period", serviceArea: "EP", status: "Complete", dueDate: "2026-08-01" });
+    for (const f of ["overdue", "stale"]) expect(handoff.flags[f].projects.map((p: { name: string }) => p.name)).not.toContain("Done this period");
+    for (const f of ["changed", "overdue", "stale"]) for (const p of handoff.flags[f].projects) expect(Object.keys(p).sort()).toEqual(["dueDate", "name", "serviceArea", "status"]);
+  });
+
+  it("first report: the switch decides whether already-complete projects get Changed (default: they do)", () => {
+    const h: HistoryEntryRecord[] = [{ projectId: "d", changedAt: new Date("2025-11-03T14:00:00Z"), field: "created" }];
+    expect(CompletedChangedRule.FIRST_REPORT_CHANGED).toBe(true);
+    expect(CompletedChangedRule.changed("d", h, null)).toBe(true);
+    expect(ReportBuilder.flags(done, h, null, "2026-09-29")).toEqual({ changed: true, overdue: false });
+    // Switched to "only since the last freeze": none of the already-complete ones on the first report.
+    expect(CompletedChangedRule.changed("d", h, null, false)).toBe(false);
+    // After the first freeze the switch does not matter.
+    expect(CompletedChangedRule.changed("d", history, new Date(PREV), false)).toBe(true);
+    expect(CompletedChangedRule.changed("d", h, new Date(PREV), true)).toBe(false);
   });
 });
 

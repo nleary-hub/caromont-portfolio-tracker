@@ -133,15 +133,17 @@ describe("handoff.json", () => {
       frozenAt: "2026-09-29T21:00:00.000Z",
       frozenAtEt: "Sep 29, 2026, 5:00 PM ET",
       reportRecipient: "you@example.org",
-      // First report: the already-complete project is a regular (unflagged) row, counted as Complete.
+      // First report: the already-complete project is a regular row, counted as Complete, flagged Changed only.
       totals: { projects: 3, byStatus: { OnTrack: 1, AtRisk: 1, Complete: 1 } },
       archiveUrl: "https://tracker.example.org/reports",
     });
     expect(h.byArea.find((a) => a.area === "Cath")).toMatchObject({ projects: 2, byStatus: { OnTrack: 1, Complete: 1 } });
     expect(h.flags.overdue.count).toBe(1);
     expect(h.flags.overdue.projects.map((p) => p.name)).toEqual(["Visible late"]);
-    expect(h.flags.changed.count).toBe(2);
-    expect(JSON.stringify(h.flags)).not.toContain("Wrapped up");
+    // The project completed this period keeps Changed (so it is in the email) but never Overdue or Stale.
+    expect(h.flags.changed.count).toBe(3);
+    expect(h.flags.changed.projects).toContainEqual(expect.objectContaining({ name: "Wrapped up", status: "Complete" }));
+    expect(JSON.stringify(h.flags.overdue)).not.toContain("Wrapped up");
     expect(h.flags.stale).toEqual({ count: 0, projects: [] });
     expect(h.pdf.fileName).toBe("cardiac-portfolio-report-2026-09-29.pdf");
     const text = JSON.stringify(h);
