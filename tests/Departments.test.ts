@@ -106,7 +106,7 @@ describe("department list (report order, headings, Unassigned last)", () => {
 
   it("row-drag announcements use the department's full name", () => {
     const rows = [{ serviceArea: ServiceAreaInfo.CVPSL_IDS.Cath }, { serviceArea: null }];
-    const groups = DashboardGroups.group(rows, [], undefined, ServiceAreaInfo.CVPSL);
+    const groups = DashboardGroups.group(rows, undefined, ServiceAreaInfo.CVPSL);
     expect(groups.map((g) => [g.label, g.name])).toEqual([
       ["Cath", "Cath Lab"],
       ["Unassigned", "Unassigned"],

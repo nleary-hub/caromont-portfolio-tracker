@@ -35,8 +35,28 @@ export interface DeliveryDeps {
 export class ReportDeliveryService {
   static readonly NOT_CONFIGURED = "Google Drive is not configured";
 
+  /**
+   * Reads ReportSnapshot.deliveryJson defensively. Stored records can be partial (for example `{"status":
+   * "signed_link"}` with no link details, as in the production-shaped fixture), so every optional part is kept
+   * only when it has the fields readers use: `signedLink` needs a pdfUrl and a valid expiresAt, `drive` a files
+   * list. Which records count as delivered is unchanged: any object with a status (so the freeze's redelivery
+   * decision, needsDelivery, sees the same status as before).
+   */
   static parse(json: unknown): DeliveryRecord | null {
-    return json && typeof json === "object" && "status" in json ? (json as DeliveryRecord) : null;
+    if (!json || typeof json !== "object" || Array.isArray(json) || !("status" in json)) return null;
+    const raw = json as Record<string, unknown>;
+    const status = raw.status as DeliveryRecord["status"];
+    const str = (v: unknown): string | undefined => (typeof v === "string" ? v : undefined);
+    const record: DeliveryRecord = { status, attemptedAt: str(raw.attemptedAt) ?? "", triggeredBy: str(raw.triggeredBy) ?? "" };
+    const link = raw.signedLink as Record<string, unknown> | null | undefined;
+    const pdfUrl = str(link?.pdfUrl);
+    const expiresAt = str(link?.expiresAt);
+    if (pdfUrl && expiresAt && !Number.isNaN(Date.parse(expiresAt))) record.signedLink = { pdfUrl, handoffUrl: str(link?.handoffUrl) ?? "", expiresAt };
+    const drive = raw.drive as Record<string, unknown> | null | undefined;
+    if (drive && typeof drive === "object" && Array.isArray(drive.files)) record.drive = drive as unknown as NonNullable<DeliveryRecord["drive"]>;
+    if (str(raw.driveError)) record.driveError = str(raw.driveError);
+    if (str(raw.signedLinkError)) record.signedLinkError = str(raw.signedLinkError);
+    return record;
   }
 
   /** Deliver when never delivered, when everything failed, or when Drive is configured but was not used yet. */

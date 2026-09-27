@@ -90,6 +90,10 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
   or more days before the report date; the date turns amber. The page 1 legend, key page and
   handoff.json all read that one constant, so changing it updates them together. Never on Complete or Cancelled, and
   only on listed rows. Stale has its own grid column, legend line and key entry.
+- Flag chips sit on line one of the Flags column, starting under the FLAGS header. Default layout: fixed slots
+  in the order Changed, Overdue, Stale, one slot per kind that at least one listed row in the report has
+  (`FlagSlots.used`), so a kind has the same x on every row and an empty slot stays blank. A report with only
+  Stale flags puts Stale right under the header. Custom column layout: the row's chips pack left in that order.
 - Optional last page: status and flag key (admin toggle on `/reports`, default on, audited in
   `report_options_history`, frozen per snapshot).
 - Sample: `npx vite-node --config vitest.config.ts scripts/render-sample-report.mts out.pdf [--draft]`
