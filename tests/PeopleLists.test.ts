@@ -73,9 +73,10 @@ describe("Writing Bot copy (item 5)", () => {
     expect(PeopleListRules.renameTitle("Jeff Krause")).toBe("Rename Jeff Krause?");
     expect(PeopleListRules.RENAME_FIELD).toBe("New name");
     expect(PeopleListRules.RENAME_BUTTON).toBe("Rename");
-    expect(PeopleListRules.renameBody("owner", "CVPSL", "Jeff Krause", 4)).toBe("This updates 4 projects on CVPSL that list Jeff Krause as owner. Frozen reports keep the old name.");
-    expect(PeopleListRules.renameBody("owner", "CVPSL", "Jeff Krause", 1)).toBe("This updates 1 project on CVPSL that lists Jeff Krause as owner. Frozen reports keep the old name.");
-    expect(PeopleListRules.renameBody("requester", "CVPSL", "Jeff Krause", 0)).toBe("No projects use this name yet.");
+    expect(PeopleListRules.renameBody("owner", "Mark Garland", 8)).toBe("8 projects list Mark Garland as owner. They'll show as Changed on the next report. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("owner", "Jeff Krause", 1)).toBe("1 project lists Jeff Krause as owner. It'll show as Changed on the next report. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("requester", "Jeff Krause", 3)).toBe("3 projects list Jeff Krause as requester. They'll show as Changed on the next report. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("requester", "Jeff Krause", 0)).toBe("No projects use this name yet. Frozen reports keep the old name.");
     expect(PeopleListRules.taken("owner")).toBe("Another owner already uses this name.");
     expect(PeopleListRules.renamedToast("Jeffrey Krause", 4)).toBe("Renamed to Jeffrey Krause. 4 projects updated.");
     expect(PeopleListRules.removeTitle("owner", "Jeff Krause")).toBe("Remove Jeff Krause from owners?");
@@ -113,8 +114,8 @@ describe("PeopleListRules.parse", () => {
     for (const t of ["To assign", "tbd", "Unassigned", "clear (to assign)"]) expect(err(() => PeopleListRules.parse("owner", t, list))).toBe('"To assign" is always offered, so it doesn\'t need adding.');
     expect(err(() => PeopleListRules.parse("requester", "N/A", list))).toBe('"Not applicable" is always offered, so it doesn\'t need adding.');
     expect(err(() => PeopleListRules.parse("owner", "Not applicable", list))).toBe(PeopleListRules.OWNER_NOT_APPLICABLE);
-    expect(err(() => PeopleListRules.parse("owner", "mark  wingard", list))).toBe("mark wingard no longer works at CaroMont, so the name can't be added.");
-    expect(err(() => PeopleListRules.parse("requester", "Mark Garland", list))).toBe("Mark Garland no longer works at CaroMont, so the name can't be added.");
+    expect(err(() => PeopleListRules.parse("owner", "mark  wingard", list))).toBe("That name can't be added to this list.");
+    expect(err(() => PeopleListRules.parse("requester", "Mark Garland", list))).toBe("That name can't be added to this list.");
     // Rename: the name itself is not a duplicate (a case-only change is allowed); another name is "taken".
     expect(PeopleListRules.parse("owner", "NICK LEARY", list, "Nick Leary")).toBe("NICK LEARY");
     expect(err(() => PeopleListRules.parse("owner", "nicole smith", list, "Nick Leary"))).toBe("Another owner already uses this name.");
@@ -295,7 +296,7 @@ describe("Admin > People page", () => {
     const html = renderToStaticMarkup(createElement(PeopleAdmin, { lineShort: "CVPSL", leads: [], owners, requesters, initial: { role: "owner", rename: "Jeff Krause" } }));
     expect(html).toContain("Rename Jeff Krause?");
     expect(html).toContain("New name");
-    expect(html).toContain("This updates 4 projects on CVPSL that list Jeff Krause as owner. Frozen reports keep the old name.");
+    expect(html).toContain("4 projects list Jeff Krause as owner. They&#x27;ll show as Changed on the next report. Frozen reports keep the old name.");
     const remove = renderToStaticMarkup(createElement(PeopleAdmin, { lineShort: "CVPSL", leads: [], owners, requesters, initial: { role: "owner", remove: "Jeff Krause" } }));
     expect(remove).toContain("Remove Jeff Krause from owners?");
     expect(remove).toContain("4 projects list Jeff Krause as owner. They keep that name, but new projects won&#x27;t offer it.");

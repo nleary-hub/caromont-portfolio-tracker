@@ -2,8 +2,8 @@
 -- default, seeded once from the names already on each line's projects. No project row changes.
 -- Seed rules (the same as PeopleDirectory.merge): whitespace trimmed and collapsed; one spelling per name ignoring
 -- case (the most used, then A to Z); the built-in options ("To assign", "Not applicable" and their variants) and
--- blank or over-long values are left out; Mark Wingard and Mark Garland are never seeded (they no longer work at
--- CaroMont; projects keep the name). Deleted projects are not read. The default line (CVPSL) also gets Nicole
+-- blank or over-long values are left out; Mark Wingard and Mark Garland are never seeded (blocked names;
+-- projects keep the name). Deleted projects are not read. The default line (CVPSL) also gets Nicole
 -- Smith and Nick Leary as owners, the names the Owner field already offered there.
 -- The previous deployment never reads or writes these columns (new lines get the empty default), so the deploy
 -- window needs nothing.

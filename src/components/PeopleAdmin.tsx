@@ -70,8 +70,8 @@ export function PeopleAdmin({
 }) {
   const router = useRouter();
   const sections: { config: SectionConfig; rows: SectionRow[] }[] = [
-    { config: PeopleSections.person("owner", lineShort), rows: owners },
-    { config: PeopleSections.person("requester", lineShort), rows: requesters },
+    { config: PeopleSections.person("owner"), rows: owners },
+    { config: PeopleSections.person("requester"), rows: requesters },
     {
       config: {
         key: "lead",
@@ -143,7 +143,7 @@ export function PeopleAdmin({
 
 /** Owners / Requesters section wiring (copy from PeopleListRules, writes through the People server actions). */
 class PeopleSections {
-  static person(role: PeopleRole, lineShort: string): SectionConfig {
+  static person(role: PeopleRole): SectionConfig {
     return {
   key: role,
   heading: "",
@@ -154,7 +154,7 @@ class PeopleSections {
   rename: (name, next) => renamePerson(role, name, next),
   removeTitle: (name) => PeopleListRules.removeTitle(role, name),
   removeBody: (name, projects) => PeopleListRules.removeBody(role, name, projects),
-  renameBody: (name, projects) => PeopleListRules.renameBody(role, lineShort, name, projects),
+  renameBody: (name, projects) => PeopleListRules.renameBody(role, name, projects),
     };
   }
 }
@@ -233,7 +233,14 @@ function Section({
                   </td>
                   <td className="border-b border-line px-3 py-2 text-right tabular-nums">{r.projects}</td>
                   <td className="border-b border-line px-2 py-1 text-right">
-                    {!r.locked && <RowMenu name={r.name} onRemove={() => onRemove(r)} onRename={onRename ? () => onRename(r) : undefined} />}
+                    {r.locked ? (
+                      // Same box as the row menu button, so locked rows are as tall as name rows.
+                      <div className="relative inline-block align-middle" aria-hidden="true" data-testid="people-locked-slot">
+                        <span className="block h-7 w-7" />
+                      </div>
+                    ) : (
+                      <RowMenu name={r.name} onRemove={() => onRemove(r)} onRename={onRename ? () => onRename(r) : undefined} />
+                    )}
                   </td>
                 </tr>
               ))}

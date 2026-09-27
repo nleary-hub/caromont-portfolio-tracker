@@ -116,7 +116,7 @@ function ContractsLeadSelect({ projectId, contractsLead, contractsLeads, saveAct
         }}
       >
         <option value="">{Assignee.TO_ASSIGN}</option>
-        {PickList.withCurrent(ContractsLead.options(contractsLeads), contractsLead).map((n) => (
+        {PickList.withCurrent(ContractsLead.pickerOptions(contractsLeads), contractsLead).map((n) => (
           <option key={n} value={n}>
             {n}
           </option>

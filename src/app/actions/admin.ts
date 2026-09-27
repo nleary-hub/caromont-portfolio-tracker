@@ -8,7 +8,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
-import { PeopleService } from "@/lib/services/PeopleService";
+import { ProjectPeopleForms } from "@/lib/services/ProjectPeopleForms";
 import { ProjectArchivedError, ProjectNotFoundError, ProjectService, type MilestoneEdit } from "@/lib/services/ProjectService";
 import { MilestoneService, type MilestoneStepDto } from "@/lib/services/MilestoneService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
@@ -160,23 +160,9 @@ export async function setProjectHidden(projectId: string, context: string, hidde
 }
 
 export async function setProjectPeopleField(projectId: string, field: string, value: string): Promise<AdminActionResult> {
-  if (!ProjectService.isPeopleField(field)) return { ok: false, error: "Unknown field." };
-  const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
-  try {
-    const scope = await ServiceLineAccess.activeFor(viewer);
-    await ProjectService.setPeopleField(projectId, field, String(value ?? ""), viewer, undefined, scope);
-    // "Add 'X'" in the Owner or Requester combobox: the new name joins the line's list (Admin > People).
-    if (field === "owner" || field === "physicianChampion") {
-      await PeopleService.rememberPerson(scope, field === "owner" ? "owner" : "requester", String(value ?? ""), viewer).catch((e) => console.error("Admin action failed: rememberPerson", e));
-    }
-  } catch (e) {
-    if (e instanceof ProjectValidationError) return { ok: false, error: Object.values(e.errors).flat()[0] ?? "Invalid value." };
-    console.error("Admin action failed: setProjectPeopleField", e);
-    return { ok: false, error: "Could not save the change." };
-  }
-  revalidatePath("/");
-  return { ok: true };
+  const result = await ProjectPeopleForms.setField(await CurrentViewer.get(), projectId, field, value);
+  if (result.ok) revalidatePath("/");
+  return result;
 }
 
 export async function deleteProject(projectId: string): Promise<AdminActionResult> {

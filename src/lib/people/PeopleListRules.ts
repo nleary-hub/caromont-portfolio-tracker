@@ -81,10 +81,8 @@ export class PeopleListRules {
     return `"${label}" is always offered, so it doesn't need adding.`;
   }
 
-  /** Invented: Mark Wingard and Mark Garland are never offered (spec: never seeded, not offered). */
-  static blocked(name: string): string {
-    return `${name} no longer works at CaroMont, so the name can't be added.`;
-  }
+  /** Blocked names (Mark Wingard, Mark Garland): never seeded, offered or added (review copy). */
+  static readonly BLOCKED = "That name can't be added to this list.";
 
   static taken(role: PeopleRole): string {
     return `Another ${PeopleListRules.COPY[role].noun} already uses this name.`;
@@ -98,10 +96,17 @@ export class PeopleListRules {
     return `Rename ${name}?`;
   }
 
-  static renameBody(role: PeopleRole, lineShort: string, name: string, projects: number): string {
-    if (projects === 0) return "No projects use this name yet.";
-    const lead = projects === 1 ? `This updates 1 project on ${lineShort} that lists ${name}` : `This updates ${projects} projects on ${lineShort} that list ${name}`;
-    return `${lead} as ${PeopleListRules.COPY[role].noun}. Frozen reports keep the old name.`;
+  /**
+   * Rename dialog body (review copy): "8 projects list Mark Garland as owner. They'll show as Changed on the next
+   * report. Frozen reports keep the old name." Singular "1 project lists ... It'll show ..."; with no projects the
+   * middle sentence is left out.
+   */
+  static renameBody(role: PeopleRole, name: string, projects: number): string {
+    const frozen = "Frozen reports keep the old name.";
+    if (projects === 0) return `No projects use this name yet. ${frozen}`;
+    const lead = projects === 1 ? `1 project lists ${name}` : `${projects} projects list ${name}`;
+    const changed = projects === 1 ? "It'll show as Changed on the next report." : "They'll show as Changed on the next report.";
+    return `${lead} as ${PeopleListRules.COPY[role].noun}. ${changed} ${frozen}`;
   }
 
   /** Spec: "Renamed to Jeffrey Krause. 4 projects updated." Singular and zero forms are derived (invented). */
@@ -140,7 +145,7 @@ export class PeopleListRules {
     if (PeopleDirectory.isNotApplicableText(name)) {
       throw new PeopleListValidationError(role === "requester" ? PeopleListRules.builtIn(Requester.NOT_APPLICABLE) : PeopleListRules.OWNER_NOT_APPLICABLE);
     }
-    if (PeopleDirectory.isBlocked(name)) throw new PeopleListValidationError(PeopleListRules.blocked(name));
+    if (PeopleDirectory.isBlocked(name)) throw new PeopleListValidationError(PeopleListRules.BLOCKED);
     const hit = existing.find((e) => e.toLowerCase() === name.toLowerCase() && e !== except);
     if (hit) throw new PeopleListValidationError(except === undefined ? PeopleListRules.duplicate(role, hit) : PeopleListRules.taken(role));
     return name;

@@ -34,7 +34,7 @@ export class PeopleDirectory {
     return typeof raw === "string" ? raw.trim().replace(/\s+/g, " ") : "";
   }
 
-  /** Names that are never offered or added (people who no longer work at CaroMont). Projects keep them. */
+  /** Blocked names: never offered or added to a list. Projects keep them. */
   static isBlocked(raw: string | null | undefined): boolean {
     return PeopleDirectory.NEVER_SUGGEST.has(PeopleDirectory.key(raw));
   }

@@ -40,7 +40,8 @@ export class PeopleService {
     AdminPolicy.assertAdmin(admin);
     const rows = await db.project.findMany({ where: { archivedAt: null, contractsLead: { not: null }, ...ServiceLineAccess.where(scope) }, select: { contractsLead: true } });
     const count = (name: string) => rows.filter((r) => (r.contractsLead ?? "").toLowerCase() === name.toLowerCase()).length;
-    return scope.contractsLeads.map((name) => ({ name, projects: count(name) }));
+    // Shown A to Z like Owners and Requesters. The stored order is unchanged (display only).
+    return PeopleService.sorted(scope.contractsLeads).map((name) => ({ name, projects: count(name) }));
   }
 
   /** Adds a name at the end of the list. Throws ContractsLeadValidationError with the field message. */
@@ -126,10 +127,12 @@ export class PeopleService {
 
   /**
    * The combobox "Add 'X'" path: a name saved on a project that is not on the line's list joins it, so the next
-   * project offers it too. Blank, built-in and blocked names are skipped. Returns whether the list changed.
+   * project offers it too. Admins only: for anyone else this never touches the list (the project keeps the value,
+   * which shows "Not on list"). Blank, built-in and blocked names are skipped. Returns whether the list changed.
    */
-  static async rememberPerson(scope: PeopleScope, role: PeopleRole, raw: string, admin: Viewer, db: PrismaClient = Db.client): Promise<boolean> {
-    AdminPolicy.assertAdmin(admin);
+  static async rememberPerson(scope: PeopleScope, role: PeopleRole, raw: string, viewer: Viewer, db: PrismaClient = Db.client): Promise<boolean> {
+    if (!viewer?.isAdmin) return false;
+    const admin = viewer;
     const name = PeopleDirectory.normalizeName(raw);
     const list = PeopleService.listOf(scope, role);
     if (!name || PeopleDirectory.isSentinel(name) || PeopleDirectory.isBlocked(name) || name.length > PeopleListRules.NAME_MAX) return false;
