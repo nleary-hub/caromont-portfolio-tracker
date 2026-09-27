@@ -750,8 +750,8 @@ export class DashboardMetaLine {
 /**
  * Small gray line under the project name: "REQ-5081  Updated Sep 24". The number sits left-aligned in a
  * fixed-width monospace slot (9px, slightly brighter) followed by a fixed gap, so "Updated" lines up on
- * every row. No number: the slot and gap stay, blank (no dash). Column hidden in the view settings: no
- * slot and no gap, so "Updated" starts at the left edge. Stale amber applies to the Updated date only.
+ * numbered row. No number, or the column hidden in the view settings: no slot and no gap, so "Updated"
+ * starts at the left edge under the name. Stale amber applies to the Updated date only.
  */
 export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInfor: boolean }) {
   const updated = DateFormat.short(row.updatedOn);
@@ -759,13 +759,13 @@ export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInf
   if (!updated && !(showInfor && req)) return null;
   return (
     <div className="truncate text-[10px] leading-3 font-normal text-muted">
-      {showInfor && (
+      {showInfor && req && (
         <span
           data-testid="infor-slot"
           className="font-mono text-[9px] text-[#B8BEC8]"
           style={{ display: "inline-block", width: DashboardMetaLine.INFOR_SLOT_WIDTH, marginRight: DashboardMetaLine.INFOR_GAP, textAlign: "left" }}
         >
-          {req ?? ""}
+          {req}
         </span>
       )}
       {updated && (

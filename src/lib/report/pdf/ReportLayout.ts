@@ -715,8 +715,8 @@ export class ReportLayout {
 
   /**
    * The project meta line: "REQ-5081" left-aligned in a fixed slot (ReportGeometry.INFOR_SLOT_W), a fixed
-   * gap (INFOR_GAP), then "Updated <date>", so Updated lines up on every row. No number: the slot and gap
-   * stay blank (no dash). Column hidden (showInfor false): no slot and no gap, Updated starts at x = 0.
+   * gap (INFOR_GAP), then "Updated <date>", so Updated lines up on every numbered row. No number, or the column
+   * hidden (showInfor false): no slot and no gap, Updated starts at x = 0 under the name.
    * The slot fits the widest value (5 digits), so the line never wraps. Empty result = no meta line.
    */
   static metaLine(m: Measurer, showInfor: boolean, number: number | null, updated: string | null, stale: boolean): MetaRun[] {
@@ -728,7 +728,7 @@ export class ReportLayout {
     if (updated) {
       runs.push({
         text: updated,
-        x: showInfor ? g.INFOR_SLOT_W + g.INFOR_GAP : 0,
+        x: req ? g.INFOR_SLOT_W + g.INFOR_GAP : 0,
         font: "sans",
         weight: stale ? 500 : 400,
         tone: stale ? "stale" : "muted",
