@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import type { ReactElement } from "react";
+import { cloneElement, createElement, type ReactElement } from "react";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
@@ -30,6 +30,10 @@ vi.mock("next/dynamic", () => ({ default: () => () => null }));
 
 const { default: DashboardPage } = await import("@/app/page");
 const { default: ReportsPage } = await import("@/app/reports/page");
+const { default: CompletedPage } = await import("@/app/completed/page");
+const { default: CancelledPage } = await import("@/app/cancelled/page");
+const { restoreCancelledProject } = await import("@/app/actions/closed");
+const { ClosedProjectsView } = await import("@/components/ClosedProjectsView");
 const { GET: archiveGET } = await import("@/app/reports/[id]/[file]/route");
 const { GET: yearEndGET } = await import("@/app/reports/year-end/[id]/route");
 const { GET: previewGET } = await import("@/app/api/reports/preview/route");
@@ -74,7 +78,7 @@ class YearEnd {
 let fake: FakeDb;
 let ids: Record<string, string>;
 
-type DashProps = { rows: { name: string }[]; fiscalYearRows: { name: string }[]; line: { departments: { name: string }[] }; initialProjectId?: string };
+type DashProps = { rows: { name: string }[]; completedFiscalYear: { count: number } | null; line: { departments: { name: string }[] }; initialProjectId?: string };
 
 class Page {
   static async render(page: unknown, params: Record<string, string> = {}): Promise<ReactElement> {
@@ -136,8 +140,9 @@ describe("limited user: dashboard, tiles, counts, search and the filter only inc
     expect(el.type).toBe(ProjectDashboard);
     const props = el.props as DashProps;
     // Unassigned projects (no department) are visible to everyone with the line (Nick's decision).
-    expect(props.rows.map((r) => r.name).sort()).toEqual(["Echo visible project", "Unassigned shared project"]);
-    expect(props.fiscalYearRows.map((r) => r.name)).toEqual(["Echo finished project"]);
+    // Completed projects stay in their department group (#34).
+    expect(props.rows.map((r) => r.name).sort()).toEqual(["Echo finished project", "Echo visible project", "Unassigned shared project"]);
+    expect(props.completedFiscalYear?.count).toBe(1);
     expect(props.line.departments.map((d) => d.name)).toEqual(["Echo", "IR"]);
     expect(DepartmentFilter.optionsFor(props.line as never)).toEqual(["Echo", "IR"]);
     expect(reads.mock.calls[0][0]).toMatchObject({ where: { serviceLineId: CVPSL, OR: [{ departmentId: { in: ["Echo", "IR"] } }, { departmentId: null }] } });
@@ -168,8 +173,154 @@ describe("limited user: dashboard, tiles, counts, search and the filter only inc
     h.viewer = JANE;
     fake.state.accessGrants[0].allDepartments = true;
     const props = (await Page.render(DashboardPage)).props as DashProps;
-    expect(props.rows.map((r) => r.name).sort()).toEqual(["Cath secret project", "EP secret project", "Echo visible project", "Unassigned shared project"]);
+    expect(props.rows.map((r) => r.name).sort()).toEqual(["Cath secret project", "EP secret project", "Echo finished project", "Echo visible project", "Unassigned shared project"]);
     expect(props.line.departments).toHaveLength(7);
+  });
+});
+
+describe("Completed and Cancelled pages follow department access", () => {
+  type ClosedProps = { rows: { id: string; name: string }[]; options: string[]; limited?: boolean; restore: Record<string, unknown> | null };
+  const make = (serviceArea: string | null, name: string, status: string) =>
+    ProjectService.create({ serviceArea, owner: "Owner A", status, nextMilestone: "M1", name } as never, actor, h.db as never).then((p) => p.id as string);
+  const names = async (page: unknown): Promise<string[]> => {
+    const el = await Page.render(page);
+    expect(el.type).toBe(ClosedProjectsView);
+    return (el.props as ClosedProps).rows.map((r) => r.name).sort();
+  };
+  let closed: Record<string, string>;
+  beforeEach(async () => {
+    closed = {
+      cathDone: await make("Cath", "Cath finished secret", "Complete"),
+      noneDone: await make(null, "Unassigned finished shared", "Complete"),
+      echoCx: await make("Echo", "Echo cancelled project", "Cancelled"),
+      cathCx: await make("Cath", "Cath cancelled secret", "Cancelled"),
+      noneCx: await make(null, "Unassigned cancelled shared", "Cancelled"),
+    };
+  });
+
+  it("a limited user sees only their departments plus Unassigned on both pages, reads the same narrowed query, and gets 'My departments'", async () => {
+    h.viewer = JANE;
+    const reads = vi.spyOn((h.db as { project: { findMany: (a: unknown) => unknown } }).project, "findMany");
+    expect(await names(CompletedPage)).toEqual(["Echo finished project", "Unassigned finished shared"]);
+    expect(reads.mock.calls[0][0]).toMatchObject({ where: { status: "Complete", serviceLineId: CVPSL, OR: [{ departmentId: { in: ["Echo", "IR"] } }, { departmentId: null }] } });
+    expect(await names(CancelledPage)).toEqual(["Echo cancelled project", "Unassigned cancelled shared"]);
+    const el = await Page.render(CompletedPage);
+    const props = el.props as ClosedProps;
+    expect(props.options).toEqual(["Echo", "IR"]);
+    expect(props.limited).toBe(true);
+    expect(props.restore).toBeNull();
+    // Nothing of other departments reaches the browser: the page props, and what the server-side line slot renders
+    // (Jane has a second line here, so it renders the switcher with only line ids and names).
+    fake.grant(JANE.email, fake.addLine({ name: "Oncology Service Line", shortName: "ONC" }).id as string);
+    for (const page of [CompletedPage, CancelledPage]) {
+      const view = await Page.render(page);
+      const { lineSlot, adminSlot, ...clientProps } = view.props as Record<string, unknown>;
+      void adminSlot;
+      expect(JSON.stringify(clientProps, (_k, v) => (typeof v === "function" ? undefined : v))).not.toMatch(/secret|Cath Lab|EP Lab/);
+      const slot = lineSlot as ReactElement;
+      const switcher = await (slot.type as (p: unknown) => Promise<ReactElement>)(slot.props);
+      expect((switcher.props as { lines: unknown[] }).lines).toHaveLength(2);
+      expect(Page.payload(switcher)).not.toMatch(/Cath Lab|EP Lab|departments/);
+    }
+  });
+
+  it("the department filter is the dashboard's own control: 'My departments (N)' for a limited user, 'Departments: All' otherwise", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const html = async (page: unknown) => renderToStaticMarkup(cloneElement((await Page.render(page)) as ReactElement<Record<string, unknown>>, { lineSlot: null, adminSlot: null }));
+    h.viewer = JANE;
+    for (const page of [CompletedPage, CancelledPage]) {
+      const out = await html(page);
+      expect(out).toContain("My departments (2)");
+      expect(out).toContain('data-testid="departments-select"');
+    }
+    h.viewer = ADMIN;
+    for (const page of [CompletedPage, CancelledPage]) expect(await html(page)).toContain("Departments: All");
+  });
+
+  it("empty states name a limited user's departments, with the real FY labels; everyone else keeps the plain text", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { ClosedPagesCopy } = await import("@/lib/closed/ClosedPagesCopy");
+    const { ClosedPageModel } = await import("@/lib/closed/ClosedPageModel");
+    const { FiscalYear } = await import("@/lib/domain/FiscalYear");
+    const { DateOnly } = await import("@/lib/domain/DateOnly");
+    const today = DateOnly.today();
+    const current = FiscalYear.of(today).label;
+    const past = FiscalYear.of(`${Number(today.slice(0, 4)) - 1}${today.slice(4)}`).label;
+    // The copy itself.
+    expect(ClosedPagesCopy.emptyYear("Complete", "FY27", "FY27", true)).toBe("No projects completed in your departments in FY27 yet.");
+    expect(ClosedPagesCopy.emptyYear("Complete", "FY26", "FY27", true)).toBe("No projects were completed in your departments in FY26.");
+    expect(ClosedPagesCopy.emptyYear("Cancelled", "FY27", "FY27", true)).toBe("No projects cancelled in your departments in FY27 yet.");
+    expect(ClosedPagesCopy.emptyYear("Cancelled", "FY26", "FY27", true)).toBe("No projects were cancelled in your departments in FY26.");
+    expect(ClosedPagesCopy.emptyYear("Complete", "FY27", "FY27")).toBe("No projects completed in FY27 yet.");
+    expect(ClosedPagesCopy.emptyYear("Cancelled", "FY26", "FY27", false)).toBe("No projects were cancelled in FY26.");
+    // Through the real pages: a past FY with nothing in it.
+    const html = async (page: unknown, params: Record<string, string>) => renderToStaticMarkup(cloneElement((await Page.render(page, params)) as ReactElement<Record<string, unknown>>, { lineSlot: null, adminSlot: null }));
+    h.viewer = JANE;
+    expect(await html(CompletedPage, { fy: past })).toContain(`No projects were completed in your departments in ${past}.`);
+    expect(await html(CancelledPage, { fy: past })).toContain(`No projects were cancelled in your departments in ${past}.`);
+    h.viewer = ADMIN;
+    await setAllDepartments(JANE.email, CVPSL, true);
+    for (const viewer of [ADMIN, JANE]) {
+      h.viewer = viewer;
+      expect(await html(CompletedPage, { fy: past })).toContain(`No projects were completed in ${past}.`);
+      expect(await html(CancelledPage, { fy: past })).toContain(`No projects were cancelled in ${past}.`);
+    }
+    // The current FY with nothing in it (a limited user's empty line of the view).
+    const kinds = [ClosedPageModel.COMPLETED, ClosedPageModel.CANCELLED];
+    const view = (kind: (typeof kinds)[number], limited: boolean) =>
+      renderToStaticMarkup(
+        createElement(ClosedProjectsView, {
+          kind, rows: [], today, initialView: { fy: current, departments: ["Echo", "IR"] }, options: ["Echo", "IR"], list: [], limited,
+          restore: null, lineSlot: null, adminSlot: null, loadError: null,
+        } as never),
+      );
+    expect(view(kinds[0], true)).toContain(`No projects completed in your departments in ${current} yet.`);
+    expect(view(kinds[1], true)).toContain(`No projects cancelled in your departments in ${current} yet.`);
+    expect(view(kinds[0], false)).toContain(`No projects completed in ${current} yet.`);
+    expect(view(kinds[1], false)).toContain(`No projects cancelled in ${current} yet.`);
+  });
+
+  it("admins and users with every department are unchanged: the whole line", async () => {
+    h.viewer = ADMIN;
+    expect(await names(CompletedPage)).toEqual(["Cath finished secret", "Echo finished project", "Unassigned finished shared"]);
+    expect(await names(CancelledPage)).toEqual(["Cath cancelled secret", "Echo cancelled project", "Unassigned cancelled shared"]);
+    expect(((await Page.render(CompletedPage)).props as ClosedProps).limited).toBe(false);
+    await setAllDepartments(JANE.email, CVPSL, true);
+    h.viewer = JANE;
+    expect(await names(CompletedPage)).toEqual(["Cath finished secret", "Echo finished project", "Unassigned finished shared"]);
+  });
+
+  it("a user without the line sees nothing on either page (the no-access card, no project names)", async () => {
+    const ben = { email: "ben.noaccess@caromonthealth.org", isAdmin: false, name: "Ben" };
+    h.viewer = ben;
+    for (const page of [CompletedPage, CancelledPage]) {
+      const el = await Page.render(page);
+      expect(el.type).toBe(NoAccessCard);
+      expect(Page.payload(el)).not.toMatch(/finished|cancelled/);
+    }
+    const ep = fake.addLine({ name: "Electrophysiology Service Line", shortName: "EP" }).id as string;
+    fake.grant(ben.email, ep);
+    for (const page of [CompletedPage, CancelledPage]) expect(await names(page)).toEqual([]);
+  });
+
+  it("Restore to active: blocked outside the viewer's departments; their own and Unassigned restore", async () => {
+    const { ServiceLineAccess } = await import("@/lib/access/ServiceLineAccess");
+    const { ProjectNotFoundError } = await import("@/lib/services/ProjectService");
+    const status = (id: string) => fake.state.projects.find((p) => p.id === id)?.status;
+    // The action is admin-only: a limited (non-admin) user can't restore anything, even in their own department.
+    h.viewer = JANE;
+    for (const id of [closed.cathCx, closed.echoCx, closed.noneCx]) expect((await restoreCancelledProject(id)).ok).toBe(false);
+    expect([status(closed.cathCx), status(closed.echoCx), status(closed.noneCx)]).toEqual(["Cancelled", "Cancelled", "Cancelled"]);
+    // The service re-checks departments too (defense in depth): with a limited scope another department is "not found".
+    const scope = await ServiceLineAccess.activeFor(JANE, h.db as never);
+    await expect(ProjectService.restoreFromCancelled(closed.cathCx, ADMIN, h.db as never, scope)).rejects.toBeInstanceOf(ProjectNotFoundError);
+    expect(status(closed.cathCx)).toBe("Cancelled");
+    await expect(ProjectService.restoreFromCancelled(closed.echoCx, ADMIN, h.db as never, scope)).resolves.toBeTruthy();
+    await expect(ProjectService.restoreFromCancelled(closed.noneCx, ADMIN, h.db as never, scope)).resolves.toBeTruthy();
+    expect([status(closed.echoCx), status(closed.noneCx)]).toEqual(["NotStarted", "NotStarted"]);
+    // Admins (never limited) restore anywhere in the line, as before.
+    h.viewer = ADMIN;
+    expect(await restoreCancelledProject(closed.cathCx)).toMatchObject({ ok: true, name: "Cath cancelled secret" });
   });
 });
 
@@ -388,7 +539,8 @@ describe("routes and actions", () => {
   it("the scheduled freeze (no viewer) is built for admins: every department, whatever anyone's limits", async () => {
     await FreezeService.run({ trigger: "cron", actor: "cron", now: FREEZE_RUN, env: { ...ENV }, fetch: vi.fn() }, h.db as never);
     const withLimits = JSON.parse(Buffer.from(fake.state.artifacts.find((a) => a.kind === "handoff")!.bytes as Uint8Array).toString("utf8"));
-    expect(withLimits.totals.projects).toBe(4);
+    // Every department: all 5 fixture projects (the completed one is listed too since #34).
+    expect(withLimits.totals.projects).toBe(5);
     expect(ServiceLine.DEFAULT_ID).toBe(CVPSL);
   });
 });

@@ -207,6 +207,14 @@ export class ServiceLine {
     return ServiceLine.clean(name).toLowerCase();
   }
 
+  /**
+   * What the line switcher (a client component) needs of a line: its id and names only. Keeps the line's departments
+   * and pick-lists out of the page payload, so a department-limited viewer never receives other departments' names.
+   */
+  static switcherEntry(line: Pick<ServiceLineScope, "id" | "name" | "shortName" | "isDefault">): Pick<ServiceLineScope, "id" | "name" | "shortName" | "isDefault"> {
+    return { id: line.id, name: line.name, shortName: line.shortName, isDefault: line.isDefault };
+  }
+
   /** Switcher order: the default line first, then the rest A to Z by name. */
   static sortForSwitcher<T extends Pick<ServiceLineScope, "name" | "isDefault">>(lines: readonly T[]): T[] {
     return [...lines].sort((a, b) => Number(b.isDefault) - Number(a.isDefault) || a.name.localeCompare(b.name, "en", { sensitivity: "base" }));

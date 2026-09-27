@@ -150,8 +150,10 @@ Notes:
   checkboxes (all checked at first; A to Z) and the cell shows "3 of 7". Unchecking the last department asks,
   then removes the line. Rows: `service_line_access.allDepartments` and `department_access`; changes logged to
   `department_access_history`. For a limited person, `ServiceLineAccess.activeFor` narrows the scope
-  (`DepartmentAccess`): the dashboard, tiles, counts, search and the department filter only include their
-  departments, plus Unassigned projects (no department), which everyone with the line sees. Project History
+  (`DepartmentAccess`): the dashboard, tiles, counts, search, the department filter and the Completed and
+  Cancelled pages only include their departments, plus Unassigned projects (no department), which everyone with
+  the line sees. Their filter button reads "My departments (N)" and those pages' empty states say "in your
+  departments". Project History
   outside those is empty. Reports are per line: a limited person lists and opens the line's weekly PDFs, archive and year-end
   reports exactly like someone with all departments (people without the line still get 404, as before): the same
   full frozen files, never a filtered copy. On-demand PDFs are different: "Generate PDF now" (the live draft,

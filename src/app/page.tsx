@@ -227,7 +227,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       line={scope}
       {...(link.kind === "open" ? { initialProjectId: link.id } : {})}
       // Admins: always the switcher (with Manage service lines). Others: the switcher for 2+ lines, a plain label for one.
-      switcher={viewer.isAdmin || lines.length > 1 ? <ServiceLineSwitcher lines={lines.length ? lines : [scope]} active={scope} manage={viewer.isAdmin} /> : null}
+      switcher={viewer.isAdmin || lines.length > 1 ? <ServiceLineSwitcher lines={(lines.length ? lines : [scope]).map(ServiceLine.switcherEntry)} active={ServiceLine.switcherEntry(scope)} manage={viewer.isAdmin} /> : null}
       // Spread so non-admins' payload does not even carry an "admin" key.
       {...(admin
         ? {

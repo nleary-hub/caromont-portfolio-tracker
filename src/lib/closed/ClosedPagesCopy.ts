@@ -58,10 +58,14 @@ export class ClosedPagesCopy {
     return `${projects} project${projects === 1 ? "" : "s"} in ${departments} department${departments === 1 ? "" : "s"}`;
   }
 
-  /** Empty FY: "No projects completed in FY27 yet." (current) / "No projects were completed in FY26." (past). */
-  static emptyYear(status: ClosedStatus, fy: string, current: string): string {
+  /**
+   * Empty FY: "No projects completed in FY27 yet." (current) / "No projects were completed in FY26." (past). A viewer
+   * limited to some departments reads "in your departments": "No projects completed in your departments in FY27 yet."
+   */
+  static emptyYear(status: ClosedStatus, fy: string, current: string, limited = false): string {
     const verb = status === "Complete" ? "completed" : "cancelled";
-    return fy === current ? `No projects ${verb} in ${fy} yet.` : `No projects were ${verb} in ${fy}.`;
+    const where = limited ? "in your departments in" : "in";
+    return fy === current ? `No projects ${verb} ${where} ${fy} yet.` : `No projects were ${verb} ${where} ${fy}.`;
   }
 
   /** The gray line under the current-FY empty state. */

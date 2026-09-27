@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { loadProjectHistory } from "@/app/actions/history";
 import { restoreCancelledProject } from "@/app/actions/closed";
+import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 import { LineGate } from "@/lib/access/LineGate";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ClosedPageData } from "@/lib/closed/ClosedPageData";
@@ -61,6 +62,7 @@ export class ClosedPageRoute {
         initialView={ClosedPageModel.parse(params, today, options, scope.departments)}
         options={options}
         list={scope.departments}
+        limited={DepartmentAccess.isLimited(scope)}
         restore={canRestore ? data.restore : null}
         {...(canRestore ? { restoreAction: restoreCancelledProject } : {})}
         historyAction={loadProjectHistory}
