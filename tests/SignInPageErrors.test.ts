@@ -71,7 +71,8 @@ describe("/signin messages", () => {
     }
   });
 
-  it("session ended is a gray panel with 'Sign in again to keep going.'", async () => {
+  it("session ended is a gray panel with 'Sign in again to keep going.', and a leftover email isn't filled in", async () => {
+    h.cookie = "rate.demo@example.org";
     const html = await Page.html({ ended: "1" });
     expect(html).toContain('data-testid="signin-panel-info"');
     expect(html).toContain("Your session ended");

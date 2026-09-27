@@ -99,7 +99,8 @@ export default async function SignInPage({
   const oauth = providers.filter((p) => p.id !== "dev-login" && p.id !== SessionPolicy.PASSWORD_PROVIDER);
   const password = providers.some((p) => p.id === SessionPolicy.PASSWORD_PROVIDER);
   const devLogin = providers.some((p) => p.id === "dev-login");
-  const rememberedEmail = password ? await RememberedEmail.read() : "";
+  // Only right after a failed password attempt (its redirect carries the credentials error), never on a plain visit.
+  const rememberedEmail = password && errorCode === "CredentialsSignin" ? await RememberedEmail.read() : "";
 
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
