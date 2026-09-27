@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { auth, SIGN_IN_PATH } from "@/auth";
+import { AuthStage } from "@/components/AuthStage";
 import { SetPasswordForm } from "@/components/SetPasswordForm";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 import { SessionAccess } from "@/lib/auth/SessionAccess";
@@ -18,13 +19,14 @@ export default async function SetPasswordPage({ searchParams }: { searchParams: 
   if (!SessionAccess.mustChangePassword(session)) redirect(SessionAccess.safeNext((await searchParams).next));
   const email = SessionAccess.email(session)!;
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
-      <div className="w-full max-w-sm rounded-card border border-line bg-card p-6 shadow-lg">
-        <h1 className="type-title">{PasswordCopy.SET_TITLE}</h1>
+    // Same frame as /signin (the headline is the page's h1, so the card title is an h2).
+    <AuthStage>
+      <div className="si-reveal si-d1">
+        <h2 className="type-title text-fg">{PasswordCopy.SET_TITLE}</h2>
         <p className="mt-1 type-caption text-muted">{PasswordCopy.SET_INTRO}</p>
         <p className="mt-3 type-table text-muted">{email}</p>
-        <SetPasswordForm email={email} />
       </div>
-    </main>
+      <SetPasswordForm email={email} />
+    </AuthStage>
   );
 }

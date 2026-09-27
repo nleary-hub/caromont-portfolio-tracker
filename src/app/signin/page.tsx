@@ -5,6 +5,8 @@ import { auth, signIn, SIGN_IN_PATH } from "@/auth";
 import { AuthProviders } from "@/lib/auth/AuthProviders";
 import { SessionAccess } from "@/lib/auth/SessionAccess";
 import { PasswordField } from "@/components/PasswordField";
+import { AuthMessageIcon, AuthStage } from "@/components/AuthStage";
+import { SignInButton } from "@/components/SignInButton";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 import { SessionPolicy } from "@/lib/auth/SessionPolicy";
 import { SignInMessages } from "@/lib/auth/SignInMessages";
@@ -69,15 +71,6 @@ class SignInActions {
   }
 }
 
-/**
- * Amber panels for the lockout and rate limit, a gray panel for "Your session ended" (status pill colors). Errors are
- * one line of red text, not a panel: a wrong password sits right above the Email field.
- */
-const PANEL = {
-  warning: "border-(--status-at-risk-dark-bg) bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)",
-  info: "border-line bg-(--status-not-started-dark-bg) text-(--status-not-started-dark-fg)",
-} as const;
-
 export default async function SignInPage({
   searchParams,
 }: {
@@ -102,120 +95,113 @@ export default async function SignInPage({
   // Only right after a failed password attempt (its redirect carries the credentials error), never on a plain visit.
   const rememberedEmail = password && errorCode === "CredentialsSignin" ? await RememberedEmail.read() : "";
 
+  // The card motion (AuthStage): error = one shake and a red flash, warning = amber border and slower rings.
+  const state = errorLine ? "error" : (panel?.tone ?? undefined);
+
   return (
-    <main className="flex min-h-screen items-center justify-center p-6">
-      <div className="w-full max-w-sm rounded-card border border-line bg-card p-6 shadow-lg">
-        <h1 className="type-title">Service Line Portfolio Tracker</h1>
-        <p className="mt-1 type-caption text-muted">Cardiac Procedure Services · internal use only</p>
-
-        {panel && (
-          <div role={panel.tone === "info" ? "status" : "alert"} data-testid={`signin-panel-${panel.tone}`} className={`mt-4 rounded-control border px-3 py-2 ${PANEL[panel.tone as keyof typeof PANEL]}`}>
-            {panel.title && <p className="type-table-strong">{panel.title}</p>}
-            <p className="type-body">{panel.body}</p>
+    <AuthStage state={state}>
+      {/*
+        Amber panels for the lockout and rate limit, a gray panel for "Your session ended". Errors are one line
+        of red text, not a panel: a wrong password sits right above the Email field.
+      */}
+      {panel && (
+        <div role={panel.tone === "info" ? "status" : "alert"} data-testid={`signin-panel-${panel.tone}`} className={`si-notice si-notice-${panel.tone}`}>
+          <AuthMessageIcon kind={panel.tone === "info" ? "info" : "clock"} />
+          <div>
+            {panel.title && <p className="si-notice-title">{panel.title}</p>}
+            <p className="si-notice-body">{panel.body}</p>
           </div>
-        )}
-        {(topError || (passwordError && !password)) && (
-          <p role="alert" data-testid="signin-error" className="mt-4 type-table text-danger">
-            {topError ?? passwordError}
-          </p>
-        )}
+        </div>
+      )}
+      {(topError || (passwordError && !password)) && (
+        <p role="alert" data-testid="signin-error" className="si-error">
+          <AuthMessageIcon kind="alert" />
+          <span>{topError ?? passwordError}</span>
+        </p>
+      )}
 
-        <div className="mt-6 space-y-3">
-          {providers.length === 0 && (
-            <p className="type-body text-(--status-at-risk-dark-fg)">
-              No sign-in providers are configured. Set the Microsoft Entra ID or Google env vars (see README).
-            </p>
-          )}
-          {oauth.map((p) => (
+      <div className="space-y-3">
+        {providers.length === 0 && (
+          <p className="type-body text-(--status-at-risk-dark-fg)">No sign-in providers are configured. Set the Google env vars (see README).</p>
+        )}
+        {oauth.map((p) => (
+          <form
+            key={p.id}
+            className="si-reveal si-d1"
+            action={async () => {
+              "use server";
+              await SignInActions.run(p.id, { redirectTo });
+            }}
+          >
+            <SignInButton label={`Sign in with ${p.name}`} variant="primary" />
+          </form>
+        ))}
+        {password && (
+          <>
+            {oauth.length > 0 && (
+              <div className="si-divider si-reveal si-d2" aria-hidden="true">
+                {PasswordCopy.DIVIDER}
+              </div>
+            )}
             <form
-              key={p.id}
-              action={async () => {
-                "use server";
-                await SignInActions.run(p.id, { redirectTo });
-              }}
-            >
-              <button className="w-full rounded-control bg-accent px-3 py-2 text-white type-table-strong hover:opacity-90">
-                Sign in with {p.name}
-              </button>
-            </form>
-          ))}
-          {password && (
-            <>
-              {oauth.length > 0 && (
-                <div className="flex items-center gap-3 pt-1 text-muted type-caption" aria-hidden="true">
-                  <span className="h-px flex-1 bg-(--dark-border)" />
-                  {PasswordCopy.DIVIDER}
-                  <span className="h-px flex-1 bg-(--dark-border)" />
-                </div>
-              )}
-              <form
-                className="space-y-3"
-                data-testid="password-signin"
-                action={async (formData: FormData) => {
-                  "use server";
-                  // Via /set-password, which sends anyone not on a temporary password on to redirectTo. A sign-in's own
-                  // redirect renders its target without the proxy, so this keeps the address bar on /set-password.
-                  await SignInActions.run(SessionPolicy.PASSWORD_PROVIDER, {
-                    email: String(formData.get("email") ?? ""),
-                    password: String(formData.get("password") ?? ""),
-                    redirectTo: `${SessionAccess.SET_PASSWORD_PATH}?next=${encodeURIComponent(redirectTo)}`,
-                  });
-                }}
-              >
-                {passwordError && (
-                  <p role="alert" id="signin-password-error" data-testid="signin-error" className="type-table text-danger">
-                    {passwordError}
-                  </p>
-                )}
-                <label className="block space-y-1">
-                  <span className="block type-caption text-muted">{PasswordCopy.EMAIL_LABEL}</span>
-                  <input
-                    name="email"
-                    type="email"
-                    autoComplete="username"
-                    defaultValue={rememberedEmail}
-                    aria-describedby={passwordError ? "signin-password-error" : undefined}
-                    aria-invalid={passwordError ? true : undefined}
-                    required
-                    className="h-8 w-full rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none"
-                  />
-                </label>
-                <label className="block space-y-1">
-                  <span className="block type-caption text-muted">{PasswordCopy.PASSWORD_LABEL}</span>
-                  <PasswordField name="password" autoComplete="current-password" />
-                </label>
-                <button className="w-full rounded-control border border-line bg-input px-3 py-2 text-fg type-table-strong hover:border-accent">
-                  {PasswordCopy.SUBMIT}
-                </button>
-                <p className="type-caption text-muted">{PasswordCopy.HELP}</p>
-              </form>
-            </>
-          )}
-          {devLogin && (
-            <form
-              className="space-y-2 border-t border-line pt-3"
+              className="si-reveal si-d3 space-y-3"
+              data-testid="password-signin"
               action={async (formData: FormData) => {
                 "use server";
-                await SignInActions.run("dev-login", { email: String(formData.get("email") ?? ""), redirectTo });
+                // Via /set-password, which sends anyone not on a temporary password on to redirectTo. A sign-in's own
+                // redirect renders its target without the proxy, so this keeps the address bar on /set-password.
+                await SignInActions.run(SessionPolicy.PASSWORD_PROVIDER, {
+                  email: String(formData.get("email") ?? ""),
+                  password: String(formData.get("password") ?? ""),
+                  redirectTo: `${SessionAccess.SET_PASSWORD_PATH}?next=${encodeURIComponent(redirectTo)}`,
+                });
               }}
             >
-              <label className="block type-caption text-muted" htmlFor="dev-email">
-                Dev login (local only)
+              {passwordError && (
+                <p role="alert" id="signin-password-error" data-testid="signin-error" className="si-error">
+                  <AuthMessageIcon kind="alert" />
+                  <span>{passwordError}</span>
+                </p>
+              )}
+              <label className="block space-y-1">
+                <span className="block type-caption text-muted">{PasswordCopy.EMAIL_LABEL}</span>
+                <input
+                  name="email"
+                  type="email"
+                  autoComplete="username"
+                  defaultValue={rememberedEmail}
+                  aria-describedby={passwordError ? "signin-password-error" : undefined}
+                  aria-invalid={passwordError ? true : undefined}
+                  required
+                  className="si-input"
+                />
               </label>
-              <input
-                id="dev-email"
-                name="email"
-                type="email"
-                required
-                className="w-full rounded-control border border-line bg-input px-2 py-1.5 type-table"
-              />
-              <button className="w-full rounded-control border border-line bg-input px-3 py-2 type-table-strong">
-                Continue
-              </button>
+              <label className="block space-y-1">
+                <span className="block type-caption text-muted">{PasswordCopy.PASSWORD_LABEL}</span>
+                {/* After a wrong password the email stays, so put the cursor straight in the password field. */}
+                <PasswordField name="password" autoComplete="current-password" autoFocus={Boolean(passwordError)} />
+              </label>
+              <SignInButton label={PasswordCopy.SUBMIT} variant="secondary" />
+              <p className="type-caption text-muted">{PasswordCopy.HELP}</p>
             </form>
-          )}
-        </div>
+          </>
+        )}
+        {devLogin && (
+          <form
+            className="space-y-2 border-t border-line pt-3"
+            action={async (formData: FormData) => {
+              "use server";
+              await SignInActions.run("dev-login", { email: String(formData.get("email") ?? ""), redirectTo });
+            }}
+          >
+            <label className="block type-caption text-muted" htmlFor="dev-email">
+              Dev login (local only)
+            </label>
+            <input id="dev-email" name="email" type="email" required className="si-input" />
+            <SignInButton label="Continue" variant="secondary" />
+          </form>
+        )}
       </div>
-    </main>
+    </AuthStage>
   );
 }

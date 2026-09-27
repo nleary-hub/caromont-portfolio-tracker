@@ -19,7 +19,7 @@ export interface PasswordUserFields {
  * How long a sign-in lasts (Auth.js JWT sessions).
  * - Email and password: 7 days from sign-in, with no idle timeout. Activity does not extend it. Every 5 minutes the
  *   session re-checks the database, so an admin reset or "turn off" ends it, and a temporary password stays flagged.
- * - Google, Microsoft and dev login: unchanged from before this feature, an 8 hour session that each request extends
+ * - Google and dev login: unchanged from before this feature, an 8 hour session that each request extends
  *   (so it ends after 8 hours without activity).
  * Every Google session keeps the 8 hour rule and also re-checks the database every 5 minutes: turning the person off
  * ends it (ALLOWED_EMAILS or not), and one that got in through an admin-created account ends when the account goes.

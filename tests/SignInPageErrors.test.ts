@@ -103,3 +103,35 @@ describe("/signin for someone whose sign-in is turned off", () => {
     expect(html).not.toMatch(/turned off/i);
   });
 });
+
+describe("/signin heartbeat layout", () => {
+  it("marks the stage with the message tone so the card can react (error, warning, info, none)", async () => {
+    h.cookie = "pat.sample@example.org";
+    expect(await Page.html({ error: "CredentialsSignin", code: "invalid" })).toContain('data-state="error"');
+    expect(await Page.html({ error: "AccessDenied" })).toContain('data-state="error"');
+    expect(await Page.html({ error: "CredentialsSignin", code: "locked" })).toContain('data-state="warning"');
+    expect(await Page.html({ ended: "1" })).toContain('data-state="info"');
+    expect(await Page.html({})).not.toContain("data-state=");
+  });
+
+  it("after a wrong password the cursor goes straight to the password field, never on a plain visit", async () => {
+    h.cookie = "pat.sample@example.org";
+    expect(await Page.html({ error: "CredentialsSignin", code: "invalid" })).toMatch(/<input[^>]*name="password"[^>]*autofocus|<input[^>]*autofocus[^>]*name="password"/i);
+    expect(await Page.html({})).not.toMatch(/autofocus/i);
+  });
+
+  it("offers no Microsoft sign-in, even if the old Microsoft env vars are still set", async () => {
+    vi.stubEnv("AUTH_MICROSOFT_ENTRA_ID_ID", "mid");
+    vi.stubEnv("AUTH_MICROSOFT_ENTRA_ID_SECRET", "msecret");
+    const html = await Page.html({});
+    expect(html).toContain("Sign in with Google");
+    expect(html).not.toMatch(/Microsoft/);
+  });
+
+  it("the backdrop is hidden from screen readers and the headline is the page's only h1", async () => {
+    const html = await Page.html({});
+    expect(html).toMatch(/class="si-backdrop" aria-hidden="true"/);
+    expect(html.match(/<h1/g)).toHaveLength(1);
+    expect(html).toContain("Every project.");
+  });
+});

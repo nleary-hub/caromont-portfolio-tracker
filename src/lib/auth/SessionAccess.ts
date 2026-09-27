@@ -10,7 +10,7 @@ export interface SessionLike {
 
 /**
  * Who may use the app for a given session.
- * - Google (and Microsoft, dev login): the email must be on ALLOWED_EMAILS, re-checked on every request (as before).
+ * - Google (and dev login): the email must be on ALLOWED_EMAILS, re-checked on every request (as before).
  * - Google with an admin-created account that isn't turned off (not on ALLOWED_EMAILS): the sign-in checked the
  *   account and the session re-checks it every 5 minutes (SessionPolicy). ALLOWED_EMAILS OR account, never account only.
  * - Email and password: the admin-created account is the permission. The session only exists after a database-checked

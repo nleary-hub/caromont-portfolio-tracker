@@ -57,13 +57,11 @@ See `.env.example` for the full annotated list.
 | `AUTH_SECRET` | yes | `npx auth secret` or `openssl rand -base64 32` |
 | `ALLOWED_EMAILS` | yes | Comma/space separated emails or `@domain` entries. Empty = nobody (fails closed) |
 | `ADMIN_EMAILS` | no | Same format. Admins (who must also be able to sign in: on `ALLOWED_EMAILS`, or with an admin-created account) change view settings, hide/delete projects, open `/admin/audit`, use `/admin/import`. Empty = no admins (fails closed) |
-| `AUTH_MICROSOFT_ENTRA_ID_ID` / `_SECRET` / `_ISSUER` | optional | Enables Microsoft sign-in. Use the tenant-specific issuer |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | Enables Google sign-in. See "Google OAuth setup" |
 | `AUTH_DEV_LOGIN` | optional | `true` enables the email-only dev form (never in production) |
 | `AUTH_TRUST_HOST` / `AUTH_URL` | optional | Only needed off Vercel. Do not set them on Vercel |
 
-OAuth redirect URIs: `https://<domain>/api/auth/callback/microsoft-entra-id` and
-`https://<domain>/api/auth/callback/google`.
+OAuth redirect URI: `https://<domain>/api/auth/callback/google`.
 
 ## Deploying on Vercel
 
@@ -445,4 +443,4 @@ See [docs/REPORTS.md](docs/REPORTS.md): renderer (`@react-pdf/renderer`, embedde
 
 1. Create the GitHub repo and push. 2. Import into Vercel, add a Postgres (Neon) integration.
 3. Set env vars above. 4. Run `prisma migrate deploy` (build step or one-off). 5. Register the
-Entra ID redirect URI for the production domain.
+Google redirect URI for the production domain.
