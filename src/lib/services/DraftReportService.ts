@@ -5,7 +5,6 @@ import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ReportDataLoader } from "@/lib/report/ReportDataLoader";
 import { ReportSchedule } from "@/lib/report/ReportSchedule";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
-import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import type { DepartmentKey } from "@/lib/domain/ServiceAreaInfo";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
@@ -24,10 +23,11 @@ export interface DraftPdf {
  * Who gets one:
  * - Admins: unchanged. Their active line, departments from the admin "Departments in report" setting; requested
  *   departments are ignored.
- * - A viewer limited to some departments of their active line (DepartmentAccess): only their departments, narrowed
- *   to the departments they are viewing (their dashboard filter, sent as `departments`). Anything else requested
- *   is dropped on the server; nothing valid requested means all of theirs.
- * - Everyone else (including non-admins with every department): null, so the route answers 404 as before.
+ * - Any other signed-in viewer with access to the line: the departments they are viewing (their dashboard filter,
+ *   sent as `departments`), clamped on the server to the line's departments they can see: all of the line's for
+ *   someone with every department, only theirs for someone limited to some (DepartmentAccess). Anything else
+ *   requested is dropped; nothing valid requested means all they can see.
+ * - No access to the line (or no viewer): null, so the route answers 404.
  */
 export class DraftReportService {
   static async render(
@@ -45,7 +45,7 @@ export class DraftReportService {
       line = scope ?? (await ServiceLineAccess.activeFor(viewer, db));
     } else {
       const active = scope ?? (await ServiceLineAccess.activeOrNull(viewer, db));
-      if (!active || !DepartmentAccess.isLimited(active)) return null;
+      if (!active) return null;
       line = active;
       departments = DraftReportService.departmentsFor(line, requested);
     }
@@ -71,7 +71,7 @@ export class DraftReportService {
     return { bytes, fileName: line.isDefault ? PdfReportRenderer.draftFileName(data.reportDate) : PdfReportRenderer.lineDraftFileName(line.shortName, data.reportDate) };
   }
 
-  /** A limited viewer's departments for an on-demand PDF: the requested ones they have, or all of theirs. */
+  /** A non-admin's departments for an on-demand PDF: the requested ones they can see, or all they can see. */
   static departmentsFor(line: ServiceLineScope, requested: readonly string[] | undefined): DepartmentKey[] {
     return DepartmentFilter.normalize(requested ?? null, DepartmentFilter.optionsFor(line));
   }

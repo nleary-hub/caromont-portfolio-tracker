@@ -340,7 +340,7 @@ describe("routes and actions", () => {
   });
 });
 
-describe("on-demand PDFs (Generate PDF now): only the departments a limited user has and is viewing", () => {
+describe("on-demand PDFs (Generate PDF now): the departments the user is viewing, clamped to ones they can see", () => {
   type DocInput = { rows: readonly unknown[]; departments?: string[]; lineDepartments?: { id: string }[]; draft?: boolean };
   class Draft {
     static async get(query = ""): Promise<{ status: number; input: DocInput | null; bytes: Buffer }> {
@@ -411,20 +411,63 @@ describe("on-demand PDFs (Generate PDF now): only the departments a limited user
     expect(r.bytes.equals(frozen)).toBe(false);
   });
 
-  it("everyone else keeps today's behavior: admins' PDF follows the admin setting (params ignored); other non-admins and no-access users get 404", async () => {
+  it("admins keep today's behavior: the admin setting applies and params are ignored; no access to the line is 404", async () => {
     h.viewer = ADMIN;
     const admin = await Draft.get("?departments=Echo");
     expect(admin.status).toBe(200);
-    expect(Draft.names(admin.input)).toEqual(expect.arrayContaining(["Cath secret project", "EP secret project", "Echo visible project"]));
+    expect(Draft.names(admin.input)).toEqual(expect.arrayContaining(["Cath secret project", "EP secret project", "Echo visible project", "Unassigned secret project"]));
     expect(admin.input!.lineDepartments).toHaveLength(7);
-    h.viewer = JANE;
-    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
-    expect((await Draft.get("?departments=Echo")).status).toBe(404);
     h.viewer = { email: "ben.noaccess@caromonthealth.org", isAdmin: false, name: "Ben" };
     expect((await Draft.get()).status).toBe(404);
+    expect((await Draft.get("?departments=Echo")).status).toBe(404);
+    // A line they don't have: its departments are never theirs to request.
+    const ep = fake.addLine({ name: "Electrophysiology Service Line", shortName: "EP" }).id as string;
+    fake.grant("ben.noaccess@caromonthealth.org", ep);
+    const other = await Draft.get("?departments=Echo,Cath");
+    expect(Draft.names(other.input)).toEqual([]);
   });
 
-  it("the dashboard shows the same Generate PDF now button to a limited user, linked to the departments they are viewing", async () => {
+  it("a non-admin with every department can generate: their dashboard filter selects among all the line's departments, clamped, and nothing is stored", async () => {
+    await FreezeService.run({ trigger: "cron", actor: "cron", now: FREEZE_RUN, env: { ...ENV }, fetch: vi.fn() }, h.db as never);
+    const frozen = Buffer.from(fake.state.artifacts.find((a) => a.kind === "pdf")!.bytes as Uint8Array);
+    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
+    h.viewer = JANE;
+    const writes = fake.writes.length;
+    const stored = JSON.stringify({ s: fake.state.snapshots.map((x) => x.id), a: fake.state.artifacts.map((x) => x.id), d: fake.state.deliveries.length, y: fake.state.yearEndReports.length });
+    const net = vi.spyOn(globalThis, "fetch");
+    // No filter sent (or all selected): the whole line, like the dashboard.
+    const all = await Draft.get();
+    expect(all.status).toBe(200);
+    // (The finished Echo project was listed by the freeze above, so "Completed this period" doesn't repeat it.)
+    expect(Draft.names(all.input)).toEqual(["Echo visible project", "Cath secret project", "EP secret project", "Unassigned secret project"]);
+    expect(all.input!.lineDepartments).toHaveLength(7);
+    // Narrowed to Cath and EP: only those.
+    const some = await Draft.get("?departments=Cath,EP");
+    expect(some.input!.departments).toEqual(["Cath", "EP"]);
+    expect(Draft.names(some.input)).toEqual(["Cath secret project", "EP secret project"]);
+    // Junk and other lines' ids are dropped; nothing valid left = all the line's departments.
+    const junk = await Draft.get("?departments=Cath,nope,00000000-0000-4000-8000-00000000dead");
+    expect(junk.input!.departments).toEqual(["Cath"]);
+    expect(Draft.names((await Draft.get("?departments=nope")).input)).toEqual(Draft.names(all.input));
+    // Download only: no report storage, Drive or network; the frozen report is unchanged.
+    const REPORT_STORAGE = ["reportSnapshot", "reportArtifact", "reportDelivery", "yearEndReport"];
+    expect(fake.writes.slice(writes).filter((w) => REPORT_STORAGE.includes(w.model))).toEqual([]);
+    expect(JSON.stringify({ s: fake.state.snapshots.map((x) => x.id), a: fake.state.artifacts.map((x) => x.id), d: fake.state.deliveries.length, y: fake.state.yearEndReports.length })).toBe(stored);
+    expect(net.mock.calls.map((c) => String(c[0])).filter((u) => !u.startsWith("data:"))).toEqual([]);
+    expect(some.bytes.equals(frozen)).toBe(false);
+    expect(Buffer.from(fake.state.artifacts.find((a) => a.kind === "pdf")!.bytes as Uint8Array).equals(frozen)).toBe(true);
+  });
+
+  it("year-end Generate stays admin-only", async () => {
+    const { generateYearEndReport } = await import("@/app/actions/reports");
+    h.viewer = JANE;
+    fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
+    const r = await generateYearEndReport("FY27");
+    expect(r.ok).toBe(false);
+    expect(fake.state.yearEndReports).toHaveLength(0);
+  });
+
+  it("every signed-in user with the line gets the Generate PDF now button, linked to the departments they are viewing", async () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
     const link = async () => /href="(\/api\/reports\/preview[^"]*)"[^>]*>Generate PDF now</.exec(renderToStaticMarkup(await Page.render(DashboardPage)))?.[1] ?? null;
     h.viewer = JANE;
@@ -433,7 +476,15 @@ describe("on-demand PDFs (Generate PDF now): only the departments a limited user
     expect(await link()).toBe("/api/reports/preview");
     h.viewer = JANE;
     fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
-    expect(await link()).toBeNull();
+    expect(await link()).toBe("/api/reports/preview?departments=Cath,EP,Echo,CVSS,INU,CardioNeuro,IR");
+    // One tooltip for everyone, admins included.
+    const tip = "Download a draft PDF of the departments you&#x27;re viewing. It isn&#x27;t an official report, and nothing is saved or sent.";
+    for (const v of [JANE, ADMIN]) {
+      h.viewer = v;
+      const html = renderToStaticMarkup(await Page.render(DashboardPage));
+      expect(html).toContain(`title="${tip}"`);
+      expect(html).not.toContain("Not an official snapshot");
+    }
   });
 });
 

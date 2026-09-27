@@ -428,18 +428,16 @@ export function ProjectDashboard({
         <Link href="/reports" className="shrink-0 whitespace-nowrap type-table-strong text-muted hover:text-fg">
           Reports
         </Link>
-        {(admin || line?.departmentLimit) && (
-          // Admins: as before. A viewer limited to some departments: the same draft, only the departments they
-          // are viewing (the server keeps only ones they have; DraftReportService).
-          <a
-            href={admin ? OnDemandPdfLink.href() : OnDemandPdfLink.href(departments)}
-            download
-            title="Download a draft PDF from live data. Not an official snapshot; nothing is saved or sent."
-            className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"
-          >
-            Generate PDF now
-          </a>
-        )}
+        {/* Everyone who can see the dashboard. Admins: as before. Everyone else: only the departments they are
+            viewing (the server keeps only ones they can see; DraftReportService). */}
+        <a
+          href={admin ? OnDemandPdfLink.href() : OnDemandPdfLink.href(departments)}
+          download
+          title={OnDemandPdfLink.TOOLTIP}
+          className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"
+        >
+          Generate PDF now
+        </a>
         {admin && admin.menuItems.length > 0 && (
           // 12px left of the user block (header gap is 16px).
           <div className="-mr-1">
