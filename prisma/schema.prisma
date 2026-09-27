@@ -100,10 +100,11 @@ model Project {
   /// rule). Kept so existing data is not destroyed; nothing reads or writes it.
   closedReportedAt       DateTime?
 
-  history     ProjectHistory[]
-  milestones  ProjectMilestone[]
-  serviceLine ServiceLine        @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
-  department  Department?        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  history           ProjectHistory[]
+  priorInforNumbers ProjectPriorInforNumber[]
+  milestones        ProjectMilestone[]
+  serviceLine       ServiceLine               @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  department        Department?               @relation(fields: [departmentId], references: [id], onDelete: Restrict)
 
   @@index([serviceArea, status])
   @@index([departmentId])
@@ -507,8 +508,8 @@ model LineLayoutHistory {
 /// and restorable from /admin/audit. Name (1 to 40) and short name (1 to 12) are unique per line among departments
 /// not deleted, ignoring case (DB unique indexes as backstop).
 model Department {
-  id            String      @id @default(uuid()) @db.Uuid
-  serviceLineId String      @db.Uuid
+  id            String       @id @default(uuid()) @db.Uuid
+  serviceLineId String       @db.Uuid
   /// Full name, shown in the filter and project pick-lists (e.g. "Cath Lab").
   name          String
   /// Shown in PDF headings and the summary grid (e.g. "Cath").
@@ -519,10 +520,10 @@ model Department {
   archivedAt    DateTime?
   deletedAt     DateTime?
   deletedBy     String?
-  createdAt     DateTime    @default(now())
-  updatedAt     DateTime    @updatedAt
+  createdAt     DateTime     @default(now())
+  updatedAt     DateTime     @updatedAt
   updatedBy     String
-  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  serviceLine   ServiceLine  @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
   projects      Project[]
 
   @@index([serviceLineId, position])
@@ -574,4 +575,24 @@ model YearEndReport {
 
   @@index([serviceLineId, generatedAt])
   @@map("year_end_report")
+}
+
+/// Infor request numbers a project had before this tracker recorded its history (migration 0021). Dated number
+/// changes live in ProjectHistory (field "inforRequestNumber"); rows here are the earlier ones. Append-only (trigger).
+model ProjectPriorInforNumber {
+  id         String    @id @default(uuid()) @db.Uuid
+  projectId  String    @db.Uuid
+  /// Whole number 1 to 99999 (shown as InforNumber.format).
+  number     Int
+  /// When the number was known to change; null = date unknown ("Before this tracker"). Never invented.
+  recordedAt DateTime?
+  /// Where it came from ("seed_0021").
+  source     String
+  createdAt  DateTime  @default(now())
+  createdBy  String
+
+  project Project @relation(fields: [projectId], references: [id], onDelete: Restrict)
+
+  @@unique([projectId, number])
+  @@map("project_prior_infor_number")
 }
