@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { HandoffBuilder, type HandoffInput } from "@/lib/report/HandoffBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
+import type { TotalsGridMode } from "@/lib/domain/TotalsGridPlacement";
 
 /**
  * handoff.json is read by the report sender (flags and the PDF path). Its output for the sample report is
@@ -12,8 +13,8 @@ import { SampleReportData } from "@/lib/report/SampleReportData";
 class HandoffSample {
   static readonly FIXTURE = new URL("./fixtures/handoff-sample.json", import.meta.url);
 
-  static input(): HandoffInput {
-    const doc = SampleReportData.docInput();
+  static input(totalsGrid: TotalsGridMode = "top"): HandoffInput {
+    const doc = SampleReportData.docInput({ totalsGrid });
     const rows = doc.rows.filter((r) => ViewSettings.isStatusVisible(doc.viewSettings, r.status));
     return {
       snapshotId: "sample-snapshot",
@@ -46,5 +47,14 @@ describe("handoff.json for the sample report", () => {
       expect(h.flags[k].count).toBe(HandoffSample.input().rows.filter((r) => r[k]).length);
     }
     expect(h.flags.changed.count + h.flags.overdue.count + h.flags.stale.count).toBeGreaterThan(0);
+  });
+  it("keeps every flag type, project name, and area identical across all summary grid modes", () => {
+    const modes: TotalsGridMode[] = ["top", "lastPage", "hidden"];
+    const flagRows = (mode: TotalsGridMode) => {
+      const h = HandoffBuilder.build(HandoffSample.input(mode));
+      return Object.entries(h.flags).flatMap(([type, value]) => value.projects.map((p) => ({ type, name: p.name, area: p.serviceArea })));
+    };
+    const expected = flagRows(modes[0]);
+    for (const mode of modes.slice(1)) expect(flagRows(mode)).toEqual(expected);
   });
 });

@@ -2,10 +2,10 @@
 export type TotalsGridMode = "top" | "hidden" | "lastPage";
 
 export class TotalsGridPlacement {
-  static readonly MODES: readonly TotalsGridMode[] = ["top", "hidden", "lastPage"];
+  static readonly MODES: readonly TotalsGridMode[] = ["top", "lastPage", "hidden"];
   static readonly DEFAULT: TotalsGridMode = "top";
-  static readonly LABELS: Record<TotalsGridMode, string> = { top: "Page one", hidden: "Hide", lastPage: "Last page, with the key" };
-  static readonly HELP = "Page one keeps today's layout. Last page, with the key puts the grid beside the key. If the key is off, the last page has only the grid. Hide removes the grid.";
+  static readonly LABELS: Record<TotalsGridMode, string> = { top: "Page one", lastPage: "Last page", hidden: "Leave out" };
+  static readonly HELP = "Page one keeps today's layout. Last page puts the grid above the key, or on its own page if the key is off. Last page and Leave out let projects start higher on page one.";
 
   static normalize(raw: unknown): TotalsGridMode {
     return typeof raw === "string" && (TotalsGridPlacement.MODES as readonly string[]).includes(raw) ? (raw as TotalsGridMode) : TotalsGridPlacement.DEFAULT;

@@ -6,6 +6,7 @@ import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
 import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
+import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { ReportColors } from "@/lib/report/pdf/ReportDocument";
 import { ReportGeometry as G, ReportLayout, type DocumentLayout, type PageLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
@@ -90,7 +91,7 @@ describe("totals grid placement", () => {
   });
 
   it("uses the approved labels and keeps the default output unchanged", () => {
-    expect(TotalsGridPlacement.LABELS).toEqual({ top: "Page one", hidden: "Hide", lastPage: "Last page, with the key" });
+    expect(TotalsGridPlacement.LABELS).toEqual({ top: "Page one", lastPage: "Last page", hidden: "Leave out" });
     expect(JSON.stringify(Doc.layout())).toBe(JSON.stringify(Doc.layout({ totalsGrid: "top" })));
   });
 
@@ -227,13 +228,31 @@ describe("totals grid placement", () => {
     expect(b.y + b.height).toBeLessThanOrEqual(p.bodyHeight);
   });
 
-  it("Last page: grid shows the same counts as Top, with the key line under it", () => {
+  it("Last page: grid shows the same counts as Top at the top of the combined key page", () => {
     const top = Doc.layout();
     const last = Doc.layout({ totalsGrid: "lastPage" });
     expect(last.header.grid).toEqual(top.header.grid);
-    const b = Doc.summaryPages(last)[0].blocks.find((x) => x.kind === "summary")!;
-    if (b.kind !== "summary") throw new Error("expected summary");
-    expect(b.summary.keyTop - b.summary.gridTop).toBeCloseTo(ReportLayout.gridHeight(last.header.grid.rows.length) + G.SUMMARY.gapBeforeKey, 5);
+    expect(last.pages.filter((p) => p.kind === "key")).toHaveLength(1);
+    expect(last.pages.some((p) => p.blocks.some((b) => b.kind === "summary"))).toBe(false);
+    const keyPage = last.pages.find((p) => p.kind === "key")!;
+    expect(keyPage.summaryOnKeyPage).toEqual(ReportLayout.keyPageSummary(last.header));
+    expect(keyPage.summaryOnKeyPage!.keyTop - keyPage.summaryOnKeyPage!.gridTop).toBe(
+      ReportLayout.gridHeight(last.header.grid.rows.length) + G.KEY_PAGE_SUMMARY.gapAfterGrid,
+    );
+  });
+
+  it("Last page keeps the normal seven-area grid and key on one page, while an extra-area grid can flow", () => {
+    const normal = Doc.layout({ totalsGrid: "lastPage" });
+    const normalKey = normal.pages.findIndex((p) => p.kind === "key");
+    expect(normal.pages).toHaveLength(4);
+    expect(normalKey).toBeGreaterThan(-1);
+    expect(normal.pages[normalKey].summaryOnKeyPage).toBeDefined();
+
+    const extraList = [...ServiceAreaInfo.LEGACY, { id: "Vascular", name: "Vascular", shortName: "Vascular" }, { id: "Structural", name: "Structural", shortName: "Structural" }];
+    const extraRows = [...SampleReportData.rows(), { ...SampleReportData.rows()[0], projectId: "extra-v", name: "Sample: Vascular", serviceArea: "Vascular" }, { ...SampleReportData.rows()[1], projectId: "extra-s", name: "Sample: Structural", serviceArea: "Structural" }];
+    const extra = Doc.layout({ totalsGrid: "lastPage", rows: extraRows, lineDepartments: extraList, header: ReportBuilder.header(extraRows), showKeyPage: true });
+    expect(extra.pages.some((p) => p.keySummaryOnly)).toBe(true);
+    expect(extra.pages.filter((p) => p.kind === "key")).toHaveLength(2);
   });
 
   it("Last page without the key option renders a final page with only the summary grid", () => {
