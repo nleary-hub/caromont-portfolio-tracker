@@ -13,6 +13,7 @@ import {
   type FlagBox,
   type HeaderModel,
   type KeyLineModel,
+  type KeyPageSummaryLayout,
   type KeyModel,
   CompletedBlockStyle,
   type ContractsLine,
@@ -510,12 +511,12 @@ function GridView({ h, x: gx, top }: { h: HeaderModel; x: number; top: number })
   return <>{els}</>;
 }
 
-function ContinuationHeader({ h }: { h: HeaderModel }) {
+function ContinuationHeader({ h, showStrip = true }: { h: HeaderModel; showStrip?: boolean }) {
   const S = G.SIZE;
   const els: React.ReactNode[] = [];
   const y = G.RUNHEAD_H + G.STRIP_PAD;
   const run = ReportLayout.runningHeaderText(h);
-  h.strip.forEach((line, li) => {
+  if (showStrip) h.strip.forEach((line, li) => {
     let x = 0;
     const ly = y + li * G.STRIP_LINE_H;
     for (const it of line) {
@@ -828,27 +829,13 @@ function CompletedBlock({ block, top }: { block: Extract<BodyBlock, { kind: "com
   );
 }
 
-/** Last page mode: "SUMMARY" overline, the grid, then the one-line key, as one unsplittable block. */
+/** Last page without the full key: the Summary by area heading and grid, as one unsplittable block. */
 function SummaryBlock({ h, block, top }: { h: HeaderModel; block: Extract<BodyBlock, { kind: "summary" }>; top: number }) {
   const s = block.summary;
   const y0 = top + block.y;
   return (
     <View wrap={false} style={{ position: "absolute", left: 0, top: y0, width: G.CONTENT_W, height: block.height }}>
-      <Text
-        style={{
-          position: "absolute",
-          left: 0,
-          top: s.gapAbove,
-          fontFamily: F,
-          fontSize: G.OVERLINE.size,
-          fontWeight: G.OVERLINE.weight,
-          letterSpacing: G.OVERLINE.tracking,
-          lineHeight: G.SUMMARY.overlineLH / G.OVERLINE.size,
-          color: C.MUTED,
-        }}
-      >
-        {G.SUMMARY.label}
-      </Text>
+      <Line x={0} y={s.headingY} w={G.CONTENT_W} text={G.SUMMARY.heading} size={G.SIZE.section + 2} weight={600} color={C.TEXT} lh={G.SUMMARY.headingLH} />
       <GridView h={h} x={0} top={s.gridTop} />
       {h.keyLine && <KeyLine k={h.keyLine} y={s.keyTop} />}
     </View>
@@ -874,10 +861,15 @@ function Block({ block, top, h }: { block: BodyBlock; top: number; h: HeaderMode
   );
 }
 
-function KeyPage({ k, top }: { k: KeyModel; top: number }) {
+function KeyPage({ k, h, top, summary, summaryOnly = false }: { k: KeyModel; h: HeaderModel; top: number; summary?: KeyPageSummaryLayout; summaryOnly?: boolean }) {
   const S = G.SIZE;
   const els: React.ReactNode[] = [];
-  let y = top + 14;
+  if (summary) {
+    els.push(<Line key="summary" x={0} y={top + summary.headingY} w={G.CONTENT_W} text="Summary by area" size={S.section + 2} weight={600} color={C.TEXT} lh={G.KEY_PAGE_SUMMARY.headingH} />);
+    els.push(<GridView key="summary-grid" h={h} x={0} top={top + summary.gridTop} />);
+    if (summaryOnly) return <>{els}</>;
+  }
+  let y = top + (summary ? summary.keyTop : 14);
   els.push(<Line key="t" x={0} y={y} w={400} text={k.title} size={S.section + 2} weight={600} lh={14} />);
   y += 24;
   const section = (label: string) => {
@@ -923,9 +915,9 @@ function PageView({ layout, page }: { layout: DocumentLayout; page: PageLayout }
   return (
     <Page size={{ width: G.PAGE_W, height: G.PAGE_H }} style={{ backgroundColor: C.BG }}>
       <View style={{ position: "absolute", left: G.MARGIN, top: G.MARGIN, width: G.CONTENT_W, height: G.CONTENT_H }}>
-        {page.first ? <FirstHeader h={h} /> : <ContinuationHeader h={h} />}
+        {page.first ? <FirstHeader h={h} /> : <ContinuationHeader h={h} showStrip={!page.keyNoStrip} />}
         {page.kind === "key" && layout.key ? (
-          <KeyPage k={layout.key} top={page.bodyTop} />
+          <KeyPage k={layout.key} h={h} top={page.bodyTop} summary={page.summaryOnKeyPage} summaryOnly={page.keySummaryOnly} />
         ) : (
           <>
             {page.columnHead !== false && <ColumnHead h={h} y={page.headerHeight} />}

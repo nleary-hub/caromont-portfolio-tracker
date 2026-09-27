@@ -23,6 +23,7 @@ import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { YearEndCopy } from "@/lib/report/YearEndReportData";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
+import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
 
 export const dynamic = "force-dynamic";
 
@@ -90,12 +91,23 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             <YearEndReportButton years={yearEndYears} current={FiscalYear.of(today).label} initialOpen={openYearEnd} />
           </div>
           {scope.isDefault && <DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} />}
-          <form action={setShowKeyPageForm} className="flex items-center gap-2 type-table">
-            <label className="flex items-center gap-2">
+          <form action={setShowKeyPageForm} className="flex flex-wrap items-end gap-4 type-table">
+            <label className="flex items-center gap-2 pb-1">
               <input type="checkbox" name="showKeyPage" defaultChecked={options.showKeyPage} />
               Add the status and flag key as the last page
             </label>
-            <button type="submit" className="text-accent type-table-strong">
+            <fieldset className="flex flex-col gap-1">
+              <legend className="type-label text-muted">Summary grid</legend>
+              <div role="radiogroup" aria-label="Summary grid" className="flex flex-wrap gap-3">
+                {TotalsGridPlacement.MODES.map((mode) => (
+                  <label key={mode} className="flex items-center gap-1">
+                    <input type="radio" name="totalsGrid" value={mode} defaultChecked={options.totalsGrid === mode} />
+                    {TotalsGridPlacement.LABELS[mode]}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
+            <button type="submit" className="text-accent type-table-strong pb-1">
               Save
             </button>
           </form>
