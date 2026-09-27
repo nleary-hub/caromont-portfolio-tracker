@@ -1,4 +1,6 @@
 import { createElement } from "react";
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
 import { AdminMenu, MenuKeyboard } from "@/lib/admin/AdminMenu";
@@ -54,6 +56,14 @@ describe("AdminMenu.itemsFor", () => {
 
   it("shows the three groups in order (work, library, admin)", () => {
     expect(AdminMenu.grouped(AdminMenu.itemsFor(ADMIN)!).map((g) => g.group)).toEqual(["work", "library", "admin"]);
+  });
+
+  it("keeps the renamed copy in the dashboard error and report freeze heading", () => {
+    const dashboard = readFileSync(join(process.cwd(), "src/components/ProjectDashboard.tsx"), "utf8");
+    const reports = readFileSync(join(process.cwd(), "src/app/reports/page.tsx"), "utf8");
+    expect(dashboard).toContain("Couldn't save the dashboard view. Try again.");
+    expect(reports).toContain("{AdminMenu.REPORT_FREEZE}");
+    expect(reports).not.toContain('>Report freeze</h2>');
   });
 
   it("marks the current admin page only for exact plain-link matches", () => {
