@@ -96,9 +96,10 @@ describe("ReportBuilder.build", () => {
   };
 
   it("builds sorted, flagged rows from visible projects only", () => {
-    const result = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings([]) });
+    // c and c2 were completed during the period; x is Cancelled, which never appears even with every status shown.
+    const result = ReportBuilder.build({ ...input, viewSettings: Factory.reportSettings([]), completedInPeriod: new Set(["c", "c2", "x"]) });
     // hiddenDash is hidden on the dashboard only, so it stays in the report.
-    expect(result.rows.map((r) => r.projectId)).toEqual(["b", "c", "a", "c2", "hiddenDash", "x"]);
+    expect(result.rows.map((r) => r.projectId)).toEqual(["b", "c", "a", "c2", "hiddenDash"]);
     const byId = Object.fromEntries(result.rows.map((r) => [r.projectId, r]));
     expect(byId.b).toMatchObject({ changed: true, overdue: false, statusLabel: "At risk", dueDate: "2026-10-20" });
     expect(byId.a).toMatchObject({ changed: false, overdue: true });

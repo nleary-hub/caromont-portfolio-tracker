@@ -144,6 +144,28 @@ Notes:
   to `service_line_access_history`.
 - Migration 0023 grants nobody anything (start with none): on day one only admins (`ADMIN_EMAILS`) see
   lines; everyone else sees the no-access card until an admin checks their lines.
+- **Department access (migration 0024).** A checked line covers All departments, including ones added
+  later. On Admin > People > Access, clicking a person's name (or the caret at the end of their row) opens a
+  panel with one block per line they have: turning "All departments" off lists the line's departments as
+  checkboxes (all checked at first; A to Z) and the cell shows "3 of 7". Unchecking the last department asks,
+  then removes the line. Rows: `service_line_access.allDepartments` and `department_access`; changes logged to
+  `department_access_history`. For a limited person, `ServiceLineAccess.activeFor` narrows the scope
+  (`DepartmentAccess`): the dashboard, tiles, counts, search, the department filter and the Completed and
+  Cancelled pages only include their departments, plus Unassigned projects (no department), which everyone with
+  the line sees. Their filter button reads "My departments (N)" and those pages' empty states say "in your
+  departments". Project History
+  outside those is empty. Reports are per line: a limited person lists and opens the line's weekly PDFs, archive and year-end
+  reports exactly like someone with all departments (people without the line still get 404, as before): the same
+  full frozen files, never a filtered copy. On-demand PDFs are different: "Generate PDF now" (the live draft,
+  `/api/reports/preview`) is offered to everyone with the line and covers the departments their dashboard filter
+  shows (`?departments=`, checked on the server against the departments they can see: all of the line's, or only
+  theirs when limited; anything else is dropped). It is download only and never stored, delivered or frozen.
+  Admins follow their filter too (clamped to the line); with every department selected they get the admin report
+  setting, as before. The year-end Generate stays admin-only.
+  `/?project=<id>` opens a project's detail; a project outside their lines or departments, or one that
+  doesn't exist, shows "You don't have access to this project" without its name. Deleting a department and
+  moving its projects moves people's access with them (Audit log); a new department reaches only people with
+  All departments on. The freeze, handoff.json and Drive are built for admins and never read these rows.
 
 ## Data model (prisma/schema.prisma)
 

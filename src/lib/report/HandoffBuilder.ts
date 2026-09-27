@@ -71,7 +71,11 @@ export interface Handoff {
     overdue: { count: number; projects: HandoffFlagged[] };
     stale: { count: number; projects: HandoffFlagged[] };
   };
-  /** Listed once in the report's "Completed this period" blocks; not part of totals or byArea. */
+  /**
+   * The old "Completed this period" blocks (listed once; not part of totals or byArea). Kept for the file's shape:
+   * reports frozen from now on list completed projects as regular rows (counted in totals and byArea as Complete,
+   * never flagged), so this is always { count: 0, projects: [] } for them. Frozen files are unchanged.
+   */
   completedThisPeriod: { count: number; projects: HandoffCompleted[] };
   /** Page 1 "Completed FY27 to date N", as frozen. Null for snapshots frozen before it existed. */
   completedFiscalYear: { label: string; fiscalYearStart: string; count: number } | null;

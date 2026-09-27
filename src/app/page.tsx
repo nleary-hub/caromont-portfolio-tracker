@@ -11,7 +11,7 @@ import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
-import type { DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
+import { PeriodClosure } from "@/lib/report/PeriodClosure";
 import { Db } from "@/lib/db/Db";
 import { ProjectFormModel, type ProjectFormSource, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import type { FiscalYearCount } from "@/lib/domain/types";
@@ -26,14 +26,13 @@ import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceLineSwitcher } from "@/components/ServiceLineSwitcher";
 import { NoAccessCard } from "@/components/NoAccessCard";
 import { LineGate } from "@/lib/access/LineGate";
+import { ProjectLink } from "@/lib/access/ProjectLink";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
 
 interface DashboardLoad {
   rows: DashboardRow[];
-  /** Completed and Cancelled rows of every fiscal year (the FY sections below the department groups). */
-  fiscalYearRows: DashboardFyRow[];
   columns: ViewColumn[];
   latestReport: LatestReport | null;
   /** "Completed FY27 to date N" for the summary strip. Null when the data could not be loaded. */
@@ -57,7 +56,6 @@ class DashboardData {
     const settings = DashboardData.defaultSettings();
     return {
       rows: [],
-      fiscalYearRows: [],
       columns: ViewSettings.visibleColumns(settings.dashboard),
       latestReport: null,
       completedFiscalYear: null,
@@ -86,7 +84,7 @@ class DashboardData {
     try {
       const db = Db.client;
       const [stored, latest, settings, layout] = await Promise.all([
-        db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(scope) } }).then((rows) => ProjectRows.fromDbAll(rows)),
+        db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.projectWhere(scope) } }).then((rows) => ProjectRows.fromDbAll(rows)),
         db.reportSnapshot.findFirst({
           where: ServiceLineAccess.where(scope),
           orderBy: { generatedAt: "desc" },
@@ -98,16 +96,17 @@ class DashboardData {
       // Derived next milestone and due date (first step not done); projects without steps keep their legacy fields.
       const steps = await MilestoneService.loadSteps(db, stored.map((p) => p.id));
       const projects = MilestoneProgress.applyAll(stored, steps);
-      const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings.dashboard);
-      // FY sections (Completed / Cancelled by fiscal year, replacing the "Completed this period" block on the
-      // dashboard) and the "Completed FY27 to date" tile, which counts the Completed section of the current year.
-      // Only closed projects need their status history for the closed date.
+      // Only closed projects need their status history (closed date, and whether they were completed during the period).
       const closed = VisibilityPolicy.candidates(projects, "dashboard").filter((p) => p.status === "Complete" || p.status === "Cancelled");
       const closedHistory = await db.projectHistory.findMany({
         where: { projectId: { in: closed.map((p) => p.id) }, field: { in: ["status", "created"] } },
         select: { projectId: true, changedAt: true, field: true, oldValue: true, newValue: true },
       });
-      const listedIds = [...visible.map((p) => p.id), ...closed.map((p) => p.id)];
+      // Completed since the line's latest freeze (every Complete project before the first freeze): they keep their
+      // row in their department group until the next freeze, then live on the Completed page. Cancelled never shows.
+      const completedInPeriod = PeriodClosure.ids(closed, closedHistory, latest?.generatedAt ?? null, new Date());
+      const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings.dashboard, completedInPeriod);
+      const listedIds = [...new Set([...visible.map((p) => p.id), ...closed.map((p) => p.id)])];
       const history = await db.projectHistory.findMany({
         where: {
           projectId: { in: listedIds },
@@ -141,13 +140,13 @@ class DashboardData {
         rows: DashboardViewModel.rows(
           projects,
           settings.dashboard,
-          history,
+          DashboardViewModel.flagHistory(history, closedHistory),
           latest?.generatedAt ?? null,
           today,
           latestUpdates,
           scope.departments,
+          completedInPeriod,
         ),
-        fiscalYearRows,
         columns: ViewSettings.visibleColumns(settings.dashboard),
         latestReport: latest
           ? {
@@ -196,19 +195,24 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   if (!viewer) redirect(SIGN_IN_PATH);
 
   // Per-line access (item 8): no line = the no-access card only; ?line=EP opens one of your lines or names the one you lack.
-  const gate = await LineGate.forPage(viewer, (await searchParams).line, "/");
+  const params = await searchParams;
+  const gate = await LineGate.forPage(viewer, params.line, "/");
   if (gate.kind === "switched") redirect(gate.to);
   if (gate.kind === "none") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} />;
   if (gate.kind === "lacks") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} line={gate.requested} goTo={{ shortName: gate.first.shortName, href: LineGate.href("/", gate.first.shortName) }} />;
 
-  const today = DateOnly.today();
   const { scope, lines } = gate;
-  const { rows, fiscalYearRows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
+  // Project links (/?project=<id>): the viewer's own projects open; anything else gets the project card (no name).
+  const link = Db.isConfigured() ? await ProjectLink.resolve(viewer, params[ProjectLink.PARAM], scope, Db.client) : ({ kind: "none" } as const);
+  if (link.kind === "switched") redirect(link.to);
+  if (link.kind === "lacks") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} project />;
+
+  const today = DateOnly.today();
+  const { rows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
 
   return (
     <ProjectDashboard
       rows={rows}
-      fiscalYearRows={fiscalYearRows}
       columns={columns}
       today={today}
       userEmail={viewer.email}
@@ -221,8 +225,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       // Switching lines remounts the dashboard: an open drawer closes and filters reset to the line's own.
       key={scope.id}
       line={scope}
+      {...(link.kind === "open" ? { initialProjectId: link.id } : {})}
       // Admins: always the switcher (with Manage service lines). Others: the switcher for 2+ lines, a plain label for one.
-      switcher={viewer.isAdmin || lines.length > 1 ? <ServiceLineSwitcher lines={lines.length ? lines : [scope]} active={scope} manage={viewer.isAdmin} /> : null}
+      switcher={viewer.isAdmin || lines.length > 1 ? <ServiceLineSwitcher lines={(lines.length ? lines : [scope]).map(ServiceLine.switcherEntry)} active={ServiceLine.switcherEntry(scope)} manage={viewer.isAdmin} /> : null}
       // Spread so non-admins' payload does not even carry an "admin" key.
       {...(admin
         ? {

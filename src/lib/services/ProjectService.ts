@@ -1,4 +1,5 @@
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
@@ -11,6 +12,7 @@ import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { HistoryDiff, type FieldChange } from "@/lib/history/HistoryDiff";
 import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
+import { RestoreRules, type RestoreTarget } from "@/lib/closed/RestoreRules";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { MilestoneRules, MilestoneValidationError, type MilestoneEdit } from "@/lib/domain/MilestoneRules";
@@ -57,6 +59,14 @@ export class ProjectArchivedError extends Error {
   constructor(id: string) {
     super(`Project ${id} is archived and cannot be modified`);
     this.name = "ProjectArchivedError";
+  }
+}
+
+/** Restore to active on a project that is no longer Cancelled (restored or changed elsewhere). */
+export class ProjectNotCancelledError extends Error {
+  constructor(id: string) {
+    super(`Project ${id} is not cancelled`);
+    this.name = "ProjectNotCancelledError";
   }
 }
 
@@ -432,6 +442,27 @@ export class ProjectService {
     });
   }
 
+  /**
+   * Admin "Restore to active" (Cancelled page): the status goes back to what it was before the latest cancellation
+   * (RestoreRules, from ProjectHistory), else Not started. One `status` history row with the restore comment (the
+   * History timeline reads "Restored from Cancelled. ..."). A direct status write, like the cancellation it undoes:
+   * the form's milestone rules are not re-run on data that was valid when it was cancelled. Throws when the project
+   * is not Cancelled (already restored in another tab), deleted, or of another line.
+   */
+  static async restoreFromCancelled(id: string, admin: Viewer, db: PrismaClient = Db.client, scope: ServiceLineScope = ServiceLine.defaultScope(), at: Date = new Date()): Promise<{ project: Project; target: RestoreTarget }> {
+    AdminPolicy.assertAdmin(admin);
+    return db.$transaction(async (tx) => {
+      const existing = await ProjectService.loadMutable(tx, id, scope);
+      if (existing.status !== "Cancelled") throw new ProjectNotCancelledError(id);
+      const history = await tx.projectHistory.findMany({ where: { projectId: id, field: "status" }, select: { field: true, oldValue: true, newValue: true, changedAt: true } });
+      const target = RestoreRules.target(history);
+      const data = { status: target.status };
+      const project = ProjectRows.fromDb(await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } }));
+      await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin, RestoreRules.commentFor(target)), at);
+      return { project, target };
+    });
+  }
+
   /** Admin per-project hide/unhide for one context. No-op when unchanged; otherwise audited. */
   /** Fields the admin drawer panel edits, one at a time (saved on change). */
   static readonly PEOPLE_FIELDS = ["owner", "physicianChampion", "requesterNotApplicable", "contractsLead", "serviceArea"] as const;
@@ -536,10 +567,15 @@ export class ProjectService {
     return { changedBy: admin.email, comment: comment ?? null };
   }
 
-  /** A project of `scope` that may be changed. A project of another service line is "not found" (no leak). */
-  private static async loadMutable(tx: Tx, id: string, scope: Pick<ServiceLineScope, "id">): Promise<Project> {
+  /**
+   * A project of `scope` that may be changed. A project of another service line, or of a department a limited user
+   * doesn't have, is "not found" (no leak). Unassigned projects are open to everyone with the line.
+   */
+  private static async loadMutable(tx: Tx, id: string, scope: Pick<ServiceLineScope, "id" | "departmentLimit">): Promise<Project> {
     const found = await tx.project.findUnique({ where: { id } });
-    if (!found || !ServiceLineAccess.inScope(found, scope)) throw new ProjectNotFoundError(id);
+    if (!found || !ServiceLineAccess.inScope(found, scope) || !DepartmentAccess.allows(scope, found.departmentId)) {
+      throw new ProjectNotFoundError(id);
+    }
     if (found.archivedAt) throw new ProjectArchivedError(id);
     return ProjectRows.fromDb(found);
   }

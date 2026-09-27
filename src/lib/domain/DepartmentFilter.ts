@@ -96,15 +96,25 @@ export class DepartmentFilter {
     return `${DepartmentFilter.normalize(selection, options).length} of ${options.length}`;
   }
 
-  /** Closed box text: "Departments: All", "Departments: Cath, EP", or "Departments: 3 of 7" when the names are long. */
+  /** Closed box for a viewer limited to some departments, with all of theirs selected: "My departments (3)". */
+  static myDepartments(count: number): string {
+    return `My departments (${count})`;
+  }
+
+  /**
+   * Closed box text: "Departments: All", "Departments: Cath, EP", or "Departments: 3 of 7" when the names are long.
+   * `limited` (a viewer limited to some departments; options are then only theirs): all selected reads
+   * "My departments (N)" instead of "Departments: All".
+   */
   static summary(
     selection: readonly DepartmentKey[],
     maxChars: number = DepartmentFilter.SUMMARY_MAX_CHARS,
     options: readonly DepartmentKey[] = DepartmentFilter.OPTIONS,
     list: DepartmentList = ServiceAreaInfo.LEGACY,
+    limited = false,
   ): string {
     const sel = DepartmentFilter.normalize(selection, options);
-    if (DepartmentFilter.isAll(sel, options)) return `${DepartmentFilter.PREFIX}: All`;
+    if (DepartmentFilter.isAll(sel, options)) return limited ? DepartmentFilter.myDepartments(options.length) : `${DepartmentFilter.PREFIX}: All`;
     const names = DepartmentFilter.names(sel, options, list);
     return `${DepartmentFilter.PREFIX}: ${names.length <= maxChars ? names : DepartmentFilter.countText(sel, options)}`;
   }
