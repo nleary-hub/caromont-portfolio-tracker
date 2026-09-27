@@ -80,4 +80,8 @@
     color: #fff; font: var(--app-table-strong); cursor: pointer;
   }
   .vp-primary:disabled { opacity: 0.6; cursor: default; }
+  .vp-layout {
+    display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 10px; padding-top: 10px;
+    border-top: 1px solid var(--dark-border);
+  }
 }

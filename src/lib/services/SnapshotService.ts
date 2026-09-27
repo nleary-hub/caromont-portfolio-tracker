@@ -66,6 +66,8 @@ export class SnapshotService {
               optionsJson: ReportOptionsService.toStored(data.options) as unknown as Prisma.InputJsonValue,
               completedJson: data.completed as unknown as Prisma.InputJsonValue,
               serviceLineJson: data.serviceLine as unknown as Prisma.InputJsonValue,
+              // The line's layout at freeze (columns and row order), like optionsJson: the PDF always rebuilds with it.
+              layoutJson: data.layout as unknown as Prisma.InputJsonValue,
             },
           });
         },

@@ -35,6 +35,7 @@ export class DraftReportService {
       totalsGrid: data.options.totalsGrid,
       ...(line.isDefault ? {} : { lineDepartments: line.departments }),
       serviceLine: data.serviceLine,
+      layout: data.layout,
       reportDate: data.reportDate,
       periodStart: period.periodStart,
       periodEnd: period.periodEnd,

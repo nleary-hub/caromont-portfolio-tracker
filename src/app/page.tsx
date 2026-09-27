@@ -1,6 +1,8 @@
 import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
-import { createProjectFromForm, deleteProject, saveProjectForm, saveProjectMilestones, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
+import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
+import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
+import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
@@ -31,10 +33,12 @@ interface DashboardLoad {
   latestReport: LatestReport | null;
   /** "Completed FY27 to date N" for the summary strip. Null when the data could not be loaded. */
   completedFiscalYear: FiscalYearCount | null;
+  /** The line's shared layout (everyone). */
+  layout: LineLayoutValue;
   /** Present only for admins. */
   admin: Omit<
     AdminDashboardProps,
-    "saveViewSettingsAction" | "setProjectHiddenAction" | "deleteProjectAction" | "setPeopleFieldAction" | "saveProjectFormAction" | "createProjectAction" | "saveMilestonesAction"
+    "saveViewSettingsAction" | "setProjectHiddenAction" | "deleteProjectAction" | "setPeopleFieldAction" | "saveProjectFormAction" | "createProjectAction" | "saveMilestonesAction" | "saveColumnLayoutAction" | "saveRowOrderAction" | "resetRowOrderAction"
   > | null;
   error: string | null;
 }
@@ -52,6 +56,7 @@ class DashboardData {
       columns: ViewSettings.visibleColumns(settings.dashboard),
       latestReport: null,
       completedFiscalYear: null,
+      layout: LineLayout.defaults(),
       admin: viewer.isAdmin
         ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: Assignee.ownerSuggestions([], ServiceLineAccess.ownerSeed(scope, Assignee.OWNER_BASE_SUGGESTIONS)), requesterSuggestions: [], menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
         : null,
@@ -75,7 +80,7 @@ class DashboardData {
     if (!Db.isConfigured()) return DashboardData.empty(viewer, "DATABASE_URL is not configured.", scope);
     try {
       const db = Db.client;
-      const [stored, latest, settings] = await Promise.all([
+      const [stored, latest, settings, layout] = await Promise.all([
         db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(scope) } }),
         db.reportSnapshot.findFirst({
           where: ServiceLineAccess.where(scope),
@@ -83,6 +88,7 @@ class DashboardData {
           select: { generatedAt: true, periodStart: true, periodEnd: true },
         }),
         ViewSettingsService.getAll(db),
+        LineLayoutService.getOrDefault(db, scope),
       ]);
       // Derived next milestone and due date (first step not done); projects without steps keep their legacy fields.
       const steps = await MilestoneService.loadSteps(db, stored.map((p) => p.id));
@@ -125,6 +131,7 @@ class DashboardData {
       const completedFiscalYear = CompletedFiscalYear.count({ projects: complete, history: completionHistory, reportDate: today });
       return {
         completedFiscalYear,
+        layout,
         rows: DashboardViewModel.rows(
           projects,
           settings.dashboard,
@@ -172,7 +179,7 @@ export default async function DashboardPage() {
 
   const today = DateOnly.today();
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
-  const [{ rows, completed, columns, latestReport, completedFiscalYear, admin, error }, lines] = await Promise.all([
+  const [{ rows, completed, columns, latestReport, completedFiscalYear, layout, admin, error }, lines] = await Promise.all([
     DashboardData.load(viewer, today, scope),
     viewer.isAdmin && Db.isConfigured() ? ServiceLineAccess.usableLines(viewer).catch(() => [scope]) : Promise.resolve([]),
   ]);
@@ -188,6 +195,7 @@ export default async function DashboardPage() {
       latestReport={latestReport}
       completedFiscalYear={completedFiscalYear}
       loadError={error}
+      layout={layout}
       serviceLine={ServiceLine.valueOf(scope)}
       // Switching lines remounts the dashboard: an open drawer closes and filters reset to the line's own.
       key={scope.id}
@@ -224,6 +232,21 @@ export default async function DashboardPage() {
               createProjectAction: async (values, milestones) => {
                 "use server";
                 return createProjectFromForm(values, milestones);
+              },
+              saveColumnLayoutAction: async (value) => {
+                "use server";
+                const r = await saveColumnLayout(value);
+                return r.ok ? null : r.error;
+              },
+              saveRowOrderAction: async (area, ids) => {
+                "use server";
+                const r = await saveRowOrder(area, ids);
+                return r.ok ? null : r.error;
+              },
+              resetRowOrderAction: async () => {
+                "use server";
+                const r = await resetRowOrder();
+                return r.ok ? null : r.error;
               },
               deleteProjectAction: async (projectId) => {
                 "use server";

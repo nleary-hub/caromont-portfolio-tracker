@@ -7,6 +7,7 @@ import { RestoreServiceLineButton } from "@/components/RestoreServiceLineButton"
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLineHistoryText } from "@/lib/admin/ServiceLineHistoryText";
+import { AuditLayoutText } from "@/lib/admin/AuditLayoutText";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
@@ -37,6 +38,7 @@ class AuditFormat {
 
   static field(e: AuditEvent): string {
     if (e.kind === "serviceLine") return `Service line: ${ServiceLineHistoryText.action(e.field.replace(/^serviceLine\./, ""))}`;
+    if (e.kind === "layout") return `Layout: ${AuditLayoutText.action(e.field.replace(/^layout\./, ""))}`;
     if (e.kind === "template") return `Template: ${e.field.replace(/^template\./, "").replace(/_/g, " ")}`;
     return AuditFormat.FIELD_LABELS[e.field] ?? e.field;
   }

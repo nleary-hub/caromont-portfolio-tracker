@@ -26,7 +26,10 @@ import type { ProjectFormSubmit } from "./ProjectEditForm";
 import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { ServiceLineLabel } from "./ServiceLineLabel";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
-import { DashboardTable } from "./DashboardTable";
+import { DashboardTable, type DashboardLayoutControl } from "./DashboardTable";
+import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardSort";
+import { LayoutCopy, LineLayout, type ColumnLayoutValue, type LineLayoutValue } from "@/lib/layout/LineLayout";
+import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentsSelect, TileVisibilityButton } from "./DashboardFilterControls";
 import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
@@ -77,6 +80,12 @@ export interface AdminDashboardProps {
   saveProjectFormAction: (projectId: string, changes: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
   /** New project drawer: create (name and department required), with its checklist. */
   createProjectAction: (values: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
+  /** Line layout: save column order and width shares (null = reset columns). */
+  saveColumnLayoutAction: (columns: ColumnLayoutValue | null) => Promise<string | null>;
+  /** Line layout: one department's manual order (empty = report order there). */
+  saveRowOrderAction: (area: string, ids: string[]) => Promise<string | null>;
+  /** Line layout: reset the manual order in every department. */
+  resetRowOrderAction: () => Promise<string | null>;
 }
 
 /** Admin drawer mode: detail view, edit form, or the empty New project form. */
@@ -108,6 +117,8 @@ interface Props {
   /** Admins: the service line switcher, shown in place of the plain name. */
   switcher?: ReactNode;
   admin?: AdminDashboardProps;
+  /** The line's shared layout (column widths and order, row order). Everyone gets it; only admins change it. */
+  layout?: LineLayoutValue;
   signOutAction: () => Promise<void>;
 }
 
@@ -144,6 +155,7 @@ export function ProjectDashboard({
   switcher,
   columns: columnsProp,
   admin,
+  layout: layoutProp,
   signOutAction,
 }: Props) {
   const [query, setQuery] = useState("");
@@ -158,6 +170,44 @@ export function ProjectDashboard({
   const scrollToRef = useRef<string | null>(null);
   // Admin only: optimistic copy of the settings (rows refresh from the server after each save).
   const [settings, setSettings] = useState<ViewSettingsByContext | null>(admin?.viewSettings ?? null);
+
+  // Line layout (server side, shared by everyone on the line). Admin changes apply optimistically and roll back on failure.
+  const [lineLayout, setLineLayout] = useState<LineLayoutValue>(layoutProp ?? LineLayout.defaults());
+  const [layoutError, setLayoutError] = useState<string | null>(null);
+  const [sort, setSort] = useState<DashboardSortKey>("manual");
+  const persistLayout = async (next: LineLayoutValue, save: () => Promise<string | null>): Promise<string | null> => {
+    const previous = lineLayout;
+    setLineLayout(next);
+    setLayoutError(null);
+    let err: string | null;
+    try {
+      err = await save();
+    } catch {
+      err = LayoutCopy.SAVE_FAILED;
+    }
+    if (err) {
+      setLineLayout(previous);
+      setLayoutError(LayoutCopy.SAVE_FAILED);
+    }
+    return err ? LayoutCopy.SAVE_FAILED : null;
+  };
+  const saveColumns = (columns: ColumnLayoutValue | null) =>
+    admin ? persistLayout({ ...lineLayout, columns: LineLayout.isDefaultColumns(columns) ? null : columns }, () => admin.saveColumnLayoutAction(columns)) : Promise.resolve("Not authorized.");
+  const saveRowOrder = (area: AreaGroup, ids: string[]) => {
+    if (!admin) return Promise.resolve("Not authorized.");
+    const rowsNext = { ...lineLayout.rows };
+    if (ids.length) rowsNext[area] = ids;
+    else delete rowsNext[area];
+    return persistLayout({ ...lineLayout, rows: rowsNext }, () => admin.saveRowOrderAction(area, ids));
+  };
+  const resetRows = () => (admin ? persistLayout({ ...lineLayout, rows: {} }, () => admin.resetRowOrderAction()) : Promise.resolve("Not authorized."));
+  const layoutControl: DashboardLayoutControl = {
+    value: lineLayout,
+    canEdit: Boolean(admin),
+    sort,
+    onColumns: (next) => void saveColumns(next),
+    onRowOrder: (area, ids) => void saveRowOrder(area, ids),
+  };
 
   // Per-user preferences in localStorage (department filter, hidden tiles). Defaults until read after mount,
   // so the server render and the first client render agree.
@@ -198,6 +248,17 @@ export function ProjectDashboard({
   /** Optimistic: apply locally, persist, roll back on failure. */
   const saveSettings = async (context: ViewContext, value: ViewSettingsValue): Promise<string | null> => {
     if (!admin || !settings) return "Not authorized.";
+    if (context === "dashboard" && lineLayout.columns) {
+      // This line has its own column order: a reorder in the View menu changes the line layout (not the order
+      // shared by every line); show/hide still saves to the dashboard view settings.
+      const order = LineLayout.orderFromSettings("dashboard", value);
+      if (order.join() !== lineLayout.columns.order.join()) {
+        const err = await saveColumns({ ...lineLayout.columns, order });
+        if (err) return err;
+      }
+      value = { ...value, columnOrder: settings.dashboard.columnOrder };
+      if (ViewSettings.equals(value, settings.dashboard)) return null;
+    }
     const previous = settings[context];
     setSettings((s) => (s ? { ...s, [context]: value } : s));
     try {
@@ -345,7 +406,12 @@ export function ProjectDashboard({
           <kbd className="rounded border border-line px-1 type-caption">/</kbd>
         </label>
         {admin && settings && (
-          <ViewSettingsPicker settings={settings} counts={admin.pickerCounts} onSave={saveSettings} />
+          <ViewSettingsPicker
+            settings={lineLayout.columns ? { ...settings, dashboard: LineLayout.orderedSettings("dashboard", settings.dashboard, lineLayout.columns.order) } : settings}
+            counts={admin.pickerCounts}
+            onSave={saveSettings}
+            layoutReset={{ shortName: serviceLine.shortName, onResetColumns: () => saveColumns(null), onResetRows: resetRows }}
+          />
         )}
         <Link href="/reports" className="shrink-0 whitespace-nowrap type-table-strong text-muted hover:text-fg">
           Reports
@@ -407,7 +473,28 @@ export function ProjectDashboard({
         {!emptyLine && (
         <section className="flex items-center gap-1.5" aria-label="Department filter">
           <div className="flex-1" />
+          {layoutError && (
+            <span role="alert" className="mr-2 text-danger type-caption">
+              {layoutError}
+            </span>
+          )}
           <span className="type-caption text-muted">Showing {visible.length} projects</span>
+          <label className="ml-2 flex h-7 items-center gap-1.5 rounded-control border border-line bg-input pr-1 pl-2.5 text-muted type-table">
+            Sort
+            <select
+              value={sort}
+              onChange={(e) => setSort(e.target.value as DashboardSortKey)}
+              aria-label="Sort projects"
+              data-testid="sort-menu"
+              className="h-6 bg-transparent text-fg type-table-strong focus:outline-none"
+            >
+              {DashboardSort.OPTIONS.map((o) => (
+                <option key={o.key} value={o.key}>
+                  {o.label}
+                </option>
+              ))}
+            </select>
+          </label>
           <div className="ml-2">
             <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} />
           </div>
@@ -442,6 +529,7 @@ export function ProjectDashboard({
               today={today}
               emptyText={rows.length === 0 && completed.length === 0 ? "No projects yet." : "No projects match the current filter."}
               renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
+              layout={layoutControl}
             />
           </div>
           <div className="flex justify-between border-t border-line px-3 py-2.5 text-muted type-caption">

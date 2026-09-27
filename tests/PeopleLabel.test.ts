@@ -21,7 +21,7 @@ describe("People labels", () => {
     expect(PeopleLabel.line("contracts", "To assign")).toBe("Contracts: To assign");
   });
 
-  it("PDF: labels sit before the names, the owner name is fitted after its label at 600, the label is never cut", () => {
+  it("PDF: labels sit before the names, the owner name wraps after its label at 600 (never cut), the label is never cut", () => {
     const S = ReportGeometry.SIZE;
     const base = SampleReportData.rows()[0];
     const c = cell({ ...base, owner: "Owner D", physicianChampion: "Dr. Sample K", contractsLead: "Mellisa Gonzales" });
@@ -33,8 +33,10 @@ describe("People labels", () => {
     expect(ReportLayout.OWNER_NAME_WEIGHT).toBe(600);
     expect(ReportLayout.CONTRACTS_PREFIX_WEIGHT).toBe(400);
     const long = cell({ ...base, owner: "Bartholomew Featherstonehaugh-Worthington" });
-    expect(long.owner.endsWith("\u2026")).toBe(true);
+    expect(long.owner).toBe("Bartholomew");
+    expect(long.ownerMore.length).toBeGreaterThan(0);
     expect(long.ownerLabelW + m.width(long.owner, S.table, 600)).toBeLessThanOrEqual(long.w + 0.01);
+    for (const t of long.ownerMore) expect(m.width(t, S.table, 600)).toBeLessThanOrEqual(long.w + 0.01);
   });
 
   it("PDF: empty owner reads To assign; Not applicable still drops the requester line", () => {

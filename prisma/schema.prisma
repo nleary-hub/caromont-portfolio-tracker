@@ -158,6 +158,9 @@ model ReportSnapshot {
   /// ServiceLineValue (service line name and short name) in effect at freeze, used for the report title.
   /// Immutable. Null before migration 0014 (those reports render with the legacy title).
   serviceLineJson      Json?
+  /// LineLayoutValue (column order and width shares, row order per department) of the line at freeze. Immutable.
+  /// Null before migration 0017 (those reports render with the default columns and order).
+  layoutJson           Json?
 
   artifacts   ReportArtifact[]
   deliveries  ReportDelivery[]
@@ -417,6 +420,8 @@ model ServiceLine {
   templateLog      MilestoneTemplateHistory[]
   history          ServiceLineHistory[]
   activeFor        ServiceLineUserState[]
+  layout           LineLayout?
+  layoutLog        LineLayoutHistory[]
 
   @@map("service_line")
 }
@@ -446,4 +451,36 @@ model ServiceLineUserState {
   serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
 
   @@map("service_line_user_state")
+}
+
+/// Dashboard and PDF layout of one service line, shared by everyone on the line (migration 0017). No row, or a
+/// null column, means the default: today's column widths and order, and the report order in every department.
+/// Only LineLayoutService writes it; every admin change is appended to line_layout_history in the same transaction.
+model LineLayout {
+  serviceLineId String      @id @db.Uuid
+  /// ColumnLayoutValue: { order, shares } (shares of the table width). Null = default widths and order.
+  columnsJson   Json?
+  /// RowOrderValue: { <department group>: projectId[] }. A department without a list keeps the report order.
+  rowOrderJson  Json?
+  updatedAt     DateTime    @updatedAt
+  updatedBy     String
+  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+
+  @@map("line_layout")
+}
+
+/// Append-only audit trail of layout changes per line (columns, columns.reset, rows, rows.reset). DB trigger
+/// blocks UPDATE/DELETE.
+model LineLayoutHistory {
+  id            String      @id @default(uuid()) @db.Uuid
+  serviceLineId String      @db.Uuid
+  action        String
+  oldValue      Json?
+  newValue      Json?
+  changedAt     DateTime    @default(now())
+  changedBy     String
+  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+
+  @@index([serviceLineId, changedAt])
+  @@map("line_layout_history")
 }

@@ -20,7 +20,7 @@ export interface AuditProject {
 }
 
 export interface AuditEvent {
-  kind: "project" | "viewSettings" | "serviceLine" | "template";
+  kind: "project" | "viewSettings" | "serviceLine" | "template" | "layout";
   at: Date;
   by: string;
   /** Project name, or the view settings context. */
@@ -82,13 +82,14 @@ export class AdminAuditService {
       .sort(byName);
 
     const names = new Map(projects.map((p) => [p.id, p.name]));
-    const [projectEvents, settingsEvents, viewSettings, lineEvents, templateEvents, deletedLines] = await Promise.all([
+    const [projectEvents, settingsEvents, viewSettings, lineEvents, templateEvents, deletedLines, layoutEvents] = await Promise.all([
       db.projectHistory.findMany({ where: { projectId: { in: projects.map((p) => p.id) }, field: { in: [...VisibilityPolicy.ADMIN_ONLY_HISTORY_FIELDS] } } }),
       db.viewSettingsHistory.findMany({}),
       ViewSettingsService.getAll(db),
       db.serviceLineHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
       db.milestoneTemplateHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
       db.serviceLine.findMany({ where: { deletedAt: { not: null } }, orderBy: { deletedAt: "desc" } }),
+      db.lineLayoutHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
     ]);
     const events: AuditEvent[] = [
       ...projectEvents.map((h) => ({
@@ -127,6 +128,16 @@ export class AdminAuditService {
         by: h.changedBy,
         subject: "Milestone templates",
         field: `template.${h.action}`,
+        oldValue: h.oldValue === null ? null : JSON.stringify(h.oldValue),
+        newValue: h.newValue === null ? null : JSON.stringify(h.newValue),
+        comment: null,
+      })),
+      ...layoutEvents.map((h) => ({
+        kind: "layout" as const,
+        at: h.changedAt,
+        by: h.changedBy,
+        subject: "Layout",
+        field: `layout.${h.action}`,
         oldValue: h.oldValue === null ? null : JSON.stringify(h.oldValue),
         newValue: h.newValue === null ? null : JSON.stringify(h.newValue),
         comment: null,

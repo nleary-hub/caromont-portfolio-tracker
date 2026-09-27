@@ -11,6 +11,7 @@ import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { ProjectArchivedError, ProjectNotFoundError, ProjectService, type MilestoneEdit } from "@/lib/services/ProjectService";
 import { MilestoneService, type MilestoneStepDto } from "@/lib/services/MilestoneService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
+import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectValidationError, type FieldErrors } from "@/lib/validation/ProjectValidator";
 
 export type AdminActionResult = { ok: true } | { ok: false; error: string };
@@ -135,6 +136,21 @@ export async function saveViewSettings(context: string, value: unknown): Promise
   if (!ViewSettings.isContext(context)) return { ok: false, error: "Unknown view." };
   // View settings are shared by every service line.
   return AdminAction.run("saveViewSettings", (admin) => ViewSettingsService.update(context, value, { changedBy: admin.email }));
+}
+
+/** Line layout (active line): column order and width shares; null resets the columns. */
+export async function saveColumnLayout(columns: unknown): Promise<AdminActionResult> {
+  return AdminAction.run("saveColumnLayout", (admin, scope) => LineLayoutService.setColumns(columns ?? null, admin, undefined, scope));
+}
+
+/** Line layout (active line): one department's manual row order. */
+export async function saveRowOrder(area: string, ids: unknown): Promise<AdminActionResult> {
+  return AdminAction.run("saveRowOrder", (admin, scope) => LineLayoutService.setRowOrder(String(area), ids, admin, undefined, scope));
+}
+
+/** Line layout (active line): back to the report order in every department. */
+export async function resetRowOrder(): Promise<AdminActionResult> {
+  return AdminAction.run("resetRowOrder", (admin, scope) => LineLayoutService.resetRows(admin, undefined, scope));
 }
 
 export async function setProjectHidden(projectId: string, context: string, hidden: boolean): Promise<AdminActionResult> {
