@@ -9,7 +9,7 @@ import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ExportService } from "@/lib/import/ExportService";
 import { ImportService } from "@/lib/import/ImportService";
 import { SampleReportData } from "@/lib/report/SampleReportData";
-import { ReportLayout, type RowCell } from "@/lib/report/pdf/ReportLayout";
+import { ReportGeometry, ReportLayout, type RowCell } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { Factory } from "./helpers/factories";
@@ -128,9 +128,13 @@ describe("ContractsLead", () => {
     expect(ReportLayout.rowLayout(m, row, settings, SampleReportData.REPORT_DATE).height).toBeGreaterThanOrEqual(hRow);
   });
 
-  it("report: every name fits on one line (with its label) in the 1.4 in owner column at 7 pt; never shrunk (wraps if a column is narrower)", () => {
+  it("report: every name fits on one line (with its label) in the 1.5 in owner column at 7 pt; never shrunk (wraps if a column is narrower)", () => {
     const settings = ViewSettings.defaults("report");
     const row: ReportRow = SampleReportData.rows()[0];
+    const ownerColumn = ReportLayout.columns(settings).find((c) => c.key === "owner")!;
+    const longest = Math.max(...ContractsLead.options().map((lead) => m.width(`Contracts: ${lead}`, 7, 400)));
+    expect(ownerColumn.w - ReportGeometry.CELL_PAD_R).toBeGreaterThanOrEqual(longest);
+    expect(ownerColumn.w - ReportGeometry.CELL_PAD_R - longest).toBeGreaterThan(8);
     for (const lead of [...ContractsLead.options(), null]) {
       const c = ReportLayout.rowLayout(m, { ...row, contractsLead: lead }, settings, SampleReportData.REPORT_DATE).cells.find((x): x is OwnerCell => x.kind === "owner")!;
       expect(c.contracts?.lines, String(lead)).toHaveLength(1);
