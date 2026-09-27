@@ -120,17 +120,11 @@ ALTER TABLE "service_line" ADD CONSTRAINT "service_line_short_format"
 -- Scope existing tables. ADD COLUMN with a constant default fills every row without an UPDATE.
 
 ALTER TABLE "Project" ADD COLUMN "serviceLineId" UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001';
-ALTER TABLE "Project" ALTER COLUMN "serviceLineId" DROP DEFAULT;
 ALTER TABLE "ReportSnapshot" ADD COLUMN "serviceLineId" UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001';
-ALTER TABLE "ReportSnapshot" ALTER COLUMN "serviceLineId" DROP DEFAULT;
 ALTER TABLE "milestone_templates" ADD COLUMN "serviceLineId" UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001';
-ALTER TABLE "milestone_templates" ALTER COLUMN "serviceLineId" DROP DEFAULT;
 ALTER TABLE "milestone_template_history" ADD COLUMN "serviceLineId" UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001';
-ALTER TABLE "milestone_template_history" ALTER COLUMN "serviceLineId" DROP DEFAULT;
 ALTER TABLE "report_options" ADD COLUMN "serviceLineId" UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001';
-ALTER TABLE "report_options" ALTER COLUMN "serviceLineId" DROP DEFAULT;
 ALTER TABLE "report_options_history" ADD COLUMN "serviceLineId" UUID NOT NULL DEFAULT '00000000-0000-4000-8000-000000000001';
-ALTER TABLE "report_options_history" ALTER COLUMN "serviceLineId" DROP DEFAULT;
 
 -- CreateIndex
 CREATE INDEX "Project_serviceLineId_archivedAt_idx" ON "Project"("serviceLineId", "archivedAt");

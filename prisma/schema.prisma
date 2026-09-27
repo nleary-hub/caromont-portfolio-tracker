@@ -46,7 +46,7 @@ model Project {
   id                     String        @id @default(uuid()) @db.Uuid
   /// Service line the project belongs to (migration 0016). Every read and write is scoped through
   /// ServiceLineAccess; there is no DB default, so a new row must name its line.
-  serviceLineId          String        @db.Uuid
+  serviceLineId          String        @default(dbgenerated("'00000000-0000-4000-8000-000000000001'::uuid")) @db.Uuid
   name                   String
   /// What the project is. Optional. Length limit is AppConfig.DESCRIPTION_MAX_LENGTH (200), enforced in app validation.
   description            String?
@@ -126,7 +126,7 @@ model ReportSnapshot {
   id                   String    @id @default(uuid()) @db.Uuid
   /// Service line the report is for (migration 0016). Scheduled freezes are the default line (CVPSL) only.
   /// Immutable (snapshot guard).
-  serviceLineId        String    @db.Uuid
+  serviceLineId        String    @default(dbgenerated("'00000000-0000-4000-8000-000000000001'::uuid")) @db.Uuid
   periodStart          DateTime  @db.Date
   periodEnd            DateTime  @db.Date
   generatedAt          DateTime  @default(now())
@@ -252,7 +252,7 @@ model ViewSettingsHistory {
 /// ReportOptionsService writes it; every change is appended to report_options_history in the same transaction.
 model ReportOptions {
   id            String      @id @default("report")
-  serviceLineId String      @unique @db.Uuid
+  serviceLineId String      @unique @default(dbgenerated("'00000000-0000-4000-8000-000000000001'::uuid")) @db.Uuid
   serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
   /// Last page with the status and flag key. Default on.
   showKeyPage   Boolean     @default(true)
@@ -265,7 +265,7 @@ model ReportOptions {
 /// Append-only audit trail of report options changes. DB trigger blocks UPDATE/DELETE.
 model ReportOptionsHistory {
   id            String      @id @default(uuid()) @db.Uuid
-  serviceLineId String      @db.Uuid
+  serviceLineId String      @default(dbgenerated("'00000000-0000-4000-8000-000000000001'::uuid")) @db.Uuid
   serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
   oldValue      Json
   newValue      Json
@@ -337,7 +337,7 @@ model ProjectMilestone {
 model MilestoneTemplate {
   id            String      @id @default(uuid()) @db.Uuid
   /// Service line the template belongs to (migration 0016).
-  serviceLineId String      @db.Uuid
+  serviceLineId String      @default(dbgenerated("'00000000-0000-4000-8000-000000000001'::uuid")) @db.Uuid
   serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
   name          String
   position      Int
@@ -372,7 +372,7 @@ model MilestoneTemplateItem {
 /// UPDATE/DELETE. templateId is not a foreign key so the trail outlives a deleted template.
 model MilestoneTemplateHistory {
   id            String      @id @default(uuid()) @db.Uuid
-  serviceLineId String      @db.Uuid
+  serviceLineId String      @default(dbgenerated("'00000000-0000-4000-8000-000000000001'::uuid")) @db.Uuid
   serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
   templateId    String?     @db.Uuid
   /// e.g. "template_created", "template_renamed", "item_added", "items_reordered", "template_deleted".

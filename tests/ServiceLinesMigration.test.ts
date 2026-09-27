@@ -119,7 +119,7 @@ describe("0016_service_lines on production-shaped data (PGlite)", () => {
     expect((await M16.tables(db)).filter((t) => !(t in cols)).sort()).toEqual(["service_line", "service_line_history", "service_line_user_state"]);
   });
 
-  it("puts every existing row in CVPSL, with valid foreign keys and no default left on the columns", async () => {
+  it("puts every existing row in CVPSL, with valid foreign keys and a constant CVPSL default on the columns", async () => {
     const db = await M16.at0015();
     await db.exec(M16.sql(M));
     for (const t of SCOPED) {
@@ -137,7 +137,8 @@ describe("0016_service_lines on production-shaped data (PGlite)", () => {
         `select is_nullable, column_default from information_schema.columns where table_name = $1 and column_name = 'serviceLineId'`,
         [t],
       );
-      expect(col.rows[0], t).toEqual({ is_nullable: "NO", column_default: null });
+      expect(col.rows[0].is_nullable, t).toBe("NO");
+      expect(col.rows[0].column_default, t).toBe(`'${CVPSL}'::uuid`);
     }
     // Relations between existing tables are intact.
     const rel = await db.query<{ orphan_steps: number; orphan_history: number; orphan_artifacts: number; orphan_items: number }>(
@@ -148,13 +149,13 @@ describe("0016_service_lines on production-shaped data (PGlite)", () => {
          (select count(*) from milestone_template_items i left join milestone_templates t on t.id = i."templateId" where t.id is null)::int as orphan_items`,
     );
     expect(rel.rows[0]).toEqual({ orphan_steps: 0, orphan_history: 0, orphan_artifacts: 0, orphan_items: 0 });
-    // A new row must name its line.
+    // A row naming a line that does not exist is rejected (a row that names no line gets CVPSL, see the deploy test).
     expect(
       await M16.fails(
         db,
-        `insert into "Project" (id, name, "serviceArea", status, "nextMilestone", "updatedAt", "updatedBy") values (gen_random_uuid(), 'x', 'Cath', 'OnTrack', 'M', now(), 't')`,
+        `insert into "Project" (id, name, "serviceArea", status, "nextMilestone", "updatedAt", "updatedBy", "serviceLineId") values (gen_random_uuid(), 'x', 'Cath', 'OnTrack', 'M', now(), 't', gen_random_uuid())`,
       ),
-    ).toMatch(/serviceLineId/);
+    ).toMatch(/foreign key|serviceLineId/);
   });
 
   it("seeds CVPSL from the current settings: name, short name, all seven departments in order, the current contracts leads", async () => {
@@ -225,5 +226,24 @@ describe("0016_service_lines on production-shaped data (PGlite)", () => {
     expect(await M16.fails(db, `update "ReportSnapshot" set "generatedBy" = 'x'`)).toMatch(/immutable/);
     await db.exec(M16.sql(M));
     expect((await db.query<{ n: number }>(`select count(*)::int as n from service_line`)).rows[0].n).toBe(1);
+  });
+  it("stays compatible with the code still serving during the deploy: writes that omit serviceLineId land in CVPSL", async () => {
+    // prisma migrate deploy runs during the production build while the previous deployment still serves
+    // traffic (for example the cron freeze or a project edit), so 0016 keeps a constant CVPSL default.
+    const db = await M16.at0015();
+    const before = await M16.columnsOfAll(db);
+    await db.exec(M16.sql(M));
+    for (const t of ["Project", "milestone_templates", "report_options_history"]) {
+      const cols = before[t].filter((c) => c !== "id").map((c) => `"${c}"`).join(", ");
+      await db.exec(`insert into "${t}" ("id", ${cols}) select gen_random_uuid(), ${cols} from "${t}" limit 1`);
+      const r = await db.query<{ n: number }>(`select count(*)::int as n from "${t}" where "serviceLineId" <> $1`, [CVPSL]);
+      expect(r.rows[0].n).toBe(0);
+    }
+    const defaults = await db.query<{ t: string; d: string | null }>(
+      `select table_name as t, column_default as d from information_schema.columns where column_name = 'serviceLineId' and table_name = any($1) order by 1`,
+      [SCOPED],
+    );
+    expect(defaults.rows).toHaveLength(SCOPED.length);
+    for (const row of defaults.rows) expect(row.d).toContain(CVPSL);
   });
 });
