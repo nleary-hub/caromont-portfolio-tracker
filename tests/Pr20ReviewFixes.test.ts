@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
@@ -108,6 +109,17 @@ describe("Departments come from the ServiceArea enum (every department, no hard-
       expect(sections).toEqual(["Cath", "IR"]);
     }
     expect(DashboardGroups.group(rows).map((g) => g.area)).toEqual(["Cath", "IR"]);
+  });
+
+  it("popover: at most 280px tall, the department list scrolls, 'All departments' stays pinned above it", () => {
+    const css = readFileSync(new URL("../src/styles/dashboard-filters.css", import.meta.url), "utf8");
+    expect(css).toMatch(/\.df-pop-scroll \{[^}]*max-height: 280px;[^}]*overflow: hidden;/);
+    expect(css).toMatch(/\.df-pop-scroll > \.df-scroll \{[^}]*overflow-y: auto;/);
+    const src = readFileSync(new URL("../src/components/DashboardFilterControls.tsx", import.meta.url), "utf8");
+    const pop = src.slice(src.indexOf("df-pop-scroll"));
+    // The All row comes first, outside the scrolling list.
+    expect(pop.indexOf("DepartmentFilter.ALL_LABEL")).toBeLessThan(pop.indexOf('className="df-scroll"'));
+    expect(pop.indexOf('className="df-scroll"')).toBeLessThan(pop.indexOf("<DepartmentChecklist"));
   });
 
   it("K of M uses the real total; all selected reads All (no '7 of 7'); the PDF detail shows only when filtered", () => {
