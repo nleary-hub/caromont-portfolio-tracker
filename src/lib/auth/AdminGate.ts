@@ -1,17 +1,17 @@
 import { notFound } from "next/navigation";
 import { auth } from "@/auth";
-import { AdminPolicy } from "@/lib/auth/AdminPolicy";
+import { SessionAccess } from "@/lib/auth/SessionAccess";
 
 /**
  * Server-side admin enforcement for the CSV import page, its Server Functions and download routes.
- * Non-admins get a 404. Uses the single `AdminPolicy` (ADMIN_EMAILS, and the admin must also be on
- * ALLOWED_EMAILS), re-evaluated on every call.
+ * Non-admins get a 404. Uses `SessionAccess` (ADMIN_EMAILS; a Google admin must also be on ALLOWED_EMAILS, a
+ * password admin needs an active account), re-evaluated on every call.
  */
 export class AdminGate {
   /** The signed-in admin's email (lowercased), or null. */
   static async adminEmail(): Promise<string | null> {
     const session = await auth();
-    const viewer = AdminPolicy.viewerFor(session?.user?.email ?? null);
+    const viewer = SessionAccess.viewer(session);
     return viewer?.isAdmin ? viewer.email : null;
   }
 

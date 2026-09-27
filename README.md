@@ -301,6 +301,32 @@ utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes a
   (which write audit rows), view settings in effect, and recent admin changes.
 - All admin mutations are Server Actions in `src/app/actions/admin.ts`, which re-check admin per call.
 
+## Email and password sign-in
+
+A second option on `/signin`, under the Google button. Accounts are created only by admins; there is no self sign-up.
+
+- **Who can sign in with a password:** anyone an admin gave a password on Admin > People > Access (Add user with
+  "Create a temporary password", or the row menu > Create temporary password / Reset password). That account is the
+  permission: the email does not need to be in `ALLOWED_EMAILS`. Google sign-in is unchanged and still needs
+  `ALLOWED_EMAILS` (and a Google-verified email). Admin rights still come from `ADMIN_EMAILS`, and line access from the
+  Access grid, for both kinds of sign-in.
+- **Temporary passwords:** every password an admin creates or resets is temporary and shown once. At first sign-in the
+  person must choose their own (12+ characters, not their email, not the temporary one) on `/set-password` before
+  they can reach anything else (the proxy redirects there; `CurrentViewer` also refuses such sessions).
+- **Hashing:** argon2id (`@node-rs/argon2`, 19 MiB, 2 passes, 1 lane), PHC strings in `password_credential`.
+- **Lockout:** 5 failed attempts in a row lock that email for 15 minutes (`password_sign_in_attempt`), whether or not an
+  account exists, so the message never reveals which emails have accounts. Admins can Unlock from the row menu.
+- **Rate limit:** every attempt counts against the client IP (30 per 15 minutes) and the typed email (10 per 15
+  minutes) in `password_rate_limit`, one atomic upsert per key, so it holds across serverless instances.
+- **Errors:** one generic message for every failure; amber panels for the lockout and the rate limit; a gray "Your
+  session ended" panel when a session cookie is no longer good.
+- **Sessions:** password sessions last 7 days from sign-in, with no idle timeout, and re-check the database every 5
+  minutes (a reset or "Turn off password sign-in" ends them). Google sessions keep their 8 hour rule, extended by
+  activity, as before.
+- **Kill switch:** `AUTH_PASSWORD_SIGNIN="false"` hides and disables the password option. It is on whenever
+  `DATABASE_URL` is set.
+- **Migration:** `0025_password_sign_in` (four new tables, additive). Rollback steps are at the top of the file.
+
 ## CSV import and export (admin)
 
 Admins (`ADMIN_EMAILS`, see `AdminPolicy`) get `/admin/import`; everyone else gets a 404 (page, Server

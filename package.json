@@ -19,6 +19,7 @@
     "export:csv": "tsx scripts/csv-cli.ts export"
   },
   "dependencies": {
+    "@node-rs/argon2": "^2.2.1",
     "@prisma/adapter-pg": "^7.10.0",
     "@prisma/client": "^7.10.0",
     "@react-pdf/renderer": "^4.9.0",

@@ -11,6 +11,7 @@ import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { ContractsLeadRules } from "@/lib/people/ContractsLeadRules";
 import { PeopleService } from "@/lib/services/PeopleService";
+import { UserAccountService } from "@/lib/services/UserAccountService";
 
 export const metadata: Metadata = { title: ContractsLeadRules.PAGE_TITLE };
 export const dynamic = "force-dynamic";
@@ -24,6 +25,9 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
   const [leads, lists, grid, params] = await Promise.all([PeopleService.contractsLeads(scope, viewer), PeopleService.lists(scope, viewer), LineAccessService.grid(viewer), searchParams]);
   // Deep links (screenshots): ?add=1 (Contracts leads) or ?add=owner|requester; ?role=owner|requester with ?rename= or ?remove=.
   const section = (v: string | undefined) => (v === "owner" || v === "requester" || v === "lead" ? v : undefined);
+  // Password tags and row menus for everyone in the grid. ?menu=<email> opens that row's ⋯ menu.
+  const passwords = await UserAccountService.statuses(viewer, [...grid.admins, ...grid.users].map((r) => r.email));
+  const { menu } = params as { menu?: string };
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-5 px-6 py-6">
@@ -44,7 +48,7 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
         requesters={lists.requesters}
         initial={{ add: params.add === "1" ? true : section(params.add), role: section(params.role), remove: params.remove ?? null, rename: params.rename ?? null }}
         // Access (item 8) covers every line, so it is not keyed to the active one. ?add=user opens its Add row.
-        top={<AccessAdmin grid={grid} initialAdd={params.add === "user"} />}
+        top={<AccessAdmin grid={grid} initialAdd={params.add === "user"} passwords={passwords} initialMenu={menu?.trim().toLowerCase() || null} />}
       />
     </main>
   );

@@ -25,7 +25,11 @@ export class SignInGate {
     return attempt.profile?.email_verified === true;
   }
 
+  /** Email and password: authorize() already checked the admin-created account; that account is the permission. */
+  static readonly PASSWORD_PROVIDER_ID = "password";
+
   static allowSignIn(attempt: SignInAttempt, env: Env = process.env): boolean {
+    if (attempt.account?.provider === SignInGate.PASSWORD_PROVIDER_ID) return Boolean(attempt.user?.email);
     if (!SignInGate.providerEmailVerified(attempt)) return false;
     return EmailAllowlist.isAllowed(EmailAllowlist.candidateEmail(attempt.user ?? undefined, attempt.profile), env);
   }

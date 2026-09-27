@@ -67,10 +67,9 @@ class M23 {
 }
 
 describe("0023_line_access on production-shaped data (PGlite)", () => {
-  it("is the latest migration and follows 0022", () => {
+  it("follows 0022", () => {
     const f = M23.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0022_step_checked_by");
+    expect(f[f.indexOf(M) - 1]).toBe("0022_step_checked_by");
   });
 
   it("is additive: three new tables; every existing table, column and value unchanged", async () => {
