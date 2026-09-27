@@ -19,6 +19,8 @@ vi.mock("next/navigation", () => ({
   useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }),
   usePathname: () => "/reports",
 }));
+// The page's sign-out action (per-line access) imports @/auth; next-auth is not loaded in tests.
+vi.mock("@/auth", () => ({ auth: async () => null, signIn: async () => {}, signOut: async () => {}, SIGN_IN_PATH: "/signin", handlers: {} }));
 
 const { default: ReportsPage } = await import("@/app/reports/page");
 const { ReportDeliveryService } = await import("@/lib/services/ReportDeliveryService");
