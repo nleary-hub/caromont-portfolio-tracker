@@ -28,6 +28,12 @@ export interface ServiceLineScope extends ServiceLineValue {
   owners: string[];
   /** Requester pick-list (Admin > People). "Not applicable" and "To assign" are built in and not stored here. */
   requesters: string[];
+  /**
+   * Department-level access (migration 0024): present only when the viewer is limited to some of the line's
+   * departments. Then `departments` lists only those, and projects outside them (and Unassigned ones) are never read.
+   * Absent: every department (admins, and anyone with "All departments").
+   */
+  departmentLimit?: readonly string[];
 }
 
 /** A line as the admin list shows it. */

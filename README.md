@@ -144,6 +144,19 @@ Notes:
   to `service_line_access_history`.
 - Migration 0023 grants nobody anything (start with none): on day one only admins (`ADMIN_EMAILS`) see
   lines; everyone else sees the no-access card until an admin checks their lines.
+- **Department access (migration 0024).** A checked line covers All departments, including ones added
+  later. On Admin > People > Access, clicking a person's name (or the caret at the end of their row) opens a
+  panel with one block per line they have: turning "All departments" off lists the line's departments as
+  checkboxes (all checked at first; A to Z) and the cell shows "3 of 7". Unchecking the last department asks,
+  then removes the line. Rows: `service_line_access.allDepartments` and `department_access`; changes logged to
+  `department_access_history`. For a limited person, `ServiceLineAccess.activeFor` narrows the scope
+  (`DepartmentAccess`): the dashboard, tiles, counts, search and the department filter only include their
+  departments (Unassigned projects belong to none, so they don't see them), project History outside them is
+  empty, and report PDFs and year-end PDFs (which cover every department) are not offered and answer 404.
+  `/?project=<id>` opens a project's detail; a project outside their lines or departments, or one that
+  doesn't exist, shows "You don't have access to this project" without its name. Deleting a department and
+  moving its projects moves people's access with them (Audit log); a new department reaches only people with
+  All departments on. The freeze, handoff.json and Drive are built for admins and never read these rows.
 
 ## Data model (prisma/schema.prisma)
 

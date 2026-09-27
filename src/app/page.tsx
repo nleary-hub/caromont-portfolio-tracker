@@ -26,6 +26,7 @@ import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceLineSwitcher } from "@/components/ServiceLineSwitcher";
 import { NoAccessCard } from "@/components/NoAccessCard";
 import { LineGate } from "@/lib/access/LineGate";
+import { ProjectLink } from "@/lib/access/ProjectLink";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
@@ -86,7 +87,7 @@ class DashboardData {
     try {
       const db = Db.client;
       const [stored, latest, settings, layout] = await Promise.all([
-        db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(scope) } }).then((rows) => ProjectRows.fromDbAll(rows)),
+        db.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.projectWhere(scope) } }).then((rows) => ProjectRows.fromDbAll(rows)),
         db.reportSnapshot.findFirst({
           where: ServiceLineAccess.where(scope),
           orderBy: { generatedAt: "desc" },
@@ -196,13 +197,19 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   if (!viewer) redirect(SIGN_IN_PATH);
 
   // Per-line access (item 8): no line = the no-access card only; ?line=EP opens one of your lines or names the one you lack.
-  const gate = await LineGate.forPage(viewer, (await searchParams).line, "/");
+  const params = await searchParams;
+  const gate = await LineGate.forPage(viewer, params.line, "/");
   if (gate.kind === "switched") redirect(gate.to);
   if (gate.kind === "none") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} />;
   if (gate.kind === "lacks") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} line={gate.requested} goTo={{ shortName: gate.first.shortName, href: LineGate.href("/", gate.first.shortName) }} />;
 
-  const today = DateOnly.today();
   const { scope, lines } = gate;
+  // Project links (/?project=<id>): the viewer's own projects open; anything else gets the project card (no name).
+  const link = Db.isConfigured() ? await ProjectLink.resolve(viewer, params[ProjectLink.PARAM], scope, Db.client) : ({ kind: "none" } as const);
+  if (link.kind === "switched") redirect(link.to);
+  if (link.kind === "lacks") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} project />;
+
+  const today = DateOnly.today();
   const { rows, fiscalYearRows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
 
   return (
@@ -221,6 +228,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       // Switching lines remounts the dashboard: an open drawer closes and filters reset to the line's own.
       key={scope.id}
       line={scope}
+      {...(link.kind === "open" ? { initialProjectId: link.id } : {})}
       // Admins: always the switcher (with Manage service lines). Others: the switcher for 2+ lines, a plain label for one.
       switcher={viewer.isAdmin || lines.length > 1 ? <ServiceLineSwitcher lines={lines.length ? lines : [scope]} active={scope} manage={viewer.isAdmin} /> : null}
       // Spread so non-admins' payload does not even carry an "admin" key.

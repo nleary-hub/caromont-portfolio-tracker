@@ -126,6 +126,8 @@ interface Props {
   signOutAction: () => Promise<void>;
   /** Project detail > History for the signed-in viewer (everyone; the server applies the visibility rules). */
   historyAction?: HistoryLoader;
+  /** A project link (/?project=<id>) the server checked: its detail opens on load. */
+  initialProjectId?: string;
 }
 
 /** Browser localStorage, or null (server render, private mode, or storage blocked). */
@@ -164,9 +166,10 @@ export function ProjectDashboard({
   layout: layoutProp,
   signOutAction,
   historyAction,
+  initialProjectId,
 }: Props) {
   const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
   const searchRef = useRef<HTMLInputElement>(null);
   // Admin edit mode. Non-admins stay in "view" (there is no way to switch).
   const [mode, setMode] = useState<DrawerMode>("view");

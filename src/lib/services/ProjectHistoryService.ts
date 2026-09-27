@@ -3,6 +3,7 @@ import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { HistoryEntries, type HistoryEntry } from "@/lib/history/HistoryEntries";
 import { type Timeline, UpdateTimeline } from "@/lib/history/UpdateTimeline";
+import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
@@ -39,12 +40,14 @@ export class ProjectHistoryService {
     projectId: string,
     viewer: Viewer,
     db: PrismaClient = Db.client,
-    scope?: Pick<ServiceLineScope, "id" | "owners" | "requesters" | "contractsLeads">,
+    scope?: Pick<ServiceLineScope, "id" | "owners" | "requesters" | "contractsLeads" | "departmentLimit">,
   ): Promise<Timeline> {
     const empty = UpdateTimeline.build([], [], null);
     const project = await db.project.findUnique({ where: { id: projectId } });
     if (!project) return empty;
     if (scope && (project.serviceLineId ?? ServiceLine.DEFAULT_ID) !== scope.id) return empty;
+    // Department-level access: a project outside the viewer's departments is treated as not found.
+    if (scope && !DepartmentAccess.allows(scope, project.departmentId)) return empty;
     if (!viewer.isAdmin) {
       const settings = await ViewSettingsService.get("dashboard", db);
       if (!VisibilityPolicy.isVisible(project, "dashboard", settings)) return empty;

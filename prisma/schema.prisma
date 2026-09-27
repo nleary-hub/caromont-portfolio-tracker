@@ -515,8 +515,8 @@ model LineLayoutHistory {
 /// and restorable from /admin/audit. Name (1 to 40) and short name (1 to 12) are unique per line among departments
 /// not deleted, ignoring case (DB unique indexes as backstop).
 model Department {
-  id            String       @id @default(uuid()) @db.Uuid
-  serviceLineId String       @db.Uuid
+  id            String                  @id @default(uuid()) @db.Uuid
+  serviceLineId String                  @db.Uuid
   /// Full name, shown in the filter and project pick-lists (e.g. "Cath Lab").
   name          String
   /// Shown in PDF headings and the summary grid (e.g. "Cath").
@@ -527,12 +527,15 @@ model Department {
   archivedAt    DateTime?
   deletedAt     DateTime?
   deletedBy     String?
-  createdAt     DateTime     @default(now())
-  updatedAt     DateTime     @updatedAt
+  createdAt     DateTime                @default(now())
+  updatedAt     DateTime                @updatedAt
   updatedBy     String
-  serviceLine   ServiceLine  @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  serviceLine   ServiceLine             @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
   projects      Project[]
+  accessGrants  DepartmentAccessGrant[]
 
+  /// Target of department_access's (departmentId, serviceLineId) key, so a department grant always names a department of its own line (0024).
+  @@unique([id, serviceLineId])
   @@index([serviceLineId, position])
   @@map("department")
 }
@@ -621,12 +624,15 @@ model AppUser {
 
 /// One row per (person, service line) they may see (item 8). Admins see every line without rows.
 model ServiceLineAccessGrant {
-  email         String
-  serviceLineId String      @db.Uuid
-  grantedAt     DateTime    @default(now())
-  grantedBy     String
-  user          AppUser     @relation(fields: [email], references: [email], onDelete: Cascade)
-  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  email          String
+  serviceLineId  String                  @db.Uuid
+  grantedAt      DateTime                @default(now())
+  grantedBy      String
+  /// All departments of the line, including ones added later (migration 0024). False: only the department_access rows.
+  allDepartments Boolean                 @default(true)
+  user           AppUser                 @relation(fields: [email], references: [email], onDelete: Cascade)
+  serviceLine    ServiceLine             @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  departments    DepartmentAccessGrant[]
 
   @@id([email, serviceLineId])
   @@index([serviceLineId])
@@ -645,4 +651,40 @@ model ServiceLineAccessHistory {
 
   @@index([email, changedAt])
   @@map("service_line_access_history")
+}
+
+/// One row per (person, department) for a line whose access is limited to some departments (migration 0024).
+/// Only read when the line's service_line_access row has allDepartments = false. Removing the line access removes
+/// these rows (cascade); the department must belong to the same line (composite key).
+model DepartmentAccessGrant {
+  email         String
+  serviceLineId String                 @db.Uuid
+  departmentId  String                 @db.Uuid
+  grantedAt     DateTime               @default(now())
+  grantedBy     String
+  lineAccess    ServiceLineAccessGrant @relation(fields: [email, serviceLineId], references: [email, serviceLineId], onDelete: Cascade)
+  department    Department             @relation(fields: [departmentId, serviceLineId], references: [id, serviceLineId], onDelete: Restrict)
+
+  @@id([email, departmentId])
+  @@index([email, serviceLineId])
+  @@index([departmentId])
+  @@map("department_access")
+}
+
+/// Append-only log of department access changes (granted, revoked, all_on, all_off, moved). DB trigger blocks
+/// UPDATE/DELETE. departmentId is not a foreign key so the trail outlives the department. `detail` holds names
+/// at the time (moved: from and to).
+model DepartmentAccessHistory {
+  id            String   @id @default(uuid()) @db.Uuid
+  email         String
+  serviceLineId String   @db.Uuid
+  departmentId  String?  @db.Uuid
+  action        String
+  detail        Json?
+  changedAt     DateTime @default(now())
+  changedBy     String
+
+  @@index([serviceLineId, changedAt])
+  @@index([email, changedAt])
+  @@map("department_access_history")
 }

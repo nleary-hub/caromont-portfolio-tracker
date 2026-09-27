@@ -16,7 +16,7 @@ export const metadata: Metadata = { title: ContractsLeadRules.PAGE_TITLE };
 export const dynamic = "force-dynamic";
 
 /** Admin > People: Access (every line) at the top, then the active line's Owners, Requesters and Contracts leads. Non-admins get a 404. */
-export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string; rename?: string; role?: string }> }) {
+export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string; rename?: string; role?: string; access?: string }> }) {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
@@ -43,8 +43,9 @@ export default async function PeoplePage({ searchParams }: { searchParams: Promi
         owners={lists.owners}
         requesters={lists.requesters}
         initial={{ add: params.add === "1" ? true : section(params.add), role: section(params.role), remove: params.remove ?? null, rename: params.rename ?? null }}
-        // Access (item 8) covers every line, so it is not keyed to the active one. ?add=user opens its Add row.
-        top={<AccessAdmin grid={grid} initialAdd={params.add === "user"} />}
+        // Access (item 8) covers every line, so it is not keyed to the active one. ?add=user opens its Add row;
+        // ?access=<email> opens that person's department panel.
+        top={<AccessAdmin grid={grid} initialAdd={params.add === "user"} initialExpanded={params.access?.trim().toLowerCase() || null} />}
       />
     </main>
   );

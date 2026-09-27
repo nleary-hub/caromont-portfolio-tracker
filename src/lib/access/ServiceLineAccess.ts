@@ -4,8 +4,9 @@ import { Db } from "@/lib/db/Db";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentRules, type DepartmentRow } from "@/lib/domain/DepartmentRules";
+import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 
-type Reader = Pick<Prisma.TransactionClient, "serviceLine" | "serviceLineUserState" | "serviceLineAccessGrant">;
+type Reader = Pick<Prisma.TransactionClient, "serviceLine" | "serviceLineUserState" | "serviceLineAccessGrant" | "departmentAccessGrant">;
 type LineReader = Pick<Prisma.TransactionClient, "serviceLine" | "serviceLineAccessGrant">;
 
 export class ServiceLineAccessError extends Error {
@@ -96,6 +97,8 @@ export class ServiceLineAccess {
   /**
    * The line this viewer works in for this request: their saved line when they may still use it, else their first
    * usable line (default first, then A to Z). Throws NoLineAccessError when a non-admin may use no line at all.
+   * A viewer limited to some departments of that line gets the narrowed scope (DepartmentAccess): only their
+   * departments, and `departmentLimit` for project queries (projectWhere).
    */
   static async activeFor(viewer: Viewer, db: Reader = Db.client): Promise<ServiceLineScope> {
     const lines = await ServiceLineAccess.usableLines(viewer, db);
@@ -104,7 +107,8 @@ export class ServiceLineAccess {
       throw new NoLineAccessError();
     }
     const state = await db.serviceLineUserState.findUnique({ where: { email: viewer.email } });
-    return (state && lines.find((l) => l.id === state.serviceLineId)) || lines[0];
+    const line = (state && lines.find((l) => l.id === state.serviceLineId)) || lines[0];
+    return viewer.isAdmin ? line : DepartmentAccess.apply(viewer, line, db);
   }
 
   /**
@@ -156,6 +160,11 @@ export class ServiceLineAccess {
   /** Filter for every scoped table (projects, templates, snapshots, report options, audit rows). */
   static where(scope: Pick<ServiceLineScope, "id">): { serviceLineId: string } {
     return { serviceLineId: scope.id };
+  }
+
+  /** Filter for project reads: the line, and for a viewer limited to some departments only those (DepartmentAccess). */
+  static projectWhere(scope: Pick<ServiceLineScope, "id" | "departmentLimit">): { serviceLineId: string; departmentId?: { in: string[] } } {
+    return DepartmentAccess.projectWhere(scope);
   }
 
   /** Whether a stored row belongs to the line. */
