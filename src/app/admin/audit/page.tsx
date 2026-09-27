@@ -185,7 +185,7 @@ export default async function AuditPage({ searchParams }: { searchParams?: Promi
                   key={i}
                   id={String(i)}
                   when={AuditText.when(e.at)}
-                  by={e.by}
+                  by={AuditText.who(e.by)}
                   subject={e.subject}
                   change={AuditText.change(e)}
                   oldText={AuditText.summary(e, "old")}

@@ -50,7 +50,6 @@ export class PasswordCopy {
   /** Access grid: the sign-in method tags (every method that works for the account) as a group. */
   static readonly METHODS_LABEL = "Sign-in methods";
   static readonly MENU_CREATE = "Create temporary password";
-  static readonly MENU_RESET = "Reset password";
   static readonly MENU_UNLOCK = "Unlock";
   static readonly MENU_TURN_OFF = "Turn off sign-in";
   static readonly MENU_TURN_ON = "Turn on sign-in";

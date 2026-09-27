@@ -5,18 +5,6 @@ type Row = Pick<AccessRow, "lineIds" | "isAdmin" | "limits">;
 /** Client-side rules for the Access grid and its department panel (pure; tested). */
 export class AccessGridModel {
   /** Unchecking this cell would leave the person with no line: ask first ("Remove Jane Doe's last line?"). */
-  /** Display names (trimmed, case-insensitive) that two or more rows share: those rows lead with their email. */
-  static sharedNames(rows: readonly Pick<AccessRow, "name">[]): Set<string> {
-    const key = (n: string) => n.trim().toLowerCase();
-    const counts = new Map<string, number>();
-    for (const r of rows) counts.set(key(r.name), (counts.get(key(r.name)) ?? 0) + 1);
-    return new Set([...counts].filter(([, n]) => n > 1).map(([k]) => k));
-  }
-
-  static sharesName(row: Pick<AccessRow, "name">, shared: Set<string>): boolean {
-    return shared.has(row.name.trim().toLowerCase());
-  }
-
   static needsConfirm(row: Pick<AccessRow, "lineIds" | "isAdmin">, lineId: string, on: boolean): boolean {
     return !row.isAdmin && !on && row.lineIds.length === 1 && row.lineIds[0] === lineId;
   }

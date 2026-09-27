@@ -31,7 +31,6 @@ const { AccountRowMenu, PasswordTags, TempPasswordDialog } = await import("@/com
 const { PasswordCopy } = await import("@/lib/auth/PasswordCopy");
 const { SignInMethods } = await import("@/lib/auth/SignInMethods");
 const { UserAccountService } = await import("@/lib/services/UserAccountService");
-const { AccessGridModel } = await import("@/lib/access/AccessGridModel");
 const { AuditText } = await import("@/lib/admin/AuditText");
 const { AuditCopy } = await import("@/lib/admin/AuditCopy");
 const { ReportColorScheme } = await import("@/lib/report/ReportColorScheme");
@@ -74,7 +73,16 @@ describe("Access grid: sign-in method tags", () => {
     expect(tagsOf(html)).toEqual(["google", "password", "must-change"]);
     const must = /<span class="([^"]+)" title="[^"]*" data-password-tag="must-change">([^<]+)</.exec(html)!;
     expect(must[2]).toBe("Must change password");
-    expect(must[1]).toContain("bg-(--flag-changed-dark-bg)");
+    // The app's amber warning: the same tokens as the Start date "Default" tag, nothing like the blue method tags.
+    const defaultTag = src("src/components/StartDateDefaultTag.tsx");
+    expect(defaultTag).toContain("var(--status-at-risk-dark-bg)");
+    expect(defaultTag).toContain("var(--status-at-risk-dark-fg)");
+    expect(must[1]).toContain("bg-(--status-at-risk-dark-bg)");
+    expect(must[1]).toContain("text-(--status-at-risk-dark-fg)");
+    expect(must[1]).not.toMatch(/flag-changed|on-hold/);
+    const google = /<span class="([^"]+)" title="[^"]*" data-password-tag="google">/.exec(html)![1];
+    expect(google).toContain("on-hold");
+    expect(google).not.toContain("at-risk");
     expect(must[1]).toContain("ml-2");
     // Outside the methods group.
     const group = /data-testid="signin-methods"[^>]*>([\s\S]*?)<\/span><\/span>/.exec(html)![1];
@@ -95,7 +103,7 @@ describe("Access grid: sign-in method tags", () => {
   });
 });
 
-describe("Access grid: rows that share a display name", () => {
+describe("Access grid: every row uses the same three-line layout", () => {
   const html = renderToStaticMarkup(
     createElement(AccessAdmin, {
       grid: grid(
@@ -110,22 +118,29 @@ describe("Access grid: rows that share a display name", () => {
     }),
   );
   const rows = Object.fromEntries([...html.matchAll(/<tr data-access-row="([^"]+)"[\s\S]*?<\/tr>/g)].map((m) => [m[1], m[0]]));
+  const NAMES: Record<string, string> = { [GMAIL]: "Nicholas Leary", [WORK]: "Nicholas Leary", "pat.lee@caromonthealth.org": "Pat Lee" };
 
-  it("leads with the email in bold and puts the name muted under it", () => {
-    for (const email of [GMAIL, WORK]) {
-      const m = /data-testid="access-same-name"><span class="([^"]+)">([^<]+)<\/span><span class="([^"]+)">([^<]+)<\/span>/.exec(rows[email])!;
-      expect(m[2]).toBe(email);
+  it("email bold (line 1), name muted (line 2), tags on their own line (line 3), for admins and users alike", () => {
+    for (const [email, name] of Object.entries(NAMES)) {
+      const row = rows[email];
+      const m = /data-testid="access-identity"><span class="([^"]+)">([^<]+)<\/span><span class="([^"]+)">([^<]+)<\/span><\/span>/.exec(row)!;
+      expect(m[2], email).toBe(email);
       expect(m[1]).toContain("type-table-strong");
-      expect(m[4]).toBe("Nicholas Leary");
+      expect(m[4]).toBe(name);
       expect(m[3]).toContain("text-muted");
+      // The tags line comes after the identity block, as its own line inside the person column.
+      const person = /data-testid="access-person">([\s\S]*)$/.exec(row)![1];
+      expect(person.indexOf("access-identity")).toBeLessThan(person.indexOf('data-testid="access-tags"'));
+      const identity = /data-testid="access-identity">[\s\S]*?<\/span><\/span>/.exec(person)![0];
+      expect(identity).not.toContain("data-password-tag");
+      const tagsLine = /data-testid="access-tags">([\s\S]*?)<\/td>/.exec(row)![1];
+      expect(tagsOf(tagsLine).length).toBeGreaterThan(0);
     }
+    // The Gmail row no longer puts Google next to the email.
+    expect(tagsOf(/data-testid="access-tags">([\s\S]*?)<\/td>/.exec(rows[GMAIL])![1])).toEqual(["google"]);
     expect(tagsOf(rows[WORK])).toEqual(["google", "password", "must-change"]);
-  });
-
-  it("leaves other rows as they were", () => {
-    expect(rows["pat.lee@caromonthealth.org"]).not.toContain("access-same-name");
-    expect(rows["pat.lee@caromonthealth.org"]).toContain(">Pat Lee</button>");
-    expect([...AccessGridModel.sharedNames([{ name: "A B" }, { name: " a b " }, { name: "C" }])]).toEqual(["a b"]);
+    // Users keep the expand button, now around the email and name.
+    expect(rows["pat.lee@caromonthealth.org"]).toMatch(/data-testid="access-name"><span class="[^"]*" data-testid="access-identity">/);
   });
 });
 
@@ -137,6 +152,12 @@ describe("Access grid: row menu and temporary password dialog", () => {
     expect(m[1]).toContain("type-table-strong");
     // First thing in the menu, before the items.
     expect(html.indexOf("access-row-email")).toBeLessThan(html.indexOf('role="menuitem"'));
+    // The item that opens the temporary password dialog is "Create temporary password" for every account.
+    for (const state of ["none", "active", "mustChange"] as const) {
+      const items = [...renderToStaticMarkup(createElement(AccountRowMenu, { name: "N", email: WORK, status: S(state), initialOpen: true, onResult: () => {} })).matchAll(/role="menuitem"[^>]*>([^<]+)</g)].map((x) => x[1]);
+      expect(items[0]).toBe("Create temporary password");
+      expect(items).not.toContain("Reset password");
+    }
   });
 
   it("dialog title and body copy, no em dashes", () => {
@@ -271,6 +292,13 @@ describe("Recent changes: labels and plain summaries", () => {
     const other = { kind: "somethingNew", field: "somethingNew.fooBar", oldValue: null, newValue: J([{ name: "A" }, "B"]), comment: null };
     expect(AuditText.change(other)).toBe("Something new foo bar");
     expect(AuditText.summary(other, "new")).toBe("A, B");
+  });
+
+  it("WHO: a migration actor reads 'system (migration NNNN)', display only", () => {
+    expect(AuditText.who("migration:0016")).toBe("system (migration 0016)");
+    expect(AuditText.who("system (migration 0018)")).toBe("system (migration 0018)");
+    expect(AuditText.who("nleary@gmail.com")).toBe("nleary@gmail.com");
+    expect(src("src/app/admin/audit/page.tsx")).toContain("by={AuditText.who(e.by)}");
   });
 
   it("Details shows the raw stored values; service lines and access format from the raw value", () => {

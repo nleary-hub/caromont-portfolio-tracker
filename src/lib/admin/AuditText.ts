@@ -40,6 +40,12 @@ export class AuditText {
     return d ? `${AuditText.WHEN.format(d)} ET` : "–";
   }
 
+  /** WHO cell: a migration actor stored as "migration:0016" reads "system (migration 0016)", like the 0018 rows. */
+  static who(by: string): string {
+    const m = /^migration:(\d+)$/.exec(by.trim());
+    return m ? `system (migration ${m[1]})` : by;
+  }
+
   /** CHANGE cell. */
   static change(e: AuditTextEvent): string {
     if (e.kind === "access") return e.comment ?? AuditText.humanize(e.field);

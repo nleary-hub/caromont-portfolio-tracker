@@ -14,6 +14,12 @@ const PRIMARY = "h-7 rounded-control bg-accent px-3 text-white type-table-strong
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
 const TAG = "flex-none rounded-[4px] px-1.5 py-px type-label font-semibold";
 
+/** Tag colors. Must change password uses the app's amber warning (the same tokens as the Start date "Default" tag). */
+export class PasswordTagStyles {
+  static readonly METHOD = "bg-(--status-on-hold-dark-bg) text-(--status-on-hold-dark-fg)";
+  static readonly AMBER = "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg) opacity-80";
+}
+
 /**
  * Tags after a person's name in the Access grid. First every sign-in method that works for the account, side by side
  * (Google, then Password), then after a visible gap the state tags: amber Must change password, Off and Locked.
@@ -23,9 +29,8 @@ const TAG = "flex-none rounded-[4px] px-1.5 py-px type-label font-semibold";
 export function PasswordTags({ status, google }: { status?: PasswordStatus; google?: boolean }) {
   if (!status) return null;
   const methods = SignInMethods.of(status, google);
-  const METHOD_CLS = "bg-(--status-on-hold-dark-bg) text-(--status-on-hold-dark-fg)";
   const tags: Array<{ label: string; tip: string; cls: string; id: string }> = [];
-  if (status.state === "mustChange") tags.push({ id: "must-change", label: PasswordCopy.TAG_MUST_CHANGE, tip: PasswordCopy.TAG_MUST_CHANGE_TIP, cls: "bg-(--flag-changed-dark-bg) text-(--flag-changed-dark-fg)" });
+  if (status.state === "mustChange") tags.push({ id: "must-change", label: PasswordCopy.TAG_MUST_CHANGE, tip: PasswordCopy.TAG_MUST_CHANGE_TIP, cls: PasswordTagStyles.AMBER });
   if (status.off) tags.push({ id: "off", label: PasswordCopy.TAG_OFF, tip: PasswordCopy.TAG_OFF_TIP, cls: "bg-(--status-cancelled-dark-bg) text-(--status-cancelled-dark-fg)" });
   if (status.locked) tags.push({ id: "locked", label: PasswordCopy.TAG_LOCKED, tip: PasswordCopy.TAG_LOCKED_TIP, cls: "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)" });
   return (
@@ -33,7 +38,7 @@ export function PasswordTags({ status, google }: { status?: PasswordStatus; goog
       {methods.length > 0 && (
         <span className="inline-flex flex-none items-center gap-1" role="group" aria-label={PasswordCopy.METHODS_LABEL} data-testid="signin-methods">
           {methods.map((m) => (
-            <span key={m} className={`${TAG} ${METHOD_CLS}`} title={m === "google" ? PasswordCopy.TAG_GOOGLE_TIP : PasswordCopy.TAG_PASSWORD_TIP} data-password-tag={m}>
+            <span key={m} className={`${TAG} ${PasswordTagStyles.METHOD}`} title={m === "google" ? PasswordCopy.TAG_GOOGLE_TIP : PasswordCopy.TAG_PASSWORD_TIP} data-password-tag={m}>
               {m === "google" ? PasswordCopy.TAG_GOOGLE : PasswordCopy.TAG_PASSWORD}
             </span>
           ))}
@@ -96,9 +101,8 @@ export function AccountRowMenu({
     setOpen(false);
     start(async () => onResult(await work().catch(() => ({ ok: false as const, message: PasswordCopy.SAVE_ERROR })), name));
   };
-  const state = status?.state ?? "none";
   const items: Array<{ label: string; act: () => Promise<AccountResult>; danger?: boolean }> = [
-    { label: state === "none" ? PasswordCopy.MENU_CREATE : PasswordCopy.MENU_RESET, act: () => resetUserPassword(email) },
+    { label: PasswordCopy.MENU_CREATE, act: () => resetUserPassword(email) },
   ];
   if (status?.locked) items.push({ label: PasswordCopy.MENU_UNLOCK, act: () => unlockUser(email) });
   if (status?.off) items.push({ label: PasswordCopy.MENU_TURN_ON, act: () => setSignIn(email, true) });
