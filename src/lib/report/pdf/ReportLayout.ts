@@ -1175,7 +1175,7 @@ export class ReportLayout {
       departments: departmentsDetail,
       totalsGrid,
       band,
-      keyLine: usesBand && input.showKeyPage === true && totalsGrid === "hidden" ? ReportLayout.keyLine(m, statuses, legend) : null,
+      keyLine: usesBand && input.showKeyPage === false ? ReportLayout.keyLine(m, statuses, legend) : null,
       grid: { columns, rows: [...areaRows, totalRow], width: gridWidth },
       legend,
       metaWidth,
