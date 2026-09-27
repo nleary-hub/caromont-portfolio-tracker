@@ -4,6 +4,7 @@ import { revalidatePath } from "next/cache";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
+import { DepartmentAccessService } from "@/lib/services/DepartmentAccessService";
 import { UserAccountService, type AccountResult } from "@/lib/services/UserAccountService";
 
 /**
@@ -28,9 +29,9 @@ class AdminAction {
   }
 }
 
-/** Add user: account, line access and (optionally) a temporary password in one save. */
-export async function addUserAccount(input: { email: string; name: string; lineIds: string[]; createPassword: boolean }): Promise<AccountResult> {
-  return AdminAction.run((viewer) => UserAccountService.addUser(viewer, input), LineAccessCopy.SAVE_ERROR);
+/** Add user: account, line access, department limits and (optionally) a temporary password in one save. */
+export async function addUserAccount(input: { email: string; name: string; lineIds: string[]; createPassword: boolean; departments?: Record<string, string[]> }): Promise<AccountResult> {
+  return AdminAction.run((viewer) => UserAccountService.addUser(viewer, input, undefined, undefined, DepartmentAccessService.addUserHook(input?.departments)), LineAccessCopy.SAVE_ERROR);
 }
 
 export async function resetUserPassword(email: string): Promise<AccountResult> {

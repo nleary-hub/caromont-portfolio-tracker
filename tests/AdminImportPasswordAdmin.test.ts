@@ -5,7 +5,7 @@ import { FakeDb } from "./helpers/FakeDb";
 // /admin/import, /admin/import/export, /admin/import/template and the import Server Functions, through the real
 // modules: an admin (ADMIN_EMAILS) who signed in with a password gets them exactly like a Google admin, without being
 // on ALLOWED_EMAILS. Everyone else still gets a 404. next/navigation's redirect and notFound throw so tests see them.
-type TestSession = { user: { email: string; passwordAccount?: boolean; mustChangePassword?: boolean } } | null;
+type TestSession = { user: { email: string; passwordAccount?: boolean; mustChangePassword?: boolean; accountAccess?: boolean } } | null;
 const h = vi.hoisted(() => ({ session: null as TestSession, db: null as unknown }));
 vi.mock("@/lib/db/Db", () => ({ Db: { get client() { return h.db; }, isConfigured: () => true } }));
 vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
@@ -45,6 +45,10 @@ class Csv {
 class Sessions {
   static password(email: string, mustChangePassword = false): TestSession {
     return { user: { email, passwordAccount: true, mustChangePassword } };
+  }
+
+  static googleAccount(email: string): TestSession {
+    return { user: { email, accountAccess: true } };
   }
 
   static google(email: string): TestSession {
@@ -129,6 +133,20 @@ describe("import pages: a password admin (ADMIN_EMAILS, not on ALLOWED_EMAILS) i
   });
 });
 
+describe("import pages: a Google admin allowed through an admin-created account (not ALLOWED_EMAILS) gets them too", () => {
+  it("template, export and page work, like other admin pages", async () => {
+    h.session = Sessions.googleAccount(NICK);
+    expect((await templateGET()).status).toBe(200);
+    expect((await exportGET()).status).toBe(200);
+    expect(((await ImportPage()) as ReactElement).type).toBe(ImportPanel);
+  });
+
+  it("a Google account session for a non-admin is still a 404", async () => {
+    h.session = Sessions.googleAccount("casey.new@elsewhere.org");
+    for (const [name, call] of Surfaces.all()) await expect(call(), name).rejects.toThrow("NOT_FOUND");
+  });
+});
+
 describe("import pages: non-admins are still blocked (404)", () => {
   const cases: Array<[string, TestSession]> = [
     ["no session", null],
@@ -136,7 +154,7 @@ describe("import pages: non-admins are still blocked (404)", () => {
     ["a password account on ALLOWED_EMAILS but not in ADMIN_EMAILS", Sessions.password("pat.sample@example.org")],
     ["a Google user on ALLOWED_EMAILS but not in ADMIN_EMAILS", Sessions.google("jane.doe@example.org")],
     ["a Google user in ADMIN_EMAILS but not on ALLOWED_EMAILS (unchanged rule)", Sessions.google("google.admin@elsewhere.org")],
-    ["a Google session for the password admin's email (Google still needs ALLOWED_EMAILS)", Sessions.google(NICK)],
+    ["a Google session for the admin's email that has neither ALLOWED_EMAILS nor a checked account", Sessions.google(NICK)],
   ];
   for (const [label, session] of cases) {
     it(label, async () => {

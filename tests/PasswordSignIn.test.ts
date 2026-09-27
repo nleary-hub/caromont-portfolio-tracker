@@ -354,11 +354,15 @@ describe("Google sign-in is unaffected", () => {
     expect(p.options).toEqual({ clientId: "gid", clientSecret: "gsecret" });
   });
 
-  it("the Google gate still needs email_verified and the allow list; the password path does not open it", () => {
+  it("the Google gate still needs email_verified; without the allow list it needs an active admin-created account", async () => {
     const g = (email: string, v: unknown) => ({ user: { email }, account: { provider: "google" }, profile: { email, email_verified: v } });
     expect(SignInGate.allowSignIn(g("member@example.org", true), env)).toBe(true);
     expect(SignInGate.allowSignIn(g("member@example.org", false), env)).toBe(false);
-    expect(SignInGate.allowSignIn(g(NICK, true), env)).toBe(false); // an admin-created password account is not a Google pass
+    // The env-only check says no for NICK; the account check (signIn callback) is what lets his account in.
+    expect(SignInGate.allowSignIn(g(NICK, true), env)).toBe(false);
+    expect(await SignInGate.allowSignInWithAccounts(g(NICK, true), async () => true, env)).toBe(true);
+    expect(await SignInGate.allowSignInWithAccounts(g(NICK, true), async () => false, env)).toBe(false);
+    expect(await SignInGate.allowSignInWithAccounts(g(NICK, false), async () => true, env)).toBe(false);
     expect(SignInGate.allowSignIn({ user: { email: NICK }, account: { provider: "password" }, profile: null }, env)).toBe(true);
     expect(SignInGate.allowSignIn({ user: { email: null }, account: { provider: "password" }, profile: null }, env)).toBe(false);
   });
@@ -396,11 +400,11 @@ describe("admin-only account management", () => {
     expect(await Fx.auth(db, "new.person@example.org", r.temporaryPassword!)).toMatchObject({ ok: true, mustChange: true });
   });
 
-  it("Add user with no lines is allowed; without a password the email must be on the allow list", async () => {
+  it("Add user with no lines is allowed; without a password (Google only) the allow list isn't needed", async () => {
     const db = await Fx.db();
     expect((await UserAccountService.addUser(admin, { email: "solo@example.org", lineIds: [], createPassword: true }, Fx.tx(db), env)).ok).toBe(true);
     expect(db.serviceLineAccessGrant.all()).toEqual([]);
-    expect(await UserAccountService.addUser(admin, { email: "google-only@example.org", createPassword: false }, Fx.tx(db), env)).toEqual({ ok: false, message: PasswordCopy.NEEDS_ALLOW_LIST });
+    expect(await UserAccountService.addUser(admin, { email: "google-only@example.org", createPassword: false }, Fx.tx(db), env)).toMatchObject({ ok: true, temporaryPassword: undefined });
     const r = await UserAccountService.addUser(admin, { email: "member@example.org", createPassword: false }, Fx.tx(db), env);
     expect(r).toMatchObject({ ok: true, temporaryPassword: undefined });
   });

@@ -1,3 +1,4 @@
+import { cookies } from "next/headers";
 import { redirect } from "next/navigation";
 import { AuthError, CredentialsSignin } from "next-auth";
 import { auth, signIn, SIGN_IN_PATH } from "@/auth";
@@ -7,7 +8,6 @@ import { PasswordField } from "@/components/PasswordField";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 import { SessionPolicy } from "@/lib/auth/SessionPolicy";
 import { SignInMessages } from "@/lib/auth/SignInMessages";
-
 
 class SafeRedirect {
   /** Reduce any callback URL to a same-site path (drops scheme/host, so it can never leave the app). */
@@ -24,16 +24,43 @@ class SafeRedirect {
   }
 }
 
+/**
+ * After a failed password attempt (wrong password, lockout, rate limit) the email stays filled in and only the password
+ * is cleared. The email rides in a short-lived, httpOnly cookie scoped to /signin, not in the URL.
+ */
+class RememberedEmail {
+  static readonly COOKIE = "signin_email";
+  static readonly MAX_AGE_S = 10 * 60;
+
+  static async set(email: string): Promise<void> {
+    const store = await cookies();
+    const value = email.trim().slice(0, 254);
+    if (!value) return;
+    store.set(RememberedEmail.COOKIE, value, { httpOnly: true, sameSite: "lax", secure: process.env.NODE_ENV === "production", path: SIGN_IN_PATH, maxAge: RememberedEmail.MAX_AGE_S });
+  }
+
+  static async clear(): Promise<void> {
+    (await cookies()).delete({ name: RememberedEmail.COOKIE, path: SIGN_IN_PATH });
+  }
+
+  static async read(): Promise<string> {
+    return (await cookies()).get(RememberedEmail.COOKIE)?.value ?? "";
+  }
+}
+
 class SignInActions {
   /**
    * Run an Auth.js sign-in; map AuthError (e.g. allowlist denial) to the sign-in page instead of a 500. Credentials
    * errors add their code ("invalid" or "locked", see AuthProviders), which never says why a password failed.
    */
   static async run(provider: string, options: Record<string, string>): Promise<void> {
+    const isPassword = provider === SessionPolicy.PASSWORD_PROVIDER;
+    if (isPassword) await RememberedEmail.clear();
     try {
       await signIn(provider, options);
     } catch (error) {
       if (error instanceof AuthError) {
+        if (isPassword && error instanceof CredentialsSignin) await RememberedEmail.set(options.email ?? "");
         const code = error instanceof CredentialsSignin ? `&code=${encodeURIComponent(error.code)}` : "";
         redirect(`${SIGN_IN_PATH}?error=${encodeURIComponent(error.type)}${code}`);
       }
@@ -42,9 +69,11 @@ class SignInActions {
   }
 }
 
-/** Red for errors, amber for lockout and rate limit, gray for "Your session ended" (status pill colors). */
+/**
+ * Amber panels for the lockout and rate limit, a gray panel for "Your session ended" (status pill colors). Errors are
+ * one line of red text, not a panel: a wrong password sits right above the Email field.
+ */
 const PANEL = {
-  error: "border-line bg-(--status-off-track-dark-bg) text-(--status-off-track-dark-fg)",
   warning: "border-(--status-at-risk-dark-bg) bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)",
   info: "border-line bg-(--status-not-started-dark-bg) text-(--status-not-started-dark-fg)",
 } as const;
@@ -62,10 +91,15 @@ export default async function SignInPage({
   const providers = AuthProviders.summaries();
   const errorCode = Array.isArray(params.error) ? params.error[0] : params.error;
   const detail = Array.isArray(params.code) ? params.code[0] : params.code;
-  const panel = SignInMessages.panel(errorCode, detail, params.ended === "1");
+  const message = SignInMessages.panel(errorCode, detail, params.ended === "1");
+  const panel = message && message.tone !== "error" ? message : null;
+  const errorLine = message?.tone === "error" ? message.body : null;
+  const passwordError = errorLine && errorCode === "CredentialsSignin" ? errorLine : null;
+  const topError = errorLine && !passwordError ? errorLine : null;
   const oauth = providers.filter((p) => p.id !== "dev-login" && p.id !== SessionPolicy.PASSWORD_PROVIDER);
   const password = providers.some((p) => p.id === SessionPolicy.PASSWORD_PROVIDER);
   const devLogin = providers.some((p) => p.id === "dev-login");
+  const rememberedEmail = password ? await RememberedEmail.read() : "";
 
   return (
     <main className="flex min-h-screen items-center justify-center p-6">
@@ -74,10 +108,15 @@ export default async function SignInPage({
         <p className="mt-1 type-caption text-muted">Cardiac Procedure Services · internal use only</p>
 
         {panel && (
-          <div role={panel.tone === "info" ? "status" : "alert"} data-testid={`signin-panel-${panel.tone}`} className={`mt-4 rounded-control border px-3 py-2 ${PANEL[panel.tone]}`}>
+          <div role={panel.tone === "info" ? "status" : "alert"} data-testid={`signin-panel-${panel.tone}`} className={`mt-4 rounded-control border px-3 py-2 ${PANEL[panel.tone as keyof typeof PANEL]}`}>
             {panel.title && <p className="type-table-strong">{panel.title}</p>}
             <p className="type-body">{panel.body}</p>
           </div>
+        )}
+        {(topError || (passwordError && !password)) && (
+          <p role="alert" data-testid="signin-error" className="mt-4 type-table text-danger">
+            {topError ?? passwordError}
+          </p>
         )}
 
         <div className="mt-6 space-y-3">
@@ -122,12 +161,20 @@ export default async function SignInPage({
                   });
                 }}
               >
+                {passwordError && (
+                  <p role="alert" id="signin-password-error" data-testid="signin-error" className="type-table text-danger">
+                    {passwordError}
+                  </p>
+                )}
                 <label className="block space-y-1">
                   <span className="block type-caption text-muted">{PasswordCopy.EMAIL_LABEL}</span>
                   <input
                     name="email"
                     type="email"
                     autoComplete="username"
+                    defaultValue={rememberedEmail}
+                    aria-describedby={passwordError ? "signin-password-error" : undefined}
+                    aria-invalid={passwordError ? true : undefined}
                     required
                     className="h-8 w-full rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none"
                   />

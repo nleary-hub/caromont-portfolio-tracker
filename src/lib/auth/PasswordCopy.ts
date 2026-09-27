@@ -15,7 +15,7 @@ export class PasswordCopy {
   static readonly LIMITED_TITLE = "Slow down a little";
   static readonly LIMITED = "There have been a lot of sign-in attempts from here. Wait a few minutes, then try again.";
   static readonly ENDED_TITLE = "Your session ended";
-  static readonly ENDED = "Please sign in again to keep going.";
+  static readonly ENDED = "Sign in again to keep going.";
 
   // First sign-in: /set-password
   static readonly SET_TITLE = "Choose your password";
@@ -37,6 +37,8 @@ export class PasswordCopy {
 
   // Admin > People > Access
   static readonly TAG_PASSWORD = "Password";
+  static readonly TAG_GOOGLE = "Google";
+  static readonly TAG_GOOGLE_TIP = "Signs in with Google.";
   static readonly TAG_MUST_CHANGE = "Must change password";
   static readonly TAG_LOCKED = "Locked";
   static readonly TAG_OFF = "Off";
@@ -56,9 +58,8 @@ export class PasswordCopy {
   static readonly ADD_LINES = "Service lines";
   static readonly ADD_NO_LINES = "No lines selected. They can sign in, but they won't see any projects until you give them a line.";
   static readonly ADD_TEMP = "Create a temporary password for email and password sign-in";
-  static readonly ADD_TEMP_HELP = "Leave this off for people who only use Google. They need to be on the sign-in allow list.";
+  static readonly ADD_TEMP_HELP = "Leave this off for people who sign in with Google.";
   static readonly ADD_SAVE = "Add user";
-  static readonly NEEDS_ALLOW_LIST = "Without a password, this email needs to be on the sign-in allow list. Turn on the temporary password instead.";
   static readonly UNKNOWN_LINE = "One of those service lines isn't available. Refresh and try again.";
 
   static readonly TEMP_TITLE = "Temporary password";

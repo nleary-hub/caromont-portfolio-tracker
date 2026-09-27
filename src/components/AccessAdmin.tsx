@@ -3,7 +3,8 @@
 import { useRouter } from "next/navigation";
 import { Fragment, useEffect, useState, useTransition } from "react";
 import { setAllDepartments, setDepartmentAccess, setLineAccess } from "@/app/actions/access";
-import { AccountRowMenu, AddUserForm, PasswordTags, TempPasswordDialog } from "@/components/AccessAccountControls";
+import { AccountRowMenu, PasswordTags, TempPasswordDialog } from "@/components/AccessAccountControls";
+import { AddUserWithDepartments } from "@/components/AddUserDepartments";
 import { AccessGridModel } from "@/lib/access/AccessGridModel";
 import { DepartmentAccessCopy } from "@/lib/access/DepartmentAccessCopy";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
@@ -120,7 +121,7 @@ export function AccessAdmin({
       </div>
       <p className="text-[12px] leading-4 text-(--dark-text-secondary)">{LineAccessCopy.NOTE}</p>
       {adding && (
-        <AddUserForm
+        <AddUserWithDepartments
           lines={grid.lines}
           onCancel={() => setAdding(false)}
           onAdded={(r) => {

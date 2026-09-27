@@ -14,6 +14,11 @@ const passwordSessionCheck: PasswordSessionCheck = async (email, pwdVersion) => 
   return PasswordSignInService.sessionState(email, pwdVersion);
 };
 
+const accountActive = async (email: unknown): Promise<boolean> => {
+  const { AccountSignInService } = await import("@/lib/services/AccountSignInService");
+  return AccountSignInService.isActive(email);
+};
+
 export const { handlers, auth, signIn, signOut } = NextAuth({
   providers: AuthProviders.fromEnv(),
   // Cookie lifetime is 7 days (password sessions); Google and other providers keep their 8 hour rule in the jwt callback.
@@ -21,19 +26,21 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
   pages: { signIn: SIGN_IN_PATH, error: SIGN_IN_PATH },
   callbacks: {
     // Allowlist gate for Google and the other providers on every sign-in (Google also needs email_verified === true).
+    // Google is also allowed for an admin-created account that isn't turned off (ALLOWED_EMAILS OR account).
     // Password sign-ins were checked against the admin-created account in authorize().
     signIn({ user, account, profile }) {
-      return SignInGate.allowSignIn({ user, account, profile });
+      return SignInGate.allowSignInWithAccounts({ user, account, profile }, accountActive);
     },
     // Sign-in stamps the provider and time; later requests end the session per SessionPolicy (null clears the cookie).
     async jwt({ token, user, account, profile }) {
       if (user) {
         token.email = EmailAllowlist.candidateEmail(user, profile) ?? token.email;
-        return SessionPolicy.start(token, account?.provider, user);
+        return SessionPolicy.start(token, account?.provider, user, new Date(), SignInGate.needsAccount({ user, account, profile }));
       }
-      return SessionPolicy.continue(token, passwordSessionCheck);
+      return SessionPolicy.continue(token, passwordSessionCheck, new Date(), accountActive);
     },
     session({ session, token }) {
+      if (session.user && SessionPolicy.isAccountAccess(token)) session.user.accountAccess = true;
       if (session.user && SessionPolicy.isPassword(token)) {
         session.user.passwordAccount = true;
         session.user.mustChangePassword = token.mustChange === true;

@@ -6,5 +6,7 @@ declare module "next-auth" {
     passwordAccount?: boolean;
     mustChangePassword?: boolean;
     pwdVersion?: number;
+    /** Google sign-in allowed through an admin-created account rather than ALLOWED_EMAILS. */
+    accountAccess?: boolean;
   }
 }

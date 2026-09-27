@@ -56,7 +56,7 @@ See `.env.example` for the full annotated list.
 | `DATABASE_URL_UNPOOLED` | recommended on Neon | Direct (non-pooled) URL used by the Prisma CLI (`migrate deploy`/`dev`). Falls back to `DATABASE_URL` if unset. Set automatically by the Vercel Neon integration |
 | `AUTH_SECRET` | yes | `npx auth secret` or `openssl rand -base64 32` |
 | `ALLOWED_EMAILS` | yes | Comma/space separated emails or `@domain` entries. Empty = nobody (fails closed) |
-| `ADMIN_EMAILS` | no | Same format. Admins (must also be allowlisted) change view settings, hide/delete projects, open `/admin/audit`, use `/admin/import`. Empty = no admins (fails closed) |
+| `ADMIN_EMAILS` | no | Same format. Admins (who must also be able to sign in: on `ALLOWED_EMAILS`, or with an admin-created account) change view settings, hide/delete projects, open `/admin/audit`, use `/admin/import`. Empty = no admins (fails closed) |
 | `AUTH_MICROSOFT_ENTRA_ID_ID` / `_SECRET` / `_ISSUER` | optional | Enables Microsoft sign-in. Use the tenant-specific issuer |
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | Enables Google sign-in. See "Google OAuth setup" |
 | `AUTH_DEV_LOGIN` | optional | `true` enables the email-only dev form (never in production) |
@@ -99,8 +99,10 @@ so Google's callback path is `/api/auth/callback/google`.
 4. Put the client ID in `AUTH_GOOGLE_ID` and the secret in `AUTH_GOOGLE_SECRET` (`.env.local` locally;
    Vercel > Project > Settings > Environment Variables for Production), with `AUTH_SECRET`,
    `ALLOWED_EMAILS` and `ADMIN_EMAILS`. Redeploy after changing Vercel env vars.
-5. Who can get in: the address must be on `ALLOWED_EMAILS` and Google must report it as verified.
-   Admins must also be on `ALLOWED_EMAILS`; being on `ADMIN_EMAILS` alone does not let anyone sign in.
+5. Who can get in: Google must report the address as verified, and it must be on `ALLOWED_EMAILS` **or** match an
+   account an admin created on Admin > People > Access that isn't turned off. It's never account only: everyone on
+   `ALLOWED_EMAILS` signs in as before, with or without an account. Being on `ADMIN_EMAILS` alone does not let anyone
+   sign in.
 
 Notes:
 
@@ -117,7 +119,9 @@ Notes:
 - `src/proxy.ts` (Next 16 renamed `middleware.ts` to `proxy.ts`) runs Auth.js on every route except
   `/signin`, `/api/auth/*` and static assets. The `authorized` callback re-checks the allowlist on each
   request, so removing someone from `ALLOWED_EMAILS` locks them out without waiting for session expiry.
-- `signIn` callback (`SignInGate.allowSignIn`) enforces `ALLOWED_EMAILS` for every provider (`EmailAllowlist`).
+- `signIn` callback (`SignInGate.allowSignInWithAccounts`) enforces `ALLOWED_EMAILS` for every provider
+  (`EmailAllowlist`); for Google an active admin-created account (`AccountSignInService`) also counts, checked only when
+  the allowlist says no, and such a session re-checks the account every 5 minutes.
   For Google it also requires `email_verified === true` from Google. Microsoft Entra ID and the local dev
   login are unchanged. A denied sign-in only shows "This account is not on the access list."
   (`SignInMessages`), never which check failed.
@@ -327,11 +331,12 @@ utilities (`type-table`, `type-label`, ...). Status pill / flag / chip classes a
 
 A second option on `/signin`, under the Google button. Accounts are created only by admins; there is no self sign-up.
 
-- **Who can sign in with a password:** anyone an admin gave a password on Admin > People > Access (Add user with
-  "Create a temporary password", or the row menu > Create temporary password / Reset password). That account is the
-  permission: the email does not need to be in `ALLOWED_EMAILS`. Google sign-in is unchanged and still needs
-  `ALLOWED_EMAILS` (and a Google-verified email). Admin rights still come from `ADMIN_EMAILS`, and line access from the
-  Access grid, for both kinds of sign-in.
+- **Who can sign in:** `ALLOWED_EMAILS` **or** an account an admin created on Admin > People > Access (Add user), never
+  account only. With a password: anyone an admin gave one (Add user with "Create a temporary password", or the row
+  menu > Create temporary password / Reset password). With Google: a Google-verified email that is on `ALLOWED_EMAILS`
+  (as before) or matches an admin-created account (Add user, with or without a password) that isn't turned off. The
+  email does not need to be in `ALLOWED_EMAILS` for either. Admin rights still come from `ADMIN_EMAILS`, and line and
+  department access from the Access grid (or Add user), for both kinds of sign-in.
 - **Temporary passwords:** every password an admin creates or resets is temporary and shown once. At first sign-in the
   person must choose their own (12+ characters, not their email, not the temporary one) on `/set-password` before
   they can reach anything else (the proxy redirects there; `CurrentViewer` also refuses such sessions).
@@ -340,8 +345,9 @@ A second option on `/signin`, under the Google button. Accounts are created only
   account exists, so the message never reveals which emails have accounts. Admins can Unlock from the row menu.
 - **Rate limit:** every attempt counts against the client IP (30 per 15 minutes) and the typed email (10 per 15
   minutes) in `password_rate_limit`, one atomic upsert per key, so it holds across serverless instances.
-- **Errors:** one generic message for every failure; amber panels for the lockout and the rate limit; a gray "Your
-  session ended" panel when a session cookie is no longer good.
+- **Errors:** one generic message for every failure, as one red line above the Email field; amber panels for the
+  lockout and the rate limit; a gray "Your session ended" panel when a session cookie is no longer good. After a
+  failed attempt the email stays filled in (a 10 minute httpOnly cookie scoped to `/signin`) and the password is cleared.
 - **Sessions:** password sessions last 7 days from sign-in, with no idle timeout, and re-check the database every 5
   minutes (a reset or "Turn off password sign-in" ends them). Google sessions keep their 8 hour rule, extended by
   activity, as before.

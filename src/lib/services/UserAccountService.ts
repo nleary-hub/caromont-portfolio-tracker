@@ -1,20 +1,17 @@
-import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import type { PrismaClient } from "@/generated/prisma/client";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { DisplayName } from "@/lib/auth/DisplayName";
-import { EmailAllowlist } from "@/lib/auth/EmailAllowlist";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 import { PasswordHasher } from "@/lib/auth/PasswordHasher";
 import { SignInLockout } from "@/lib/auth/SignInLockout";
 import { TemporaryPassword } from "@/lib/auth/TemporaryPassword";
 import { Db } from "@/lib/db/Db";
+import { AddUserRejected, type AccountTx, type AddUserGrantHook } from "@/lib/services/AddUserHook";
 import { PasswordSignInService } from "@/lib/services/PasswordSignInService";
 
 type Env = Record<string, string | undefined>;
-export type AccountTx = Pick<
-  Prisma.TransactionClient,
-  "appUser" | "serviceLine" | "serviceLineAccessGrant" | "serviceLineAccessHistory" | "passwordCredential" | "passwordCredentialHistory" | "passwordSignInAttempt"
->;
+export { AddUserRejected, type AccountTx, type AddUserGrantHook };
 type AccountDb = Pick<PrismaClient, "passwordCredential" | "passwordSignInAttempt"> & { $transaction<T>(fn: (tx: AccountTx) => Promise<T>): Promise<T> };
 
 /** Password state shown as tags in the Access grid. */
@@ -29,13 +26,9 @@ export interface AddUserInput {
   name?: unknown;
   lineIds?: unknown;
   createPassword?: unknown;
+  /** Lines limited to some departments ("All departments" off): line id to department ids. Saved by the hook. */
+  departments?: unknown;
 }
-
-/**
- * Hook for per-line extras saved in the same transaction as the new user's line access. PR #33 (department access)
- * plugs in here: it receives the transaction, the new email and the granted line ids.
- */
-export type AddUserGrantHook = (tx: AccountTx, email: string, lineIds: string[], viewer: Viewer) => Promise<void>;
 
 export type AccountResult = { ok: true; message: string; temporaryPassword?: string; email?: string; name?: string } | { ok: false; message: string };
 
@@ -81,12 +74,28 @@ export class UserAccountService {
     if (!PasswordSignInService.isValidEmail(email)) return { ok: false, message: LineAccessCopy.INVALID_EMAIL };
     if (AdminPolicy.fromEnv(env).exactEmails().includes(email)) return { ok: false, message: LineAccessCopy.DUPLICATE_EMAIL };
     const createPassword = input.createPassword === true;
-    if (!createPassword && !EmailAllowlist.isAllowed(email, env)) return { ok: false, message: PasswordCopy.NEEDS_ALLOW_LIST };
+    // No password is fine: the account itself lets them sign in with Google (SignInGate), allow list or not.
     const name = typeof input.name === "string" && input.name.trim() ? input.name.trim().slice(0, 80) : null;
     const lineIds = Array.isArray(input.lineIds) ? [...new Set(input.lineIds.filter((x): x is string => typeof x === "string"))] : [];
     const temporaryPassword = createPassword ? TemporaryPassword.generate() : undefined;
     const passwordHash = temporaryPassword ? await PasswordHasher.hash(temporaryPassword) : null;
 
+    try {
+      return await UserAccountService.addUserTx(viewer, db, { email, name, lineIds, passwordHash, temporaryPassword }, hook, now);
+    } catch (e) {
+      if (e instanceof AddUserRejected) return { ok: false, message: e.message };
+      throw e;
+    }
+  }
+
+  private static addUserTx(
+    viewer: Viewer,
+    db: AccountDb,
+    input: { email: string; name: string | null; lineIds: string[]; passwordHash: string | null; temporaryPassword?: string },
+    hook: AddUserGrantHook | undefined,
+    now: Date,
+  ): Promise<AccountResult> {
+    const { email, name, lineIds, passwordHash, temporaryPassword } = input;
     return db.$transaction(async (tx) => {
       if (await tx.appUser.findUnique({ where: { email } })) return { ok: false as const, message: LineAccessCopy.DUPLICATE_EMAIL };
       if (lineIds.length) {

@@ -17,7 +17,10 @@ const TAG = "flex-none rounded-[4px] px-1.5 py-px type-label font-semibold";
 export function PasswordTags({ status }: { status?: PasswordStatus }) {
   if (!status) return null;
   const tags: Array<{ label: string; tip: string; cls: string; id: string }> = [];
-  if (status.state === "active") tags.push({ id: "password", label: PasswordCopy.TAG_PASSWORD, tip: PasswordCopy.TAG_PASSWORD_TIP, cls: "bg-(--status-on-hold-dark-bg) text-(--status-on-hold-dark-fg)" });
+  // Every row says how the person signs in: Google (no password), Password, Must change password or Off.
+  const PASSWORD_CLS = "bg-(--status-on-hold-dark-bg) text-(--status-on-hold-dark-fg)";
+  if (status.state === "none") tags.push({ id: "google", label: PasswordCopy.TAG_GOOGLE, tip: PasswordCopy.TAG_GOOGLE_TIP, cls: PASSWORD_CLS });
+  if (status.state === "active") tags.push({ id: "password", label: PasswordCopy.TAG_PASSWORD, tip: PasswordCopy.TAG_PASSWORD_TIP, cls: PASSWORD_CLS });
   if (status.state === "mustChange") tags.push({ id: "must-change", label: PasswordCopy.TAG_MUST_CHANGE, tip: PasswordCopy.TAG_MUST_CHANGE_TIP, cls: "bg-(--flag-changed-dark-bg) text-(--flag-changed-dark-fg)" });
   if (status.state === "off") tags.push({ id: "off", label: PasswordCopy.TAG_OFF, tip: PasswordCopy.TAG_OFF_TIP, cls: "bg-(--status-cancelled-dark-bg) text-(--status-cancelled-dark-fg)" });
   if (status.locked) tags.push({ id: "locked", label: PasswordCopy.TAG_LOCKED, tip: PasswordCopy.TAG_LOCKED_TIP, cls: "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)" });
@@ -112,19 +115,22 @@ export function AccountRowMenu({
 
 /**
  * Add user: email, optional name, the service lines they may see and an optional temporary password, saved together.
- * `lineExtra` is the hook for per-line extras under each checked line (department checkboxes from PR #33); its values
- * reach UserAccountService.addUser through an AddUserGrantHook.
+ * `lineExtra` renders per-line extras under each line (the department switch and checkboxes, AddUserDepartments); it
+ * can uncheck its line. `extraInput` goes to the same save (the chosen departments), where an AddUserGrantHook
+ * stores it in the same transaction.
  */
 export function AddUserForm({
   lines,
   onCancel,
   onAdded,
   lineExtra,
+  extraInput,
 }: {
   lines: AccessLine[];
   onCancel: () => void;
   onAdded: (r: Extract<AccountResult, { ok: true }>) => void;
-  lineExtra?: (line: AccessLine, checked: boolean) => React.ReactNode;
+  lineExtra?: (line: AccessLine, checked: boolean, setChecked: (on: boolean) => void) => React.ReactNode;
+  extraInput?: { departments?: Record<string, string[]> };
 }) {
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
@@ -134,7 +140,7 @@ export function AddUserForm({
   const [pending, start] = useTransition();
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => ref.current?.focus(), []);
-  const toggle = (id: string, on: boolean) => setLineIds((list) => (on ? [...list, id] : list.filter((x) => x !== id)));
+  const toggle = (id: string, on: boolean) => setLineIds((list) => (on ? [...list.filter((x) => x !== id), id] : list.filter((x) => x !== id)));
   return (
     <form
       className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3"
@@ -143,7 +149,7 @@ export function AddUserForm({
       onSubmit={(e) => {
         e.preventDefault();
         start(async () => {
-          const r = await addUserAccount({ email, name, lineIds, createPassword }).catch(() => ({ ok: false as const, message: LineAccessCopy.SAVE_ERROR }));
+          const r = await addUserAccount({ email, name, lineIds, createPassword, ...extraInput }).catch(() => ({ ok: false as const, message: LineAccessCopy.SAVE_ERROR }));
           if (r.ok) onAdded(r);
           else setError(r.message);
         });
@@ -162,7 +168,7 @@ export function AddUserForm({
       </div>
       <fieldset className="flex flex-col gap-1.5">
         <legend className="mb-1 text-muted type-caption">{PasswordCopy.ADD_LINES}</legend>
-        <div className="flex flex-wrap gap-x-5 gap-y-1.5">
+        <div className={lineExtra ? "flex flex-col gap-2" : "flex flex-wrap gap-x-5 gap-y-1.5"}>
           {lines.map((l) => {
             const on = lineIds.includes(l.id);
             return (
@@ -172,7 +178,7 @@ export function AddUserForm({
                   <span className="type-table-strong">{l.shortName}</span>
                   <span className="text-muted">{l.name}</span>
                 </label>
-                {lineExtra?.(l, on)}
+                {lineExtra?.(l, on, (next) => toggle(l.id, next))}
               </div>
             );
           })}
