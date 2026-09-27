@@ -108,10 +108,10 @@ class M18 {
 }
 
 describe("0018_departments on production-shaped data (PGlite)", () => {
-  it("is the latest migration and follows 0017", () => {
+  it("follows 0017 and precedes 0019", () => {
     const f = M18.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0017_line_layout");
+    expect(f[f.indexOf(M) - 1]).toBe("0017_line_layout");
+    expect(f[f.indexOf(M) + 1]).toBe("0019_year_end_report");
   });
 
   it("keeps every existing value unchanged and seeds CVPSL's seven departments in today's order with today's names", async () => {

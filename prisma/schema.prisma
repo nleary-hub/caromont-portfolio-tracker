@@ -433,6 +433,7 @@ model ServiceLine {
   layoutLog        LineLayoutHistory[]
   departmentRows   Department[]
   departmentLog    DepartmentHistory[]
+  yearEndReports   YearEndReport[]
 
   @@map("service_line")
 }
@@ -539,4 +540,34 @@ model DepartmentHistory {
 
   @@index([serviceLineId, changedAt])
   @@map("department_history")
+}
+
+/// On-demand year-end report PDFs (Reports > Year-end report). Never a weekly snapshot: never emailed, never
+/// delivered to Drive, never scheduled. Each generation stores its file with the date and the generator.
+/// Append-only (a DB trigger blocks UPDATE and DELETE).
+model YearEndReport {
+  id              String   @id @default(uuid()) @db.Uuid
+  serviceLineId   String   @db.Uuid
+  /// "FY27"
+  fiscalYear      String
+  /// Fiscal year start (Jul 1).
+  periodStart     DateTime @db.Date
+  /// Fiscal year end (Jun 30), or the generation day for a current-year ("to date") report.
+  periodEnd       DateTime @db.Date
+  toDate          Boolean
+  fileName        String
+  contentType     String
+  bytes           Bytes
+  byteSize        Int
+  sha256          String
+  generatedAt     DateTime @default(now())
+  /// Email of the admin who generated it.
+  generatedBy     String
+  /// Display name at generation ("Nick Leary"); null when the account has no name.
+  generatedByName String?
+
+  serviceLine ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+
+  @@index([serviceLineId, generatedAt])
+  @@map("year_end_report")
 }
