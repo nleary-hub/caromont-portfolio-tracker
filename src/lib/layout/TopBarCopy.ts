@@ -8,8 +8,8 @@ export class TopBarCopy {
   static readonly SEARCH_PLACEHOLDER = "Search projects, owners, physicians…";
   /** The search field's accessible name (unchanged). */
   static readonly SEARCH_LABEL = "Search projects";
-  /** Step 3: the icon's accessible name and tooltip are the field's old visible text. */
-  static readonly SEARCH_ICON = TopBarCopy.SEARCH_PLACEHOLDER;
+  /** Step 3: the icon's accessible name and tooltip: the field's visible text without the trailing ellipsis. */
+  static readonly SEARCH_ICON = "Search projects, owners, physicians";
   static readonly SEARCH_CLOSE = "Close search";
   /** The admin menu button's label; at step 6 its tooltip and accessible name. */
   static readonly ADMIN = "Admin";

@@ -158,7 +158,8 @@ describe("Top bar controls at their compact steps", () => {
   });
 
   it("copy: removed text goes to the tooltip exactly as it read", () => {
-    expect(TopBarCopy.SEARCH_ICON).toBe("Search projects, owners, physicians…");
+    expect(TopBarCopy.SEARCH_ICON).toBe("Search projects, owners, physicians");
+    expect(TopBarCopy.SEARCH_PLACEHOLDER).toBe("Search projects, owners, physicians…");
     expect(TopBarCopy.reportTip("Sep 9 – Sep 23, 2026")).toBe("Sep 9 – Sep 23, 2026\nReport history coming soon");
     expect(TopBarCopy.reportTip(null)).toBe("Report history coming soon");
     for (const s of [TopBarCopy.SEARCH_ICON, TopBarCopy.SEARCH_CLOSE, TopBarCopy.REPORT_SOON, TopBarCopy.viewIcon(3)]) expect(s).not.toContain("—");
