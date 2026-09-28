@@ -31,11 +31,29 @@
 }
 
 /*
- * Top bar breakpoint (the one place to adjust it): at 40rem (640px) and wider the top bar shows the full
- * service line name; below it, the short name (ServiceLineLabel). Creates the `topbar:` variant.
+ * Top bar breakpoint (the one place to adjust it) for pages without a measured bar (Reports, admin pages): at 40rem
+ * (640px) and wider the full service line name; below it, the short name (ServiceLineLabel). Creates the `topbar:`
+ * variant. The dashboard, Completed and Cancelled bars measure their own fit instead (TopBarFit).
  */
 @theme {
   --breakpoint-topbar: 40rem;
+}
+
+/*
+ * 44px tap area for compact top bar controls (iPad): an invisible hit box centered on the control, at least 44px
+ * tall and wide, without changing the control's size or the layout.
+ */
+@utility tap-44 {
+  position: relative;
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    width: max(100%, 44px);
+    height: max(100%, 44px);
+    transform: translate(-50%, -50%);
+  }
 }
 
 /* Type scale utilities (font shorthand tokens). */
