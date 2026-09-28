@@ -67,6 +67,7 @@ export class ClosedPageRoute {
         {...(canRestore ? { restoreAction: restoreCancelledProject } : {})}
         historyAction={loadProjectHistory}
         lineSlot={<ServiceLineSlot viewer={viewer} active={scope} lines={lines} />}
+        serviceLine={{ name: scope.name, shortName: scope.shortName }}
         adminSlot={<AdminMenuSlot viewer={viewer} />}
         loadError={data.error}
         demo={ClosedPageRoute.demo(params)}

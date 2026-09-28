@@ -6,14 +6,19 @@ import { useState, useTransition } from "react";
 import { switchServiceLine } from "@/app/actions/serviceLine";
 import { ServiceLine, ServiceLineCopy, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ServiceLineSwitch } from "@/lib/dashboard/ServiceLineSwitch";
+import { TopBarFit } from "@/lib/layout/TopBarFit";
 import { usePopover } from "./DashboardFilterControls";
 import { Chevron } from "./FieldControl";
+import { ServiceLineNameStyle } from "./ServiceLineLabel";
+import { useTopBarLevel, useTopBarNameMax } from "./TopBarFitContext";
 
 type SwitcherLine = Pick<ServiceLineScope, "id" | "name" | "shortName" | "isDefault">;
 
 /**
- * Service line switcher in the top bar: a 28px ghost button with the active line's full name (short name below the
- * `topbar` breakpoint) and the shared chevron. The popover lists the viewer's lines (admins: every open line; others:
+ * Service line switcher in the top bar: a 28px ghost button (44px tap area) with the active line's name and the
+ * shared chevron. In a measured bar the fit level picks the full name, the short name (TopBarFit step 1) or a
+ * truncated name (step 6), with the full name as the tooltip; the chevron never truncates. Elsewhere the short name
+ * shows below the `topbar` breakpoint. A line with no short name keeps its full name. The menu always lists full names. The popover lists the viewer's lines (admins: every open line; others:
  * the lines they have access to), default first then A to Z, with a check on the active one, then "Manage service
  * lines" for admins only (`manage`). Someone with exactly one line gets the plain label instead (the page decides).
  * The choice is saved per user on the server, which re-checks access.
@@ -25,6 +30,9 @@ export function ServiceLineSwitcher({ lines, active, manage = true }: { lines: r
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
   const ordered = ServiceLine.sortForSwitcher(lines);
+  const level = useTopBarLevel();
+  const nameMax = useTopBarNameMax();
+  const fit = level === null ? null : TopBarFit.nameAt(active, level);
 
   const pick = (id: string) => {
     setOpen(false);
@@ -48,12 +56,20 @@ export function ServiceLineSwitcher({ lines, active, manage = true }: { lines: r
         aria-label={`Service line: ${active.name}`}
         disabled={pending}
         onClick={() => setOpen(!open)}
-        className="sl-switch"
+        title={fit && (fit.short || fit.truncate) ? active.name : undefined}
+        className="sl-switch tap-44"
+        data-service-line-mode={fit ? (fit.short ? "short" : "full") : undefined}
       >
-        <span className="sr-only topbar:not-sr-only topbar:truncate">{active.name}</span>
-        <span aria-hidden="true" className="topbar:hidden">
-          {active.shortName}
-        </span>
+        {fit ? (
+          <span {...ServiceLineNameStyle.props(fit.truncate, nameMax)}>{fit.text}</span>
+        ) : (
+          <>
+            <span className="sr-only topbar:not-sr-only topbar:truncate">{active.name}</span>
+            <span aria-hidden="true" className="topbar:hidden">
+              {TopBarFit.shortOrFull(active)}
+            </span>
+          </>
+        )}
         <Chevron open={open} />
       </button>
       {error && (

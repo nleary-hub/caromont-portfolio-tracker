@@ -5,6 +5,7 @@ import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { DashboardColumnModel, type PickerEntry } from "@/lib/dashboard/DashboardColumnModel";
 import { LayoutCopy } from "@/lib/layout/LineLayout";
+import { TopBarCopy } from "@/lib/layout/TopBarCopy";
 import { LayoutResetDialog, type LayoutResetKind } from "./LayoutResetDialog";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { StatusCounts } from "@/lib/domain/types";
@@ -30,6 +31,8 @@ export interface ViewSettingsPickerProps {
   onSave: (context: ViewContext, value: ViewSettingsValue) => Promise<string | null>;
   /** "Reset columns" and "Reset row order" for the active line (bottom of the menu, each with a confirmation). */
   layoutReset?: LayoutResetProps;
+  /** Top bar fit step 4 (TopBarFit): the icon and the hidden count only; the label moves to the tooltip. */
+  compact?: boolean;
 }
 
 export interface LayoutResetProps {
@@ -49,7 +52,7 @@ class PickerCopy {
   static readonly TAB_LABEL: Record<ViewContext, string> = { dashboard: "Dashboard", report: "Report" };
 }
 
-export function ViewSettingsPicker({ settings, counts, onSave, layoutReset }: ViewSettingsPickerProps) {
+export function ViewSettingsPicker({ settings, counts, onSave, layoutReset, compact = false }: ViewSettingsPickerProps) {
   const [open, setOpen] = useState(false);
   const [tab, setTab] = useState<ViewContext>("dashboard");
   const [reportDraft, setReportDraft] = useState<ViewSettingsValue>(settings.report);
@@ -130,12 +133,31 @@ export function ViewSettingsPicker({ settings, counts, onSave, layoutReset }: Vi
 
   return (
     <div ref={rootRef} className="vp-root">
-      <button type="button" className="vp-trigger" aria-expanded={open} aria-haspopup="dialog" onClick={toggleOpen}>
+      <button
+        type="button"
+        className="vp-trigger tap-44"
+        aria-expanded={open}
+        aria-haspopup="dialog"
+        onClick={toggleOpen}
+        aria-label={compact ? TopBarCopy.viewIcon(hidden) : undefined}
+        title={compact ? TopBarCopy.viewIcon(hidden) : undefined}
+        data-compact={compact ? "" : undefined}
+      >
         <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
           <path d="M1 3h12M3 7h8M5 11h4" stroke="currentColor" strokeWidth="1.5" fill="none" />
         </svg>
-        {AdminMenu.DASHBOARD_VIEW}
-        {hidden > 0 && <span className="vp-badge">{hidden} hidden</span>}
+        {compact ? (
+          hidden > 0 && (
+            <span className="vp-badge" aria-hidden="true">
+              {hidden}
+            </span>
+          )
+        ) : (
+          <>
+            {AdminMenu.DASHBOARD_VIEW}
+            {hidden > 0 && <span className="vp-badge">{hidden} hidden</span>}
+          </>
+        )}
       </button>
 
       {open && (

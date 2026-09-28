@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState, useTransition, type CSSProperties, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useTransition, type CSSProperties, type ReactNode } from "react";
 import type { DashboardGroup } from "@/lib/dashboard/DashboardGroups";
 import type { DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
 import { Assignee } from "@/lib/domain/Assignee";
@@ -8,6 +8,8 @@ import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { Requester } from "@/lib/domain/Requester";
 import type { DepartmentKey, DepartmentList } from "@/lib/domain/ServiceAreaInfo";
+import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
+import { TopBarFit } from "@/lib/layout/TopBarFit";
 import { ClosedPageModel, type ClosedPageKind, type ClosedView } from "@/lib/closed/ClosedPageModel";
 import { ClosedPagesCopy as C } from "@/lib/closed/ClosedPagesCopy";
 import type { RestorePreview } from "@/lib/closed/ClosedPageData";
@@ -17,6 +19,8 @@ import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
 import { DepartmentsSelect, usePopover } from "./DashboardFilterControls";
 import { GroupedTableStyle, NAME_WRAP } from "./DashboardTable";
 import { MainNav } from "./MainNav";
+import { TopBarFrame } from "./TopBarFrame";
+import { useTopBarFit } from "./TopBarFitContext";
 import { ProjectDrawer } from "./ProjectDashboard";
 import type { HistoryLoader } from "./ProjectHistory";
 
@@ -55,6 +59,7 @@ export function ClosedProjectsView({
   restoreAction,
   historyAction,
   lineSlot,
+  serviceLine,
   adminSlot,
   loadError,
   demo,
@@ -73,6 +78,8 @@ export function ClosedProjectsView({
   restoreAction?: (projectId: string) => Promise<RestoreActionResult>;
   historyAction?: HistoryLoader;
   lineSlot: ReactNode;
+  /** The line's names: whether the top bar can step down to the short name (TopBarFit). */
+  serviceLine?: ServiceLineValue;
   adminSlot: ReactNode;
   loadError: string | null;
   demo?: ClosedViewDemo;
@@ -116,21 +123,22 @@ export function ClosedProjectsView({
     return () => window.removeEventListener("keydown", onKey);
   }, [confirmId]);
 
+  // Top bar: logo, line name, nav, admin menu. Steps down (TopBarFit) to the short name, the nav on a second row,
+  // then an ellipsis on the name; this bar has no report chip, search or Dashboard view.
+  const barRef = useRef<HTMLDivElement>(null);
+  const fit = useTopBarFit(barRef, TopBarFit.usable({ chipDate: false, searchIcon: false, viewIcon: false }, serviceLine), `${serviceLine?.name}|${serviceLine?.shortName}`);
+  const navActive = kind.status === "Complete" ? "completed" : "cancelled";
+
   const dateHeader = C.dateHeader(kind.status);
   const span = canRestore ? 6 : 5;
 
   return (
     <div className="relative min-h-screen">
-      <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-topbar px-6 backdrop-blur-[20px]">
-        <div className="flex shrink-0 items-center gap-2.5">
-          <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
-          {lineSlot}
-        </div>
-        <div className="h-6 w-px bg-line" />
-        <MainNav active={kind.status === "Complete" ? "completed" : "cancelled"} closedQuery={query} />
+      <TopBarFrame rowRef={barRef} fit={fit} lockup={lineSlot} navRow={<MainNav active={navActive} closedQuery={query} row />}>
+        {!TopBarFit.has(fit.level, "navRow") && <MainNav active={navActive} closedQuery={query} />}
         <div className="flex-1" />
-        {adminSlot}
-      </header>
+        <div className="shrink-0">{adminSlot}</div>
+      </TopBarFrame>
 
       <main className="flex flex-col gap-4 px-6 pt-5 pb-6">
         <div className="flex flex-wrap items-start justify-between gap-4">

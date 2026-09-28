@@ -3,6 +3,9 @@
 import { usePathname } from "next/navigation";
 import { Fragment, useEffect, useId, useRef, useState, type KeyboardEvent as ReactKeyboardEvent, type ReactNode } from "react";
 import { AdminMenu, MenuKeyboard, type AdminMenuIcon, type AdminMenuItem } from "@/lib/admin/AdminMenu";
+import { TopBarCopy } from "@/lib/layout/TopBarCopy";
+import { TopBarFit } from "@/lib/layout/TopBarFit";
+import { useTopBarLevel } from "./TopBarFitContext";
 
 /** 16px line icons for the admin menu (stroke = currentColor). */
 class AdminMenuIcons {
@@ -61,6 +64,9 @@ export function AdminMenuButton({ items, initialOpen = false }: { items: AdminMe
   const pathname = usePathname();
   const currentId = AdminMenu.currentId(items, pathname);
   const groups = AdminMenu.grouped(items);
+  // In a measured top bar that is short of room, the gear alone (TopBarFit step 6); "Admin" moves to the tooltip.
+  const level = useTopBarLevel();
+  const compact = level !== null && TopBarFit.has(level, "adminIcon");
   const flat = groups.flatMap((g) => g.items);
 
   useEffect(() => {
@@ -124,7 +130,10 @@ export function AdminMenuButton({ items, initialOpen = false }: { items: AdminMe
       <button
         ref={buttonRef}
         type="button"
-        className="am-trigger"
+        className="am-trigger tap-44"
+        aria-label={compact ? TopBarCopy.ADMIN : undefined}
+        title={compact ? TopBarCopy.ADMIN : undefined}
+        data-compact={compact ? "" : undefined}
         aria-haspopup="menu"
         aria-expanded={open}
         aria-controls={open ? menuId : undefined}
@@ -138,7 +147,7 @@ export function AdminMenuButton({ items, initialOpen = false }: { items: AdminMe
         onKeyDown={onButtonKeyDown}
       >
         {AdminMenuIcons.of("gear")}
-        Admin
+        {!compact && TopBarCopy.ADMIN}
       </button>
       {open && (
         <div id={menuId} role="menu" aria-label="Admin" className="am-menu" onKeyDown={onMenuKeyDown}>

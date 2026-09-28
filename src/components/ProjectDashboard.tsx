@@ -25,10 +25,9 @@ import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { ProjectFormSubmit } from "./ProjectEditForm";
 import type { MilestoneSaveActionResult } from "@/app/actions/admin";
-import { ServiceLineLabel } from "./ServiceLineLabel";
+import { DashboardTopBar, type TopBarReport } from "./DashboardTopBar";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
 import { DashboardTable, type DashboardLayoutControl } from "./DashboardTable";
-import { MainNav } from "./MainNav";
 import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
 import { ClosedPagesCopy } from "@/lib/closed/ClosedPagesCopy";
 import { ClosedPageModel } from "@/lib/closed/ClosedPageModel";
@@ -36,7 +35,6 @@ import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardS
 import { LayoutCopy, LineLayout, type ColumnLayoutValue, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentsSelect, TileVisibilityButton } from "./DashboardFilterControls";
-import { OnDemandPdfLink } from "@/lib/report/OnDemandPdfLink";
 import { DashboardPrefs, type DashboardTile } from "@/lib/dashboard/DashboardPrefs";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { Flags, StatusPill } from "./StatusPill";
@@ -50,12 +48,8 @@ const ProjectPeopleEditor = dynamic(() => import("./ProjectPeopleEditor").then((
 const AdminMenuButton = dynamic(() => import("./AdminMenuButton").then((m) => m.AdminMenuButton));
 const ProjectEditForm = dynamic(() => import("./ProjectEditForm").then((m) => m.ProjectEditForm));
 
-export interface LatestReport {
-  /** YYYY-MM-DD */
-  reportDate: string;
-  periodStart: string;
-  periodEnd: string;
-}
+/** The latest frozen report (top bar chip). */
+export type LatestReport = TopBarReport;
 
 /** Only passed for admins. Non-admins receive none of this (no settings, counts or actions). */
 export interface AdminDashboardProps {
@@ -172,7 +166,8 @@ export function ProjectDashboard({
 }: Props) {
   const [query, setQuery] = useState("");
   const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
-  const searchRef = useRef<HTMLInputElement>(null);
+  // What "/" calls: set by the top bar (focus the search field, or open it when it is collapsed to an icon).
+  const focusSearchRef = useRef<() => void>(() => {});
   // Admin edit mode. Non-admins stay in "view" (there is no way to switch).
   const [mode, setMode] = useState<DrawerMode>("view");
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -396,7 +391,7 @@ export function ProjectDashboard({
       const typing = e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement;
       if (e.key === "/" && !typing) {
         e.preventDefault();
-        searchRef.current?.focus();
+        focusSearchRef.current();
       } else if (e.key === "Escape") {
         escRef.current();
       }
@@ -407,82 +402,44 @@ export function ProjectDashboard({
 
   return (
     <div className="relative min-h-screen">
-      <header className="sticky top-0 z-10 flex h-14 items-center gap-4 border-b border-line bg-topbar px-6 backdrop-blur-[20px]">
-        <div className="flex shrink-0 items-center gap-2.5">
-          <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
-          {switcher ?? <ServiceLineLabel value={serviceLine} />}
-        </div>
-        <div className="h-6 w-px bg-line" />
-        <button
-          type="button"
-          disabled
-          title="Report history coming soon"
-          className="flex h-8 shrink-0 items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 whitespace-nowrap text-muted"
-        >
-          {latestReport ? (
-            <>
-              <span className="type-table-strong text-fg">Report of {DateFormat.short(latestReport.reportDate)}</span>
-              <span className="type-caption">
-                {DateFormat.short(latestReport.periodStart)} – {DateFormat.long(latestReport.periodEnd)}
-              </span>
-            </>
-          ) : (
-            <span className="type-table-strong text-fg">No reports yet</span>
-          )}
-        </button>
-        <div className="flex-1" />
-        <label className="flex h-8 w-80 min-w-40 shrink items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 text-muted type-table">
-          <svg width="14" height="14" viewBox="0 0 14 14" aria-hidden>
-            <circle cx="6" cy="6" r="4.5" fill="none" stroke="currentColor" strokeWidth="1.5" />
-            <path d="M9.5 9.5L13 13" stroke="currentColor" strokeWidth="1.5" />
-          </svg>
-          <input
-            ref={searchRef}
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-            placeholder="Search projects, owners, physicians…"
-            aria-label="Search projects"
-            className="min-w-0 flex-1 bg-transparent text-fg placeholder:text-muted focus:outline-none"
-          />
-          <kbd className="rounded border border-line px-1 type-caption">/</kbd>
-        </label>
-        {admin && settings && (
-          <ViewSettingsPicker
-            settings={lineLayout.columns ? { ...settings, dashboard: LineLayout.orderedSettings("dashboard", settings.dashboard, lineLayout.columns.order) } : settings}
-            counts={admin.pickerCounts}
-            onSave={saveSettings}
-            layoutReset={{ shortName: serviceLine.shortName, onResetColumns: () => saveColumns(null), onResetRows: resetRows }}
-          />
-        )}
-        <MainNav active="dashboard" closedQuery={closedQuery} />
-        {/* Everyone who can see the dashboard: only the departments they are viewing (the server keeps only ones
-            they can see; an admin viewing every department gets the admin report setting; DraftReportService). */}
-        <a
-          href={OnDemandPdfLink.href(departments)}
-          download
-          title={OnDemandPdfLink.TOOLTIP}
-          className="flex h-8 shrink-0 items-center rounded-control bg-accent px-3.5 whitespace-nowrap text-white type-table-strong"
-        >
-          Generate PDF now
-        </a>
-        {admin && admin.menuItems.length > 0 && (
-          // 12px left of the user block (header gap is 16px).
-          <div className="-mr-1">
-            <AdminMenuButton items={admin.menuItems} />
-          </div>
-        )}
-        <form action={signOutAction} className="flex items-center gap-2 text-muted">
-          <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">
-            {Initials.of(userName, userEmail)}
-          </div>
-          <div className="flex flex-col type-caption">
-            <b className="type-label text-fg">{userName ?? userEmail}</b>
-            <button type="submit" className="text-left hover:text-fg">
-              Sign out
-            </button>
-          </div>
-        </form>
-      </header>
+      <DashboardTopBar
+        serviceLine={serviceLine}
+        switcher={switcher}
+        latestReport={latestReport}
+        query={query}
+        onQuery={setQuery}
+        focusSearchRef={focusSearchRef}
+        viewPicker={
+          admin && settings
+            ? (compact) => (
+                <ViewSettingsPicker
+                  settings={lineLayout.columns ? { ...settings, dashboard: LineLayout.orderedSettings("dashboard", settings.dashboard, lineLayout.columns.order) } : settings}
+                  counts={admin.pickerCounts}
+                  onSave={saveSettings}
+                  layoutReset={{ shortName: serviceLine.shortName, onResetColumns: () => saveColumns(null), onResetRows: resetRows }}
+                  compact={compact}
+                />
+              )
+            : undefined
+        }
+        viewKey={settings ? String(ViewSettings.hiddenCount(settings.dashboard)) : ""}
+        closedQuery={closedQuery}
+        pdfDepartments={departments}
+        adminMenu={admin && admin.menuItems.length > 0 ? <AdminMenuButton items={admin.menuItems} /> : undefined}
+        account={
+            <form action={signOutAction} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-muted">
+              <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">
+                {Initials.of(userName, userEmail)}
+              </div>
+              <div className="flex flex-col type-caption">
+                <b className="type-label text-fg">{userName ?? userEmail}</b>
+                <button type="submit" className="text-left hover:text-fg">
+                  Sign out
+                </button>
+              </div>
+            </form>
+        }
+      />
 
       <main className="flex flex-col gap-4 px-6 pt-5 pb-6">
         {loadError && (
