@@ -1,11 +1,21 @@
 /** Single source of truth for app-wide limits and settings. */
 export class AppConfig {
-  /** Max characters in a project note. Change here only (DB column is unbounded TEXT on purpose). */
-  static readonly NOTE_MAX_LENGTH = 200;
+  /** Max characters in a project note (the latest update). Change here only (DB column is unbounded TEXT on purpose). */
+  static readonly NOTE_MAX_LENGTH = 2000;
+  /**
+   * The dashboard and the PDF show at most this many characters of the note (the cap before 2,000), then "…".
+   * A note at or under it renders exactly as before; the project side panel always shows the full text.
+   */
+  static readonly NOTE_DISPLAY_MAX_LENGTH = 200;
   /** Max characters for short required text fields (name, owner). */
   static readonly SHORT_TEXT_MAX_LENGTH = 200;
-  /** Max characters in a project's next milestone (template rule; enforced on every save). */
-  static readonly MILESTONE_MAX_LENGTH = 40;
+  /** Max characters in a project's next milestone and in each checklist milestone (enforced on every save). */
+  static readonly MILESTONE_MAX_LENGTH = 2000;
+  /**
+   * The cap before 2,000: past it the edit form warns that the report may cut the milestone off (the dashboard and PDF
+   * show at most two lines of it, as before). Template steps keep this cap.
+   */
+  static readonly MILESTONE_SOFT_LENGTH = 40;
   /** Max characters in a project's description (optional "what the project is" text; enforced on every save). */
   static readonly DESCRIPTION_MAX_LENGTH = 200;
   /** Infor request number range (optional whole number, shown as "REQ-5081"). DB check constraint matches. */

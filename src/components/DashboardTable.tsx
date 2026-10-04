@@ -1,5 +1,6 @@
 "use client";
 
+import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
 import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   DashboardColumnModel,
@@ -764,7 +765,7 @@ export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdate
           l.progress || l.done ? (
             // Checklist: "· X of Y" (12px secondary, tabular) sits at the END of the milestone line and never wraps
             // onto its own line; a finished checklist reads "All milestones done" in teal.
-            <div key="milestone" data-line="milestone" title={l.progress ? `${l.text} ${l.progress}` : l.text} className="flex min-w-0 items-end gap-1.5">
+            <div key="milestone" data-line="milestone" title={MilestoneUpdateStack.tooltip(l.text, l.progress)} className="flex min-w-0 items-end gap-1.5">
               <span className={`line-clamp-2 min-w-0 break-words font-semibold ${l.done ? "text-(--status-complete-dark-fg)" : "text-fg"}`}>{l.text}</span>
               {l.progress && (
                 <span data-part="milestone-progress" className="shrink-0 whitespace-nowrap text-[12px] font-normal tabular-nums text-muted">
@@ -773,12 +774,19 @@ export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdate
               )}
             </div>
           ) : (
-            <div key="milestone" data-line="milestone" title={l.text} className="line-clamp-2 break-words font-semibold text-fg">
+            <div key="milestone" data-line="milestone" title={MilestoneUpdateStack.tooltip(l.text, null)} className="line-clamp-2 break-words font-semibold text-fg">
               {l.text}
             </div>
           )
         ) : (
-          <div key="update" data-line="update" data-muted={l.muted || undefined} className="break-words font-normal text-muted">
+          <div
+            key="update"
+            data-line="update"
+            data-muted={l.muted || undefined}
+            data-clipped={l.clipped || undefined}
+            title={l.clipped ? LatestUpdate.CLIPPED_TOOLTIP : undefined}
+            className="break-words font-normal text-muted"
+          >
             {l.prefix && <span data-part="no-change">{l.prefix}</span>}
             {l.prefix && l.text ? " " : null}
             {l.text}
@@ -835,8 +843,8 @@ export function DueFlagsCellView({ cell }: { cell: DueFlagsCell }) {
   );
 }
 
-/** One PDF flag pill in dark tokens: Changed and Stale dashed, Overdue filled. */
-function DueFlagPill({ kind, label }: { kind: DueFlagKind; label: string }) {
+/** One PDF flag pill in dark tokens: Changed and Stale dashed, Overdue filled. Also the side panel's "Completion date needed" (Stale chip). */
+export function DueFlagPill({ kind, label }: { kind: DueFlagKind; label: string }) {
   return (
     <span className={`flag fl-${kind} flex-none`} data-flag={kind}>
       {kind === "changed" && <StatusShape status="OffTrack" />}

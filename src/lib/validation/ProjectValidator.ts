@@ -184,10 +184,10 @@ export class ProjectValidator {
   } as const satisfies Partial<Record<keyof ProjectInput, number>>;
 
   /** Fields with a soft limit in the edit form: past it the counter warns, but saving is allowed. */
-  static readonly SOFT_LIMITS = { nextMilestone: AppConfig.MILESTONE_MAX_LENGTH } as const satisfies Partial<Record<keyof ProjectInput, number>>;
+  static readonly SOFT_LIMITS = { nextMilestone: AppConfig.MILESTONE_SOFT_LENGTH } as const satisfies Partial<Record<keyof ProjectInput, number>>;
 
   /** Backstop for a soft-limited field in the edit form (it is still text in a table cell). */
-  static readonly SOFT_BACKSTOP = AppConfig.SHORT_TEXT_MAX_LENGTH;
+  static readonly SOFT_BACKSTOP = AppConfig.MILESTONE_MAX_LENGTH;
 
   static readonly DEPARTMENT_REQUIRED_MESSAGE = "Department is required";
 
@@ -318,7 +318,7 @@ export class ProjectValidator {
   }
 
   private static optionalText(max?: { label: string; length: number }) {
-    const base = max ? z.string().max(max.length, `${max.label} must be at most ${max.length} characters`) : z.string();
+    const base = max ? z.string().max(max.length, `${max.label} must be at most ${max.length.toLocaleString("en-US")} characters`) : z.string();
     return z.preprocess(
       (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim()) : v ?? null),
       base.nullable(),
@@ -405,14 +405,14 @@ export class ProjectValidator {
           (v) => (typeof v === "string" ? (v.trim() === "" ? null : v.trim()) : v ?? null),
           z
             .string()
-            .max(ProjectValidator.NOTE_MAX, `Note must be at most ${ProjectValidator.NOTE_MAX} characters`)
+            .max(ProjectValidator.NOTE_MAX, `Note must be at most ${ProjectValidator.NOTE_MAX.toLocaleString("en-US")} characters`)
             .nullable(),
         ),
         accomplishment: ProjectValidator.optionalText({
           label: "Accomplishment",
           length: AppConfig.ACCOMPLISHMENT_MAX_LENGTH,
         }),
-        completedOn: ProjectValidator.optionalDate("Completed on"),
+        completedOn: ProjectValidator.optionalDate("Completion date"),
         includeInReport: z.boolean().default(true),
       })
       .superRefine((p, ctx) => {

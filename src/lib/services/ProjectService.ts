@@ -6,7 +6,7 @@ import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { Requester } from "@/lib/domain/Requester";
 import type { Prisma, PrismaClient, Project as PrismaProject, ProjectMilestone } from "@/generated/prisma/client";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
-import type { ViewContext } from "@/generated/prisma/enums";
+import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
@@ -16,7 +16,10 @@ import { RestoreRules, type RestoreTarget } from "@/lib/closed/RestoreRules";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { MilestoneRules, MilestoneValidationError, type MilestoneEdit } from "@/lib/domain/MilestoneRules";
-import { MilestoneService } from "@/lib/services/MilestoneService";
+import { MilestoneService, type MilestoneSaveResult } from "@/lib/services/MilestoneService";
+import { CompletionCopy } from "@/lib/projects/CompletionCopy";
+import { DefaultMilestone, type DefaultMilestoneReason } from "@/lib/projects/DefaultMilestone";
+import { CompletionRules, type CompletionOutcome, type CompletionState } from "@/lib/projects/CompletionRules";
 import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 import { StartDate } from "@/lib/projects/StartDate";
 import { ProjectValidationError, ProjectValidator, type ProjectData, type ProjectInput } from "@/lib/validation/ProjectValidator";
@@ -105,6 +108,7 @@ export class ProjectService {
     parsed?: ProjectData,
     at: Date = new Date(),
     scope: ServiceLineScope = ServiceLine.defaultScope(),
+    opts: { defaultMilestone?: boolean } = {},
   ): Promise<Project> {
     const data = parsed ?? ProjectValidator.parse(input, ProjectValidator.rulesOf(scope));
     const now = at;
@@ -139,7 +143,83 @@ export class ProjectService {
         comment: actor.comment ?? null,
       },
     });
+    // Created without milestones (and no legacy next milestone text): "Project complete" (DefaultMilestone). The form
+    // passes defaultMilestone: false when it saves its own checklist right after.
+    if (opts.defaultMilestone !== false && DefaultMilestone.isMissing(0, project.nextMilestone)) {
+      const done = project.status === "Complete" ? (DateOnly.fromDbDate(project.completedOn) ?? DateOnly.inZone(at)) : null;
+      return (await ProjectService.addDefaultMilestoneInTx(tx, project, "created", actor, at, done)).project;
+    }
     return project;
+  }
+
+  /**
+   * Insert the "Project complete" milestone (position 1) with its history row (DefaultMilestone.HISTORY_FIELD, never a
+   * public update). `doneOn` set: added already done on that day (a Complete project); else open, and the legacy next
+   * milestone columns are mirrored to it.
+   */
+  static async addDefaultMilestoneInTx(
+    tx: Tx,
+    project: Project,
+    reason: DefaultMilestoneReason,
+    actor: Actor,
+    at: Date,
+    doneOn: string | null = null,
+    keptDate: string | null = null,
+  ): Promise<{ project: Project; step: ProjectMilestone }> {
+    const done = reason === "deleted_done" || doneOn !== null;
+    const step = await tx.projectMilestone.create({
+      data: {
+        projectId: project.id,
+        name: DefaultMilestone.NAME,
+        // Created without milestones: keeps the project's due date (the derived Due date stays the same). Added back
+        // after the last milestone was deleted: no due date (the deleted steps took theirs).
+        dueDate: reason === "created" || reason === "backfill" ? (project.dueDate ?? null) : null,
+        done,
+        doneAt: done && doneOn ? DateOnly.toDbDate(doneOn) : null,
+        doneBy: done ? actor.changedBy : null,
+        checkedAt: done ? at : null,
+        position: 1,
+        sourceTemplateId: null,
+        owner: null,
+      },
+    });
+    await tx.projectHistory.create({
+      data: {
+        projectId: project.id,
+        field: DefaultMilestone.HISTORY_FIELD,
+        oldValue: null,
+        newValue: DefaultMilestone.historyValue(reason, keptDate),
+        changedAt: at,
+        changedBy: actor.changedBy,
+        comment: null,
+      },
+    });
+    if (done || (project.nextMilestone === DefaultMilestone.NAME && (project.dueDate?.getTime() ?? null) === (step.dueDate?.getTime() ?? null))) return { project, step };
+    const updated = await tx.project.update({ where: { id: project.id }, data: { nextMilestone: DefaultMilestone.NAME, dueDate: step.dueDate } });
+    return { project: ProjectRows.fromDb(updated) as Project, step };
+  }
+
+  /**
+   * A checklist save that deleted the last milestone: add "Project complete" back (DefaultMilestone). `status` is the
+   * project's status for this save. Complete: added already done, on the completion date, so the project stays
+   * Complete with the same date and source (no reopen; applyCompletion skips the checklist rules). Otherwise open.
+   * Deleting the only open step of a reopened project that still has done steps leaves steps, so this does nothing
+   * and the completion rules restore Complete.
+   */
+  static async addBackDefaultMilestone(tx: Tx, project: Project, status: string, saved: MilestoneSaveResult, actor: Actor, at: Date): Promise<MilestoneSaveResult> {
+    if (!saved.changed || saved.plan.result.length > 0 || saved.plan.deletes.length === 0) return saved;
+    const complete = status === "Complete";
+    const kept = complete
+      ? CompletionRules.effective({ status: "Complete", manual: DateOnly.fromDbDate(project.completedOn), auto: DateOnly.fromDbDate(project.completedAtAuto ?? null) }).date
+      : null;
+    const { step } = await ProjectService.addDefaultMilestoneInTx(tx, project, complete ? "deleted_done" : "deleted_open", actor, at, kept, kept);
+    const row = { name: step.name, dueDate: null, done: step.done, doneAt: step.doneAt, doneBy: step.doneBy ?? null, checkedAt: step.checkedAt ?? null, position: step.position, sourceTemplateId: null, owner: null };
+    return {
+      ...saved,
+      plan: { ...saved.plan, result: [row] },
+      mirror: complete ? { nextMilestone: null, dueDate: null } : { nextMilestone: DefaultMilestone.NAME, dueDate: null },
+      defaultAdded: complete ? "done" : "open",
+    };
   }
 
   /**
@@ -371,16 +451,26 @@ export class ProjectService {
     return db.$transaction(async (tx) => {
       const at = new Date();
       const existing = await ProjectService.loadMutable(tx, id, scope);
+      ProjectService.assertCompletionInput(existing.status, patch);
       // Start date errors come back with the other field errors (one inline message each, Save blocked).
       const startErrors = ProjectService.startDateErrors(existing, { startDate: values.startDate === null ? "" : startDate, status: patch.status, completedOn: patch.completedOn }, DateOnly.inZone(at));
       let mirror: UpdateOptions["mirror"];
       let project: Project;
+      let checklist: MilestoneSaveResult | null = null;
       try {
         if (milestones) {
-          const saved = await ProjectService.withMilestoneErrors(() =>
-            MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null, scope),
+          const saved = await ProjectService.addBackDefaultMilestone(
+            tx,
+            existing,
+            patch.status ?? existing.status,
+            await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null, scope)),
+            actor,
+            at,
           );
-          if (saved.changed) mirror = saved.mirror;
+          if (saved.changed) {
+            mirror = saved.mirror;
+            checklist = saved;
+          }
         }
         project = await ProjectService.updateInTx(tx, id, patch, actor, "form", { mirror, at }, scope);
       } catch (e) {
@@ -388,6 +478,7 @@ export class ProjectService {
         throw e;
       }
       if (startErrors.length) throw new ProjectValidationError({ startDate: startErrors });
+      project = await ProjectService.applyCompletion(tx, existing, project, checklist, actor, at);
       return startDate === undefined ? project : ProjectService.applyStartDate(tx, id, startDate, actor, at);
     });
   }
@@ -408,10 +499,19 @@ export class ProjectService {
     const actor = ProjectService.actorOf(admin);
     return db.$transaction(async (tx) => {
       const at = new Date();
-      await ProjectService.loadMutable(tx, id, scope);
-      const saved = await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null, scope));
+      const existing = await ProjectService.loadMutable(tx, id, scope);
+      const saved = await ProjectService.addBackDefaultMilestone(
+        tx,
+        existing,
+        existing.status,
+        await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, id, milestones.drafts, actor, at, milestones.applied ?? null, scope)),
+        actor,
+        at,
+      );
       if (saved.changed) {
         try {
+          // Completion rules first: reopening puts the status back to On track before the next-milestone check runs.
+          await ProjectService.applyCompletion(tx, existing, existing, saved, actor, at);
           await ProjectService.updateInTx(tx, id, {}, actor, "form", { mirror: saved.mirror, at }, scope);
         } catch (e) {
           // The status needs a next milestone (e.g. deleting the last step of an On track project).
@@ -423,6 +523,80 @@ export class ProjectService {
       }
       return MilestoneService.stepsFor(tx, id);
     });
+  }
+
+  /** ProjectHistory.comment prefix on rows the completion rules write ("completion:auto", ...). */
+  static readonly COMPLETION_COMMENT_PREFIX = "completion:";
+
+  /**
+   * Project completion date rules (CompletionRules, task 5) after a form or checklist save, in the same transaction.
+   * `before` is the row as loaded before the save, `current` after the field patch. Writes the status, completedOn and
+   * the two automatic date columns when they change, plus one "completion" history row (and a "status" row when the
+   * status moves) with the source in the comment, so every automatic change is in the append-only history and sets
+   * the Changed flag like any other update.
+   */
+  static async applyCompletion(tx: Tx, before: Project, current: Project, checklist: MilestoneSaveResult | null, actor: Actor, at: Date): Promise<Project> {
+    const state = (p: Project): CompletionState => ({
+      status: p.status,
+      manual: DateOnly.fromDbDate(p.completedOn),
+      auto: DateOnly.fromDbDate(p.completedAtAuto ?? null),
+      previousAuto: DateOnly.fromDbDate(p.previousAutoCompletedAt ?? null),
+      previousManual: DateOnly.fromDbDate(p.previousManualCompletedOn ?? null),
+    });
+    const was = state(before);
+    let next = state(current);
+    let event: CompletionOutcome["event"] = null;
+    const handStatus = next.status !== was.status;
+    if (handStatus || next.manual !== was.manual) {
+      const steps = checklist
+        ? checklist.plan.result.map((r) => ({ done: r.done, doneAt: DateOnly.fromDbDate(r.doneAt) }))
+        : (await MilestoneService.stepsFor(tx, current.id)).map((r) => ({ done: r.done, doneAt: DateOnly.fromDbDate(r.doneAt) }));
+      const o = CompletionRules.afterForm(was, next, steps);
+      next = o.next;
+      event = o.event;
+    }
+    // A status set by hand in the same save wins over the checklist.
+    // "Project complete" added back already done on a Complete project: it stays Complete, same date and source.
+    if (checklist && !handStatus && checklist.defaultAdded !== "done") {
+      const F = MilestoneRules.FIELDS;
+      const has = (f: string) => checklist.plan.history.some((h) => h.field === f);
+      const o = CompletionRules.afterChecklist(
+        next,
+        {
+          before: checklist.before,
+          after: checklist.plan.result.map((r) => ({ done: r.done, doneAt: DateOnly.fromDbDate(r.doneAt) })),
+          added: has(F.added) || has(F.templateApplied),
+          removed: has(F.deleted),
+          checked: has(F.done),
+          unchecked: has(F.reopened),
+        },
+        DateOnly.inZone(at),
+      );
+      if (o.event) {
+        next = o.next;
+        event = o.event;
+      }
+    }
+    const now = state(current);
+    const data: Prisma.ProjectUncheckedUpdateInput = {};
+    if (next.status !== now.status) data.status = next.status;
+    if (next.manual !== now.manual) data.completedOn = next.manual ? DateOnly.toDbDate(next.manual) : null;
+    if (next.auto !== now.auto) data.completedAtAuto = next.auto ? DateOnly.toDbDate(next.auto) : null;
+    if (next.previousAuto !== now.previousAuto) data.previousAutoCompletedAt = next.previousAuto ? DateOnly.toDbDate(next.previousAuto) : null;
+    if ((next.previousManual ?? null) !== (now.previousManual ?? null)) data.previousManualCompletedOn = next.previousManual ? DateOnly.toDbDate(next.previousManual) : null;
+    if (Object.keys(data).length === 0 && !event) return current;
+    const updated = Object.keys(data).length ? await tx.project.update({ where: { id: current.id }, data: { ...data, updatedBy: actor.changedBy } }) : current;
+    const comment = event ? `${ProjectService.COMPLETION_COMMENT_PREFIX}${event.code}` : (actor.comment ?? null);
+    const rows: { field: string; oldValue: string | null; newValue: string | null }[] = [];
+    if (data.status !== undefined) rows.push({ field: "status", oldValue: now.status, newValue: next.status });
+    if (data.completedOn !== undefined && !event) rows.push({ field: "completedOn", oldValue: now.manual, newValue: next.manual });
+    if (event) rows.push({ field: CompletionRules.HISTORY_FIELD, oldValue: event.oldValue, newValue: event.newValue });
+    if (rows.length) {
+      await tx.projectHistory.createMany({
+        data: rows.map((r) => ({ projectId: current.id, ...r, changedAt: at, changedBy: actor.changedBy, comment })),
+      });
+    }
+    return ProjectRows.fromDb(updated) as Project;
   }
 
   static readonly MILESTONE_NEEDED_MESSAGE = "This status needs at least one open milestone. Change the status first, or keep a milestone.";
@@ -450,6 +624,7 @@ export class ProjectService {
   ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const input: ProjectInput = { name: "", ...ProjectService.pickFormFields(values), status: values.status || "NotStarted" };
+    ProjectService.assertCompletionInput(null, input);
     const drafts = milestones?.drafts ?? [];
     if (drafts.length > 0) {
       // Checklist first (validated on its own), then the project with the derived next milestone.
@@ -468,12 +643,24 @@ export class ProjectService {
     const actor = ProjectService.actorOf(admin);
     return db.$transaction(async (tx) => {
       const at = new Date();
-      const project = await ProjectService.createInTx(tx, input, actor, data, at, scope);
+      const project = await ProjectService.createInTx(tx, input, actor, data, at, scope, { defaultMilestone: drafts.length === 0 });
       if (drafts.length > 0) {
         await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, project.id, drafts, actor, at, milestones?.applied ?? null, scope));
       }
       return project;
     });
+  }
+
+  /**
+   * Nick's completion rule (task 5): Complete is never set by hand (a project completes when its last milestone is
+   * marked done), and a completion date only goes on a project that is Complete. `stored`: the status before the
+   * save (null for a new project). Throws the form's field errors.
+   */
+  static assertCompletionInput(stored: ProjectStatus | string | null, patch: Partial<ProjectInput>): void {
+    const status = patch.status ?? stored;
+    if (patch.status === "Complete" && stored !== "Complete") throw new ProjectValidationError({ status: [CompletionCopy.HAND_COMPLETE_REFUSED] });
+    const date = typeof patch.completedOn === "string" ? patch.completedOn.trim() : patch.completedOn;
+    if (date && status !== "Complete") throw new ProjectValidationError({ completedOn: [CompletionCopy.DATE_NOT_COMPLETE] });
   }
 
   private static pickFormFields(values: Partial<ProjectInput>): Partial<ProjectInput> {
@@ -596,7 +783,30 @@ export class ProjectService {
       await tx.project.update({ where: { id: row.id }, data: { ...data, updatedBy: admin.email } });
       await ProjectService.writeHistory(tx, row.id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin, ProjectService.PEOPLE_RENAME_COMMENT), at);
     }
+    if (field === "owner") await ProjectService.renameMilestoneOwner(tx, scope, key, to, admin, at);
     return hits.length;
+  }
+
+  /**
+   * Milestone owners (migration 0029) follow an Owners list rename like Project.owner: same transaction, one
+   * "milestone_owner" history row per step with the People rename comment. The return count stays projects only.
+   */
+  private static async renameMilestoneOwner(tx: Tx, scope: Pick<ServiceLineScope, "id">, key: string, to: string, admin: Viewer, at: Date): Promise<void> {
+    const projects = await tx.project.findMany({ where: { archivedAt: null, ...ServiceLineAccess.where(scope) }, select: { id: true } });
+    if (projects.length === 0) return;
+    const steps = await tx.projectMilestone.findMany({ where: { projectId: { in: projects.map((p) => p.id) }, owner: { not: null } } });
+    const actor = ProjectService.actorOf(admin, ProjectService.PEOPLE_RENAME_COMMENT);
+    for (const s of steps) {
+      if (PeopleDirectory.normalizeName(s.owner).toLowerCase() !== key || s.owner === to) continue;
+      await tx.projectMilestone.update({ where: { id: s.id }, data: { owner: to } });
+      await ProjectService.writeHistory(
+        tx,
+        s.projectId,
+        [{ field: MilestoneRules.FIELDS.owner, oldValue: MilestoneRules.ownerLabel(s.name, s.owner), newValue: MilestoneRules.ownerLabel(s.name, to) }],
+        actor,
+        at,
+      );
+    }
   }
 
   static async setHidden(

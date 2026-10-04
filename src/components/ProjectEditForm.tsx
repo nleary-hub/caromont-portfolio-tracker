@@ -1,5 +1,9 @@
 "use client";
 
+import { CompletionCopy } from "@/lib/projects/CompletionCopy";
+import { CompletionRules } from "@/lib/projects/CompletionRules";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { LongTextCounter } from "@/lib/projects/LongTextCounter";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
@@ -35,6 +39,8 @@ export interface ProjectEditFormProps {
   milestones: readonly MilestoneStepDto[];
   /** Templates for "Apply a template". */
   templates: readonly TemplateDto[];
+  /** Milestone owner picker names (the line's Owners list, PeopleDirectory.merge). */
+  ownerOptions?: readonly string[];
   /** The signed-in admin's display name, for the checked-by tooltip of a check not saved yet. */
   checkerName?: string;
   /** YYYY-MM-DD in America/New_York (Completed on prefill, Start date checks). */
@@ -73,6 +79,7 @@ export function ProjectEditForm({
   original: originalProp,
   milestones,
   templates,
+  ownerOptions,
   checkerName,
   today,
   startDateIsDefault,
@@ -108,6 +115,15 @@ export function ProjectEditForm({
   const msStepErrors = useMemo(() => (isNew ? MilestoneEditorModel.errors(ms, msOriginal) : {}), [isNew, ms, msOriginal]);
 
   const dirty = ProjectFormModel.isDirty(values, original) || msDirty;
+  // Completion date link (task 5): whether removing the manual date leaves an automatic date.
+  const autoDate = CompletionRules.fallbackAuto(ms.steps);
+  const hasAuto = autoDate !== null;
+  // Nick's rule (task 5): Complete is never picked by hand. A completed project shows its status read-only with a note.
+  const storedComplete = !isNew && original.status === "Complete";
+  const manualLink = CompletionCopy.manualLink(hasAuto);
+  // The completion date as it was when the status last left Complete in this session, so switching back restores what
+  // was on screen (including a removed date), never an older stored one.
+  const [resumeCompletedOn, setResumeCompletedOn] = useState<string | undefined>(undefined);
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
 
   // The next milestone the checklist yields (first step not done, else the last step) stands in for the old
@@ -206,28 +222,43 @@ export function ProjectEditForm({
             </select>
           </Field>
           <Field field="status" label="Status" errors={shown("status")}>
+            {storedComplete ? (
+              <>
+                <div id="pf-status" className={`${INPUT} flex items-center text-muted`} aria-readonly="true" data-testid="status-readonly">
+                  {ProjectStatusInfo.label("Complete")}
+                </div>
+                <p className="text-muted type-caption" data-testid="status-note">
+                  {CompletionCopy.STATUS_NOTE}
+                </p>
+              </>
+            ) : (
             <select
               id="pf-status"
               className={INPUT}
               value={values.status}
               onChange={(e) => {
-                const next = ProjectFormModel.withStatus(values, e.target.value, original, today);
+                if (values.status === "Complete" && e.target.value !== "Complete") setResumeCompletedOn(values.completedOn);
+                const next = ProjectFormModel.withStatus(values, e.target.value, original, today, { resume: resumeCompletedOn });
                 setValues(next);
                 setServerErrors((prev) => ({ ...prev, status: undefined, completedOn: undefined, startDate: undefined }));
               }}
             >
-              {ProjectStatusInfo.all().map((s) => (
-                <option key={s} value={s}>
-                  {ProjectStatusInfo.label(s)}
-                </option>
-              ))}
+              {ProjectStatusInfo.all()
+                .filter((s) => s !== "Complete")
+                .map((s) => (
+                  <option key={s} value={s}>
+                    {ProjectStatusInfo.label(s)}
+                  </option>
+                ))}
             </select>
+            )}
           </Field>
-          {/* The dates row: Start date first, then Completed on while the status is Complete (same width each). */}
+          {/* The dates row: Start date first, then Completion date while the status is Complete (same width each). */}
           <div className="grid grid-cols-2 gap-3" data-testid="dates-row">
             <Field
               field="startDate"
               label={StartDate.LABEL}
+              labelRow20
               errors={shown("startDate")}
               tag={ProjectFormModel.showsStartDateDefault(values, original, startDateIsDefault) ? <StartDateDefaultTag /> : null}
             >
@@ -245,7 +276,7 @@ export function ProjectEditForm({
               />
             </Field>
             {ProjectFormModel.showsCompletedOn(values) && (
-              <Field field="completedOn" label="Completed on" errors={shown("completedOn")}>
+              <Field field="completedOn" label={CompletionCopy.FIELD_LABEL} labelRow20 errors={shown("completedOn")}>
                 <input
                   id="pf-completedOn"
                   type="date"
@@ -256,11 +287,30 @@ export function ProjectEditForm({
                     setServerErrors((prev) => (prev.startDate ? { ...prev, startDate: undefined } : prev));
                   }}
                 />
+                {/* Only while a manual date is set; clears it on Save (no confirmation). The checklist decides again.
+                    "Use automatic date" when an automatic date would remain, else "Remove manual date" (CompletionCopy.manualLink). */}
+                {/* Empty field with an automatic date: say which date applies. */}
+                {!values.completedOn && autoDate && (
+                  <p className="text-muted type-caption" data-testid="automatic-date-helper">
+                    {CompletionCopy.automaticHelper(autoDate)}
+                  </p>
+                )}
+                {values.completedOn && manualLink && (
+                  <button
+                    type="button"
+                    onClick={() => set("completedOn", "")}
+                    className="mt-1 self-start text-muted type-caption underline-offset-2 hover:text-fg hover:underline"
+                    data-testid="use-automatic-date"
+                    data-has-auto={hasAuto || undefined}
+                  >
+                    {manualLink}
+                  </button>
+                )}
               </Field>
             )}
-            {/* Help text spans the whole row (both columns), not just the date input; hidden while an error shows. */}
+            {/* Start date help text stays in the Start date column (row 2, column 1); hidden while an error shows. */}
             {shown("startDate").length === 0 && (
-              <p className="col-span-2 -mt-2 text-muted type-table" data-testid="start-date-help">
+              <p className="col-start-1 -mt-2 text-muted type-table" data-testid="start-date-help">
                 {StartDate.HELP}
               </p>
             )}
@@ -309,6 +359,7 @@ export function ProjectEditForm({
               setFormError(null);
             }}
             errors={milestoneMessages}
+            ownerOptions={ownerOptions}
           />
           <div className="grid grid-cols-2 gap-3">
             <Field field="percentComplete" label="% complete" errors={shown("percentComplete")}>
@@ -327,7 +378,15 @@ export function ProjectEditForm({
 
         <Section title="Notes">
           <Field field="note" label="Latest update" errors={shown("note")} value={values.note} grandfathered={ProjectFormModel.isGrandfathered("note", values, original)}>
-            <textarea id="pf-note" rows={4} className={TEXTAREA} value={values.note} maxLength={ProjectFormModel.maxLength("note")} onChange={(e) => set("note", e.target.value)} />
+            <AutoGrowTextarea
+              id="pf-note"
+              rows={4}
+              className={TEXTAREA}
+              value={values.note}
+              maxLength={ProjectFormModel.maxLength("note")}
+              aria-describedby="pf-note-counter"
+              onChange={(e) => set("note", e.target.value)}
+            />
           </Field>
           <Field
             field="accomplishment"
@@ -439,10 +498,13 @@ function Field({
   hint,
   grandfathered,
   tag,
+  labelRow20,
   children,
 }: {
   field: FormField;
   label: string;
+  /** Fixed 20px label row (the dates row: Start date and Completion date labels line up, with or without a tag). */
+  labelRow20?: boolean;
   /** Small tag after the label (Start date "Default"). */
   tag?: ReactNode;
   errors: string[];
@@ -457,7 +519,7 @@ function Field({
   const hasLine = errors.length > 0 || counter || hint;
   return (
     <div data-field={field} data-invalid={errors.length > 0 || undefined} className="flex min-w-0 flex-col gap-1">
-      <div className="flex items-center">
+      <div className={`flex items-center${labelRow20 ? " h-5" : ""}`} data-testid={labelRow20 ? `label-row-${field}` : undefined}>
         <label htmlFor={`pf-${field}`} className="text-muted type-caption">
           {label}
         </label>
@@ -476,7 +538,13 @@ function Field({
             {errors.length === 0 && grandfathered && <p className="text-danger">Over the limit; shorten it if you edit this field</p>}
             {errors.length === 0 && !softWarning && !grandfathered && hint && <p className="text-muted">{hint}</p>}
           </div>
-          {counter && (
+          {counter && ProjectFormModel.isLongText(field) ? (
+            // Long text (2,000): "1,240 / 2,000"; at the cap ", limit reached" and the field takes no more. Quiet, no error.
+            <span id={`pf-${field}-counter`} data-testid={`counter-${field}`} className="shrink-0 tabular-nums text-muted">
+              <span aria-hidden="true">{LongTextCounter.text(counter.count, counter.limit)}</span>
+              <span className="sr-only">{LongTextCounter.label(counter.count, counter.limit)}</span>
+            </span>
+          ) : counter && (
             <span data-testid={`counter-${field}`} className={`shrink-0 tabular-nums ${counter.alert ? "text-danger" : "text-muted"}`}>
               {counter.count}/{counter.limit}
             </span>

@@ -3,6 +3,8 @@
 import { useEffect, useState } from "react";
 import { UpdateHistoryCopy as C } from "@/lib/history/UpdateHistoryCopy";
 import { UpdateTimeline, type TimelineDto } from "@/lib/history/UpdateTimeline";
+import { UpdateNotesCopy as N } from "@/lib/history/UpdateNotesCopy";
+import { MilestoneOwnerCopy } from "@/lib/projects/MilestoneOwnerCopy";
 
 export type HistoryLoader = (projectId: string) => Promise<TimelineDto | null>;
 
@@ -105,6 +107,86 @@ function ChangeBlock({ label, value }: { label: string; value: string | null }) 
       <div className="mb-1 uppercase tracking-[.04em] text-muted type-label">{label}</div>
       <p className="rounded-[6px] bg-input p-2 whitespace-pre-wrap break-words text-fg type-body">{value ? value : <span className="text-muted">–</span>}</p>
     </div>
+  );
+}
+
+/**
+ * Update notes (task 4): past "Latest update" note edits, newest first, just above History. Each entry: the meta line
+ * (date and time ET · who) over the full text as entered. Read-only. Five entries, then "Show all N updates" expands in
+ * place and "Show fewer" folds back. Hidden while History loads or failed to load (History says so).
+ */
+export function UpdateNotesSection({ timeline }: { timeline: TimelineDto | null }) {
+  const [all, setAll] = useState(false);
+  if (!timeline) return null;
+  const notes = timeline.notes;
+  const count = notes.length;
+  const shown = all ? notes : notes.slice(0, UpdateTimeline.INITIAL_NOTES);
+  return (
+    <section aria-label={N.TITLE} data-testid="update-notes">
+      <h3 className={`mb-1.5 ${HEADER}`}>{N.TITLE}</h3>
+      {count === 0 ? (
+        <p className="text-muted type-body">{N.EMPTY}</p>
+      ) : (
+        <>
+          <ol className="flex flex-col gap-2.5">
+            {shown.map((n) => (
+              <li key={n.key} className="rounded-[6px] border border-line bg-input px-3 py-2" data-testid="update-note">
+                <div className="text-muted type-table">
+                  {n.meta}
+                  {n.shortened && (
+                    <span title={N.SHORTENED_TOOLTIP} className="ml-1.5 text-muted" data-testid="update-note-shortened">
+                      {N.SHORTENED}
+                    </span>
+                  )}
+                </div>
+                <p className={`mt-0.5 whitespace-pre-wrap break-words type-body ${n.text ? "text-fg" : "text-muted"}`}>{n.text ?? N.CLEARED}</p>
+              </li>
+            ))}
+          </ol>
+          {count > UpdateTimeline.INITIAL_NOTES && (
+            <button type="button" aria-expanded={all} onClick={() => setAll((v) => !v)} className="mt-2.5 text-accent type-table hover:underline" data-testid="update-notes-toggle">
+              {all ? N.SHOW_FEWER : N.showAll(count)}
+            </button>
+          )}
+        </>
+      )}
+    </section>
+  );
+}
+
+/**
+ * Project detail > Milestones (tasks 2 and 3): every step in order with its full name (wraps, never clipped) and its
+ * owner ("Unassigned" in gray when none). Shown once the detail load returns and only when the project has steps.
+ */
+export function MilestoneStepsSection({ timeline }: { timeline: TimelineDto | null }) {
+  const steps = timeline?.steps ?? [];
+  if (steps.length === 0) return null;
+  return (
+    <section aria-label="Milestones" data-testid="drawer-milestones">
+      <h3 className={`mb-1.5 ${HEADER}`}>Milestones</h3>
+      <ol className="flex flex-col gap-2">
+        {steps.map((st) => (
+          <li key={st.key} className="flex gap-2" data-testid="drawer-milestone" data-done={st.done || undefined}>
+            <span aria-hidden className={`mt-[3px] grid size-3.5 shrink-0 place-items-center rounded-[3px] ${st.done ? "bg-(--status-complete-dark-fg) text-[#0F1115]" : "border-[1.5px] border-[#5C6370]"}`}>
+              {st.done && (
+                <svg width="10" height="10" viewBox="0 0 10 10">
+                  <path d="M2 5.2l2 2 4-4.4" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              )}
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className={`whitespace-pre-wrap break-words type-body ${st.done ? "text-muted" : "text-fg"}`}>
+                <span className="sr-only">{st.done ? "Done: " : "Open: "}</span>
+                {st.name}
+              </p>
+              <p className="mt-0.5 text-muted type-caption" data-testid="drawer-milestone-owner">
+                {MilestoneOwnerCopy.LABEL}: <span className={st.owner ? "text-fg" : undefined}>{st.owner ?? MilestoneOwnerCopy.UNASSIGNED}</span>
+              </p>
+            </div>
+          </li>
+        ))}
+      </ol>
+    </section>
   );
 }
 

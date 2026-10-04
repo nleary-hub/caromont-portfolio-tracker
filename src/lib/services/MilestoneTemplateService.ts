@@ -204,7 +204,7 @@ export class MilestoneTemplateService {
 
   static itemName(name: unknown): string {
     const clean = MilestoneRules.clean(name);
-    const err = MilestoneRules.nameError(clean);
+    const err = MilestoneRules.nameError(clean, MilestoneRules.TEMPLATE_STEP_MAX);
     if (err) throw new TemplateValidationError(`Step name: ${err}`);
     return clean;
   }

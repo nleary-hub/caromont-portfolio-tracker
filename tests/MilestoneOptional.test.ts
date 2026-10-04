@@ -32,8 +32,12 @@ describe("Next milestone may be blank for Not started, On hold, Complete, Cancel
     const preview = await ImportService.previewCreate(csv, db);
     expect(preview.rows.map((r) => r.status)).toEqual(["ready", "ready", "error", "error"]);
     expect(preview.rows[3].errors.next_milestone).toEqual([ProjectValidator.MILESTONE_REQUIRED_MESSAGE]); // blank status = On track
+    // A project created without a milestone gets "Project complete", so On track is allowed afterwards.
     const p = await ProjectService.create({ ...base, status: "OnHold" }, actor, db);
-    await expect(ProjectService.update(p.id, { status: "OnTrack" }, actor, db)).rejects.toThrow();
+    expect(fake.state.projects[0].nextMilestone).toBe("Project complete");
+    await ProjectService.update(p.id, { status: "OnTrack" }, actor, db);
+    // Clearing the next milestone of an On track project is still refused.
+    await expect(ProjectService.update(p.id, { nextMilestone: "" }, actor, db)).rejects.toThrow();
     await ProjectService.update(p.id, { status: "NotStarted" }, actor, db);
     expect(fake.state.projects[0].status).toBe("NotStarted");
   });

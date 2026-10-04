@@ -1,3 +1,4 @@
+import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { Assignee } from "@/lib/domain/Assignee";
@@ -80,7 +81,7 @@ describe("Completed this period: clock", () => {
     expect(Setup.rows(s)).toEqual(["Imported done"]);
   });
 
-  it("CSV import of a Complete row starts the clock at the import", async () => {
+  it("CSV import of a Complete row is refused (task 5: complete only when the last milestone is marked done)", async () => {
     const { fake, db } = await Setup.db();
     const csv = Csv.write(
       [
@@ -96,12 +97,11 @@ describe("Completed this period: clock", () => {
       ],
       ProjectCsv.TEMPLATE_COLUMNS,
     );
-    await ImportService.commitCreate(csv, Factory.ADMIN.email, db);
-    const p = fake.state.projects[0];
-    expect(p.accomplishment).toBe("Go-live finished.");
-    expect(p.completedOn).toEqual(new Date("2026-09-18T00:00:00Z"));
-    const at = CompletedThisPeriod.completedAt(p as never, fake.state.history as never);
-    expect(at).toEqual(fake.state.history.find((h) => h.field === "created")!.changedAt);
+    const n = fake.state.projects.length;
+    const preview = await ImportService.previewCreate(csv, db);
+    expect(preview.rows[0].errors.status).toEqual([CompletionCopy.importRefused(preview.rows[0].line)]);
+    await expect(ImportService.commitCreate(csv, Factory.ADMIN.email, db)).rejects.toThrow();
+    expect(fake.state.projects).toHaveLength(n);
   });
 });
 
@@ -156,8 +156,9 @@ describe("Completed this period: once only", () => {
     };
     const r1 = await FreezeService.run(opts, db);
     expect(r1.outcome).toBe("created");
-    // Lose the artifacts to force the "complete missing steps" path; the frozen rows must survive.
-    fake.state.artifacts.length = 0;
+    // Lose handoff.json to force the "complete missing steps" path; the frozen rows must survive. (A missing stored PDF
+    // is never rebuilt for a frozen report: see StoredPdfMissing.test.ts.)
+    fake.state.artifacts = fake.state.artifacts.filter((a) => a.kind !== "handoff");
     const r2 = await FreezeService.run({ ...opts, trigger: "manual", actor: "admin@example.org", now: new Date("2026-09-29T22:00:00Z") }, db);
     expect(r2.outcome).toBe("already_frozen");
     expect(fake.state.snapshots).toHaveLength(1);
@@ -235,9 +236,10 @@ describe("Completed this period: CSV", () => {
     expect(cells.accomplishment).toBe("Go-live on all rooms.");
     expect(cells.completed_on).toBe("2026-09-18");
 
+    // Re-importing the export as new projects: the Complete row is refused (task 5), with the row's line number.
     const copy = new FakeDb();
-    await ImportService.commitCreate(csv, Factory.ADMIN.email, copy.asClient());
-    expect(copy.state.projects[0]).toMatchObject({ accomplishment: "Go-live on all rooms.", completedOn: new Date("2026-09-18T00:00:00Z") });
+    const again = await ImportService.previewCreate(csv, copy.asClient());
+    expect(again.rows[0].errors.status).toEqual([CompletionCopy.importRefused(again.rows[0].line)]);
 
     const header = csv.split("\n")[0];
     const edit = (col: string, value: string) => {
@@ -261,7 +263,8 @@ describe("Completed this period: CSV", () => {
     const preview = await ImportService.previewCreate(csv, db);
     expect(Object.keys(preview.rows[0].errors)).toEqual(expect.arrayContaining(["accomplishment", "completed_on"]));
     const ok = await ImportService.previewCreate(Csv.write([{ ...row, accomplishment: "a".repeat(200), completed_on: "2026-09-18" }], ProjectCsv.TEMPLATE_COLUMNS), db);
-    expect(ok.rows[0].errors).toEqual({});
+    // Accomplishment and completed_on are fine; only the Complete status is refused on import (task 5).
+    expect(Object.keys(ok.rows[0].errors)).toEqual(["status"]);
   });
 });
 

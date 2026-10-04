@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { loadProjectHistory } from "@/app/actions/history";
+import { setDashboardHeartbeat } from "@/app/actions/preferences";
+import { DashboardPrefsService } from "@/lib/services/DashboardPrefsService";
 import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
@@ -111,7 +113,7 @@ class DashboardData {
         where: {
           projectId: { in: listedIds },
           ...(latest ? { changedAt: { gt: latest.generatedAt } } : {}),
-          ...VisibilityPolicy.publicHistoryWhere(),
+          ...VisibilityPolicy.publicUpdateWhere(),
         },
         select: { projectId: true, changedAt: true, field: true },
         distinct: ["projectId"],
@@ -119,7 +121,7 @@ class DashboardData {
       // "Updated <date>" on the meta line: latest public history entry per listed project (all time).
       const lastUpdates = await db.projectHistory.groupBy({
         by: ["projectId"],
-        where: { projectId: { in: listedIds }, ...VisibilityPolicy.publicHistoryWhere() },
+        where: { projectId: { in: listedIds }, ...VisibilityPolicy.publicUpdateWhere() },
         _max: { changedAt: true },
       });
       const latestUpdates = lastUpdates.flatMap((g) =>
@@ -217,6 +219,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       today={today}
       userEmail={viewer.email}
       userName={viewer.name}
+      heartbeat={await DashboardPrefsService.heartbeat(viewer.email)}
+      setHeartbeatAction={setDashboardHeartbeat}
       latestReport={latestReport}
       completedFiscalYear={completedFiscalYear}
       loadError={error}

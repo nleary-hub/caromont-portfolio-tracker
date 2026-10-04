@@ -1,3 +1,4 @@
+import { CompletionRules } from "@/lib/projects/CompletionRules";
 import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
@@ -44,6 +45,11 @@ export interface DashboardRow {
   startDate?: string | null;
   /** The start date is still the import default (drawer "Default" tag). */
   startDateIsDefault?: boolean;
+  /**
+   * Complete projects only (task 5): the effective completion date and its source (CompletionRules.effective). A null
+   * date shows "Completion date needed". Absent on every other status, so a reopened project shows no Completed row.
+   */
+  completion?: { date: string | null; source: "auto" | "manual" | null };
 }
 
 export interface DashboardSummary {
@@ -139,6 +145,9 @@ export class DashboardViewModel {
       updatedOn,
       stale: ReportBuilder.isStale({ status: p.status, updatedOn }, today),
       ...(p.startDate !== undefined ? { startDate: DateOnly.fromDbDate(p.startDate), startDateIsDefault: Boolean(p.startDateIsDefault) } : {}),
+      ...(p.status === "Complete"
+        ? { completion: CompletionRules.effective({ status: p.status, manual: DateOnly.fromDbDate(p.completedOn), auto: DateOnly.fromDbDate(p.completedAtAuto ?? null) }) }
+        : {}),
     };
   }
 

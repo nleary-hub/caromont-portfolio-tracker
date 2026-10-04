@@ -37,7 +37,7 @@ createRoot(document.getElementById("root")!).render(
     signOutAction={async () => {}} historyAction={async id => {
       // A late result must never reintroduce a previous project's history.
       await new Promise(resolve => setTimeout(resolve, id === "fictional-0" ? 120 : 20));
-      return { title: "History (1)", previously: null, entries: [{ key: `history-${id}`, meta: "Fictional author",
+      return { title: "History (1)", previously: null, notes: [], steps: [], entries: [{ key: `history-${id}`, meta: "Fictional author",
         text: `History for ${id}`, hollow: false }] };
     }} />
 );

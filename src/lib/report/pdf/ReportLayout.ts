@@ -338,6 +338,8 @@ export type RowCell =
       progress: { text: string; x: number; line: number } | null;
       /** Every step done: the text is "All milestones done", drawn in the complete (teal) color. */
       done: boolean;
+      /** "· Kim Nguyen" (or "· K. Nguyen") after the count: the next step's owner. Absent when there is none. */
+      owner?: { text: string; x: number; line: number };
     }
   | { kind: "due"; x: number; w: number; text: string; overdue: boolean; muted: boolean }
   | { kind: "flags"; x: number; w: number; flags: PlacedFlag[] };
@@ -570,7 +572,7 @@ export class ReportLayout {
     project: { label: "PROJECT", sub: () => null },
     owner: { label: "OWNER", sub: (s) => (PdfReportLayout.showsChampion(s) ? Requester.LABEL : null) },
     status: { label: "STATUS", sub: () => null },
-    nextMilestone: { label: "NEXT MILESTONE", sub: (s) => (PdfReportLayout.showsNote(s) ? "Note below" : null) },
+    nextMilestone: { label: "NEXT MILESTONE \u00b7 OWNER", sub: (s) => (PdfReportLayout.showsNote(s) ? "Note below" : null) },
     due: { label: "DUE", sub: () => null },
     flags: { label: "FLAGS", sub: () => null },
   };
@@ -736,8 +738,8 @@ export class ReportLayout {
 
   /**
    * The project meta line: "REQ-5081" left-aligned in a fixed slot (ReportGeometry.INFOR_SLOT_W), a fixed
-   * gap (INFOR_GAP), then "Updated <date>", so Updated lines up on every numbered row. No number, or the column
-   * hidden (showInfor false): no slot and no gap, Updated starts at x = 0 under the name.
+   * gap (INFOR_GAP), then "Updated <date>", so Updated lines up on every row. No number: the slot stays, blank (no
+   * placeholder). Column hidden (showInfor false): no slot and no gap, Updated starts at x = 0 under the name.
    * The slot fits the widest value (5 digits), so the line never wraps. Empty result = no meta line.
    */
   static metaLine(m: Measurer, showInfor: boolean, number: number | null, updated: string | null, stale: boolean): MetaRun[] {
@@ -749,7 +751,8 @@ export class ReportLayout {
     if (updated) {
       runs.push({
         text: updated,
-        x: req ? g.INFOR_SLOT_W + g.INFOR_GAP : 0,
+        // The slot keeps its width when the number is blank (task 6), so Updated sits at one x on every row.
+        x: showInfor ? g.INFOR_SLOT_W + g.INFOR_GAP : 0,
         font: "sans",
         weight: stale ? 500 : 400,
         tone: stale ? "stale" : "muted",
@@ -823,9 +826,12 @@ export class ReportLayout {
           // A finished checklist reads "All milestones done" (teal); otherwise the derived next milestone.
           const text = allDone ? MilestoneProgress.ALL_DONE_TEXT : row.nextMilestone?.trim();
           // Blank (allowed for Not started, On hold, Complete, Cancelled) renders as nothing.
-          const { lines, progress } = text ? ReportLayout.milestoneLines(m, text, MilestoneProgress.progressLabel(row.milestoneProgress), inner) : { lines: [], progress: null };
+          const { lines, progress, owner } = text
+            ? ReportLayout.milestoneLines(m, text, MilestoneProgress.progressLabel(row.milestoneProgress), inner, allDone ? null : row.nextMilestoneOwner)
+            : { lines: [], progress: null, owner: undefined };
           lineOneH = Math.max(lineOneH, Math.max(1, lines.length) * g.TABLE_LH);
-          cells.push({ kind: "nextMilestone", x: col.x, w: inner, lines, muted: !text, progress, done: allDone });
+          // `owner` only when the row has one, so rows without an owner lay out exactly as before.
+          cells.push({ kind: "nextMilestone", x: col.x, w: inner, lines, muted: !text, progress, done: allDone, ...(owner ? { owner } : {}) });
           break;
         }
         case "due": {
@@ -1059,7 +1065,38 @@ export class ReportLayout {
     text: string,
     label: string | null,
     inner: number,
-  ): { lines: string[]; progress: { text: string; x: number; line: number } | null } {
+    owner?: string | null,
+  ): { lines: string[]; progress: { text: string; x: number; line: number } | null; owner?: { text: string; x: number; line: number } } {
+    const plain = ReportLayout.progressLines(m, text, label, inner);
+    const name = owner?.trim();
+    if (!name || plain.lines.length === 0) return plain;
+    // Milestone owner (Option 1, Figma Bro): "· Kim Nguyen" after the count, 7 pt gray (weight 500), on the milestone's
+    // last line. Full name when it fits on the line as wrapped today; else "K. Nguyen"; only when that does not fit either
+    // does the existing wrap rule make room (as it does for the count). The milestone text is never truncated.
+    const S = ReportGeometry.SIZE;
+    const W = ReportGeometry.MILESTONE_WEIGHT;
+    const countW = (l: string | null) => (l ? m.width(`\u00b7 ${l} `, S.small, 400) : 0);
+    const ownerW = (n: string) => m.width(`\u00b7 ${n}`, S.small, ReportLayout.OWNER_WEIGHT);
+    const lastW = (lines: string[]) => m.width(lines[lines.length - 1], S.table, W) + ReportLayout.PROGRESS_GAP;
+    const short = ReportLayout.shortOwner(name);
+    const fits = (n: string) => lastW(plain.lines) + countW(label) + ownerW(n) <= inner;
+    const chosen = fits(name) ? name : short;
+    // Same rule as the count: wrap the milestone narrower so the tag sits at the end of its last line.
+    const tagW = ReportLayout.PROGRESS_GAP + countW(label) + ownerW(chosen);
+    const lines = fits(chosen) ? plain.lines : TextMeasure.wrap(m, text, Math.max(inner - tagW, inner / 2), S.table, W, 2);
+    const last = lines.length - 1;
+    const x = lastW(lines);
+    return {
+      lines,
+      progress: label ? { text: `\u00b7 ${label}`, x, line: last } : null,
+      owner: { text: `\u00b7 ${chosen}`, x: x + countW(label), line: last },
+    };
+  }
+
+  /** Owner text weight in the milestone cell and the key sample (Figma Bro: 500). */
+  static readonly OWNER_WEIGHT = 500;
+  /** The milestone and "· X of Y" count, wrapped as before owners existed. */
+  private static progressLines(m: Measurer, text: string, label: string | null, inner: number): { lines: string[]; progress: { text: string; x: number; line: number } | null } {
     const S = ReportGeometry.SIZE;
     const W = ReportGeometry.MILESTONE_WEIGHT;
     let lines = TextMeasure.wrap(m, text, inner, S.table, W, 2);
@@ -1069,6 +1106,13 @@ export class ReportLayout {
     if (m.width(lines[lines.length - 1], S.table, W) + tagW > inner) lines = TextMeasure.wrap(m, text, Math.max(inner - tagW, inner / 2), S.table, W, 2);
     const last = lines.length - 1;
     return { lines, progress: { text: tag, x: m.width(lines[last], S.table, W) + ReportLayout.PROGRESS_GAP, line: last } };
+  }
+
+  /** "Kim Nguyen" -> "K. Nguyen" (first initial and last name; a leading "Dr." is dropped). One word stays as is. */
+  static shortOwner(name: string): string {
+    const words = name.trim().replace(/^dr\.?\s+/i, "").split(/\s+/).filter(Boolean);
+    if (words.length < 2) return name.trim();
+    return `${words[0].charAt(0).toUpperCase()}. ${words[words.length - 1]}`;
   }
 
   static header(m: Measurer, input: ReportDocInput, header: ReportHeader): HeaderModel {

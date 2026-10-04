@@ -237,7 +237,7 @@ describe("History section markup (Figma Bro spec)", () => {
       ...Array.from({ length: 11 }, (_, i) => entry(i + 2)),
       { key: "prior|4656", meta: "Before this tracker", hollow: true, text: "Earlier Infor number: REQ-4656" },
     ];
-    const html = renderToStaticMarkup(createElement(ProjectHistorySection, { timeline: { title: "History (14)", entries, previously: "Previously REQ-4656" }, loading: false }));
+    const html = renderToStaticMarkup(createElement(ProjectHistorySection, { timeline: { title: "History (14)", entries, previously: "Previously REQ-4656", notes: [], steps: [] }, loading: false }));
     expect(html).toContain("History (14)");
     expect(html.match(/data-testid="history-entry"/g)).toHaveLength(10);
     expect(html).toContain("Show all 14 changes");
@@ -248,7 +248,7 @@ describe("History section markup (Figma Bro spec)", () => {
   });
 
   it("empty: only the empty-state line, no rail", () => {
-    const html = renderToStaticMarkup(createElement(ProjectHistorySection, { timeline: { title: "History (0)", entries: [], previously: null }, loading: false }));
+    const html = renderToStaticMarkup(createElement(ProjectHistorySection, { timeline: { title: "History (0)", entries: [], previously: null, notes: [], steps: [] }, loading: false }));
     expect(html).toContain("History (0)");
     expect(html).toContain("No changes yet. Edits to this project will show here.");
     expect(html).not.toContain("<ol");

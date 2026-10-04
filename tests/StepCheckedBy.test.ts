@@ -139,8 +139,8 @@ describe("Saving the checklist stores the session user; the drawer gets the Peop
 describe("Edit checklist model and markup", () => {
   const initial = MilestoneEditorModel.initial(
     [
-      { id: "a", name: "Vendor quote", dueDate: null, done: true, doneAt: "2026-09-27", checkedBy: "Nick Leary", checkedAt: AT, position: 1, sourceTemplateId: null },
-      { id: "b", name: "Contract signed", dueDate: null, done: false, doneAt: null, checkedBy: null, checkedAt: null, position: 2, sourceTemplateId: null },
+      { id: "a", name: "Vendor quote", dueDate: null, done: true, doneAt: "2026-09-27", checkedBy: "Nick Leary", checkedAt: AT, position: 1, sourceTemplateId: null, owner: null },
+      { id: "b", name: "Contract signed", dueDate: null, done: false, doneAt: null, checkedBy: null, checkedAt: null, position: 2, sourceTemplateId: null, owner: null },
     ],
     { nextMilestone: "", dueDate: "" },
   );

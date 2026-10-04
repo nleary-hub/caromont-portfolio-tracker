@@ -7,6 +7,8 @@ export interface MilestoneStepLike {
   dueDate: Date | string | null;
   done: boolean;
   position: number;
+  /** Step owner (migration 0029); null or absent = Unassigned. */
+  owner?: string | null;
 }
 
 /** Done and total steps of a checklist. */
@@ -25,6 +27,8 @@ export interface DerivedMilestone {
   count: MilestoneCount | null;
   allDone: boolean;
   source: "steps" | "legacy";
+  /** The next open step's owner; null when Unassigned, all done, or no steps. */
+  owner: string | null;
 }
 
 /** Legacy fields as stored on the project (Project.nextMilestone and Project.dueDate). */
@@ -71,13 +75,13 @@ export class MilestoneProgress {
 
   static derive(steps: readonly MilestoneStepLike[], legacy: LegacyMilestone): DerivedMilestone {
     if (steps.length === 0) {
-      return { nextMilestone: legacy.nextMilestone, dueDate: MilestoneProgress.iso(legacy.dueDate), count: null, allDone: false, source: "legacy" };
+      return { nextMilestone: legacy.nextMilestone, dueDate: MilestoneProgress.iso(legacy.dueDate), count: null, allDone: false, source: "legacy", owner: null };
     }
     const ordered = MilestoneProgress.ordered(steps);
     const next = ordered.find((s) => !s.done) ?? null;
     const count = MilestoneProgress.count(ordered);
-    if (next) return { nextMilestone: next.name, dueDate: MilestoneProgress.iso(next.dueDate), count, allDone: false, source: "steps" };
-    return { nextMilestone: ordered[ordered.length - 1].name, dueDate: null, count, allDone: true, source: "steps" };
+    if (next) return { nextMilestone: next.name, dueDate: MilestoneProgress.iso(next.dueDate), count, allDone: false, source: "steps", owner: next.owner?.trim() ? next.owner.trim() : null };
+    return { nextMilestone: ordered[ordered.length - 1].name, dueDate: null, count, allDone: true, source: "steps", owner: null };
   }
 
   /** "2 of 6", or null when the label is not shown (see the class rules). */
@@ -96,7 +100,14 @@ export class MilestoneProgress {
   ): P & { milestoneProgress: MilestoneCount | null } {
     if (steps.length === 0) return { ...project, milestoneProgress: null };
     const d = MilestoneProgress.derive(steps, project);
-    return { ...project, nextMilestone: d.nextMilestone, dueDate: d.dueDate ? DateOnly.toDbDate(d.dueDate) : null, milestoneProgress: d.count };
+    // The next step's owner only when set, so projects without owners carry exactly the fields they had before.
+    return {
+      ...project,
+      nextMilestone: d.nextMilestone,
+      dueDate: d.dueDate ? DateOnly.toDbDate(d.dueDate) : null,
+      milestoneProgress: d.count,
+      ...(d.owner ? { nextMilestoneOwner: d.owner } : {}),
+    };
   }
 
   /** applyTo for many projects; `steps` rows carry their projectId. */

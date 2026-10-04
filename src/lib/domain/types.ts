@@ -25,6 +25,8 @@ export interface ProjectRecord {
   dueDate: Date | null;
   /** Checklist done/total (MilestoneProgress.applyAll). Absent or null: no steps, legacy fields in use. */
   milestoneProgress?: MilestoneCount | null;
+  /** The next open step's owner (MilestoneProgress.applyAll, migration 0029). Absent when Unassigned or no steps. */
+  nextMilestoneOwner?: string;
   targetCompletion: Date | null;
   percentComplete: number | null;
   note: string | null;
@@ -32,6 +34,12 @@ export interface ProjectRecord {
   accomplishment: string | null;
   /** Completion date as entered (display only; not the "Completed this period" clock). */
   completedOn: Date | null;
+  /** Automatic completion date (migration 0030, CompletionRules). Absent on rows read without it. */
+  completedAtAuto?: Date | null;
+  /** Automatic date kept while reopened (migration 0030). */
+  previousAutoCompletedAt?: Date | null;
+  /** Hand-entered date kept while reopened (migration 0031). */
+  previousManualCompletedOn?: Date | null;
   includeInReport: boolean;
   archivedAt: Date | null;
   deletedBy: string | null;
@@ -92,6 +100,12 @@ export interface ReportRow {
    * Absent for projects without steps and on snapshots frozen before 0015. Not part of handoff.json.
    */
   milestoneProgress?: MilestoneCount | null;
+  /**
+   * The next open step's owner, full name (migration 0029). Absent when the step is Unassigned, all steps are done, the
+   * project has no steps, and on every snapshot frozen before owners existed, so those rows render exactly as before.
+   * In handoff.json as flags.*.projects[].nextMilestoneOwner (omitted when absent).
+   */
+  nextMilestoneOwner?: string;
   changed: boolean;
   overdue: boolean;
   /** YYYY-MM-DD (America/New_York) of the latest public change. Absent on snapshots before 0004. */

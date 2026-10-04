@@ -324,7 +324,6 @@ function FirstHeader({ h, band }: { h: HeaderModel; band: BandPalette | null }) 
       lh={G.SMALL_LH}
     />,
   );
-
   els.push(<GridView key="grid" h={h} x={G.CONTENT_W - h.grid.width} top={top} />);
 
   const bleed = ReportColorScheme.BAND_BLEED;
@@ -637,6 +636,19 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
               w={cell.w - cell.progress.x}
               text={cell.progress.text}
               size={S.small}
+              color={C.MUTED}
+              lh={G.TABLE_LH}
+            />
+          )}
+          {cell.owner && (
+            <Line
+              key="owner"
+              x={cell.x + cell.owner.x}
+              y={cell.owner.line * G.TABLE_LH + 0.5}
+              w={cell.w - cell.owner.x}
+              text={cell.owner.text}
+              size={S.small}
+              weight={ReportLayout.OWNER_WEIGHT}
               color={C.MUTED}
               lh={G.TABLE_LH}
             />

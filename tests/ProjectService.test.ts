@@ -31,7 +31,7 @@ describe("ProjectService", () => {
   });
 
   it("create rejects invalid input without writing", async () => {
-    await expect(ProjectService.create({ ...input, note: "x".repeat(201) }, actor, fake.asClient())).rejects.toThrow(
+    await expect(ProjectService.create({ ...input, note: "x".repeat(2001) }, actor, fake.asClient())).rejects.toThrow(
       ProjectValidationError,
     );
     expect(fake.writes).toHaveLength(0);

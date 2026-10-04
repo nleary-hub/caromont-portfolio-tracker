@@ -1,4 +1,5 @@
 import type { ViewContext } from "@/generated/prisma/enums";
+import { DefaultMilestone } from "@/lib/projects/DefaultMilestone";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import type { ProjectRecord } from "@/lib/domain/types";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
@@ -40,6 +41,12 @@ export class VisibilityPolicy {
     // Start date changes (migration 0026): audited, never a public update (no Changed, Stale or "Updated" date).
     "startDate",
   ];
+
+  /**
+   * History fields shown in History but never a public update: no Changed flag, no Stale reset, no "Updated" date.
+   * The "Project complete" milestone added automatically (DefaultMilestone, migration 0032).
+   */
+  static readonly NOT_AN_UPDATE_HISTORY_FIELDS: readonly string[] = [DefaultMilestone.HISTORY_FIELD];
 
   static isDeleted(project: Pick<ProjectRecord, "archivedAt">): boolean {
     return project.archivedAt !== null;
@@ -94,6 +101,16 @@ export class VisibilityPolicy {
 
   static isAdminOnlyHistoryField(field: string): boolean {
     return VisibilityPolicy.ADMIN_ONLY_HISTORY_FIELDS.includes(field);
+  }
+
+  /** A row that counts as a public update (Changed, Stale, "Updated <date>"): public, and not an automatic addition. */
+  static isPublicUpdateField(field: string): boolean {
+    return !VisibilityPolicy.isAdminOnlyHistoryField(field) && !VisibilityPolicy.NOT_AN_UPDATE_HISTORY_FIELDS.includes(field);
+  }
+
+  /** Prisma where-fragment for public updates only (Changed, Stale, "Updated <date>", report data). */
+  static publicUpdateWhere(): { field: { notIn: string[] } } {
+    return { field: { notIn: [...VisibilityPolicy.ADMIN_ONLY_HISTORY_FIELDS, ...VisibilityPolicy.NOT_AN_UPDATE_HISTORY_FIELDS] } };
   }
 
   /** Prisma where-fragment that excludes admin-only history rows (use in every non-admin history query). */

@@ -49,7 +49,7 @@ describe("ImportService: new projects", () => {
   const validFile = Csv.file(
     Csv.row(),
     Csv.row({ name: "PFA launch", service_area: " ep ", status: "at RISK", due_date: "11/4/2026", percent_complete: "" }),
-    Csv.row({ name: "Echo reporting", service_area: "Echo", status: "Complete", next_milestone: "", include_in_report: "no" }),
+    Csv.row({ name: "Echo reporting", service_area: "Echo", status: "On hold", next_milestone: "", include_in_report: "no" }),
   );
 
   it("valid file: dry run writes nothing, commit creates every row", async () => {
@@ -66,21 +66,31 @@ describe("ImportService: new projects", () => {
     expect(pfa).toMatchObject({ serviceArea: "EP", status: "AtRisk", percentComplete: null, updatedBy: ADMIN });
     expect((pfa.dueDate as Date).toISOString()).toBe("2026-11-04T00:00:00.000Z");
     const echo = fake.state.projects.find((p) => p.name === "Echo reporting")!;
-    expect(echo).toMatchObject({ status: "Complete", nextMilestone: null, includeInReport: false });
+    // Created without a milestone: "Project complete" is added (and mirrored to the legacy next milestone).
+    expect(echo).toMatchObject({ status: "OnHold", nextMilestone: "Project complete", includeInReport: false });
     expect(fake.transactions).toBe(1);
     expect(new Set(fake.writes.map((w) => w.txId)).size).toBe(1);
   });
 
   it("writes a 'created' history row per project with the admin as actor and source csv_import", async () => {
     await ImportService.commitCreate(validFile, ADMIN, fake.asClient());
-    expect(fake.state.history).toHaveLength(3);
+    // Plus one "Project complete" row for the row imported without a next milestone (Echo reporting).
+    expect(fake.state.history.filter((h) => h.field === "created")).toHaveLength(3);
+    expect(fake.state.history.filter((h) => h.field === "milestone_auto_added").map((h) => fake.state.projects.find((p) => p.id === h.projectId)?.name)).toEqual(["Echo reporting"]);
     for (const p of fake.state.projects) {
-      const rows = fake.state.history.filter((h) => h.projectId === p.id);
+      const rows = fake.state.history.filter((h) => h.projectId === p.id && h.field === "created");
       expect(rows).toHaveLength(1);
       expect(rows[0]).toMatchObject({ field: "created", changedBy: ADMIN, comment: ImportService.SOURCE_CREATE });
       expect(JSON.parse(rows[0].newValue as string)).toMatchObject({ name: p.name, serviceArea: p.serviceArea });
     }
     expect(ImportService.SOURCE_CREATE).toBe("csv_import");
+  });
+
+  it("a Complete row is refused (projects are complete when their last milestone is marked done)", async () => {
+    const preview = await ImportService.previewCreate(Csv.file(Csv.row(), Csv.row({ name: "Echo reporting", service_area: "Echo", status: "Complete", next_milestone: "" })), fake.asClient());
+    expect(preview.rows.map((r) => r.status)).toEqual(["ready", "error"]);
+    expect(preview.rows[1].errors.status).toEqual([`Row ${preview.rows[1].line}: Status "Complete" can't be imported. Projects are complete when their last milestone is marked done.`]);
+    expect(preview.canCommit).toBe(false);
   });
 
   it("bad enum values are row errors with the allowed values", async () => {
@@ -113,7 +123,7 @@ describe("ImportService: new projects", () => {
       ),
       fake.asClient(),
     );
-    expect(preview.rows[0].errors.note).toEqual(["Note must be at most 200 characters"]);
+    expect(preview.rows[0].errors.note).toEqual(["Note must be at most 2,000 characters"]);
     expect(preview.rows[1].status).toBe("ready");
   });
 
@@ -142,9 +152,10 @@ describe("ImportService: new projects", () => {
     expect(fake.state.projects[0].description).toBeNull();
   });
 
-  it("next milestone longer than 40 characters is a row error", async () => {
-    const preview = await ImportService.previewCreate(Csv.file(Csv.row({ next_milestone: "m".repeat(41) })), fake.asClient());
-    expect(preview.rows[0].errors.next_milestone).toEqual(["Next milestone must be at most 40 characters"]);
+  it("next milestone longer than 2,000 characters is a row error (was 40 before batch task 2)", async () => {
+    const preview = await ImportService.previewCreate(Csv.file(Csv.row({ next_milestone: "m".repeat(2001) }), Csv.row({ name: "B", next_milestone: "m".repeat(41) })), fake.asClient());
+    expect(preview.rows[0].errors.next_milestone).toEqual(["Next milestone must be at most 2,000 characters"]);
+    expect(preview.rows[1].status).toBe("ready");
   });
 
   it("other ProjectValidator rules surface per column (milestone required, percent, email, required text)", async () => {

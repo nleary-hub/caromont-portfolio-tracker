@@ -79,7 +79,7 @@ export class ReportDataLoader {
     // All public history for these projects: Changed and "from <status>" look at the window since the
     // previous report, "Updated <date>" at the latest entry overall.
     const history = await db.projectHistory.findMany({
-      where: { projectId: { in: projects.map((p) => p.id) }, ...VisibilityPolicy.publicHistoryWhere() },
+      where: { projectId: { in: projects.map((p) => p.id) }, ...VisibilityPolicy.publicUpdateWhere() },
       select: { projectId: true, changedAt: true, field: true, oldValue: true, newValue: true },
     });
     const recipients = await db.recipient.findMany({ where: { active: true } });

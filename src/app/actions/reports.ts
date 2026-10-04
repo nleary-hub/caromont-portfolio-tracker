@@ -1,6 +1,7 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
+import { StoredPdfCopy, StoredPdfMissingError } from "@/lib/report/StoredPdf";
 import { AdminPolicy } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
@@ -27,6 +28,7 @@ export async function freezeNow(): Promise<FreezeNowState> {
     return { ok: result.outcome !== "refused", message: `${result.message}${delivery}` };
   } catch (e) {
     ReportLog.error("freeze.manual.failed", { error: e instanceof Error ? e.message : String(e) });
+    if (e instanceof StoredPdfMissingError) return { ok: false, message: `${StoredPdfCopy.TITLE}. ${StoredPdfCopy.message(StoredPdfCopy.frozenOn(e.generatedAt))}` };
     return { ok: false, message: "Freeze failed. See the server logs." };
   }
 }

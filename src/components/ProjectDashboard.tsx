@@ -1,14 +1,17 @@
 "use client";
 
+import { CompletionCopy } from "@/lib/projects/CompletionCopy";
+import { CompletionTag } from "./CompletionTag";
 import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
+import { LongTextCounter } from "@/lib/projects/LongTextCounter";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
-import { PreviouslyLine, ProjectHistorySection, useProjectTimeline, type HistoryLoader } from "./ProjectHistory";
+import { MilestoneStepsSection, PreviouslyLine, ProjectHistorySection, UpdateNotesSection, useProjectTimeline, type HistoryLoader } from "./ProjectHistory";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { InforNumber } from "@/lib/domain/InforNumber";
@@ -27,7 +30,7 @@ import type { ProjectFormSubmit } from "./ProjectEditForm";
 import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { DashboardTopBar, type TopBarReport } from "./DashboardTopBar";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
-import { DashboardTable, type DashboardLayoutControl } from "./DashboardTable";
+import { DashboardTable, DueFlagPill, type DashboardLayoutControl } from "./DashboardTable";
 import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
 import { ClosedPagesCopy } from "@/lib/closed/ClosedPagesCopy";
 import { ClosedPageModel } from "@/lib/closed/ClosedPageModel";
@@ -41,6 +44,7 @@ import { Flags, StatusPill } from "./StatusPill";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
 import { StartDate } from "@/lib/projects/StartDate";
 import { DashboardAmbient, DrawerSpotlight, SummaryHeartbeat } from "./DashboardAmbient";
+import { AccountMenu } from "./AccountMenu";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
@@ -126,6 +130,10 @@ interface Props {
   historyAction?: HistoryLoader;
   /** A project link (/?project=<id>) the server checked: its detail opens on load. */
   initialProjectId?: string;
+  /** Account menu > Dashboard heartbeat, as saved on the account (default On). */
+  heartbeat?: boolean;
+  /** Saves the switch; resolves to the saved value, or null when the save failed (the switch goes back). */
+  setHeartbeatAction?: (on: boolean) => Promise<boolean | null>;
 }
 
 /** Browser localStorage, or null (server render, private mode, or storage blocked). */
@@ -164,8 +172,24 @@ export function ProjectDashboard({
   signOutAction,
   historyAction,
   initialProjectId,
+  heartbeat: heartbeatProp = true,
+  setHeartbeatAction,
 }: Props) {
   const [query, setQuery] = useState("");
+  // The dashboard follows the switch at once. A failed save keeps the choice on screen (until a reload) and shows an
+  // inline error in the account menu instead of silently putting the switch back. Only the latest click reports.
+  const [heartbeat, setHeartbeat] = useState(heartbeatProp);
+  const [heartbeatSaveFailed, setHeartbeatSaveFailed] = useState(false);
+  const heartbeatSeq = useRef(0);
+  const changeHeartbeat = (on: boolean) => {
+    setHeartbeat(on);
+    setHeartbeatSaveFailed(false);
+    const seq = ++heartbeatSeq.current;
+    const failed = () => seq === heartbeatSeq.current && setHeartbeatSaveFailed(true);
+    void setHeartbeatAction?.(on)
+      .then((saved) => saved === null && failed())
+      .catch(failed);
+  };
   const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
   // What "/" calls: set by the top bar (focus the search field, or open it when it is collapsed to an icon).
   const focusSearchRef = useRef<() => void>(() => {});
@@ -442,7 +466,7 @@ export function ProjectDashboard({
                 {Initials.of(userName, userEmail)}
               </div>
               <div className="flex flex-col type-caption">
-                <b className="type-label text-fg">{userName ?? userEmail}</b>
+                <AccountMenu name={userName ?? userEmail} heartbeat={heartbeat} onHeartbeatChange={changeHeartbeat} saveFailed={heartbeatSaveFailed} />
                 <button type="submit" className="text-left hover:text-fg">
                   Sign out
                 </button>
@@ -465,16 +489,17 @@ export function ProjectDashboard({
           <section className="pb-summary relative grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
             {tiles.map((t) =>
               t === "completedFy" ? (
-                completedFiscalYear && <CompletedFiscalYearCard key={t} fy={completedFiscalYear} href={ClosedPageModel.tileHref()} />
+                completedFiscalYear && <CompletedFiscalYearCard key={t} fy={completedFiscalYear} href={ClosedPageModel.tileHref()} beat={heartbeat} />
               ) : (
                 <div key={t} data-tile={t} className="pb-tile flex min-w-0 flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
-                  <span className="pb-tile-beat" aria-hidden="true" />
+                  {heartbeat && <span className="pb-tile-beat" aria-hidden="true" />}
                   <div className="type-metric">{summary.byStatus[t]}</div>
                   <StatusPill status={t} />
                 </div>
               ),
             )}
-            <SummaryHeartbeat tilesKey={tiles.join(",")} />
+            {/* Heartbeat switch Off: no line, head, trail or washes are rendered and no animation runs. */}
+            {heartbeat && <SummaryHeartbeat tilesKey={tiles.join(",")} />}
           </section>
         )}
 
@@ -569,6 +594,7 @@ export function ProjectDashboard({
               original={ProjectFormModel.empty(today)}
               milestones={[]}
               templates={admin.templates}
+              ownerOptions={admin.ownerSuggestions}
               checkerName={admin.checkerName}
               today={today}
               people={null}
@@ -634,6 +660,7 @@ export function ProjectDashboard({
                   milestones={admin.milestoneSteps[selected.id] ?? []}
                   checkerName={admin.checkerName}
                   templates={admin.templates}
+                  ownerOptions={admin.ownerSuggestions}
                   today={today}
                   people={
                     <ProjectPeopleEditor
@@ -690,10 +717,10 @@ export function ProjectDashboard({
  * text color (--dark-text-secondary). Not a warning, so no amber, icon or chip.
  */
 /** Summary strip card: teal check and count, "Completed FY27 to date" under it. With `href`, a link to the Completed page. */
-export function CompletedFiscalYearCard({ fy, href }: { fy: FiscalYearCount; href?: string }) {
+export function CompletedFiscalYearCard({ fy, href, beat = true }: { fy: FiscalYearCount; href?: string; beat?: boolean }) {
   const body = (
     <>
-      <span className="pb-tile-beat" aria-hidden="true" />
+      {beat && <span className="pb-tile-beat" aria-hidden="true" />}
       <div className="type-metric text-(--status-on-track-dark-fg)">{fy.count}</div>
       <span className="type-caption text-(--status-on-track-dark-fg)">&#10003; {FiscalYear.completedLabel(fy.label)}</span>
     </>
@@ -886,12 +913,15 @@ export function ProjectDrawer({
         </dd>
         <dt className="text-muted">Next milestone</dt>
         <dd>
-          {row.nextMilestone?.trim() ? row.nextMilestone : <span className="text-muted">–</span>}
-          {MilestoneProgress.progressLabel(row.milestoneProgress) && (
-            <span className="ml-1.5 whitespace-nowrap text-muted" data-testid="milestone-progress">
-              {MilestoneProgress.progressLabel(row.milestoneProgress)}
-            </span>
-          )}
+          {/* At most 2 lines (count included); the full text is in the tooltip and the Milestones section. */}
+          <div className="line-clamp-2 break-words" title={row.nextMilestone?.trim() || undefined} data-testid="drawer-next-milestone">
+            {row.nextMilestone?.trim() ? <span className="whitespace-pre-wrap">{row.nextMilestone}</span> : <span className="text-muted">–</span>}
+            {MilestoneProgress.progressLabel(row.milestoneProgress) && (
+              <span className="ml-1.5 whitespace-nowrap text-muted" data-testid="milestone-progress">
+                {MilestoneProgress.progressLabel(row.milestoneProgress)}
+              </span>
+            )}
+          </div>
         </dd>
         {row.startDate !== undefined && (
           <>
@@ -899,6 +929,25 @@ export function ProjectDrawer({
             <dd data-testid="start-date">
               {DateFormat.long(row.startDate) ?? "–"}
               {row.startDateIsDefault && <StartDateDefaultTag />}
+            </dd>
+          </>
+        )}
+        {/* Completion date right after Start date (task 5). */}
+        {row.completion && (
+          <>
+            <dt className="text-muted">{CompletionCopy.ROW_LABEL}</dt>
+            <dd data-testid="completion-date">
+              {row.completion.date ? (
+                <>
+                  {DateFormat.long(row.completion.date)}
+                  {row.completion.source && <CompletionTag source={row.completion.source} />}
+                </>
+              ) : (
+                // The Stale chip (dashed amber border, fill, clock icon), text exactly "Completion date needed".
+                <span className="inline-flex align-middle" data-testid="completion-date-needed">
+                  <DueFlagPill kind="stale" label={CompletionCopy.DATE_NEEDED} />
+                </span>
+              )}
             </dd>
           </>
         )}
@@ -917,17 +966,21 @@ export function ProjectDrawer({
       <div>
         <div className="mb-1.5 flex items-baseline gap-2 uppercase tracking-[.04em] text-muted type-label">
           Note
-          <span className="normal-case tracking-normal type-caption">
-            ({row.note?.length ?? 0}/{AppConfig.NOTE_MAX_LENGTH})
+          {/* Same counter text as the edit screen: "1,240 / 2,000". */}
+          <span className="normal-case tracking-normal type-caption" aria-label={LongTextCounter.label(row.note?.length ?? 0, AppConfig.NOTE_MAX_LENGTH)} data-testid="drawer-note-counter">
+            {LongTextCounter.text(row.note?.length ?? 0, AppConfig.NOTE_MAX_LENGTH)}
           </span>
         </div>
-        <p className="rounded-[6px] border border-line bg-input px-3 py-2.5 type-body">
+        <p className="rounded-[6px] border border-line bg-input px-3 py-2.5 break-words whitespace-pre-wrap type-body" data-testid="drawer-note">
           {row.note ?? <span className="text-muted">No note</span>}
         </p>
       </div>
-      {adminControls}
+      {historyAction && <MilestoneStepsSection timeline={history.timeline} />}
+      {historyAction && <UpdateNotesSection key={`notes-${row.id}`} timeline={history.timeline} />}
       {/* People and History are siblings: their project-specific keys must have distinct namespaces. */}
       {historyAction && <ProjectHistorySection key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />}
+      {/* Admin controls at the bottom of the side panel, below History. */}
+      {adminControls}
 
     </aside>
   );

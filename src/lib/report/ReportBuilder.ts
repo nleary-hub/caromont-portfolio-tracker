@@ -140,7 +140,7 @@ export class ReportBuilder {
     return history.some(
       (h) =>
         h.projectId === projectId &&
-        !VisibilityPolicy.isAdminOnlyHistoryField(h.field) &&
+        VisibilityPolicy.isPublicUpdateField(h.field) &&
         (previousSnapshotGeneratedAt === null || h.changedAt.getTime() > previousSnapshotGeneratedAt.getTime()),
     );
   }
@@ -204,7 +204,7 @@ export class ReportBuilder {
   static updatedOn(projectId: string, history: readonly HistoryEntryRecord[]): string | null {
     let latest: Date | null = null;
     for (const h of history) {
-      if (h.projectId !== projectId || VisibilityPolicy.isAdminOnlyHistoryField(h.field)) continue;
+      if (h.projectId !== projectId || !VisibilityPolicy.isPublicUpdateField(h.field)) continue;
       if (!latest || h.changedAt.getTime() > latest.getTime()) latest = h.changedAt;
     }
     return latest ? DateOnly.inZone(latest) : null;
@@ -252,6 +252,8 @@ export class ReportBuilder {
       contractsLead: project.contractsLead ?? null,
       // Only with a checklist, so rows of projects without steps are exactly as before.
       ...(project.milestoneProgress ? { milestoneProgress: project.milestoneProgress } : {}),
+      // Only with an owner on the next open step, so every other row's JSON is exactly as before.
+      ...(project.nextMilestoneOwner ? { nextMilestoneOwner: project.nextMilestoneOwner } : {}),
       changed: flags.changed,
       overdue: flags.overdue,
       updatedOn: details.updatedOn ?? null,

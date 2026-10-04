@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
+import type { ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 
 // The server actions resolve the viewer from the session and use Db.client; both are fakes here.
 const h = vi.hoisted(() => ({ viewer: null as Viewer | null, db: null as unknown }));
@@ -29,8 +30,12 @@ beforeEach(() => {
 afterEach(() => vi.restoreAllMocks());
 
 describe("ProjectValidator form caps", () => {
-  it("hard caps: Latest update, Accomplishment and Description reject 201 characters", () => {
-    for (const field of ["note", "accomplishment", "description"] as const) {
+  it("hard caps: Accomplishment and Description reject 201 characters; Latest update rejects 2,001 (batch task 2)", () => {
+    const n = ProjectValidator.validateForm({ ...base, note: "x".repeat(2001) }, { existing: null });
+    expect(n.ok).toBe(false);
+    if (!n.ok) expect(n.errors.note?.[0]).toMatch(/at most 2,000 characters/);
+    expect(ProjectValidator.validateForm({ ...base, note: "x".repeat(2000) }, { existing: null }).ok).toBe(true);
+    for (const field of ["accomplishment", "description"] as const) {
       const r = ProjectValidator.validateForm({ ...base, [field]: "x".repeat(201) }, { existing: null });
       expect(r.ok, field).toBe(false);
       if (!r.ok) expect(r.errors[field]?.[0]).toMatch(/at most 200 characters/);
@@ -45,16 +50,17 @@ describe("ProjectValidator form caps", () => {
     expect(r.ok).toBe(true);
     expect(ProjectValidator.softWarnings({ nextMilestone: long }).nextMilestone?.[0]).toMatch(/Over 40 characters/);
     expect(ProjectValidator.softWarnings({ nextMilestone: "x".repeat(40) })).toEqual({});
-    // CSV import and wording update keep the hard 40.
-    expect(ProjectValidator.validate({ ...base, nextMilestone: long }).ok).toBe(false);
+    // CSV import and wording update: the hard cap is now 2,000 (batch task 2).
+    expect(ProjectValidator.validate({ ...base, nextMilestone: long }).ok).toBe(true);
+    expect(ProjectValidator.validate({ ...base, nextMilestone: "m".repeat(2001) }).ok).toBe(false);
   });
 
   it("a stored value over a hard cap is accepted until that field is edited", () => {
-    const stored = { ...base, note: "n".repeat(230) };
+    const stored = { ...base, note: "n".repeat(2030) };
     expect(ProjectValidator.validateForm({ ...stored, name: "Renamed" }, { existing: stored }).ok).toBe(true);
     const kept = ProjectValidator.parseForm({ ...stored, name: "Renamed" }, { existing: stored });
-    expect(kept.note).toHaveLength(230);
-    const edited = ProjectValidator.validateForm({ ...stored, note: "n".repeat(229) }, { existing: stored });
+    expect(kept.note).toHaveLength(2030);
+    const edited = ProjectValidator.validateForm({ ...stored, note: "n".repeat(2029) }, { existing: stored });
     expect(edited.ok).toBe(false);
   });
 
@@ -74,18 +80,18 @@ describe("ProjectFormModel", () => {
     nextMilestone: "M1",
     dueDate: "2026-10-03",
     percentComplete: null,
-    note: "x".repeat(230),
+    note: "x".repeat(2030),
     accomplishment: null,
     description: null,
     completedOn: null,
   });
 
   it("counters: hard caps turn red at the limit, the soft milestone limit only past 40", () => {
-    expect(ProjectFormModel.counter("note", "x".repeat(199))).toMatchObject({ count: 199, limit: 200, kind: "hard", alert: false });
-    expect(ProjectFormModel.counter("note", "x".repeat(200))?.alert).toBe(true);
+    expect(ProjectFormModel.counter("note", "x".repeat(1999))).toMatchObject({ count: 1999, limit: 2000, kind: "hard", alert: false });
+    expect(ProjectFormModel.counter("note", "x".repeat(2000))?.alert).toBe(true);
     expect(ProjectFormModel.counter("nextMilestone", "x".repeat(40))).toMatchObject({ limit: 40, kind: "soft", alert: false });
     expect(ProjectFormModel.counter("nextMilestone", "x".repeat(41))?.alert).toBe(true);
-    expect(ProjectFormModel.maxLength("note")).toBe(200);
+    expect(ProjectFormModel.maxLength("note")).toBe(2000);
     expect(ProjectFormModel.counter("name", "x")).toBeNull();
   });
 
@@ -93,7 +99,7 @@ describe("ProjectFormModel", () => {
     const untouched = { ...original, nextMilestone: "y".repeat(45) };
     expect(ProjectFormModel.errors(untouched, original, false)).toEqual({});
     expect(ProjectFormModel.isGrandfathered("note", untouched, original)).toBe(true);
-    expect(ProjectFormModel.errors({ ...original, note: "x".repeat(229) }, original, false).note).toHaveLength(1);
+    expect(ProjectFormModel.errors({ ...original, note: "x".repeat(2029) }, original, false).note).toHaveLength(1);
   });
 
   it("Infor number takes digits only, at most 5, shown after a fixed REQ- prefix", () => {
@@ -109,11 +115,30 @@ describe("ProjectFormModel", () => {
     expect(complete.completedOn).toBe(today);
     expect(ProjectFormModel.accomplishmentHint(complete)).toBe("Add an accomplishment for the report");
     expect(ProjectFormModel.accomplishmentHint({ ...complete, accomplishment: "Opened" })).toBeNull();
-    // An existing date is kept; switching back restores the stored (empty) date.
-    expect(ProjectFormModel.withStatus({ ...original, completedOn: "2026-09-01" }, "Complete", original).completedOn).toBe("2026-09-01");
+    // A stale stored date on a project that is not Complete is never reused; switching back empties the date.
+    expect(ProjectFormModel.withStatus({ ...original, completedOn: "2026-09-01" }, "Complete", original).completedOn).toBe(today);
     const back = ProjectFormModel.withStatus(complete, "OnTrack", original);
     expect(back.completedOn).toBe("");
     expect(ProjectFormModel.showsCompletedOn(back)).toBe(false);
+  });
+
+  it("leaving Complete never brings back a manual date the server clears (task 5)", () => {
+    const today = DateOnly.today("America/New_York");
+    const stored: ProjectFormValues = { ...original, status: "Complete", completedOn: "2026-09-16" };
+    // Away from Complete: the date is emptied, as the server clears it on save (it used to restore the stored date).
+    const away = ProjectFormModel.withStatus(stored, "OnTrack", stored);
+    expect(away.completedOn).toBe("");
+    expect(ProjectFormModel.changes(away, stored).completedOn).toBe("");
+    // Back to Complete in the same session: what was on screen when it left, including a removed date.
+    expect(ProjectFormModel.withStatus(away, "Complete", stored, today, { resume: "2026-09-16" }).completedOn).toBe("2026-09-16");
+    expect(ProjectFormModel.withStatus(away, "Complete", stored, today, { resume: "" }).completedOn).toBe("");
+    expect(ProjectFormModel.withStatus(away, "Complete", stored, today, { resume: "2026-09-20" }).completedOn).toBe("2026-09-20");
+    // Without a session value, the stored date of a project stored as Complete.
+    expect(ProjectFormModel.withStatus(away, "Complete", stored, today).completedOn).toBe("2026-09-16");
+    // Stored as On track with a stale date (cleared by the server on reopen): never brought back.
+    const reopened: ProjectFormValues = { ...original, status: "OnTrack", completedOn: "2026-09-16" };
+    expect(ProjectFormModel.withStatus(reopened, "Complete", reopened, today).completedOn).toBe(today);
+    expect(ProjectFormModel.withStatus(reopened, "AtRisk", reopened, today).completedOn).toBe("");
   });
 
   it("the prefill uses the New York date late in the evening", () => {
@@ -181,11 +206,11 @@ describe("ProjectService.saveForm", () => {
 
   it("does not reject a stored over-cap note on an unrelated save, but does when the note is edited", async () => {
     const p = await ProjectService.create(base, actor, fake.asClient());
-    fake.state.projects.find((r) => r.id === p.id)!.note = "n".repeat(230); // legacy value
+    fake.state.projects.find((r) => r.id === p.id)!.note = "n".repeat(2030); // legacy value
     await ProjectService.saveForm(p.id, { status: "AtRisk" }, Factory.ADMIN, fake.asClient());
     await ProjectService.setPeopleField(p.id, "contractsLead", "", Factory.ADMIN, fake.asClient());
-    await expect(ProjectService.saveForm(p.id, { note: "n".repeat(229) }, Factory.ADMIN, fake.asClient())).rejects.toThrow(ProjectValidationError);
-    await expect(ProjectService.saveForm(p.id, { note: "x".repeat(201) }, Factory.ADMIN, fake.asClient())).rejects.toThrow(ProjectValidationError);
+    await expect(ProjectService.saveForm(p.id, { note: "n".repeat(2029) }, Factory.ADMIN, fake.asClient())).rejects.toThrow(ProjectValidationError);
+    await expect(ProjectService.saveForm(p.id, { note: "x".repeat(2001) }, Factory.ADMIN, fake.asClient())).rejects.toThrow(ProjectValidationError);
   });
 
   it("is admin only", async () => {
@@ -211,10 +236,10 @@ describe("edit form server actions", () => {
   it("return ProjectValidator field errors to the form", async () => {
     h.viewer = Factory.ADMIN;
     const p = await ProjectService.create(base, actor, fake.asClient());
-    const r = await saveProjectForm(p.id, { note: "x".repeat(201), name: "" });
+    const r = await saveProjectForm(p.id, { note: "x".repeat(2001), name: "" });
     expect(r.ok).toBe(false);
     if (!r.ok) {
-      expect(r.fieldErrors?.note?.[0]).toMatch(/at most 200/);
+      expect(r.fieldErrors?.note?.[0]).toMatch(/at most 2,000/);
       expect(r.fieldErrors?.name?.[0]).toMatch(/Name is required/);
     }
   });
@@ -231,7 +256,10 @@ describe("edit form server actions", () => {
     const created = fake.state.projects[0];
     expect(r.ok && r.id).toBe(created.id);
     expect(created).toMatchObject({ name: "Hybrid OR scheduling", status: "NotStarted", serviceArea: "Cath", inforRequestNumber: 4656, updatedBy: Factory.ADMIN.email });
-    expect(fake.state.history.filter((h) => h.projectId === created.id).map((h) => h.field)).toEqual(["created"]);
+    // Created without milestones: "Project complete" is added, open, with its own history row (never a public update).
+    expect(fake.state.history.filter((h) => h.projectId === created.id).map((h) => h.field)).toEqual(["created", "milestone_auto_added"]);
+    expect(fake.state.milestones.filter((m) => m.projectId === created.id).map((m) => [m.name, m.done])).toEqual([["Project complete", false]]);
+    expect(created.nextMilestone).toBe("Project complete");
   });
 
   it("delete: soft delete keeps the record and history; the form cannot save a deleted project", async () => {

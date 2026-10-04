@@ -44,6 +44,7 @@ export function SummaryHeartbeat({ tilesKey }: { tilesKey: string }) {
     const trace = svg.querySelector<SVGPathElement>(".pb-ecg-pulse")!;
     const head = svg.querySelector<SVGCircleElement>(".pb-ecg-head")!;
     const fade = svg.querySelector<SVGRectElement>(".pb-ecg-fade")!;
+    const base = svg.querySelector<SVGPathElement>(".pb-ecg-base")!;
     const reduced = matchMedia("(prefers-reduced-motion: reduce)");
     // One clock drives both the drawing and background responses. WAAPI also supports pausing.
     let clock: Animation | undefined;
@@ -77,6 +78,26 @@ export function SummaryHeartbeat({ tilesKey }: { tilesKey: string }) {
         return { glow, x };
       });
       summary.setAttribute("data-pb-beat", "");
+      // Still line (reduced motion): put each beat where it stays at least 4px clear of the tiles' pill text.
+      if (box.width) {
+        const scale = 1440 / box.width;
+        const blocked = [...summary.querySelectorAll<HTMLElement>(".pb-tile > :last-child")].flatMap((pill) => {
+          const out: [number, number][] = [];
+          const walker = document.createTreeWalker(pill, NodeFilter.SHOW_TEXT);
+          for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+            if (!n.textContent?.trim()) continue;
+            const range = document.createRange();
+            range.selectNodeContents(n);
+            for (const r of range.getClientRects()) {
+              if (r.bottom < box.top || r.top > box.bottom) continue;
+              out.push([(r.left - box.left - SummaryBeat.STILL_CLEARANCE) * scale, (r.right - box.left + SummaryBeat.STILL_CLEARANCE) * scale]);
+            }
+          }
+          return out;
+        });
+        svg.setAttribute("data-still-beats", SummaryBeat.stillBeats(blocked).map((x) => x.toFixed(1)).join(","));
+        base.setAttribute("d", SummaryBeat.stillPath(SummaryBeat.stillBeats(blocked)));
+      }
       if (!reduced.matches) {
         clock = svg.animate([{ opacity: 1 }, { opacity: 1 }], { duration: SummaryBeat.SWEEP_MS, iterations: Infinity });
         draw();
@@ -92,6 +113,7 @@ export function SummaryHeartbeat({ tilesKey }: { tilesKey: string }) {
       cancelAnimationFrame(frame);
       clock?.cancel();
       summary.removeAttribute("data-pb-beat");
+      for (const tile of summary.querySelectorAll<HTMLElement>(".pb-tile")) tile.style.removeProperty("--pb-beat-delay");
     };
   }, [tilesKey]);
   return (
@@ -122,6 +144,56 @@ export const SummaryBeat = {
     if (phase >= 80 && phase < 88) return 36 - (phase - 80) / 8 * 8;
     if (phase >= 112 && phase < 154) return 28 - 9 * Math.sin((phase - 112) / 42 * Math.PI);
     return 28;
+  },
+  /** Still line: px kept between a beat and pill text. */
+  STILL_CLEARANCE: 4,
+  /** A beat's raised part spans phase 24 to 154 (P wave to T wave). */
+  BEAT_FROM: 24,
+  BEAT_TO: 154,
+  /**
+   * Still line: where each beat starts (viewBox x of its P wave), two beats like the moving line, each in the free
+   * stretch (no `blocked` [from, to] range, in viewBox units) nearest its usual place (24 and 744). A stretch too narrow
+   * for a whole beat: the widest one, centred (best effort).
+   */
+  stillBeats(blocked: readonly [number, number][]): number[] {
+    const width = this.BEAT_TO - this.BEAT_FROM;
+    const cuts = [...blocked].map(([a, b]) => [Math.max(0, a), Math.min(1440, b)] as [number, number]).filter(([a, b]) => b > a).sort((p, q) => p[0] - q[0]);
+    const free: [number, number][] = [];
+    let at = 0;
+    for (const [a, b] of cuts) {
+      if (a > at) free.push([at, a]);
+      at = Math.max(at, b);
+    }
+    if (at < 1440) free.push([at, 1440]);
+    const taken: [number, number][] = [];
+    const out: number[] = [];
+    for (const want of [this.BEAT_FROM, this.BEAT_SPACING + this.BEAT_FROM]) {
+      let best: number | null = null;
+      for (const [a0, b] of free) {
+        // Not on top of a beat already placed (keep one beat's width apart).
+        const a = Math.max(a0, ...taken.filter(([, e]) => e <= b && e >= a0).map(([, e]) => e + 8));
+        if (b - a < width) continue;
+        const x = Math.min(Math.max(want, a), b - width);
+        if (best === null || Math.abs(x - want) < Math.abs(best - want)) best = x;
+      }
+      if (best === null) {
+        const widest = free.reduce((w, f) => (f[1] - f[0] > w[1] - w[0] ? f : w), [0, 0] as [number, number]);
+        best = (widest[0] + widest[1]) / 2 - width / 2;
+      }
+      taken.push([best, best + width]);
+      out.push(best);
+    }
+    return out.sort((p, q) => p - q);
+  },
+  /** The still line through 0 to 1440 with beats whose raised part starts at each `starts` x. */
+  stillPath(starts: readonly number[]): string {
+    const y = (x: number) => {
+      for (const s of starts) if (x >= s && x < s + this.BEAT_TO - this.BEAT_FROM) return this.y(x - s + this.BEAT_FROM);
+      return 28;
+    };
+    const points = [`M0 ${y(0).toFixed(2)}`];
+    for (let x = 1; x <= 1440; x++) points.push(`L${x} ${y(x).toFixed(2)}`);
+    return points.join(" ");
   },
   path(start: number, end: number): string {
     const points = [`M${start.toFixed(2)} ${this.y(start).toFixed(2)}`];

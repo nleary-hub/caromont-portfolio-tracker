@@ -1,3 +1,5 @@
+import { PdfReportLayout } from "@/lib/report/PdfReportLayout";
+import { LineLayout } from "@/lib/layout/LineLayout";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -353,14 +355,41 @@ describe("Infor request number: report PDF", () => {
     ]);
   });
 
-  it("no number: Updated starts at x = 0, the left edge under the name (no blank slot, no dash); row height unchanged", () => {
+  it("no number: the slot stays, blank (no placeholder), so Updated starts at the same x as on numbered rows (batch task 6); row height unchanged", () => {
     const withNumber = layout(99999);
     const none = layout(null);
     const noneMeta = project(none.cells).meta;
-    expect(noneMeta.map((r) => [r.text, r.x])).toEqual([["Updated Sep 24", 0]]);
+    expect(noneMeta).toEqual([{ text: "Updated Sep 24", x: g.INFOR_SLOT_W + g.INFOR_GAP, font: "sans", weight: 400, tone: "muted" }]);
     expect(project(withNumber.cells).meta[1].x).toBe(g.INFOR_SLOT_W + g.INFOR_GAP);
-    expect(ReportLayout.metaLine(m, true, null, "Updated Sep 24", true)[0].x).toBe(0);
+    expect(ReportLayout.metaLine(m, true, null, "Updated Sep 24", true)[0].x).toBe(g.INFOR_SLOT_W + g.INFOR_GAP);
     expect(withNumber.height).toBe(none.height);
+  });
+
+  it("the Updated x is one constant on every row and page: same for 1, 4656, 10041, 99999 and no number, at every column width", () => {
+    // Default widths, the Sep 29 custom widths (Project 0.16 of the table), and a much wider Project column.
+    const order = [...LineLayout.KEYS];
+    const sep29 = PdfReportLayout.withLayout(settings, { order, shares: { project: 0.16, people: 0.131611, status: 0.085, milestoneUpdate: 0.387389, dueFlags: 0.236 } });
+    const wide = PdfReportLayout.withLayout(settings, { order, shares: { project: 0.36, people: 0.12, status: 0.085, milestoneUpdate: 0.199, dueFlags: 0.236 } });
+    expect(ReportLayout.columns(sep29)[0].w).toBeCloseTo(115.2, 1);
+    for (const s of [settings, sep29, wide]) {
+      const xs = [1, 4656, 10041, 99999, null].map((n) => project(layout(n, s).cells).meta.find((r) => r.font === "sans")!.x);
+      expect(new Set(xs)).toEqual(new Set([g.INFOR_SLOT_W + g.INFOR_GAP]));
+      // A project name that wraps does not move it either.
+      const wrapped = project(layout(null, s, { name: "Cardiac cath lab hemodynamic monitoring system replacement and integration" }).cells);
+      expect(wrapped.meta.find((r) => r.font === "sans")!.x).toBe(g.INFOR_SLOT_W + g.INFOR_GAP);
+    }
+  });
+
+  it("the slot is the widest possible number: InforNumber.format(INFOR_REQUEST_NUMBER_MAX) in Courier 6.5 pt; every valid number fits", () => {
+    const widest = InforNumber.format(AppConfig.INFOR_REQUEST_NUMBER_MAX)!;
+    expect(widest).toBe("REQ-99999");
+    expect(widest).toHaveLength(InforNumber.SLOT_CHARS);
+    // Courier is monospaced (every glyph, digits included, advances 0.6 em), so width = characters x 0.6 em x size.
+    const w = (t: string) => t.length * g.MONO_ADVANCE_EM * g.SIZE.mono;
+    expect(w(widest)).toBeCloseTo(g.INFOR_SLOT_W, 6);
+    for (const n of [AppConfig.INFOR_REQUEST_NUMBER_MIN, 9, 99, 999, 9999, 10000, AppConfig.INFOR_REQUEST_NUMBER_MAX]) {
+      expect(w(InforNumber.format(n)!)).toBeLessThanOrEqual(g.INFOR_SLOT_W + 1e-9);
+    }
   });
 
   it("hidden by show/hide: no slot and no gap, Updated at x = 0", () => {

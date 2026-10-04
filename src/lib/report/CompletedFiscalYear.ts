@@ -6,8 +6,8 @@ import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 /**
  * "Completed FY27 to date N": projects with status Complete whose completion date falls between the
- * fiscal year start and the report date (inclusive). Completion date = completedOn when entered, else
- * the day the status became Complete in the app (ProjectHistory, America/New_York).
+ * fiscal year start and the report date (inclusive). Completion date = completedOn when entered, else the automatic
+ * date (completedAtAuto, task 5), else the day the status became Complete in the app (ProjectHistory, America/New_York).
  *
  * Unlike "Completed this period" this is not once-only: a project counts in every report until the
  * fiscal year rolls over, and reopening it (status leaves Complete) removes it. Deleted projects and
@@ -16,9 +16,14 @@ import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
  * header, so a frozen report never changes.
  */
 export class CompletedFiscalYear {
-  static completionDate(project: Pick<CompletableProject, "id" | "status" | "createdAt" | "completedOn">, history: readonly HistoryEntryRecord[]): string | null {
+  static completionDate(
+    project: Pick<CompletableProject, "id" | "status" | "createdAt" | "completedOn"> & { completedAtAuto?: Date | null },
+    history: readonly HistoryEntryRecord[],
+  ): string | null {
     if (project.status !== "Complete") return null;
-    const entered = DateOnly.fromDbDate(project.completedOn);
+    // Effective date (task 5): the hand-entered date, else the automatic one (last milestone checked off), else (rows
+    // from before the rules) the day the status became Complete, exactly as before.
+    const entered = DateOnly.fromDbDate(project.completedOn) ?? DateOnly.fromDbDate(project.completedAtAuto ?? null);
     if (entered) return entered;
     const at = CompletedThisPeriod.completedAt(project, history);
     return at ? DateOnly.inZone(at) : null;

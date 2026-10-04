@@ -56,6 +56,23 @@ export class ReportArchiveService {
   }
 
   /**
+   * True when the snapshot (in the viewer's line) was frozen with a stored PDF (pdfStorageKey set) and that PDF is now
+   * missing: returns the snapshot's freeze time for the "Saved PDF not found" page, else null. Never rebuilt.
+   */
+  static async storedPdfMissing(
+    snapshotId: string,
+    db: PrismaClient = Db.client,
+    scope: Pick<ServiceLineScope, "id"> = ServiceLine.defaultScope(),
+  ): Promise<{ generatedAt: Date } | null> {
+    if (!/^[0-9a-f-]{36}$/i.test(snapshotId)) return null;
+    const snapshot = await db.reportSnapshot.findFirst({ where: { id: snapshotId }, select: { serviceLineId: true, pdfStorageKey: true, generatedAt: true } });
+    if (!snapshot || !ServiceLineAccess.inScope(snapshot, scope) || !snapshot.pdfStorageKey) return null;
+    if (await ReportArtifactService.get(snapshotId, "pdf", db)) return null;
+    ReportLog.error("archive.pdf.missing", { snapshotId });
+    return { generatedAt: snapshot.generatedAt };
+  }
+
+  /**
    * File behind a signed fallback link (no sign-in). Null for a bad, tampered or expired token, so
    * the route answers 404 without saying why; the reason is logged.
    */

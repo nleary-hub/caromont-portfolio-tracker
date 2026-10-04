@@ -317,7 +317,7 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
                       key={`${it.id}-${it.name}`}
                       id={`tpl-item-${it.id}`}
                       defaultValue={it.name}
-                      maxLength={MilestoneRules.NAME_MAX}
+                      maxLength={MilestoneRules.TEMPLATE_STEP_MAX}
                       aria-label={`Step ${i + 1} name`}
                       className="h-7 min-w-0 flex-1 rounded-control border border-transparent bg-transparent px-1.5 text-fg type-table hover:border-line focus:border-accent focus:bg-input focus:outline-none"
                       onFocus={(e) =>
@@ -347,7 +347,7 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
                         className="shrink-0 tabular-nums text-muted type-caption"
                         data-testid="template-rename-counter"
                       >
-                        {renaming.length}/{MilestoneRules.NAME_MAX}
+                        {renaming.length}/{MilestoneRules.TEMPLATE_STEP_MAX}
                       </span>
                     ) : (
                       <button
@@ -386,11 +386,11 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
                   }}
                   placeholder="Add a milestone and press Enter"
                   aria-label="New step name"
-                  maxLength={MilestoneRules.NAME_MAX}
+                  maxLength={MilestoneRules.TEMPLATE_STEP_MAX}
                   className={INPUT}
                 />
                 <span className="shrink-0 tabular-nums text-muted type-caption">
-                  {newStep.length}/{MilestoneRules.NAME_MAX}
+                  {newStep.length}/{MilestoneRules.TEMPLATE_STEP_MAX}
                 </span>
                 <button
                   type="button"
