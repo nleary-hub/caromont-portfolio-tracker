@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DIM_MAX, ECG_HEIGHT, Glass } from "@/components/DashboardAmbient";
+import { DIM_MAX, Glass, SummaryBeat } from "@/components/DashboardAmbient";
 import { ECG_PATH } from "@/lib/ui/Heartbeat";
 
 const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
@@ -81,10 +81,13 @@ describe("UI polish Option B", () => {
     globalThis.CSS = real;
   });
 
-  it("centers the heartbeat baseline in the gap between the tiles and the toolbar", () => {
-    // 1440px dashboard: tiles end at 148, toolbar starts at 164; baseline at 156.
-    expect(Glass.ecgTop(148, 164) + ECG_HEIGHT / 2).toBe(156);
-    expect(css).toMatch(new RegExp(`height: ${ECG_HEIGHT}px`));
+  it("synchronizes each tile pulse with the travelling trace's center", () => {
+    for (const fraction of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+      // The trace traverses 107% of the strip, starting with its center 3.5% offscreen.
+      const peak = (SummaryBeat.delay(fraction) + 160) / 8000;
+      expect(peak * 1.07 - 0.035).toBeCloseTo(fraction);
+    }
+    expect(css).toMatch(/\.pb-ecg \{[^}]*bottom: 0;[^}]*z-index: 2;[^}]*height: 10px;/);
   });
 
   it("the side panel's Edit and close controls are outlined buttons", () => {

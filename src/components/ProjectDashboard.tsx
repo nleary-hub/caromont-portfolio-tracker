@@ -40,7 +40,7 @@ import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { Flags, StatusPill } from "./StatusPill";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
 import { StartDate } from "@/lib/projects/StartDate";
-import { DashboardAmbient, DrawerSpotlight } from "./DashboardAmbient";
+import { DashboardAmbient, DrawerSpotlight, SummaryHeartbeat } from "./DashboardAmbient";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
@@ -462,17 +462,19 @@ export function ProjectDashboard({
 
         {/* A line with no projects shows only the banner; tiles, toolbar and table appear with the first project. */}
         {!emptyLine && tileTemplate && (
-          <section className="grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
+          <section className="pb-summary relative grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
             {tiles.map((t) =>
               t === "completedFy" ? (
                 completedFiscalYear && <CompletedFiscalYearCard key={t} fy={completedFiscalYear} href={ClosedPageModel.tileHref()} />
               ) : (
                 <div key={t} data-tile={t} className="pb-tile flex min-w-0 flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
+                  <span className="pb-tile-beat" aria-hidden="true" />
                   <div className="type-metric">{summary.byStatus[t]}</div>
                   <StatusPill status={t} />
                 </div>
               ),
             )}
+            <SummaryHeartbeat tilesKey={tiles.join(",")} />
           </section>
         )}
 
@@ -691,6 +693,7 @@ export function ProjectDashboard({
 export function CompletedFiscalYearCard({ fy, href }: { fy: FiscalYearCount; href?: string }) {
   const body = (
     <>
+      <span className="pb-tile-beat" aria-hidden="true" />
       <div className="type-metric text-(--status-on-track-dark-fg)">{fy.count}</div>
       <span className="type-caption text-(--status-on-track-dark-fg)">&#10003; {FiscalYear.completedLabel(fy.label)}</span>
     </>

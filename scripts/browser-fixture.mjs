@@ -24,7 +24,7 @@ const html = '<!doctype html><html class="dark"><meta charset="utf-8"><link rel=
 createServer(async (req, res) => {
   try {
     if (req.url === "/favicon.ico") { res.writeHead(204); res.end(); return; }
-    if (req.url === "/") { res.setHeader("Content-Type", "text/html"); res.end(html); return; }
+    if (new URL(req.url, "http://127.0.0.1").pathname === "/") { res.setHeader("Content-Type", "text/html"); res.end(html); return; }
     const routes = { "/fixture.js": [path.join(output, "fixture.js"), "text/javascript"],
       "/fixture.css": [path.join(output, "fixture.css"), "text/css"],
       "/fonts/Inter-Variable.ttf": [path.join(root, "public/fonts/Inter-Variable.ttf"), "font/ttf"] };

@@ -13,6 +13,8 @@ Coverage includes repeated/rapid switches, late history results, close/reopen, s
 filtering with a panel open, resizing, keyboard focus for all field types and validation,
 and screenshot pixel contrast with glass and solid surfaces. The composited contrast
 attachment and dashboard screenshots appear under `test-results/`.
+The heartbeat tests also cover scroll anchoring, tile color/timing synchronization, tile visibility changes,
+responsive widths through 390px, reduced motion, and unchanged label pixels at pulse peak.
 
 This verifies rendered client behavior. It does not replace authenticated end-to-end QA of
 server actions or production data access.
