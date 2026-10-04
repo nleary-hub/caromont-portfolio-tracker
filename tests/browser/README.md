@@ -18,3 +18,5 @@ responsive widths through 390px, reduced motion, and unchanged label pixels at p
 
 This verifies rendered client behavior. It does not replace authenticated end-to-end QA of
 server actions or production data access.
+
+Heartbeat correction coverage: drawing-head endpoints through P/QRS/T phases, no future or translated waveform, real background pixel changes with unchanged borders, reduced motion, scroll anchoring, responsive layouts and readable label contrast.

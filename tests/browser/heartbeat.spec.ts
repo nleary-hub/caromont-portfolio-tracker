@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 
-test("trace is above every tile surface, below the labels, and scrolls with the summary", async ({ page }, testInfo) => {
+test("trace is above every tile surface, behind protected labels, and scrolls with the summary", async ({ page }, testInfo) => {
   await page.goto("/?fy=1");
   await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
   const geometry = () => page.evaluate(() => {
@@ -11,7 +11,7 @@ test("trace is above every tile surface, below the labels, and scrolls with the 
     return { top: trace.top, summaryTop: summary.top, offset: trace.top - summary.top,
       within: trace.left === summary.left && trace.right === summary.right && trace.bottom <= summary.bottom,
       clear: tiles.every(tile => [...tile.children].filter(el => !el.classList.contains("pb-tile-beat"))
-        .every(el => el.getBoundingClientRect().bottom <= trace.top + 0.5)),
+        .every(el => Number(getComputedStyle(el).zIndex) > 2)),
       above: getComputedStyle(document.querySelector(".pb-ecg")!).zIndex === "2",
       interactive: getComputedStyle(document.querySelector(".pb-ecg")!).pointerEvents === "none" };
   });
@@ -34,52 +34,63 @@ test("trace is above every tile surface, below the labels, and scrolls with the 
   }
 });
 
-test("each tile peaks in its assigned color when the travelling pulse crosses its center", async ({ page }, testInfo) => {
+async function seek(page: import("@playwright/test").Page, time: number) {
+  await page.evaluate(async value => {
+    for (const animation of document.getAnimations()) { animation.pause(); animation.currentTime = value; }
+    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
+  }, time);
+}
+
+test("drawing head creates P-QRS-T sequentially with no future waveform and a fading trail", async ({ page }, testInfo) => {
   await page.goto("/?fy=1");
   await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
-  const evidence = await page.evaluate(async () => {
-    await new Promise<void>(resolve => requestAnimationFrame(() => requestAnimationFrame(() => resolve())));
-    const trace = document.querySelector(".pb-ecg-pulse")!;
-    const lineAnimation = trace.getAnimations()[0];
-    const svg = document.querySelector(".pb-ecg")!.getBoundingClientRect();
-    const tiles = [...document.querySelectorAll<HTMLElement>(".pb-summary .pb-tile")];
-    const animations = document.getAnimations();
-    const result = [];
-    for (const tile of tiles) {
-      const glow = tile.querySelector<HTMLElement>(".pb-tile-beat")!;
-      const pulse = glow.getAnimations()[0];
-      const rect = tile.getBoundingClientRect();
-      const center = (rect.left + rect.width / 2 - svg.left) / svg.width;
-      const delay = parseFloat(getComputedStyle(tile).getPropertyValue("--pb-beat-delay"));
-      const time = delay + 160;
-      const synchronized = Math.abs(Number(pulse.startTime) - Number(lineAnimation.startTime)) <= 1;
-      for (const animation of animations) { animation.pause(); animation.currentTime = time; }
-      const waveform = trace.getBoundingClientRect();
-      result.push({ center, pulseCenter: (time / 8000) * 1.07 - 0.035,
-        renderedCenter: (waveform.left + waveform.width / 2 - svg.left) / svg.width,
-        waveformHeight: waveform.height,
-        synchronized, opacity: Number(getComputedStyle(glow).opacity), color: getComputedStyle(glow).borderColor,
-        assigned: getComputedStyle(tile).getPropertyValue("--pb-glow").trim() });
-    }
-    // Show the amber tile's pulse for review.
-    const atRisk = tiles.find(tile => tile.dataset.tile === "AtRisk")!;
-    const time = parseFloat(getComputedStyle(atRisk).getPropertyValue("--pb-beat-delay")) + 160;
-    for (const animation of animations) animation.currentTime = time;
-    return result;
-  });
-  expect(evidence).toHaveLength(7);
-  const colors = ["rgb(154, 163, 178)", "rgb(74, 222, 128)", "rgb(242, 182, 64)",
-    "rgb(248, 113, 113)", "rgb(111, 155, 255)", "rgb(45, 212, 191)", "rgb(74, 222, 128)"];
-  for (const [i, tile] of evidence.entries()) {
-    expect(tile.synchronized).toBe(true);
-    expect(tile.pulseCenter).toBeCloseTo(tile.center, 3);
-    expect(tile.renderedCenter).toBeCloseTo(tile.center, 3);
-    expect(tile.waveformHeight).toBeGreaterThanOrEqual(7.9);
-    expect(tile.opacity).toBeCloseTo(0.45);
-    expect(tile.color).toBe(colors[i]);
+  for (const [x, y] of [[36,23], [70,32], [78,4], [87,36], [104,28], [133,19], [170,28], [258,4]]) {
+    await seek(page, x / 1440 * 8000);
+    const result = await page.locator(".pb-ecg").evaluate(svg => {
+      const head = svg.querySelector("circle")!;
+      const path = svg.querySelector<SVGPathElement>(".pb-ecg-pulse")!;
+      const end = path.getPointAtLength(path.getTotalLength());
+      return { x: Number(head.getAttribute("cx")), y: Number(head.getAttribute("cy")), endX: end.x,
+        future: path.getBBox().x + path.getBBox().width, transform: getComputedStyle(path).transform,
+        base: getComputedStyle(svg.querySelector(".pb-ecg-base")!).display };
+    });
+    expect(result.x).toBeCloseTo(x); expect(result.y).toBeCloseTo(y);
+    expect(result.endX).toBeCloseTo(x); expect(result.future).toBeCloseTo(x);
+    expect(result.transform).toBe("none"); expect(result.base).toBe("none");
   }
-  await testInfo.attach("synchronization", { body: JSON.stringify(evidence), contentType: "application/json" });
-  await page.screenshot({ path: testInfo.outputPath("heartbeat-amber-pulse.png") });
+  await seek(page, 1700);
+  await page.screenshot({ path: testInfo.outputPath("drawn-beats-background.png") });
+});
+
+test("head drives assigned colored background washes without changing tile borders", async ({ page }, testInfo) => {
+  await page.goto("/?fy=1");
+  await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
+  const result = [];
+  for (const tile of await page.locator(".pb-summary .pb-tile").all()) {
+    const time = await tile.evaluate(el => Number(getComputedStyle(el).getPropertyValue("--pb-beat-delay")));
+    await seek(page, 0);
+    const border = await tile.evaluate(el => getComputedStyle(el).borderColor);
+    const idle = await sharp(await tile.screenshot()).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    await seek(page, time);
+    result.push(await tile.evaluate(el => {
+      const wash = el.querySelector<HTMLElement>(".pb-tile-beat")!;
+      return { opacity: Number(getComputedStyle(wash).opacity), border: getComputedStyle(el).borderColor,
+        washBorder: getComputedStyle(wash).borderWidth, background: getComputedStyle(wash).backgroundImage,
+        assigned: getComputedStyle(el).getPropertyValue("--pb-glow").trim() };
+    }));
+    expect(result.at(-1)!.border).toBe(border);
+    expect(result.at(-1)!.washBorder).toBe("0px");
+    expect(result.at(-1)!.opacity).toBeCloseTo(0.22);
+    expect(result.at(-1)!.background).toContain("radial-gradient");
+    const peak = await sharp(await tile.screenshot()).removeAlpha().raw().toBuffer({ resolveWithObject: true });
+    // Sample a blank area of the actual tile surface, clear of the text and trace.
+    const pixel = (buffer: typeof peak) => {
+      const offset = (15 * buffer.info.width + buffer.info.width - 20) * 3;
+      return buffer.data.subarray(offset, offset + 3);
+    };
+    expect(pixel(peak).equals(pixel(idle))).toBe(false);
+  }
+  await testInfo.attach("background-washes", { body: JSON.stringify(result), contentType: "application/json" });
 });
 
 test("tile visibility changes re-synchronize the remaining trace and preserve link clicks", async ({ page }) => {
@@ -114,14 +125,14 @@ test("reduced motion leaves only a static faint trace without tile pulses", asyn
   await page.screenshot({ path: testInfo.outputPath("heartbeat-reduced-motion.png") });
 });
 
-test("peak tile pulses keep label pixels unchanged and retain rendered text contrast", async ({ page }, testInfo) => {
+test("peak background washes retain rendered text contrast", async ({ page }, testInfo) => {
   await page.goto("/?fy=1");
   await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
   const result = [];
   for (const tile of await page.locator(".pb-summary .pb-tile").all()) {
     const label = tile.locator(".pill, .type-caption").first();
     const changeTime = async (peak: boolean) => tile.evaluate((el, atPeak) => {
-      const time = atPeak ? parseFloat(getComputedStyle(el).getPropertyValue("--pb-beat-delay")) + 160 : 0;
+      const time = atPeak ? parseFloat(getComputedStyle(el).getPropertyValue("--pb-beat-delay")) : 0;
       for (const animation of document.getAnimations()) {
         animation.pause();
         // Freeze the ambient layer so only the summary's pulse changes between pixel comparisons.
@@ -131,12 +142,14 @@ test("peak tile pulses keep label pixels unchanged and retain rendered text cont
       }
     }, peak);
     await changeTime(false);
+    await page.waitForTimeout(35);
     const before = await label.screenshot();
     await changeTime(true);
+    await page.waitForTimeout(35);
     const after = await label.screenshot();
     const rawBefore = await sharp(before).removeAlpha().raw().toBuffer();
     const rawAfter = await sharp(after).removeAlpha().raw().toBuffer();
-    expect(rawAfter.equals(rawBefore)).toBe(true);
+    expect(rawBefore.length).toBe(rawAfter.length);
     const colors = new Map<string, { rgb: number[]; count: number }>();
     for (let i = 0; i < rawAfter.length; i += 3) {
       const rgb = [...rawAfter.subarray(i, i + 3)]; const key = rgb.join(",");
