@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DIM_MAX, ECG_HEIGHT, Glass } from "@/components/DashboardAmbient";
+import { DIM_MAX, Glass, SummaryBeat } from "@/components/DashboardAmbient";
 import { ECG_PATH } from "@/lib/ui/Heartbeat";
 
 const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
@@ -28,11 +28,19 @@ describe("UI polish Option B", () => {
     }
   });
 
-  it("dims the page by at most 25% behind the side panel", () => {
-    expect(DIM_MAX).toBeLessThanOrEqual(0.25);
+  it("preserves muted text contrast after compositing the dim over text and surface", () => {
+    expect(DIM_MAX).toBeLessThanOrEqual(0.15);
     const alphas = [...css.matchAll(/0 0 0 4000px rgba\(\s*5,\s*7,\s*11,\s*([0-9.]+)\)/g)].map((m) => Number(m[1]));
     expect(alphas.length).toBeGreaterThan(0);
     for (const a of alphas) expect(a).toBeLessThanOrEqual(DIM_MAX);
+    const muted = tokens.match(/--dark-text-secondary:\s*(#[0-9A-Fa-f]{6})/)![1];
+    const surface = tokens.match(/--dark-card:\s*(#[0-9A-Fa-f]{6})/)![1];
+    const dim = (hex: string, alpha: number) => "#" + [1, 3, 5].map((i, channel) =>
+      Math.round(parseInt(hex.slice(i, i + 2), 16) * (1 - alpha) + [5, 7, 11][channel] * alpha)
+        .toString(16).padStart(2, "0")).join("");
+    for (const alpha of alphas) expect(contrast(dim(muted, alpha), dim(surface, alpha))).toBeGreaterThanOrEqual(4.5);
+    // The previous 25% dim failed, despite the uncomposited colors passing.
+    expect(contrast(dim(muted, 0.25), dim(surface, 0.25))).toBeLessThan(4.5);
   });
 
   it("slides the side panel in over about 260ms", () => {
@@ -59,7 +67,7 @@ describe("UI polish Option B", () => {
     expect(tile).not.toMatch(/background|inset/);
     expect(outside).toMatch(/\.pb-page\[data-pb-solid\] \[data-testid="top-bar"\] \{[^}]*backdrop-filter: none/);
     // The spotlight dim is outside both, so it applies in the fallback too.
-    expect(outside).toMatch(/\.pb-spot \{[^}]*0 0 0 4000px rgba\(5, 7, 11, 0\.25\)/);
+    expect(outside).toMatch(/\.pb-spot \{[^}]*0 0 0 4000px rgba\(5, 7, 11, 0\.15\)/);
     // The page is marked solid from CSS.supports.
     expect(read("src/components/DashboardAmbient.tsx")).toMatch(/if \(!Glass\.supported\(\)\) page\.setAttribute\("data-pb-solid", ""\)/);
   });
@@ -73,10 +81,13 @@ describe("UI polish Option B", () => {
     globalThis.CSS = real;
   });
 
-  it("centers the heartbeat baseline in the gap between the tiles and the toolbar", () => {
-    // 1440px dashboard: tiles end at 148, toolbar starts at 164; baseline at 156.
-    expect(Glass.ecgTop(148, 164) + ECG_HEIGHT / 2).toBe(156);
-    expect(css).toMatch(new RegExp(`height: ${ECG_HEIGHT}px`));
+  it("synchronizes each tile pulse with the travelling trace's center", () => {
+    for (const fraction of [0.1, 0.25, 0.5, 0.75, 0.9]) {
+      // The trace traverses 107% of the strip, starting with its center 3.5% offscreen.
+      const peak = (SummaryBeat.delay(fraction) + 160) / 8000;
+      expect(peak * 1.07 - 0.035).toBeCloseTo(fraction);
+    }
+    expect(css).toMatch(/\.pb-ecg \{[^}]*bottom: 0;[^}]*z-index: 2;[^}]*height: 10px;/);
   });
 
   it("the side panel's Edit and close controls are outlined buttons", () => {

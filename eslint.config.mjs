@@ -14,6 +14,10 @@ const eslintConfig = defineConfig([
     "next-env.d.ts",
     // Prisma generated client
     "src/generated/**",
+    // Generated browser harness and Playwright evidence
+    ".browser-fixture/**",
+    "test-results/**",
+    "playwright-report/**",
   ]),
 ]);
 

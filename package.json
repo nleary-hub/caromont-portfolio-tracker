@@ -16,7 +16,8 @@
     "db:migrate:dev": "prisma migrate dev",
     "db:seed": "tsx prisma/seed.ts",
     "import:csv": "tsx scripts/csv-cli.ts import",
-    "export:csv": "tsx scripts/csv-cli.ts export"
+    "export:csv": "tsx scripts/csv-cli.ts export",
+    "test:browser": "playwright test"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.2.1",
@@ -35,6 +36,7 @@
   },
   "devDependencies": {
     "@electric-sql/pglite": "^0.4.3",
+    "@playwright/test": "^1.63.0",
     "@tailwindcss/postcss": "^4",
     "@types/fontkit": "^2.0.9",
     "@types/node": "^20",
@@ -42,9 +44,11 @@
     "@types/react": "^19",
     "@types/react-dom": "^19",
     "dotenv": "^17.0.0",
+    "esbuild": "^0.28.2",
     "eslint": "^9",
     "eslint-config-next": "16.3.6",
     "prisma": "7.10.0",
+    "sharp": "^0.35.4",
     "tailwindcss": "^4",
     "tsx": "^4.23.15",
     "typescript": "^5",
