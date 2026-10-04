@@ -403,7 +403,7 @@ export function ProjectEditForm({
               onClick={save}
               disabled={saving}
               aria-disabled={visiblyBlocked || saving}
-              className="h-7 rounded-control bg-accent px-3.5 text-white type-table-strong aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
+              className="h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong aria-disabled:cursor-not-allowed aria-disabled:opacity-50"
             >
               {saving ? "Saving…" : "Save"}
             </button>
@@ -456,7 +456,7 @@ function Field({
   const softWarning = counter?.kind === "soft" && counter.alert;
   const hasLine = errors.length > 0 || counter || hint;
   return (
-    <div data-field={field} className="flex min-w-0 flex-col gap-1">
+    <div data-field={field} data-invalid={errors.length > 0 || undefined} className="flex min-w-0 flex-col gap-1">
       <div className="flex items-center">
         <label htmlFor={`pf-${field}`} className="text-muted type-caption">
           {label}
