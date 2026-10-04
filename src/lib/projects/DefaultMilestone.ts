@@ -49,8 +49,8 @@ export class DefaultMilestone {
       case "deleted_done":
         return v.kept
           ? `Milestone "${name}" added automatically, already done, after the last milestone was deleted. Completion date ${ReportFormat.mediumDate(v.kept)} kept.`
-          : // Legacy Complete project with no date ("Completion date needed"): placeholder, not on the final list.
-            `Milestone "${name}" added automatically, already done, after the last milestone was deleted.`;
+          : // Legacy Complete project with no date ("Completion date needed").
+            `Milestone "${name}" added automatically, already done, after the last milestone was deleted. Completion date still needed.`;
       default:
         return null;
     }

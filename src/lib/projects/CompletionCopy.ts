@@ -35,7 +35,7 @@ export class CompletionCopy {
   /** Server refusal of a hand-sent Complete status (form, actions). */
   static readonly HAND_COMPLETE_REFUSED = "Complete can't be set by hand. A project is complete when its last milestone is marked done.";
   /** Server refusal of a completion date on a project that is not Complete (form field error). */
-  static readonly DATE_NOT_COMPLETE = "A completion date can only be set on a completed project.";
+  static readonly DATE_NOT_COMPLETE = "A completion date can only be set after the last milestone is marked done.";
 
   /** CSV import row error for a Complete status. */
   static importRefused(line: number): string {
