@@ -595,7 +595,7 @@ export function ProjectDashboard({
             peopleEditor={
               admin ? (
                 <ProjectPeopleEditor
-                  key={selected.id}
+                  key={`people-${selected.id}`}
                   projectId={selected.id}
                   owner={selected.owner}
                   physicianChampion={selected.physicianChampion}
@@ -923,7 +923,8 @@ export function ProjectDrawer({
         </p>
       </div>
       {adminControls}
-      {historyAction && <ProjectHistorySection key={row.id} timeline={history.timeline} loading={history.loading} />}
+      {/* People and History are siblings: their project-specific keys must have distinct namespaces. */}
+      {historyAction && <ProjectHistorySection key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />}
 
     </aside>
   );

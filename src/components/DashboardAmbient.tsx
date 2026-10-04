@@ -83,18 +83,29 @@ export function DrawerSpotlight({ rowId }: { rowId: string | null }) {
     document.addEventListener("scroll", schedule, true);
     const observer = new ResizeObserver(schedule);
     observer.observe(document.body);
+    // Sorting/manual ordering moves existing rows without resizing the body. Observe the table's
+    // content too, including filtering and text changes that can move the selected row.
+    const scroller = document.querySelector<HTMLElement>(".pb-page [data-pb-scroll]");
+    const mutations = new MutationObserver(schedule);
+    if (scroller) {
+      mutations.observe(scroller, { childList: true, subtree: true, characterData: true });
+      observer.observe(scroller);
+      const table = scroller.querySelector("table");
+      if (table) observer.observe(table);
+    }
     return () => {
       if (frame) cancelAnimationFrame(frame);
       window.removeEventListener("resize", schedule);
       document.removeEventListener("scroll", schedule, true);
       observer.disconnect();
+      mutations.disconnect();
     };
   }, [rowId]);
   return <div ref={ref} className="pb-spot" aria-hidden="true" />;
 }
 
-/** The page dim behind the side panel (alpha); 40% failed contrast on muted text, so 25% is the ceiling. */
-export const DIM_MAX = 0.25;
+/** Dim alpha: preserves at least 4.5:1 for muted dashboard text after compositing both text and surface. */
+export const DIM_MAX = 0.15;
 
 /** Height of the dashboard heartbeat line (px); the path's baseline sits at half of it (polish.css .pb-ecg). */
 export const ECG_HEIGHT = 84;

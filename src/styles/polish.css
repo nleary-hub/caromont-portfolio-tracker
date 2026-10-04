@@ -3,7 +3,7 @@
  * root (ProjectDashboard), so the sign-in screen, Completed / Cancelled pages and admin pages render as before.
  *  - One fixed ambient layer (grid, glow, stars, the sign-in heartbeat line) behind frosted top bar, tiles and side panel.
  *  - The table stays solid. Rows get a soft hover sweep and an accent bar; no per-row blur.
- *  - Side panel open: the page dims by 25% (the ceiling; 40% failed contrast on muted text), the selected row stays lit,
+ *  - Side panel open: the page dims by 15% (preserving muted text contrast), the selected row stays lit,
  *    and the panel slides in over 260ms.
  *  - No backdrop-filter support: solid surfaces. prefers-reduced-motion: static background, no slide or sweeps.
  * Kept light for older PCs: blur radii 12 to 20px, only opacity / stroke animations on one layer.
@@ -169,7 +169,7 @@
   z-index: 15;
   pointer-events: none;
   border-radius: 2px;
-  box-shadow: 0 0 0 4000px rgba(5, 7, 11, 0.25); /* DIM_MAX in DashboardAmbient.tsx; also applies in the solid fallback */
+  box-shadow: 0 0 0 4000px rgba(5, 7, 11, 0.15); /* DIM_MAX in DashboardAmbient.tsx; also applies in the solid fallback */
   animation: pb-fade 0.26s ease-out;
 }
 @keyframes pb-fade { from { opacity: 0; } }
@@ -195,6 +195,14 @@
 .pb-page .pb-drawer .bg-input {
   background-color: rgba(8, 10, 15, 0.38);
   border-color: rgba(255, 255, 255, 0.09);
+}
+.pb-page .pb-drawer :is(input, select, textarea):focus {
+  border-color: var(--dark-accent);
+}
+/* An independent ring remains visible even when validation keeps the border red. */
+.pb-page :is(input, select, textarea):focus-visible {
+  outline: 2px solid var(--dark-accent);
+  outline-offset: 2px;
 }
 .pb-page .pb-drawer [data-invalid] :is(input, select, textarea) {
   border-color: #ff8a8a;
