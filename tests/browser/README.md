@@ -18,3 +18,6 @@ responsive widths through 390px, reduced motion, and unchanged label pixels at p
 
 This verifies rendered client behavior. It does not replace authenticated end-to-end QA of
 server actions or production data access.
+
+Heartbeat correction coverage: drawing-head endpoints through P/QRS/T phases, no future or translated waveform, real background pixel changes with unchanged borders, reduced motion, scroll anchoring, responsive layouts and readable label contrast.
+Refinement timing: 4000ms sweep, 720-unit beat spacing across a 1440-unit strip (2000ms between beats), 360-unit/1000ms fading trail. The P-through-T drawing spans about 361ms and QRS about 67ms.

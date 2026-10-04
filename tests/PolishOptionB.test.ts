@@ -81,13 +81,22 @@ describe("UI polish Option B", () => {
     globalThis.CSS = real;
   });
 
-  it("synchronizes each tile pulse with the travelling trace's center", () => {
-    for (const fraction of [0.1, 0.25, 0.5, 0.75, 0.9]) {
-      // The trace traverses 107% of the strip, starting with its center 3.5% offscreen.
-      const peak = (SummaryBeat.delay(fraction) + 160) / 8000;
-      expect(peak * 1.07 - 0.035).toBeCloseTo(fraction);
-    }
-    expect(css).toMatch(/\.pb-ecg \{[^}]*bottom: 0;[^}]*z-index: 2;[^}]*height: 10px;/);
+  it("draws recognizable P, QRS and T phases separated by baseline", () => {
+    expect(SummaryBeat.y(0)).toBe(28);
+    expect(SummaryBeat.y(36)).toBe(23);
+    expect(SummaryBeat.y(68)).toBe(30);
+    expect(SummaryBeat.y(74)).toBe(2);
+    expect(SummaryBeat.y(80)).toBe(36);
+    expect(SummaryBeat.y(104)).toBe(28);
+    expect(SummaryBeat.y(133)).toBe(19);
+    expect(SummaryBeat.y(170)).toBe(28);
+    expect(SummaryBeat.y(500)).toBe(28);
+    expect(SummaryBeat.y(794)).toBe(2);
+    // Cadence: 30 decorative beats/min; head traverses twice as fast as the earlier 8s sweep.
+    expect(SummaryBeat.BEAT_SPACING / 1440 * SummaryBeat.SWEEP_MS).toBe(2000);
+    expect(SummaryBeat.SWEEP_MS).toBe(4000);
+    expect((154 - 24) / 1440 * SummaryBeat.SWEEP_MS).toBeLessThan(400);
+    expect(css).toMatch(/\.pb-ecg \{[^}]*bottom: 0;[^}]*height: 40px;/);
   });
 
   it("the side panel's Edit and close controls are outlined buttons", () => {
