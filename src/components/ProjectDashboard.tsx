@@ -796,7 +796,7 @@ export function ProjectDrawer({
       type="button"
       onClick={onClose}
       aria-label="Close"
-      className="size-7 rounded-[6px] border border-line text-xs text-muted hover:text-fg"
+      className="pb-ghost size-7 rounded-[6px] border border-line text-xs text-muted hover:text-fg"
     >
       ✕
     </button>
@@ -840,7 +840,7 @@ export function ProjectDrawer({
           <div className="flex shrink-0 items-center gap-1.5">
             {headerAction}
             {onEdit && (
-              <button type="button" onClick={onEdit} className="h-7 rounded-[6px] px-2.5 text-muted type-table-strong hover:bg-input hover:text-fg">
+              <button type="button" onClick={onEdit} className="pb-ghost h-7 rounded-[6px] px-2.5 text-muted type-table-strong hover:bg-input hover:text-fg">
                 Edit
               </button>
             )}

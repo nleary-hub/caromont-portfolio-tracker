@@ -15,8 +15,27 @@ const STARS = Array.from({ length: 16 }, (_, i) => ({
  * One fixed, non-interactive layer under all content (styles in src/styles/polish.css); static under reduced motion.
  */
 export function DashboardAmbient() {
+  const ref = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    const el = ref.current;
+    const page = el?.closest<HTMLElement>(".pb-page");
+    if (!el || !page) return;
+    // No backdrop-filter: mark the page solid so no glass, sheen or glow rules apply (polish.css).
+    if (!Glass.supported()) page.setAttribute("data-pb-solid", "");
+    // Run the heartbeat baseline through the gap between the summary tiles and the toolbar.
+    const place = () => {
+      const tiles = page.querySelector('[aria-label="Status summary"]')?.getBoundingClientRect();
+      const toolbar = page.querySelector('[aria-label="Department filter"]')?.getBoundingClientRect();
+      if (tiles && toolbar) el.style.setProperty("--pb-ecg-top", `${Math.round(Glass.ecgTop(tiles.bottom, toolbar.top))}px`);
+      else el.style.removeProperty("--pb-ecg-top");
+    };
+    place();
+    const observer = new ResizeObserver(place);
+    observer.observe(page);
+    return () => observer.disconnect();
+  }, []);
   return (
-    <div className="pb-ambient" aria-hidden="true">
+    <div ref={ref} className="pb-ambient" aria-hidden="true">
       <div className="pb-grid" />
       <div className="pb-glow" />
       {STARS.map((s, i) => (
@@ -76,3 +95,17 @@ export function DrawerSpotlight({ rowId }: { rowId: string | null }) {
 
 /** The page dim behind the side panel (alpha); 40% failed contrast on muted text, so 25% is the ceiling. */
 export const DIM_MAX = 0.25;
+
+/** Height of the dashboard heartbeat line (px); the path's baseline sits at half of it (polish.css .pb-ecg). */
+export const ECG_HEIGHT = 84;
+
+export const Glass = {
+  /** Whether the browser can frost (backdrop-filter, prefixed or not). */
+  supported(): boolean {
+    return typeof CSS !== "undefined" && (CSS.supports("backdrop-filter", "blur(1px)") || CSS.supports("-webkit-backdrop-filter", "blur(1px)"));
+  },
+  /** Top of the heartbeat line so its baseline is centered between the tiles' bottom and the toolbar's top. */
+  ecgTop(tilesBottom: number, toolbarTop: number): number {
+    return (tilesBottom + toolbarTop) / 2 - ECG_HEIGHT / 2;
+  },
+};

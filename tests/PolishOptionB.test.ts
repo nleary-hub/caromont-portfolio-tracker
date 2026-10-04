@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
-import { DIM_MAX } from "@/components/DashboardAmbient";
+import { DIM_MAX, ECG_HEIGHT, Glass } from "@/components/DashboardAmbient";
 import { ECG_PATH } from "@/lib/ui/Heartbeat";
 
 const read = (p: string) => readFileSync(new URL(`../${p}`, import.meta.url), "utf8");
@@ -39,8 +39,53 @@ describe("UI polish Option B", () => {
     expect(css).toMatch(/\.pb-drawer\[data-enter\]\s*\{\s*animation:\s*pb-drawer-in 0\.26s/);
   });
 
-  it("has a solid fallback without backdrop-filter and a static background under reduced motion", () => {
-    expect(css).toMatch(/@supports not \(\(-webkit-backdrop-filter: blur\(1px\)\) or \(backdrop-filter: blur\(1px\)\)\)/);
+  it("without backdrop-filter, surfaces are opaque with no sheen, glow or gradient; the dim stays", () => {
+    const start = css.indexOf("@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px)))");
+    expect(start).toBeGreaterThan(0);
+    const end = css.indexOf("\n}\n", start);
+    const glass = css.slice(start, end);
+    const outside = (css.slice(0, start) + css.slice(end)).replace(/\/\*[\s\S]*?\*\//g, "");
+    // Every translucent surface, sheen (::before) and frosting is inside the @supports block, gated on not-solid.
+    const glassRules = glass.match(/^  [^\s{}][^{}\n]*\{/gm) ?? [];
+    expect(glassRules.length).toBe(6);
+    for (const rule of glassRules) expect(rule).toMatch(/^  \.pb-page:not\(\[data-pb-solid\]\)/);
+    expect(outside).not.toMatch(/pb-(tile|drawer)::before/);
+    expect(outside).not.toMatch(/backdrop-filter: blur/);
+    expect(outside).toMatch(/\.pb-page \[data-testid="top-bar"\] \{\s*background: var\(--dark-card\);\s*\}/);
+    const drawer = outside.match(/\.pb-page \.pb-drawer \{([^}]*)\}/)?.[1] ?? "";
+    expect(drawer).toMatch(/background: var\(--dark-card\)/);
+    expect(drawer).not.toMatch(/gradient|inset/);
+    const tile = outside.match(/\.pb-page \.pb-tile \{([^}]*)\}/)?.[1] ?? "";
+    expect(tile).not.toMatch(/background|inset/);
+    expect(outside).toMatch(/\.pb-page\[data-pb-solid\] \[data-testid="top-bar"\] \{[^}]*backdrop-filter: none/);
+    // The spotlight dim is outside both, so it applies in the fallback too.
+    expect(outside).toMatch(/\.pb-spot \{[^}]*0 0 0 4000px rgba\(5, 7, 11, 0\.25\)/);
+    // The page is marked solid from CSS.supports.
+    expect(read("src/components/DashboardAmbient.tsx")).toMatch(/if \(!Glass\.supported\(\)\) page\.setAttribute\("data-pb-solid", ""\)/);
+  });
+
+  it("Glass.supported() is false when neither backdrop-filter form is supported", () => {
+    const real = globalThis.CSS;
+    globalThis.CSS = { supports: () => false } as unknown as typeof CSS;
+    expect(Glass.supported()).toBe(false);
+    globalThis.CSS = { supports: (p: string) => p === "-webkit-backdrop-filter" } as unknown as typeof CSS;
+    expect(Glass.supported()).toBe(true);
+    globalThis.CSS = real;
+  });
+
+  it("centers the heartbeat baseline in the gap between the tiles and the toolbar", () => {
+    // 1440px dashboard: tiles end at 148, toolbar starts at 164; baseline at 156.
+    expect(Glass.ecgTop(148, 164) + ECG_HEIGHT / 2).toBe(156);
+    expect(css).toMatch(new RegExp(`height: ${ECG_HEIGHT}px`));
+  });
+
+  it("the side panel's Edit and close controls are outlined buttons", () => {
+    const src = read("src/components/ProjectDashboard.tsx");
+    expect(src).toMatch(/onClick=\{onEdit\} className="pb-ghost /);
+    expect(css).toMatch(/\.pb-drawer \.pb-ghost \{\s*border: 1px solid rgba\(255, 255, 255, 0\.12\);\s*background: rgba\(255, 255, 255, 0\.04\)/);
+  });
+
+  it("has a static background under reduced motion", () => {
     const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
     expect(reduced).toMatch(/\.pb-ambient \*/);
     expect(reduced).toMatch(/animation: none !important/);

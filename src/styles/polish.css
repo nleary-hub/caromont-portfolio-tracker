@@ -55,9 +55,9 @@
 .pb-ecg {
   position: absolute;
   left: 0;
-  top: 63px;
+  top: var(--pb-ecg-top, 114px); /* DashboardAmbient centers the baseline in the tiles/toolbar gap */
   width: 100%;
-  height: 140px;
+  height: 84px; /* 0.3 of the 280-unit viewBox: spikes fit around the gap */
 }
 .pb-ecg path {
   fill: none;
@@ -141,29 +141,16 @@
   color: #dfe8ff;
 }
 
-/* Tiles: a per-status glow in the corner. */
+/* Tiles. Base (and the no-backdrop-filter fallback): the solid card with a drop shadow. Glass and glow: below. */
 .pb-page .pb-tile {
   position: relative;
   overflow: hidden;
   border-color: rgba(255, 255, 255, 0.07);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px -18px rgba(0, 0, 0, 0.8);
+  box-shadow: 0 10px 30px -18px rgba(0, 0, 0, 0.8);
   transition: border-color 0.18s;
 }
 .pb-page .pb-tile > * {
   position: relative;
-}
-.pb-page .pb-tile::before {
-  content: "";
-  position: absolute;
-  left: -30px;
-  top: -40px;
-  width: 140px;
-  height: 110px;
-  border-radius: 50%;
-  background: var(--pb-glow, transparent);
-  opacity: 0.16;
-  filter: blur(18px);
-  pointer-events: none;
 }
 .pb-page .pb-tile:hover {
   border-color: rgba(255, 255, 255, 0.16);
@@ -175,11 +162,6 @@
 .pb-page [data-tile="OnHold"] { --pb-glow: #6f9bff; }
 .pb-page [data-tile="Complete"] { --pb-glow: #2dd4bf; }
 .pb-page .pb-fy { --pb-glow: #4ade80; }
-.pb-page .pb-fy::before {
-  left: auto;
-  right: -30px;
-  opacity: 0.12;
-}
 
 /* Side panel: spotlight dim + slide-in ------------------------------------------------------------------------- */
 .pb-spot {
@@ -187,13 +169,16 @@
   z-index: 15;
   pointer-events: none;
   border-radius: 2px;
-  box-shadow: 0 0 0 4000px rgba(5, 7, 11, 0.25); /* DIM_MAX in DashboardAmbient.tsx */
+  box-shadow: 0 0 0 4000px rgba(5, 7, 11, 0.25); /* DIM_MAX in DashboardAmbient.tsx; also applies in the solid fallback */
   animation: pb-fade 0.26s ease-out;
 }
 @keyframes pb-fade { from { opacity: 0; } }
 
+/* Base (and fallback): opaque panel, no sheen. */
 .pb-page .pb-drawer {
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), -30px 0 60px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(91, 147, 255, 0.06);
+  background: var(--dark-card);
+  border-color: rgba(255, 255, 255, 0.11);
+  box-shadow: -30px 0 60px -20px rgba(0, 0, 0, 0.8);
 }
 .pb-page .pb-drawer[data-enter] {
   animation: pb-drawer-in 0.26s cubic-bezier(0.16, 1, 0.3, 1);
@@ -203,16 +188,6 @@
     opacity: 0;
     transform: translateX(60px) scale(0.985);
   }
-}
-.pb-page .pb-drawer::before {
-  content: "";
-  position: absolute;
-  right: -80px;
-  top: -80px;
-  width: 300px;
-  height: 220px;
-  background: radial-gradient(closest-side, rgba(79, 140, 255, 0.22), transparent);
-  pointer-events: none;
 }
 .pb-page .pb-drawer > * {
   position: relative;
@@ -225,37 +200,80 @@
   border-color: #ff8a8a;
   box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.18), 0 0 18px -4px rgba(248, 113, 113, 0.5);
 }
+/* Header buttons (Edit, close): the board's outlined ghost button. */
+.pb-page .pb-drawer .pb-ghost {
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: rgba(255, 255, 255, 0.04);
+  color: #c3c9d4;
+}
+.pb-page .pb-drawer .pb-ghost:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--dark-text-primary);
+}
 
-/* Glass, only where backdrop-filter works ----------------------------------------------------------------------- */
+/* No backdrop-filter: the top bar is solid (its glass token would show the layer through unblurred). */
+.pb-page [data-testid="top-bar"] {
+  background: var(--dark-card);
+}
+
+/*
+ * Glass, only where backdrop-filter works and the page has not been marked solid (DashboardAmbient sets
+ * data-pb-solid when CSS.supports reports no backdrop-filter). The sheens and tile glows live here too, so the
+ * fallback has none.
+ */
 @supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .pb-page [data-testid="top-bar"] {
+  .pb-page:not([data-pb-solid]) [data-testid="top-bar"] {
     background: rgba(12, 15, 21, 0.55);
     border-bottom-color: rgba(255, 255, 255, 0.07);
     -webkit-backdrop-filter: blur(16px) saturate(150%);
     backdrop-filter: blur(16px) saturate(150%);
   }
-  .pb-page .pb-tile {
+  .pb-page:not([data-pb-solid]) .pb-tile {
     background: rgba(22, 26, 35, 0.62);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px -18px rgba(0, 0, 0, 0.8);
     -webkit-backdrop-filter: blur(12px) saturate(140%);
     backdrop-filter: blur(12px) saturate(140%);
   }
-  .pb-page .pb-drawer {
+  .pb-page:not([data-pb-solid]) .pb-tile::before {
+    content: "";
+    position: absolute;
+    left: -30px;
+    top: -40px;
+    width: 140px;
+    height: 110px;
+    border-radius: 50%;
+    background: var(--pb-glow, transparent);
+    opacity: 0.16;
+    filter: blur(18px);
+    pointer-events: none;
+  }
+  .pb-page:not([data-pb-solid]) .pb-fy::before {
+    left: auto;
+    right: -30px;
+    opacity: 0.12;
+  }
+  .pb-page:not([data-pb-solid]) .pb-drawer {
     background: linear-gradient(180deg, rgba(32, 38, 52, 0.78), rgba(20, 24, 33, 0.82));
-    border-color: rgba(255, 255, 255, 0.11);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), -30px 0 60px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(91, 147, 255, 0.06);
     -webkit-backdrop-filter: blur(20px) saturate(160%);
     backdrop-filter: blur(20px) saturate(160%);
   }
+  .pb-page:not([data-pb-solid]) .pb-drawer::before {
+    content: "";
+    position: absolute;
+    right: -80px;
+    top: -80px;
+    width: 300px;
+    height: 220px;
+    background: radial-gradient(closest-side, rgba(79, 140, 255, 0.22), transparent);
+    pointer-events: none;
+  }
 }
 
-/* No backdrop-filter: solid surfaces everywhere (the top bar's glass token would show the layer through unblurred). */
-@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
-  .pb-page [data-testid="top-bar"] {
-    background: var(--dark-card);
-  }
-  .pb-page .pb-drawer {
-    background: #1b2030;
-    border-color: rgba(255, 255, 255, 0.11);
-  }
+/* The solid fallback also drops the Tailwind top bar blur (TopBarFrame) so nothing frosts. */
+.pb-page[data-pb-solid] [data-testid="top-bar"] {
+  -webkit-backdrop-filter: none;
+  backdrop-filter: none;
 }
 
 /* Reduced motion: a fully static background, no slide, fade or sweeps. */
