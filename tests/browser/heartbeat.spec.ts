@@ -44,8 +44,8 @@ async function seek(page: import("@playwright/test").Page, time: number) {
 test("drawing head creates P-QRS-T sequentially with no future waveform and a fading trail", async ({ page }, testInfo) => {
   await page.goto("/?fy=1");
   await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
-  for (const [x, y] of [[36,23], [70,32], [78,4], [87,36], [104,28], [133,19], [170,28], [258,4]]) {
-    await seek(page, x / 1440 * 8000);
+  for (const [x, y] of [[36,23], [68,30], [74,2], [80,36], [104,28], [133,19], [500,28], [794,2]]) {
+    await seek(page, x / 1440 * 4000);
     const result = await page.locator(".pb-ecg").evaluate(svg => {
       const head = svg.querySelector("circle")!;
       const path = svg.querySelector<SVGPathElement>(".pb-ecg-pulse")!;
@@ -58,7 +58,7 @@ test("drawing head creates P-QRS-T sequentially with no future waveform and a fa
     expect(result.endX).toBeCloseTo(x); expect(result.future).toBeCloseTo(x);
     expect(result.transform).toBe("none"); expect(result.base).toBe("none");
   }
-  await seek(page, 1700);
+  await seek(page, 2400);
   await page.screenshot({ path: testInfo.outputPath("drawn-beats-background.png") });
 });
 

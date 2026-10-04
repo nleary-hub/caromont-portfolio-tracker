@@ -50,11 +50,11 @@ export function SummaryHeartbeat({ tilesKey }: { tilesKey: string }) {
     let frame = 0;
     let centers: { glow: HTMLElement; x: number }[] = [];
     const draw = () => {
-      const x = Number(clock?.currentTime ?? 0) % 8000 / 8000 * 1440;
-      trace.setAttribute("d", SummaryBeat.path(Math.max(0, x - 300), x));
+      const x = Number(clock?.currentTime ?? 0) % SummaryBeat.SWEEP_MS / SummaryBeat.SWEEP_MS * 1440;
+      trace.setAttribute("d", SummaryBeat.path(Math.max(0, x - SummaryBeat.TRAIL_WIDTH), x));
       head.setAttribute("cx", String(x));
       head.setAttribute("cy", String(SummaryBeat.y(x)));
-      fade.setAttribute("x", String(x - 300));
+      fade.setAttribute("x", String(x - SummaryBeat.TRAIL_WIDTH));
       for (const { glow, x: center } of centers) {
         // The wash arrives with the head and fades gently behind it, never lighting the border.
         const distance = x - center;
@@ -71,14 +71,14 @@ export function SummaryHeartbeat({ tilesKey }: { tilesKey: string }) {
       centers = [...summary.querySelectorAll<HTMLElement>(".pb-tile")].map(tile => {
         const rect = tile.getBoundingClientRect();
         const x = box.width ? (rect.left + rect.width / 2 - box.left) / box.width * 1440 : 0;
-        tile.style.setProperty("--pb-beat-delay", String(x / 1440 * 8000));
+        tile.style.setProperty("--pb-beat-delay", String(x / 1440 * SummaryBeat.SWEEP_MS));
         const glow = tile.querySelector<HTMLElement>(".pb-tile-beat")!;
         glow.style.opacity = "0";
         return { glow, x };
       });
       summary.setAttribute("data-pb-beat", "");
       if (!reduced.matches) {
-        clock = svg.animate([{ opacity: 1 }, { opacity: 1 }], { duration: 8000, iterations: Infinity });
+        clock = svg.animate([{ opacity: 1 }, { opacity: 1 }], { duration: SummaryBeat.SWEEP_MS, iterations: Infinity });
         draw();
       }
     };
@@ -98,7 +98,7 @@ export function SummaryHeartbeat({ tilesKey }: { tilesKey: string }) {
     <svg ref={ref} className="pb-ecg" viewBox="0 0 1440 40" preserveAspectRatio="none" aria-hidden="true" focusable="false">
       <defs>
         <linearGradient id={`${maskId}-fade`}><stop stopColor="white" stopOpacity="0" /><stop offset="1" stopColor="white" /></linearGradient>
-        <mask id={maskId} maskUnits="userSpaceOnUse"><rect className="pb-ecg-fade" x="-300" width="300" height="40" fill={`url(#${maskId}-fade)`} /></mask>
+        <mask id={maskId} maskUnits="userSpaceOnUse"><rect className="pb-ecg-fade" x={-SummaryBeat.TRAIL_WIDTH} width={SummaryBeat.TRAIL_WIDTH} height="40" fill={`url(#${maskId}-fade)`} /></mask>
       </defs>
       <path className="pb-ecg-base" d={SummaryBeat.path(0, 1440)} />
       <path className="pb-ecg-pulse" mask={`url(#${maskId})`} />
@@ -108,14 +108,18 @@ export function SummaryHeartbeat({ tilesKey }: { tilesKey: string }) {
 }
 
 export const SummaryBeat = {
-  /** One beat per second: rounded P and T separated from the sharp QRS by baseline. */
+  // Spacing sets cadence independently of sweep speed: two beats in a four-second sweep.
+  SWEEP_MS: 4000,
+  BEAT_SPACING: 720,
+  TRAIL_WIDTH: 360,
+  /** A small Q, tall narrow R and crisp S, with smooth P/T and a long quiet baseline. */
   y(x: number): number {
-    const phase = ((x % 180) + 180) % 180;
+    const phase = ((x % this.BEAT_SPACING) + this.BEAT_SPACING) % this.BEAT_SPACING;
     if (phase >= 24 && phase < 48) return 28 - 5 * Math.sin((phase - 24) / 24 * Math.PI);
-    if (phase >= 64 && phase < 70) return 28 + (phase - 64) / 6 * 4;
-    if (phase >= 70 && phase < 78) return 32 - (phase - 70) / 8 * 28;
-    if (phase >= 78 && phase < 87) return 4 + (phase - 78) / 9 * 32;
-    if (phase >= 87 && phase < 96) return 36 - (phase - 87) / 9 * 8;
+    if (phase >= 64 && phase < 68) return 28 + (phase - 64) / 4 * 2;
+    if (phase >= 68 && phase < 74) return 30 - (phase - 68) / 6 * 28;
+    if (phase >= 74 && phase < 80) return 2 + (phase - 74) / 6 * 34;
+    if (phase >= 80 && phase < 88) return 36 - (phase - 80) / 8 * 8;
     if (phase >= 112 && phase < 154) return 28 - 9 * Math.sin((phase - 112) / 42 * Math.PI);
     return 28;
   },

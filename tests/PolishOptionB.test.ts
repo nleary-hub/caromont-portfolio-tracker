@@ -84,12 +84,18 @@ describe("UI polish Option B", () => {
   it("draws recognizable P, QRS and T phases separated by baseline", () => {
     expect(SummaryBeat.y(0)).toBe(28);
     expect(SummaryBeat.y(36)).toBe(23);
-    expect(SummaryBeat.y(70)).toBe(32);
-    expect(SummaryBeat.y(78)).toBe(4);
-    expect(SummaryBeat.y(87)).toBe(36);
+    expect(SummaryBeat.y(68)).toBe(30);
+    expect(SummaryBeat.y(74)).toBe(2);
+    expect(SummaryBeat.y(80)).toBe(36);
     expect(SummaryBeat.y(104)).toBe(28);
     expect(SummaryBeat.y(133)).toBe(19);
     expect(SummaryBeat.y(170)).toBe(28);
+    expect(SummaryBeat.y(500)).toBe(28);
+    expect(SummaryBeat.y(794)).toBe(2);
+    // Cadence: 30 decorative beats/min; head traverses twice as fast as the earlier 8s sweep.
+    expect(SummaryBeat.BEAT_SPACING / 1440 * SummaryBeat.SWEEP_MS).toBe(2000);
+    expect(SummaryBeat.SWEEP_MS).toBe(4000);
+    expect((154 - 24) / 1440 * SummaryBeat.SWEEP_MS).toBeLessThan(400);
     expect(css).toMatch(/\.pb-ecg \{[^}]*bottom: 0;[^}]*height: 40px;/);
   });
 
