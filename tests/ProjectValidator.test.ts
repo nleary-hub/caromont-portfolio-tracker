@@ -30,16 +30,16 @@ describe("ProjectValidator", () => {
     expect(r.data.note).toBeNull();
   });
 
-  it("uses the single config constant for the note limit (200)", () => {
-    expect(AppConfig.NOTE_MAX_LENGTH).toBe(200);
+  it("uses the single config constant for the note limit (2,000 since batch task 2)", () => {
+    expect(AppConfig.NOTE_MAX_LENGTH).toBe(2000);
     expect(ProjectValidator.NOTE_MAX).toBe(AppConfig.NOTE_MAX_LENGTH);
   });
 
-  it("allows a note of exactly 200 chars and rejects 201", () => {
-    expect(ProjectValidator.validate({ ...base, note: "x".repeat(200) }).ok).toBe(true);
-    const r = ProjectValidator.validate({ ...base, note: "x".repeat(201) });
+  it("allows a note of exactly 2,000 chars and rejects 2,001", () => {
+    expect(ProjectValidator.validate({ ...base, note: "x".repeat(2000) }).ok).toBe(true);
+    const r = ProjectValidator.validate({ ...base, note: "x".repeat(2001) });
     expect(r.ok).toBe(false);
-    if (!r.ok) expect(r.errors.note?.[0]).toMatch(/200/);
+    if (!r.ok) expect(r.errors.note?.[0]).toMatch(/2,000/);
   });
 
   it("requires nextMilestone unless Not started, On hold, Complete or Cancelled", () => {
@@ -85,18 +85,18 @@ describe("ProjectValidator", () => {
   });
 
   it("parse() throws ProjectValidationError", () => {
-    expect(() => ProjectValidator.parse({ ...base, note: "x".repeat(201) })).toThrow(ProjectValidationError);
+    expect(() => ProjectValidator.parse({ ...base, note: "x".repeat(2001) })).toThrow(ProjectValidationError);
   });
 
-  it("limits next milestone to AppConfig.MILESTONE_MAX_LENGTH (40) characters on every save", () => {
-    expect(AppConfig.MILESTONE_MAX_LENGTH).toBe(40);
-    expect(ProjectValidator.validate({ ...base, nextMilestone: "m".repeat(40) }).ok).toBe(true);
+  it("limits next milestone to AppConfig.MILESTONE_MAX_LENGTH (2,000 since batch task 2) characters on every save", () => {
+    expect(AppConfig.MILESTONE_MAX_LENGTH).toBe(2000);
+    expect(ProjectValidator.validate({ ...base, nextMilestone: "m".repeat(2000) }).ok).toBe(true);
     // Surrounding whitespace is trimmed before the length check.
-    expect(ProjectValidator.validate({ ...base, nextMilestone: `  ${"m".repeat(40)}  ` }).ok).toBe(true);
-    const r = ProjectValidator.validate({ ...base, nextMilestone: "m".repeat(41) });
+    expect(ProjectValidator.validate({ ...base, nextMilestone: `  ${"m".repeat(2000)}  ` }).ok).toBe(true);
+    const r = ProjectValidator.validate({ ...base, nextMilestone: "m".repeat(2001) });
     expect(r.ok).toBe(false);
     if (r.ok) return;
-    expect(r.errors.nextMilestone).toEqual(["Next milestone must be at most 40 characters"]);
+    expect(r.errors.nextMilestone).toEqual(["Next milestone must be at most 2,000 characters"]);
   });
 
   it("description is optional (blank or missing = null) and limited to AppConfig.DESCRIPTION_MAX_LENGTH (200)", () => {

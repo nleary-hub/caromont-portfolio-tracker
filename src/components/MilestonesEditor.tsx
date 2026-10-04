@@ -7,6 +7,9 @@ import { MilestoneEditorModel, type EditorState, type EditorStep } from "@/lib/p
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import { StepCheckedBy } from "@/lib/projects/StepCheckedBy";
 import { CheckedByTooltip } from "./CheckedByTooltip";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { PeopleCombobox } from "./PeopleCombobox";
+import { MilestoneOwnerCopy } from "@/lib/projects/MilestoneOwnerCopy";
 
 export interface MilestonesEditorProps {
   /** Checklist at open (stored steps, or the legacy next milestone shown as step 1). */
@@ -25,6 +28,8 @@ export interface MilestonesEditorProps {
   onStateChange: (state: EditorState) => void;
   /** Messages for the whole section (e.g. "Next milestone is required for this status"). */
   errors: string[];
+  /** Owner picker names for each step (the line's Owners list, cleaned by PeopleDirectory.merge). Omit to hide the picker. */
+  ownerOptions?: readonly string[];
 }
 
 const NEXT_ROW_BG = "#1A2233";
@@ -34,10 +39,10 @@ const DONE = "var(--status-complete-dark-fg)";
 /**
  * The drawer's Milestones section (Figma Bro layout). Header: MILESTONES, "Saves as you go", and a 28px ghost
  * "Apply template" button; a 2px teal progress bar under it. Rows (36px): drag handle (drag, or arrow keys),
- * check, name (click to rename, "23/40" counter), Next pill, the due date or "Done Sep 26", and a row menu
+ * check, name (click to rename; it grows to fit, with a "23 / 2,000" counter), an Owner picker under each step, Next pill, the due date or "Done Sep 26", and a row menu
  * with Reopen and Delete. No inner scroll: the drawer scrolls as one piece.
  */
-export function MilestonesEditor({ initial, templates, today, checkerName, autosave, onStateChange, errors }: MilestonesEditorProps) {
+export function MilestonesEditor({ initial, templates, today, checkerName, autosave, onStateChange, errors, ownerOptions }: MilestonesEditorProps) {
   const [state, setState] = useState(initial);
   const [saved, setSaved] = useState(initial);
   const [busy, setBusy] = useState(false);
@@ -241,7 +246,7 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
                 className="group flex flex-col border-b border-line"
                 style={isNext ? { background: NEXT_ROW_BG } : undefined}
               >
-                <div className="flex h-9 items-center gap-2.5 px-2">
+                <div className="flex min-h-9 items-center gap-2.5 px-2">
                   <button
                     type="button"
                     data-handle={s.key}
@@ -296,31 +301,48 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
                     </span>
                   </label>
                   </CheckedByTooltip>
-                  <input
-                    value={s.name}
-                    onFocus={() => setEditingName(s.key)}
-                    onChange={(e) => show(MilestoneEditorModel.update(state, s.key, { name: e.target.value }))}
-                    onBlur={finishRename}
-                    onKeyDown={(e) => {
-                      if (e.key === "Enter") (e.target as HTMLInputElement).blur();
-                      if (e.key === "Escape") {
-                        const before = saved.steps.find((x) => x.key === s.key);
-                        if (before) show(MilestoneEditorModel.update(state, s.key, { name: before.name }));
-                        requestAnimationFrame(() => (e.target as HTMLInputElement).blur());
-                      }
-                    }}
-                    aria-label={`Step ${i + 1} name`}
-                    aria-invalid={err ? true : undefined}
-                    maxLength={grandfathered ? undefined : MilestoneEditorModel.NAME_MAX}
-                    title={s.name}
-                    className={`h-7 min-w-0 flex-1 truncate rounded-control border border-transparent bg-transparent px-1 type-table hover:border-line focus:border-accent focus:bg-input focus:outline-none ${
-                      s.done ? "text-muted line-through decoration-[#4A505C]" : "text-fg"
-                    } ${err ? "border-danger" : ""}`}
-                  />
-                  {renaming && (
-                    <span className={`shrink-0 tabular-nums type-caption ${err || s.name.trim().length > MilestoneEditorModel.NAME_MAX ? "text-danger" : "text-muted"}`} data-testid="rename-counter">
-                      {MilestoneEditorModel.nameCounter(s.name.trim())}
-                    </span>
+                  {renaming ? (
+                    <AutoGrowTextarea
+                      value={s.name}
+                      autoFocus
+                      rows={1}
+                      onFocus={(e) => {
+                        const end = e.currentTarget.value.length;
+                        e.currentTarget.setSelectionRange(end, end);
+                      }}
+                      onChange={(e) => show(MilestoneEditorModel.update(state, s.key, { name: e.target.value }))}
+                      onBlur={finishRename}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter") {
+                          e.preventDefault();
+                          e.currentTarget.blur();
+                        }
+                        if (e.key === "Escape") {
+                          const before = saved.steps.find((x) => x.key === s.key);
+                          if (before) show(MilestoneEditorModel.update(state, s.key, { name: before.name }));
+                          const el = e.currentTarget;
+                          requestAnimationFrame(() => el.blur());
+                        }
+                      }}
+                      aria-label={`Step ${i + 1} name`}
+                      aria-invalid={err ? true : undefined}
+                      aria-describedby={`ms-count-${s.key}`}
+                      maxLength={grandfathered ? undefined : MilestoneEditorModel.NAME_MAX}
+                      data-testid="rename-input"
+                      className={`min-h-7 min-w-0 flex-1 resize-none overflow-hidden rounded-control border border-accent bg-input px-1 py-[5px] leading-[18px] text-fg type-table focus:outline-none ${err ? "border-danger" : ""}`}
+                    />
+                  ) : (
+                    <input
+                      value={s.name}
+                      readOnly
+                      onFocus={() => setEditingName(s.key)}
+                      aria-label={`Step ${i + 1} name`}
+                      aria-invalid={err ? true : undefined}
+                      title={s.name}
+                      className={`h-7 min-w-0 flex-1 truncate rounded-control border border-transparent bg-transparent px-1 type-table hover:border-line focus:border-accent focus:bg-input focus:outline-none ${
+                        s.done ? "text-muted line-through decoration-[#4A505C]" : "text-fg"
+                      } ${err ? "border-danger" : ""}`}
+                    />
                   )}
                   {isNext && !renaming && (
                     <span
@@ -403,11 +425,38 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
                     )}
                   </div>
                 </div>
+                {renaming && (
+                  <p id={`ms-count-${s.key}`} className="flex justify-end px-9 pb-1 tabular-nums text-muted type-caption" data-testid="rename-counter">
+                    <span aria-hidden="true">{MilestoneEditorModel.nameCounter(s.name)}</span>
+                    <span className="sr-only">{MilestoneEditorModel.nameCounterLabel(s.name)}</span>
+                  </p>
+                )}
                 {err && <p className="px-9 pb-1.5 text-danger type-caption">{err}</p>}
                 {!err && grandfathered && (
                   <p className="px-9 pb-1.5 type-caption" style={{ color: "var(--status-at-risk-dark-fg)" }}>
-                    Longer than {MilestoneEditorModel.NAME_MAX} characters (kept from before). A rename needs {MilestoneEditorModel.NAME_MAX} or fewer.
+                    Longer than {MilestoneEditorModel.NAME_MAX.toLocaleString("en-US")} characters (kept from before). A rename needs {MilestoneEditorModel.NAME_MAX.toLocaleString("en-US")} or fewer.
                   </p>
+                )}
+                {ownerOptions && (
+                  <div className="flex items-center gap-2 pr-2 pb-1.5 pl-9" data-testid="milestone-owner-row">
+                    <label htmlFor={`ms-owner-${s.key}`} className="w-11 shrink-0 text-muted type-caption">
+                      {MilestoneOwnerCopy.LABEL}
+                    </label>
+                    <div className="flex w-[220px] min-w-0">
+                      <PeopleCombobox
+                        role="owner"
+                        id={`ms-owner-${s.key}`}
+                        label={`${MilestoneOwnerCopy.LABEL}, step ${i + 1}`}
+                        options={ownerOptions}
+                        value={s.owner ? { kind: "name", name: s.owner } : { kind: "unset" }}
+                        onPick={(next) => void commit(MilestoneEditorModel.update(state, s.key, { owner: next.kind === "name" ? next.name : null }))}
+                        variant={MilestoneOwnerCopy.VARIANT}
+                        name=""
+                        testId="milestone-owner-combobox"
+                        compact
+                      />
+                    </div>
+                  </div>
                 )}
               </li>
             );
@@ -415,9 +464,10 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
         </ol>
       )}
 
-      <div className="relative mt-2.5">
-        <input
+      <div className="mt-2.5 flex flex-col">
+        <AutoGrowTextarea
           value={newName}
+          rows={1}
           onChange={(e) => setNewName(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === "Enter") {
@@ -428,13 +478,16 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
           disabled={busy}
           placeholder="Add a milestone and press Enter"
           aria-label="New milestone name"
+          aria-describedby={newName ? "ms-new-count" : undefined}
           maxLength={MilestoneEditorModel.NAME_MAX}
-          className="h-7 w-full min-w-0 rounded-control border border-line bg-input pr-14 pl-2.5 text-fg type-table focus:border-accent focus:outline-none"
+          data-testid="new-milestone-input"
+          className="min-h-7 w-full min-w-0 resize-none overflow-hidden rounded-control border border-line bg-input px-2.5 py-[5px] leading-[18px] text-fg type-table focus:border-accent focus:outline-none"
         />
         {newName && (
-          <span className={`absolute top-1/2 right-2.5 -translate-y-1/2 tabular-nums type-caption ${newName.length >= MilestoneEditorModel.NAME_MAX ? "text-danger" : "text-muted"}`}>
-            {MilestoneEditorModel.nameCounter(newName)}
-          </span>
+          <p id="ms-new-count" className="mt-1 flex justify-end tabular-nums text-muted type-caption" data-testid="new-milestone-counter">
+            <span aria-hidden="true">{MilestoneEditorModel.nameCounter(newName)}</span>
+            <span className="sr-only">{MilestoneEditorModel.nameCounterLabel(newName)}</span>
+          </p>
         )}
       </div>
       <p className="mt-2.5 text-muted type-caption">

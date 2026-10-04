@@ -113,7 +113,7 @@ describe("ImportService: new projects", () => {
       ),
       fake.asClient(),
     );
-    expect(preview.rows[0].errors.note).toEqual(["Note must be at most 200 characters"]);
+    expect(preview.rows[0].errors.note).toEqual(["Note must be at most 2,000 characters"]);
     expect(preview.rows[1].status).toBe("ready");
   });
 
@@ -142,9 +142,10 @@ describe("ImportService: new projects", () => {
     expect(fake.state.projects[0].description).toBeNull();
   });
 
-  it("next milestone longer than 40 characters is a row error", async () => {
-    const preview = await ImportService.previewCreate(Csv.file(Csv.row({ next_milestone: "m".repeat(41) })), fake.asClient());
-    expect(preview.rows[0].errors.next_milestone).toEqual(["Next milestone must be at most 40 characters"]);
+  it("next milestone longer than 2,000 characters is a row error (was 40 before batch task 2)", async () => {
+    const preview = await ImportService.previewCreate(Csv.file(Csv.row({ next_milestone: "m".repeat(2001) }), Csv.row({ name: "B", next_milestone: "m".repeat(41) })), fake.asClient());
+    expect(preview.rows[0].errors.next_milestone).toEqual(["Next milestone must be at most 2,000 characters"]);
+    expect(preview.rows[1].status).toBe("ready");
   });
 
   it("other ProjectValidator rules surface per column (milestone required, percent, email, required text)", async () => {

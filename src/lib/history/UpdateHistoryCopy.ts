@@ -90,6 +90,18 @@ export class UpdateHistoryCopy {
     return `Due date for "${step}" cleared (was ${from ?? ""}).`;
   }
 
+  /** A step's owner (migration 0029): "Owner for "Go-live" changed from Kim Nguyen to Raj Patel." */
+  static stepOwner(step: string, from: string | null, to: string | null): string {
+    if (from && to) return `Owner for "${step}" changed from ${from} to ${to}.`;
+    if (to) return `Owner for "${step}" set to ${to}.`;
+    return `Owner for "${step}" cleared (was ${from ?? ""}).`;
+  }
+
+  /** A People page rename that reached a step owner. */
+  static stepOwnerRenamed(step: string, from: string, to: string): string {
+    return `Owner for "${step}" renamed from ${from} to ${to} on the People page.`;
+  }
+
   /**
    * "Applied the "Device trial" template and added 3 steps to the end." Stored as "Device trial (Add to end, 3 steps)"
    * (MilestoneRules).

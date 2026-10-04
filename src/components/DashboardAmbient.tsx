@@ -92,6 +92,7 @@ export function SummaryHeartbeat({ tilesKey }: { tilesKey: string }) {
       cancelAnimationFrame(frame);
       clock?.cancel();
       summary.removeAttribute("data-pb-beat");
+      for (const tile of summary.querySelectorAll<HTMLElement>(".pb-tile")) tile.style.removeProperty("--pb-beat-delay");
     };
   }, [tilesKey]);
   return (

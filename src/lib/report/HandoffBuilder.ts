@@ -42,6 +42,8 @@ export interface HandoffFlagged {
   serviceArea: string | null;
   status: string;
   dueDate: string | null;
+  /** The next open step's owner, full name. Omitted when there is none (files without owners are byte-identical). */
+  nextMilestoneOwner?: string;
 }
 
 export interface HandoffCompleted {
@@ -104,7 +106,7 @@ export class HandoffBuilder {
   }
 
   private static flagged(rows: readonly ReportRow[], list: DepartmentList): HandoffFlagged[] {
-    return rows.map((r) => ({ name: r.name, serviceArea: HandoffBuilder.areaText(r.serviceArea, list), status: ProjectStatusInfo.label(r.status), dueDate: r.dueDate }));
+    return rows.map((r) => ({ name: r.name, serviceArea: HandoffBuilder.areaText(r.serviceArea, list), status: ProjectStatusInfo.label(r.status), dueDate: r.dueDate, ...(r.nextMilestoneOwner ? { nextMilestoneOwner: r.nextMilestoneOwner } : {}) }));
   }
 
   /** A department key as the file names it: its short name; null stays null. */

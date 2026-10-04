@@ -1,3 +1,4 @@
+import { AppConfig } from "@/lib/config/AppConfig";
 import { DateOnly } from "@/lib/domain/DateOnly";
 
 /** A step as the drawer sends it on Save (array order = position). */
@@ -10,6 +11,8 @@ export interface MilestoneDraft {
   done: boolean;
   /** Template the step was copied from (null for a hand-added step). */
   sourceTemplateId: string | null;
+  /** Owner (a name from the line's Owners list), or null for Unassigned. Absent = unchanged (older clients). */
+  owner?: string | null;
 }
 
 /** A stored step (ProjectMilestone row fields the plan needs). */
@@ -23,6 +26,7 @@ export interface StoredStep {
   checkedAt?: Date | null;
   position: number;
   sourceTemplateId: string | null;
+  owner?: string | null;
 }
 
 /** "Apply template" in this edit, for the history row. */
@@ -49,6 +53,8 @@ export interface StepWrite {
   checkedAt: Date | null;
   position: number;
   sourceTemplateId: string | null;
+  /** Owner name (migration 0029), null = Unassigned. */
+  owner: string | null;
 }
 
 /** Who is saving, and when: recorded on each step this save checks. */
@@ -85,8 +91,10 @@ export class MilestoneValidationError extends Error {
  * legacy text is accepted until it is edited) and the plan of writes plus one history row per action.
  */
 export class MilestoneRules {
-  /** Hard cap for a new or renamed step, and for every template step. */
-  static readonly NAME_MAX = 40;
+  /** Hard cap for a new or renamed project step (AppConfig.MILESTONE_MAX_LENGTH, 2,000). */
+  static readonly NAME_MAX = AppConfig.MILESTONE_MAX_LENGTH;
+  /** Hard cap for a template step (unchanged: templates are short reusable step names). */
+  static readonly TEMPLATE_STEP_MAX = AppConfig.MILESTONE_SOFT_LENGTH;
   /** Template names. */
   static readonly TEMPLATE_NAME_MAX = 60;
   /** Steps per project or template. */
@@ -102,6 +110,7 @@ export class MilestoneRules {
     deleted: "milestone_deleted",
     reordered: "milestones_reordered",
     templateApplied: "milestone_template_applied",
+    owner: "milestone_owner",
   } as const;
 
   static readonly FIELD_LABELS: Readonly<Record<string, string>> = {
@@ -113,6 +122,7 @@ export class MilestoneRules {
     milestone_deleted: "Milestone deleted",
     milestones_reordered: "Milestones reordered",
     milestone_template_applied: "Template applied",
+    milestone_owner: "Milestone owner",
   };
 
   /** Collapse whitespace and trim. */
@@ -124,7 +134,7 @@ export class MilestoneRules {
   static nameError(name: string, max: number = MilestoneRules.NAME_MAX): string | null {
     const n = MilestoneRules.clean(name);
     if (!n) return "Name is required";
-    if (n.length > max) return `At most ${max} characters`;
+    if (n.length > max) return `At most ${max.toLocaleString("en-US")} characters`;
     return null;
   }
 
@@ -139,8 +149,20 @@ export class MilestoneRules {
         dueDate: typeof o.dueDate === "string" ? o.dueDate.trim() : "",
         done: o.done === true,
         sourceTemplateId: typeof o.sourceTemplateId === "string" && o.sourceTemplateId ? o.sourceTemplateId : null,
+        ...(o.owner === null || typeof o.owner === "string" ? { owner: MilestoneRules.cleanOwner(o.owner) } : {}),
       };
     });
+  }
+
+  /** An owner as stored: whitespace collapsed; blank = null (Unassigned). */
+  static cleanOwner(owner: unknown): string | null {
+    const n = typeof owner === "string" ? owner.replace(/\s+/g, " ").trim() : "";
+    return n ? n : null;
+  }
+
+  /** History value for a step owner: "Go-live: Kim Nguyen" (null when Unassigned). */
+  static ownerLabel(name: string, owner: string | null): string | null {
+    return owner ? `${name}: ${owner}` : null;
   }
 
   static describe(name: string, dueDate: Date | string | null): string {
@@ -196,12 +218,14 @@ export class MilestoneRules {
           checkedAt: d.done ? (checker?.at ?? null) : null,
           position,
           sourceTemplateId: d.sourceTemplateId,
+          owner: d.owner ?? null,
         };
         plan.creates.push(write);
         plan.result.push(write);
         if (applied && d.sourceTemplateId === applied.templateId) templateSteps += 1;
         else plan.history.push({ field: F.added, oldValue: null, newValue: MilestoneRules.describe(name, dueDate) });
         if (d.done) plan.history.push({ field: F.done, oldValue: null, newValue: name });
+        if (write.owner) plan.history.push({ field: F.owner, oldValue: null, newValue: MilestoneRules.ownerLabel(name, write.owner) });
         return;
       }
       kept.add(existing.id);
@@ -224,6 +248,11 @@ export class MilestoneRules {
         data.checkedAt = d.done ? (checker?.at ?? null) : null;
         plan.history.push(d.done ? { field: F.done, oldValue: null, newValue: name } : { field: F.reopened, oldValue: name, newValue: null });
       }
+      const oldOwner = existing.owner ?? null;
+      if (d.owner !== undefined && (d.owner ?? null) !== oldOwner) {
+        data.owner = d.owner ?? null;
+        plan.history.push({ field: F.owner, oldValue: MilestoneRules.ownerLabel(name, oldOwner), newValue: MilestoneRules.ownerLabel(name, data.owner) });
+      }
       if (position !== existing.position) data.position = position;
       if (Object.keys(data).length) plan.updates.push({ id: existing.id, data });
       plan.result.push({
@@ -235,6 +264,7 @@ export class MilestoneRules {
         checkedAt: "checkedAt" in data ? (data.checkedAt ?? null) : (existing.checkedAt ?? null),
         position,
         sourceTemplateId: existing.sourceTemplateId,
+        owner: "owner" in data ? (data.owner ?? null) : oldOwner,
       });
     });
 

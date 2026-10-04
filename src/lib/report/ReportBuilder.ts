@@ -252,6 +252,8 @@ export class ReportBuilder {
       contractsLead: project.contractsLead ?? null,
       // Only with a checklist, so rows of projects without steps are exactly as before.
       ...(project.milestoneProgress ? { milestoneProgress: project.milestoneProgress } : {}),
+      // Only with an owner on the next open step, so every other row's JSON is exactly as before.
+      ...(project.nextMilestoneOwner ? { nextMilestoneOwner: project.nextMilestoneOwner } : {}),
       changed: flags.changed,
       overdue: flags.overdue,
       updatedOn: details.updatedOn ?? null,

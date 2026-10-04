@@ -18,6 +18,14 @@ export interface ComboOption {
   current: boolean;
 }
 
+/** Per-field copy and options (milestone owners: "No owner", "Unassigned", list names only). Defaults = project Owner/Requester. */
+export interface ComboVariant {
+  clearLabel?: string;
+  unsetText?: string;
+  /** Offer "Add 'X'" for a typed name not on the list. */
+  allowAdd?: boolean;
+}
+
 export type ComboRow = ComboOption | { type: "divider" } | { type: "message"; text: string };
 
 /** A save call for the existing admin server action (field + string value). */
@@ -38,6 +46,8 @@ export class PeopleComboboxModel {
   static readonly TO_ASSIGN = "To assign";
   static readonly NO_MATCH = "No match";
   static readonly EMPTY = "No names yet. Type to add one.";
+  /** Empty list where typing can't add a name (milestone owners): names come from Admin > People. */
+  static readonly NO_NAMES = "No names yet. Add people in Admin > People.";
   /** Gray tag on a closed field whose name is not on the line's list (Admin > People), e.g. Mark Wingard. */
   static readonly NOT_ON_LIST = "Not on list";
 
@@ -54,9 +64,9 @@ export class PeopleComboboxModel {
   }
 
   /** Closed-field text: the name in primary text; "To assign" or "Not applicable" in gray. */
-  static display(value: PeopleValue): { text: string; muted: boolean } {
+  static display(value: PeopleValue, variant: ComboVariant = {}): { text: string; muted: boolean } {
     if (value.kind === "name") return { text: value.name, muted: false };
-    return { text: value.kind === "na" ? PeopleComboboxModel.NOT_APPLICABLE : PeopleComboboxModel.TO_ASSIGN, muted: true };
+    return { text: value.kind === "na" ? PeopleComboboxModel.NOT_APPLICABLE : (variant.unsetText ?? PeopleComboboxModel.TO_ASSIGN), muted: true };
   }
 
   /** "Add 'X'" label (straight quotes, as specced). */
@@ -68,11 +78,11 @@ export class PeopleComboboxModel {
    * Rows for the open popover. `filtering` is false right after opening (the field still shows the
    * current name, so every name is listed); typing turns it on.
    */
-  static rows(role: PeopleRole, options: readonly string[], query: string, filtering: boolean, current: PeopleValue): ComboRow[] {
+  static rows(role: PeopleRole, options: readonly string[], query: string, filtering: boolean, current: PeopleValue, variant: ComboVariant = {}): ComboRow[] {
     const q = filtering ? query : "";
     const rows: ComboRow[] = [];
     if (role === "requester") rows.push(PeopleComboboxModel.pinned("na", PeopleComboboxModel.NOT_APPLICABLE, { kind: "na" }, current.kind === "na"));
-    rows.push(PeopleComboboxModel.pinned("clear", PeopleComboboxModel.CLEAR, { kind: "unset" }, current.kind === "unset"));
+    rows.push(PeopleComboboxModel.pinned("clear", variant.clearLabel ?? PeopleComboboxModel.CLEAR, { kind: "unset" }, current.kind === "unset"));
     rows.push({ type: "divider" });
     const names = PeopleDirectory.filter(options, q);
     names.forEach((name, i) =>
@@ -86,9 +96,10 @@ export class PeopleComboboxModel {
         current: current.kind === "name" && current.name.toLowerCase() === name.toLowerCase(),
       }),
     );
-    if (options.length === 0) rows.push({ type: "message", text: PeopleComboboxModel.EMPTY });
+    const allowAdd = variant.allowAdd ?? true;
+    if (options.length === 0) rows.push({ type: "message", text: allowAdd ? PeopleComboboxModel.EMPTY : PeopleComboboxModel.NO_NAMES });
     else if (names.length === 0) rows.push({ type: "message", text: PeopleComboboxModel.NO_MATCH });
-    const add = PeopleDirectory.addCandidate(options, q);
+    const add = allowAdd ? PeopleDirectory.addCandidate(options, q) : null;
     if (add) {
       rows.push({
         type: "option",

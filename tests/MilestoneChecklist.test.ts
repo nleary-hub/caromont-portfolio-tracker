@@ -47,6 +47,7 @@ describe("MilestoneProgress derivation", () => {
       count: { done: 1, total: 3 },
       allDone: false,
       source: "steps",
+      owner: null,
     });
   });
 
@@ -175,21 +176,22 @@ describe("migrated data looks identical (report rows, PDF, dashboard, handoff.js
   });
 });
 
-describe("MilestoneRules: 40-character cap on new vs legacy steps", () => {
-  const long = "A legacy milestone written before the forty character rule existed";
+describe("MilestoneRules: 2,000-character cap on new vs legacy steps (was 40 before batch task 2)", () => {
+  const long = `A legacy milestone stored over the cap ${"x".repeat(2000)}`;
   const stored: StoredStep[] = [{ id: "s1", name: long, dueDate: d("2026-10-01"), done: false, doneAt: null, position: 1, sourceTemplateId: null }];
   const draft = (over: Partial<MilestoneDraft> = {}): MilestoneDraft => ({ id: "s1", name: long, dueDate: "2026-10-01", done: false, sourceTemplateId: null, ...over });
 
-  it("an unchanged migrated step over 40 is accepted; renaming it enforces the cap", () => {
+  it("an unchanged migrated step over the cap is accepted; renaming it enforces the cap", () => {
     expect(() => MilestoneRules.plan(stored, [draft({ dueDate: "2026-10-08" })], "2026-09-26")).not.toThrow();
     expect(() => MilestoneRules.plan(stored, [draft({ name: `${long}!` })], "2026-09-26")).toThrow(MilestoneValidationError);
     expect(() => MilestoneRules.plan(stored, [draft({ name: "Short rename" })], "2026-09-26")).not.toThrow();
   });
 
-  it("a new step over 40 is rejected; exactly 40 is fine", () => {
+  it("a new step over 2,000 is rejected; exactly 2,000 is fine (41 is fine now)", () => {
     const add = (name: string) => MilestoneRules.plan([], [{ id: null, name, dueDate: "", done: false, sourceTemplateId: null }], "2026-09-26");
-    expect(() => add("x".repeat(41))).toThrow(/Step 1: At most 40 characters/);
-    expect(() => add("x".repeat(40))).not.toThrow();
+    expect(() => add("x".repeat(2001))).toThrow(/Step 1: At most 2,000 characters/);
+    expect(() => add("x".repeat(2000))).not.toThrow();
+    expect(() => add("x".repeat(41))).not.toThrow();
     expect(() => add("   ")).toThrow(MilestoneValidationError);
   });
 
@@ -198,8 +200,8 @@ describe("MilestoneRules: 40-character cap on new vs legacy steps", () => {
     expect(MilestoneEditorModel.errors(original, original)).toEqual({});
     expect(MilestoneEditorModel.isGrandfathered(original.steps[0], original)).toBe(true);
     const renamed = MilestoneEditorModel.update(original, "legacy", { name: `${long}.` });
-    expect(Object.values(MilestoneEditorModel.errors(renamed, original))).toEqual(["At most 40 characters"]);
-    const added = MilestoneEditorModel.add(original, "y".repeat(41));
+    expect(Object.values(MilestoneEditorModel.errors(renamed, original))).toEqual(["At most 2,000 characters"]);
+    const added = MilestoneEditorModel.add(original, "y".repeat(2001));
     expect(Object.keys(MilestoneEditorModel.errors(added, original))).toHaveLength(1);
   });
 });
@@ -334,11 +336,11 @@ describe("saving the checklist (server)", () => {
     expect(ReportBuilder.isOverdue(derived, "2026-09-29")).toBe(false);
   });
 
-  it("rejects a new step over 40 with a form error, writing nothing", async () => {
+  it("rejects a new step over 2,000 with a form error, writing nothing", async () => {
     const p = await ProjectService.create(base, actor, db);
     const before = fake.state.history.length;
     await expect(
-      ProjectService.saveForm(p.id, { note: "x" }, Factory.ADMIN, db, { drafts: [{ id: null, name: "z".repeat(41), dueDate: "", done: false, sourceTemplateId: null }] }),
+      ProjectService.saveForm(p.id, { note: "x" }, Factory.ADMIN, db, { drafts: [{ id: null, name: "z".repeat(2001), dueDate: "", done: false, sourceTemplateId: null }] }),
     ).rejects.toThrow(ProjectValidationError);
     expect(fake.state.history).toHaveLength(before);
     expect(fake.state.milestones).toHaveLength(0);
@@ -523,12 +525,12 @@ describe("Figma Bro layout rules", () => {
   });
 
   it("done steps show 'Done Sep 26' where the due date goes; a past due date on an open step is overdue", () => {
-    const base = { key: "k", id: "k", name: "Step", sourceTemplateId: null };
+    const base = { key: "k", id: "k", name: "Step", sourceTemplateId: null, owner: null };
     expect(MilestoneEditorModel.dateLabel({ ...base, done: true, doneAt: "2026-09-26", dueDate: "2026-09-01" }, "2026-09-26")).toEqual({ text: "Done Sep 26", tone: "done" });
     expect(MilestoneEditorModel.dateLabel({ ...base, done: false, doneAt: null, dueDate: "2026-09-25" }, "2026-09-26")).toEqual({ text: "Sep 25", tone: "overdue" });
     expect(MilestoneEditorModel.dateLabel({ ...base, done: false, doneAt: null, dueDate: "2026-09-26" }, "2026-09-26")).toEqual({ text: "Sep 26", tone: "due" });
     expect(MilestoneEditorModel.dateLabel({ ...base, done: false, doneAt: null, dueDate: "" }, "2026-09-26").tone).toBe("empty");
-    expect(MilestoneEditorModel.nameCounter("x".repeat(23))).toBe("23/40");
+    expect(MilestoneEditorModel.nameCounter("x".repeat(23))).toBe("23 / 2,000");
   });
 
   it("new project 'Start from': Blank is empty; a template fills editable steps", () => {

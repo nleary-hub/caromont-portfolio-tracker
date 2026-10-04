@@ -77,7 +77,7 @@ export class ProjectFormModel {
 
   /** Soft limits: past the limit the counter warns, saving is still allowed. */
   static readonly SOFT_LIMITS: Readonly<Partial<Record<FormField, number>>> = {
-    nextMilestone: AppConfig.MILESTONE_MAX_LENGTH,
+    nextMilestone: AppConfig.MILESTONE_SOFT_LENGTH,
   };
 
   /** Longest text a soft-limited input or the name accepts. */
@@ -98,7 +98,7 @@ export class ProjectFormModel {
     note: "Latest update",
     accomplishment: "Accomplishment",
     description: "Description",
-    completedOn: "Completed on",
+    completedOn: "Completion date",
     startDate: StartDate.LABEL,
   };
 
@@ -195,6 +195,13 @@ export class ProjectFormModel {
     const soft = ProjectFormModel.SOFT_LIMITS[field];
     if (soft !== undefined) return { count: value.length, limit: soft, kind: "soft", alert: value.trim().length > soft };
     return null;
+  }
+
+  /** Long-text fields (2,000 characters): auto-growing textarea and the "1,240 / 2,000" counter. */
+  static readonly LONG_TEXT: ReadonlySet<FormField> = new Set<FormField>(["note"]);
+
+  static isLongText(field: FormField): boolean {
+    return ProjectFormModel.LONG_TEXT.has(field);
   }
 
   /** The input's maxLength (hard cap, or the backstop for soft and plain text fields). */

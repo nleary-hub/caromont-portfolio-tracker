@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { PeopleRole } from "@/lib/people/PeopleDirectory";
-import { PeopleComboboxModel, type ComboOption, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
+import { PeopleComboboxModel, type ComboOption, type ComboVariant, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
 import { Chevron, FieldControlStyle } from "./FieldControl";
 
 export interface PeopleComboboxProps {
@@ -15,6 +15,14 @@ export interface PeopleComboboxProps {
   options: readonly string[];
   value: PeopleValue;
   onPick: (next: PeopleValue) => void;
+  /** Copy and options for another field (milestone owners). Omit for the project Owner/Requester fields. */
+  variant?: ComboVariant;
+  /** Form field name; "" keeps it out of the form's data (milestone owners). Default "owner" or "requester". */
+  name?: string;
+  /** Overrides data-testid (default "<role>-combobox"). */
+  testId?: string;
+  /** Smaller control for a dense row (milestone owners). */
+  compact?: boolean;
 }
 
 /**
@@ -23,17 +31,17 @@ export interface PeopleComboboxProps {
  * Enter picks, Esc closes and restores the old value, clicking away discards the typed text. Rows come
  * from PeopleComboboxModel.
  */
-export function PeopleCombobox({ role, id, label, options, value, onPick }: PeopleComboboxProps) {
+export function PeopleCombobox({ role, id, label, options, value, onPick, variant = {}, name, testId, compact }: PeopleComboboxProps) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [filtering, setFiltering] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
   const listId = `${id}-listbox`;
-  const shown = PeopleComboboxModel.display(value);
+  const shown = PeopleComboboxModel.display(value, variant);
   const offList = !open && PeopleComboboxModel.offList(value, options);
 
-  const rows = PeopleComboboxModel.rows(role, options, query, filtering, value);
+  const rows = PeopleComboboxModel.rows(role, options, query, filtering, value, variant);
   const opts = PeopleComboboxModel.options(rows);
   const optionId = (o: ComboOption) => `${id}-opt-${o.key}`;
   const active = open && highlight >= 0 && highlight < opts.length ? opts[highlight] : null;
@@ -47,7 +55,7 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
     const q = value.kind === "name" ? value.name : "";
     setQuery(q);
     setFiltering(false);
-    setHighlight(PeopleComboboxModel.defaultHighlight(PeopleComboboxModel.rows(role, options, q, false, value), false));
+    setHighlight(PeopleComboboxModel.defaultHighlight(PeopleComboboxModel.rows(role, options, q, false, value, variant), false));
     setOpen(true);
     // The field already shows the current name, so select it now: typing replaces it.
     inputRef.current?.select();
@@ -66,7 +74,7 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
     setQuery(text);
     setFiltering(true);
     setOpen(true);
-    setHighlight(PeopleComboboxModel.defaultHighlight(PeopleComboboxModel.rows(role, options, text, true, value), true));
+    setHighlight(PeopleComboboxModel.defaultHighlight(PeopleComboboxModel.rows(role, options, text, true, value, variant), true));
   };
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
@@ -93,7 +101,7 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
       <input
         ref={inputRef}
         id={id}
-        name={role === "owner" ? "owner" : "requester"}
+        name={name ?? (role === "owner" ? "owner" : "requester")}
         type="text"
         role="combobox"
         aria-expanded={open}
@@ -102,7 +110,7 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
         aria-activedescendant={active ? optionId(active) : undefined}
         autoComplete="off"
         spellCheck={false}
-        data-testid={`${role}-combobox`}
+        data-testid={testId ?? `${role}-combobox`}
         value={open ? query : value.kind === "name" ? value.name : ""}
         placeholder={shown.text}
         onChange={(e) => type(e.target.value)}
@@ -110,7 +118,7 @@ export function PeopleCombobox({ role, id, label, options, value, onPick }: Peop
         onKeyDown={onKeyDown}
         onBlur={close}
         aria-describedby={offList ? `${id}-offlist` : undefined}
-        className={`${offList ? FieldControlStyle.BOX.replace("pr-7", "pr-[96px]") : FieldControlStyle.BOX} placeholder:text-muted ${shown.muted ? "text-muted" : "text-fg"}`}
+        className={`${offList ? FieldControlStyle.BOX.replace("pr-7", "pr-[96px]") : FieldControlStyle.BOX} ${compact ? "!h-7" : ""} placeholder:text-muted ${shown.muted ? "text-muted" : "text-fg"}`}
       />
       {offList && (
         <span

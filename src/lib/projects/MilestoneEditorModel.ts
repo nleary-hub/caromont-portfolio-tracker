@@ -1,3 +1,4 @@
+import { LongTextCounter } from "@/lib/projects/LongTextCounter";
 import { MilestoneProgress, type MilestoneCount } from "@/lib/domain/MilestoneProgress";
 import { MilestoneRules, type MilestoneDraft, type MilestoneEdit, type TemplateApplied } from "@/lib/domain/MilestoneRules";
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
@@ -22,6 +23,8 @@ export interface EditorStep {
   /** Checked in this session and not saved yet: who and when (the tooltip says "Not saved yet."). */
   pending?: PendingCheck | null;
   sourceTemplateId: string | null;
+  /** Owner name, or null (Unassigned). */
+  owner: string | null;
 }
 
 export interface EditorState {
@@ -61,6 +64,7 @@ export class MilestoneEditorModel {
           checkedBy: s.checkedBy ?? null,
           checkedAt: s.checkedAt ?? null,
           sourceTemplateId: s.sourceTemplateId,
+          owner: s.owner ?? null,
         })),
         applied: null,
       };
@@ -68,15 +72,15 @@ export class MilestoneEditorModel {
     const text = legacy.nextMilestone.trim();
     if (!text) return { steps: [], applied: null };
     const id = MilestoneEditorModel.LEGACY_ID;
-    return { steps: [{ key: id, id, name: text, dueDate: legacy.dueDate, done: false, doneAt: null, sourceTemplateId: null }], applied: null };
+    return { steps: [{ key: id, id, name: text, dueDate: legacy.dueDate, done: false, doneAt: null, sourceTemplateId: null, owner: null }], applied: null };
   }
 
   static add(state: EditorState, name: string): EditorState {
-    const step: EditorStep = { key: MilestoneEditorModel.newKey(), id: null, name: MilestoneRules.clean(name), dueDate: "", done: false, doneAt: null, sourceTemplateId: null };
+    const step: EditorStep = { key: MilestoneEditorModel.newKey(), id: null, name: MilestoneRules.clean(name), dueDate: "", done: false, doneAt: null, sourceTemplateId: null, owner: null };
     return { ...state, steps: [...state.steps, step] };
   }
 
-  static update(state: EditorState, key: string, patch: Partial<Pick<EditorStep, "name" | "dueDate">>): EditorState {
+  static update(state: EditorState, key: string, patch: Partial<Pick<EditorStep, "name" | "dueDate" | "owner">>): EditorState {
     return { ...state, steps: state.steps.map((s) => (s.key === key ? { ...s, ...patch } : s)) };
   }
 
@@ -129,6 +133,7 @@ export class MilestoneEditorModel {
       done: false,
       doneAt: null,
       sourceTemplateId: template.id,
+      owner: null,
     }));
     const steps = mode === "replace" ? copied : [...state.steps, ...copied];
     return { steps, applied: { templateId: template.id, templateName: template.name, mode } };
@@ -140,7 +145,7 @@ export class MilestoneEditorModel {
   }
 
   static toDrafts(state: EditorState): MilestoneDraft[] {
-    return state.steps.map((s) => ({ id: s.id, name: s.name, dueDate: s.dueDate, done: s.done, sourceTemplateId: s.sourceTemplateId }));
+    return state.steps.map((s) => ({ id: s.id, name: s.name, dueDate: s.dueDate, done: s.done, sourceTemplateId: s.sourceTemplateId, owner: s.owner ?? null }));
   }
 
   /** What Save sends: null when the checklist is unchanged (the server then leaves it alone). */
@@ -154,7 +159,7 @@ export class MilestoneEditorModel {
   }
 
   /**
-   * Per-step errors (by key): a new or renamed step needs a name of at most 40 characters; a stored step
+   * Per-step errors (by key): a new or renamed step needs a name of at most 2,000 characters; a stored step
    * whose text is unchanged is accepted even when it is longer (migrated legacy text).
    */
   static errors(state: EditorState, original: EditorState): Record<string, string> {
@@ -211,8 +216,14 @@ export class MilestoneEditorModel {
   }
 
   /** "23/40" while naming a step. */
+  /** "23 / 2,000" (at the cap "2,000 / 2,000, limit reached"); LongTextCounter copy. */
   static nameCounter(name: string): string {
-    return `${name.length}/${MilestoneEditorModel.NAME_MAX}`;
+    return LongTextCounter.text(name.length, MilestoneEditorModel.NAME_MAX);
+  }
+
+  /** Screen-reader counter: "23 of 2,000 characters used". */
+  static nameCounterLabel(name: string): string {
+    return LongTextCounter.label(name.length, MilestoneEditorModel.NAME_MAX);
   }
 
   private static readonly SHORT = new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", timeZone: "UTC" });

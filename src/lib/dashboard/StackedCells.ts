@@ -1,3 +1,4 @@
+import { AppConfig } from "@/lib/config/AppConfig";
 import type { DueFlagsVisibility, MilestoneUpdateVisibility } from "@/lib/dashboard/DashboardColumnModel";
 import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
 import { FlagSlots, type FlagKind } from "@/lib/domain/FlagSlots";
@@ -16,7 +17,7 @@ export interface MilestoneUpdateSource {
 /** One line of the Next milestone / Latest update cell. */
 export type MilestoneUpdateLine =
   | { kind: "milestone"; text: string; progress: string | null; done: boolean }
-  | { kind: "update"; prefix: string | null; text: string | null; full: string; muted: boolean };
+  | { kind: "update"; prefix: string | null; text: string | null; full: string; muted: boolean; clipped?: boolean };
 
 /**
  * Lines of the Next milestone / Latest update cell, following the PDF row: the next milestone (primary,
@@ -34,6 +35,15 @@ export class MilestoneUpdateStack {
 
   /** Gap between the milestone and the update (the PDF uses ReportGeometry.NOTE_GAP, 3pt). */
   static readonly LINE_GAP_PX = 4;
+
+  /**
+   * Hover text for the milestone line (clamped to two lines by CSS): the full text as before; a milestone longer than
+   * the dashboard cap (AppConfig.NOTE_DISPLAY_MAX_LENGTH) says "Open the project to read the full text" instead.
+   */
+  static tooltip(text: string, progress: string | null | undefined): string {
+    if (text.length > AppConfig.NOTE_DISPLAY_MAX_LENGTH) return LatestUpdate.CLIPPED_TOOLTIP;
+    return progress ? `${text} ${progress}` : text;
+  }
 
   static lines(row: MilestoneUpdateSource, visible: MilestoneUpdateVisibility): MilestoneUpdateLine[] {
     const out: MilestoneUpdateLine[] = [];

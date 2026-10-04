@@ -158,7 +158,7 @@ export function ImportPanel({ adminEmail, templateColumns, limits, adminMenu, se
             {fileName && <span className="text-muted">{fileName}</span>}
           </label>
           <p className="type-caption text-muted">
-            Up to {limits.rows} rows per file. Note max {limits.note} characters; next milestone max {limits.milestone}{" "}
+            Up to {limits.rows} rows per file. Note max {limits.note.toLocaleString("en-US")} characters; next milestone max {limits.milestone.toLocaleString("en-US")}{" "}
             characters. Dates as YYYY-MM-DD or M/D/YYYY. Nothing is saved until you confirm, and a failed import saves
             nothing.
           </p>

@@ -3,6 +3,8 @@ import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { loadProjectHistory } from "@/app/actions/history";
+import { setDashboardHeartbeat } from "@/app/actions/preferences";
+import { DashboardPrefsService } from "@/lib/services/DashboardPrefsService";
 import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
@@ -217,6 +219,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       today={today}
       userEmail={viewer.email}
       userName={viewer.name}
+      heartbeat={await DashboardPrefsService.heartbeat(viewer.email)}
+      setHeartbeatAction={setDashboardHeartbeat}
       latestReport={latestReport}
       completedFiscalYear={completedFiscalYear}
       loadError={error}

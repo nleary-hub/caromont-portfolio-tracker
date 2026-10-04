@@ -192,17 +192,17 @@ describe("CSV export and wording update", () => {
     expect(fake.writes).toHaveLength(0);
   });
 
-  it("enforces next_milestone max 40 and note max 200, and the milestone-required rule", async () => {
+  it("enforces next_milestone max 2,000 and note max 2,000, and the milestone-required rule", async () => {
     const [cath] = Sheet.rows((await ExportService.exportCsv(db)).csv);
     const p = await ImportService.previewWording(
-      Sheet.write([{ ...cath, next_milestone: "m".repeat(41), note: "n".repeat(201) }]),
+      Sheet.write([{ ...cath, next_milestone: "m".repeat(2001), note: "n".repeat(2001) }]),
       db,
     );
     expect(p.rows[0].errors).toEqual({
-      next_milestone: ["Next milestone must be at most 40 characters"],
-      note: ["Note must be at most 200 characters"],
+      next_milestone: ["Next milestone must be at most 2,000 characters"],
+      note: ["Note must be at most 2,000 characters"],
     });
-    const ok = await ImportService.previewWording(Sheet.write([{ ...cath, next_milestone: "m".repeat(40) }]), db);
+    const ok = await ImportService.previewWording(Sheet.write([{ ...cath, next_milestone: "m".repeat(2000) }]), db);
     expect(ok.rows[0].status).toBe("change");
     const blank = await ImportService.previewWording(Sheet.write([{ ...cath, next_milestone: "" }]), db);
     expect(blank.rows[0].errors.next_milestone).toEqual([

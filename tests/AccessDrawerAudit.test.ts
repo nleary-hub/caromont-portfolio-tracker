@@ -252,8 +252,8 @@ describe("Recent changes: labels and plain summaries", () => {
       expect(AuditText.change(ev(c)), c.field).toBe(c.change);
       expect(AuditText.change(ev(c))).not.toContain(".");
     }
-    // Every label in the map is used by the list (plus report colors from #42).
-    expect(Object.keys(AuditCopy.LABELS).filter((k) => !codes.includes(k))).toEqual(["reportColors.bar", "reportColors.band"]);
+    // Every label in the map is used by the list (plus report colors from #42 and the project "completion" history row).
+    expect(Object.keys(AuditCopy.LABELS).filter((k) => !codes.includes(k))).toEqual(["completion", "reportColors.bar", "reportColors.band"]);
   });
 
   it("OLD / NEW use the same template, read plainly, and never show raw JSON or positions", () => {

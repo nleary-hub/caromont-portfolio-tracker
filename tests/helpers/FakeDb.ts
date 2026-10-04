@@ -823,6 +823,12 @@ export class FakeDb {
           this.state.appUsers.push(row);
           return { ...row };
         },
+        updateMany: async ({ where, data }: { where?: Row; data: Row }) => {
+          rec("appUser", "updateMany");
+          const hit = this.state.appUsers.filter((u) => matches(u, where));
+          for (const u of hit) Object.assign(u, data);
+          return { count: hit.length };
+        },
         update: async ({ where, data }: { where: { email: string }; data: Row }) => {
           rec("appUser", "update");
           const r = this.state.appUsers.find((u) => u.email === where.email);

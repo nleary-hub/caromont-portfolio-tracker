@@ -5,7 +5,8 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
 import { StepCheckedBy } from "@/lib/projects/StepCheckedBy";
-import { MilestoneRules, type MilestoneDraft, type MilestonePlan, type TemplateApplied } from "@/lib/domain/MilestoneRules";
+import { MilestoneRules, MilestoneValidationError, type MilestoneDraft, type MilestonePlan, type TemplateApplied } from "@/lib/domain/MilestoneRules";
+import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 
 type StepReader = Pick<Prisma.TransactionClient, "projectMilestone">;
 type Tx = Prisma.TransactionClient;
@@ -28,6 +29,8 @@ export interface MilestoneStepDto {
   checkedAt: string | null;
   position: number;
   sourceTemplateId: string | null;
+  /** Owner (migration 0029): a name from the line's Owners list, or null (Unassigned). */
+  owner: string | null;
 }
 
 export interface MilestoneSaveResult {
@@ -35,6 +38,8 @@ export interface MilestoneSaveResult {
   /** Legacy column values matching the checklist after the save (MilestoneProgress.mirror). */
   mirror: { nextMilestone: string | null; dueDate: Date | null };
   plan: MilestonePlan;
+  /** Steps before the save (done state and check day), for the completion rules (CompletionRules). */
+  before: { done: boolean; doneAt: string | null }[];
 }
 
 /**
@@ -82,6 +87,7 @@ export class MilestoneService {
       checkedAt: checked ? checked.at.toISOString() : null,
       position: s.position,
       sourceTemplateId: s.sourceTemplateId,
+      owner: s.owner ?? null,
     };
   }
 
@@ -103,7 +109,7 @@ export class MilestoneService {
     actor: Actor,
     at: Date,
     applied: TemplateApplied | null = null,
-    scope: Pick<ServiceLineScope, "id"> = ServiceLine.defaultScope(),
+    scope: Pick<ServiceLineScope, "id"> & Partial<Pick<ServiceLineScope, "owners">> = ServiceLine.defaultScope(),
   ): Promise<MilestoneSaveResult> {
     let stored = await MilestoneService.stepsFor(tx, projectId);
     // A project without steps but with a legacy next milestone (e.g. created by CSV after 0015): the drawer
@@ -126,9 +132,11 @@ export class MilestoneService {
       ? new Set((await tx.milestoneTemplate.findMany({ where: { id: { in: templateIds }, ...ServiceLineAccess.where(scope) }, select: { id: true } })).map((t) => t.id))
       : new Set<string>();
     const checked = drafts.map((d) => (d.sourceTemplateId && !d.id && !known.has(d.sourceTemplateId) ? { ...d, sourceTemplateId: null } : d));
-    const plan = MilestoneRules.plan(stored, checked, DateOnly.inZone(at), applied, { by: actor.changedBy, at });
+    const owned = MilestoneService.checkOwners(stored, checked, scope.owners ?? []);
+    const plan = MilestoneRules.plan(stored, owned, DateOnly.inZone(at), applied, { by: actor.changedBy, at });
     const mirror = MilestoneProgress.mirror(plan.result);
-    if (!MilestoneRules.hasChanges(plan)) return { changed: false, mirror, plan };
+    const before = stored.map((st) => ({ done: st.done, doneAt: DateOnly.fromDbDate(st.doneAt) }));
+    if (!MilestoneRules.hasChanges(plan)) return { changed: false, mirror, plan, before };
 
     for (const id of plan.deletes) await tx.projectMilestone.delete({ where: { id } });
     for (const u of plan.updates) await tx.projectMilestone.update({ where: { id: u.id }, data: u.data });
@@ -146,7 +154,34 @@ export class MilestoneService {
         })),
       });
     }
-    return { changed: true, mirror, plan };
+    return { changed: true, mirror, plan, before };
+  }
+
+  /** "Step 2: Pick an owner from the People list" when a step's new owner is not on the line's Owners list. */
+  static readonly OWNER_NOT_LISTED = "Pick an owner from the People list";
+
+  /**
+   * Milestone owners come from the line's Owners list (Admin > People), list spelling. A step keeping its stored owner
+   * is fine even when that name has since left the list (it still shows); a new pick must be on the list, and blocked
+   * names (former staff) are never accepted. Throws MilestoneValidationError.
+   */
+  static checkOwners(stored: readonly ProjectMilestone[], drafts: readonly MilestoneDraft[], owners: readonly string[]): MilestoneDraft[] {
+    const byId = new Map(stored.map((s) => [s.id, s]));
+    const list = PeopleDirectory.merge(owners);
+    const errors: string[] = [];
+    const out = drafts.map((d, i) => {
+      if (d.owner === undefined || d.owner === null) return d;
+      const kept = d.id ? byId.get(d.id)?.owner ?? null : null;
+      if (kept !== null && kept === d.owner) return d;
+      const listed = PeopleDirectory.find(list, d.owner);
+      if (!listed || PeopleDirectory.isBlocked(listed)) {
+        errors.push(`Step ${i + 1}: ${MilestoneService.OWNER_NOT_LISTED}`);
+        return d;
+      }
+      return { ...d, owner: listed };
+    });
+    if (errors.length) throw new MilestoneValidationError(errors);
+    return out;
   }
 
   /**

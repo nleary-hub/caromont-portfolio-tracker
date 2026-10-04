@@ -1,5 +1,8 @@
 "use client";
 
+import { CompletionCopy } from "@/lib/projects/CompletionCopy";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { LongTextCounter } from "@/lib/projects/LongTextCounter";
 import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
@@ -35,6 +38,8 @@ export interface ProjectEditFormProps {
   milestones: readonly MilestoneStepDto[];
   /** Templates for "Apply a template". */
   templates: readonly TemplateDto[];
+  /** Milestone owner picker names (the line's Owners list, PeopleDirectory.merge). */
+  ownerOptions?: readonly string[];
   /** The signed-in admin's display name, for the checked-by tooltip of a check not saved yet. */
   checkerName?: string;
   /** YYYY-MM-DD in America/New_York (Completed on prefill, Start date checks). */
@@ -73,6 +78,7 @@ export function ProjectEditForm({
   original: originalProp,
   milestones,
   templates,
+  ownerOptions,
   checkerName,
   today,
   startDateIsDefault,
@@ -223,7 +229,7 @@ export function ProjectEditForm({
               ))}
             </select>
           </Field>
-          {/* The dates row: Start date first, then Completed on while the status is Complete (same width each). */}
+          {/* The dates row: Start date first, then Completion date while the status is Complete (same width each). */}
           <div className="grid grid-cols-2 gap-3" data-testid="dates-row">
             <Field
               field="startDate"
@@ -245,7 +251,7 @@ export function ProjectEditForm({
               />
             </Field>
             {ProjectFormModel.showsCompletedOn(values) && (
-              <Field field="completedOn" label="Completed on" errors={shown("completedOn")}>
+              <Field field="completedOn" label={CompletionCopy.FIELD_LABEL} errors={shown("completedOn")}>
                 <input
                   id="pf-completedOn"
                   type="date"
@@ -256,6 +262,17 @@ export function ProjectEditForm({
                     setServerErrors((prev) => (prev.startDate ? { ...prev, startDate: undefined } : prev));
                   }}
                 />
+                {/* Only while a manual date is set; clears it on Save (no confirmation). The checklist decides again. */}
+                {values.completedOn && (
+                  <button
+                    type="button"
+                    onClick={() => set("completedOn", "")}
+                    className="mt-1 self-start text-muted type-caption underline-offset-2 hover:text-fg hover:underline"
+                    data-testid="use-automatic-date"
+                  >
+                    {CompletionCopy.USE_AUTOMATIC}
+                  </button>
+                )}
               </Field>
             )}
             {/* Help text spans the whole row (both columns), not just the date input; hidden while an error shows. */}
@@ -309,6 +326,7 @@ export function ProjectEditForm({
               setFormError(null);
             }}
             errors={milestoneMessages}
+            ownerOptions={ownerOptions}
           />
           <div className="grid grid-cols-2 gap-3">
             <Field field="percentComplete" label="% complete" errors={shown("percentComplete")}>
@@ -327,7 +345,15 @@ export function ProjectEditForm({
 
         <Section title="Notes">
           <Field field="note" label="Latest update" errors={shown("note")} value={values.note} grandfathered={ProjectFormModel.isGrandfathered("note", values, original)}>
-            <textarea id="pf-note" rows={4} className={TEXTAREA} value={values.note} maxLength={ProjectFormModel.maxLength("note")} onChange={(e) => set("note", e.target.value)} />
+            <AutoGrowTextarea
+              id="pf-note"
+              rows={4}
+              className={TEXTAREA}
+              value={values.note}
+              maxLength={ProjectFormModel.maxLength("note")}
+              aria-describedby="pf-note-counter"
+              onChange={(e) => set("note", e.target.value)}
+            />
           </Field>
           <Field
             field="accomplishment"
@@ -476,7 +502,13 @@ function Field({
             {errors.length === 0 && grandfathered && <p className="text-danger">Over the limit; shorten it if you edit this field</p>}
             {errors.length === 0 && !softWarning && !grandfathered && hint && <p className="text-muted">{hint}</p>}
           </div>
-          {counter && (
+          {counter && ProjectFormModel.isLongText(field) ? (
+            // Long text (2,000): "1,240 / 2,000"; at the cap ", limit reached" and the field takes no more. Quiet, no error.
+            <span id={`pf-${field}-counter`} data-testid={`counter-${field}`} className="shrink-0 tabular-nums text-muted">
+              <span aria-hidden="true">{LongTextCounter.text(counter.count, counter.limit)}</span>
+              <span className="sr-only">{LongTextCounter.label(counter.count, counter.limit)}</span>
+            </span>
+          ) : counter && (
             <span data-testid={`counter-${field}`} className={`shrink-0 tabular-nums ${counter.alert ? "text-danger" : "text-muted"}`}>
               {counter.count}/{counter.limit}
             </span>

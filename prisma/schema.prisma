@@ -73,7 +73,8 @@ model Project {
   targetCompletion       DateTime?     @db.Date
   /// 0 to 100 (enforced in app validation; DB check constraint as backstop).
   percentComplete        Int?
-  /// Length limit is AppConfig.NOTE_MAX_LENGTH (200), enforced on save in app validation.
+  /// Length limit is AppConfig.NOTE_MAX_LENGTH (2,000), enforced on save in app validation. The dashboard and PDF
+  /// show at most AppConfig.NOTE_DISPLAY_MAX_LENGTH (200) characters.
   note                   String?
   /// What the finished project accomplished (optional; shown in the report's "Completed this period" block).
   /// Length limit is AppConfig.ACCOMPLISHMENT_MAX_LENGTH (200), enforced in app validation.
@@ -81,6 +82,12 @@ model Project {
   /// Completion date as entered (optional; display only). The "Completed this period" clock is the time the
   /// status became Complete in the app (ProjectHistory), never this date.
   completedOn            DateTime?     @db.Date
+  /// Automatic completion date (migration 0030): the America/New_York day the last open milestone was checked off.
+  /// Shown only while the status is Complete and no completedOn (hand-entered, always wins) is set. CompletionRules.
+  completedAtAuto         DateTime?     @db.Date
+  /// The automatic date kept while a new or unchecked milestone has reopened the project (migration 0030), so
+  /// deleting that new milestone restores it. Cleared when the project completes again or the status is set by hand.
+  previousAutoCompletedAt DateTime?     @db.Date
   /// Set when the project was listed in a frozen report's "Completed this period" block, so it is listed
   /// only once. Cleared when the status leaves Complete. Bookkeeping only (no history row).
   completionReportedAt   DateTime?
@@ -334,8 +341,8 @@ model ServiceLineSettingsHistory {
 
 /// One step of a project's milestone checklist (migration 0015). The derived next milestone is the first
 /// step that is not done, by position (MilestoneProgress). Only MilestoneService writes steps; every change
-/// writes ProjectHistory rows in the same transaction. Name: 40 characters for new or renamed steps
-/// (MilestoneRules); text migrated from Project.nextMilestone may be longer until it is edited.
+/// writes ProjectHistory rows in the same transaction. Name: up to 2,000 characters for new or renamed steps
+/// (MilestoneRules.NAME_MAX); the dashboard and PDF still show at most two lines.
 model ProjectMilestone {
   id               String    @id @default(uuid()) @db.Uuid
   projectId        String    @db.Uuid
@@ -349,6 +356,9 @@ model ProjectMilestone {
   doneBy           String?
   /// When the step was checked (migration 0022). Set and cleared with doneBy.
   checkedAt        DateTime?
+  /// Optional owner (migration 0029): a name from the line's Owners list (ServiceLine.owners), like Project.owner.
+  /// Null = Unassigned. A People page rename updates it with the projects (PeopleService.renamePerson).
+  owner            String?
   /// 1-based order within the project.
   position         Int
   /// Template the step was copied from (kept for the "From '<template>'" note). Editing or deleting the
@@ -687,6 +697,8 @@ model AppUser {
   /// Admin who added the email before its first sign-in (null when recorded at first sign-in).
   addedBy       String?
   createdAt     DateTime                 @default(now())
+  /// Account menu "Dashboard heartbeat" switch (migration 0028). Off: no heartbeat line or tile washes on the dashboard.
+  dashboardHeartbeat Boolean                  @default(true)
   access        ServiceLineAccessGrant[]
   password      PasswordCredential?
 

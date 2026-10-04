@@ -1,5 +1,7 @@
 import { DisplayName } from "@/lib/auth/DisplayName";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
+import { CompletionCopy } from "@/lib/projects/CompletionCopy";
+import { CompletionRules } from "@/lib/projects/CompletionRules";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { HistoryEntries } from "@/lib/history/HistoryEntries";
@@ -44,9 +46,34 @@ export interface TimelineEntry extends TimelineLine {
   hollow: boolean;
 }
 
+/** One past "Latest update" note edit (Update notes, task 4): read-only, the full text as saved. */
+export interface NoteEntry {
+  key: string;
+  at: Date;
+  /** "Oct 4, 2026, 11:40 AM ET · Nick Leary" (same meta line as History). */
+  meta: string;
+  /** Who made the edit (the meta line's name). */
+  who: string;
+  /** The full note as entered (ProjectHistory.newValue), or null when the edit cleared the note. */
+  text: string | null;
+}
+
+/** A step for Project detail > Milestones (full name, owner). */
+export interface TimelineStep {
+  key: string;
+  name: string;
+  done: boolean;
+  /** Owner name, or null (Unassigned). */
+  owner: string | null;
+}
+
 export interface Timeline {
-  /** Every line shown, newest first; undated earlier numbers always last. */
+  /** Every line shown, newest first; undated earlier numbers always last. Note edits are not here (see notes). */
   entries: TimelineEntry[];
+  /** Note edits, newest first (Update notes). */
+  notes: NoteEntry[];
+  /** The project's steps in order (filled by ProjectHistoryService.timeline; empty when built from rows alone). */
+  steps: TimelineStep[];
   /** "History (N)": N counts lines shown. */
   title: string;
   /** Numbers the project had before its current one, newest first (for "Previously REQ-4656, REQ-4412"). */
@@ -59,6 +86,8 @@ export interface TimelineDto {
   title: string;
   entries: (TimelineLine & { key: string; meta: string; hollow: boolean })[];
   previously: string | null;
+  notes: { key: string; meta: string; who: string; text: string | null }[];
+  steps: TimelineStep[];
 }
 
 /**
@@ -68,6 +97,13 @@ export interface TimelineDto {
 export class UpdateTimeline {
   /** Entries shown before "Show all N changes". */
   static readonly INITIAL_ENTRIES = 10;
+  /** Update notes shown before "Show all N updates". */
+  static readonly INITIAL_NOTES = 5;
+  /**
+   * History fields that list under Update notes instead of the change log (task 4). Filtered at read time: the stored
+   * history rows are never rewritten or deleted.
+   */
+  static readonly NOTE_FIELDS: ReadonlySet<string> = new Set(["note"]);
   /** ProjectHistory.comment on People page renames (ProjectService.renamePerson). */
   static readonly PEOPLE_RENAME_COMMENT = "people_rename";
   /** ProjectHistory.comment on CSV-created projects (ImportService.SOURCE_CREATE). */
@@ -92,7 +128,7 @@ export class UpdateTimeline {
     percentComplete: "Percent complete",
     note: "Note",
     accomplishment: "Accomplishment",
-    completedOn: "Completed on",
+    completedOn: "Completion date",
   };
 
   /** Long text: one "X updated." line with Before and After instead of inline values. */
@@ -115,6 +151,7 @@ export class UpdateTimeline {
     "hiddenFromReport",
     "name",
     "status",
+    "completion",
     "milestone_template_applied",
     "milestone_completed",
     "milestone_added",
@@ -122,6 +159,7 @@ export class UpdateTimeline {
     "milestone_done",
     "milestone_reopened",
     "milestone_due",
+    "milestone_owner",
     "milestone_deleted",
     "milestones_reordered",
     "serviceArea",
@@ -148,10 +186,14 @@ export class UpdateTimeline {
    */
   static build(rows: readonly TimelineRow[], prior: readonly PriorInforRow[], currentInfor: number | null, people: readonly string[] = []): Timeline {
     const dated: TimelineEntry[] = [];
+    const notes: NoteEntry[] = [];
     for (const g of HistoryEntries.group(rows)) {
       const who = UpdateTimeline.actor(g.changedBy, people);
       const meta = C.meta(ReportFormat.dateTimeEt(g.changedAt), who);
-      UpdateTimeline.lines(g.rows).forEach((line, i) => {
+      g.rows
+        .filter((r) => UpdateTimeline.NOTE_FIELDS.has(r.field))
+        .forEach((r, i) => notes.push({ key: `note|${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, who, text: r.newValue ? r.newValue : null }));
+      UpdateTimeline.lines(g.rows.filter((r) => !UpdateTimeline.NOTE_FIELDS.has(r.field))).forEach((line, i) => {
         dated.push({ ...line, key: `${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, hollow: who === C.TRACKER });
       });
     }
@@ -167,7 +209,8 @@ export class UpdateTimeline {
       .map((p) => ({ key: `prior|${p.number}`, at: null, meta: C.BEFORE_THIS_TRACKER, hollow: true, text: C.earlierInfor(p.number) }));
     const entries = [...dated, ...undated];
     const priorInforNumbers = UpdateTimeline.priorInforNumbers(rows, prior, currentInfor);
-    return { entries, title: C.title(entries.length), priorInforNumbers, previously: C.previously(priorInforNumbers) };
+    notes.sort((a, b) => b.at.getTime() - a.at.getTime());
+    return { entries, notes, steps: [], title: C.title(entries.length), priorInforNumbers, previously: C.previously(priorInforNumbers) };
   }
 
   static toDto(t: Timeline): TimelineDto {
@@ -175,6 +218,8 @@ export class UpdateTimeline {
       title: t.title,
       entries: t.entries.map(({ key, meta, hollow, text, change, admin }) => ({ key, meta, hollow, text, ...(change ? { change } : {}), ...(admin ? { admin } : {}) })),
       previously: t.previously,
+      notes: t.notes.map(({ key, meta, who, text }) => ({ key, meta, who, text })),
+      steps: t.steps,
     };
   }
 
@@ -224,8 +269,12 @@ export class UpdateTimeline {
       return i < 0 ? UpdateTimeline.ORDER.length : i;
     };
     const out: TimelineLine[] = [];
+    // Completion rules (task 5): the "completion" row says it all; its status row and the form's completedOn row are
+    // the same change in other words.
+    const completion = rows.some((r) => r.field === CompletionRules.HISTORY_FIELD);
     for (const row of [...rows].sort((a, b) => rank(a.field) - rank(b.field))) {
       if (UpdateTimeline.SILENT.has(row.field)) continue;
+      if (completion && (row.field === "completedOn" || (row.field === "status" && row.comment?.startsWith(UpdateTimeline.COMPLETION_PREFIX)))) continue;
       if (hasSteps && UpdateTimeline.STEP_MIRRORS.has(row.field)) continue;
       // Requester and its Not applicable flag read as one Requester sentence.
       if (row.field === "requesterNotApplicable" && byField.has("physicianChampion")) continue;
@@ -252,6 +301,10 @@ export class UpdateTimeline {
     const label = UpdateTimeline.label(field);
     const F = MilestoneRules.FIELDS;
     switch (field) {
+      case CompletionRules.HISTORY_FIELD: {
+        const text = UpdateTimeline.completionText(row);
+        return text ? { text } : null;
+      }
       case "created":
         return { text: row.comment === UpdateTimeline.CSV_IMPORT_COMMENT ? C.IMPORTED : C.PROJECT_CREATED };
       case F.added:
@@ -270,6 +323,13 @@ export class UpdateTimeline {
         const b = UpdateTimeline.dueParts(before);
         const a = UpdateTimeline.dueParts(after);
         return { text: C.stepDue(a?.name ?? b?.name ?? "", b ? ReportFormat.mediumDate(b.due) : null, a ? ReportFormat.mediumDate(a.due) : null) };
+      }
+      case F.owner: {
+        const b = UpdateTimeline.ownerParts(before);
+        const a = UpdateTimeline.ownerParts(after);
+        const step = a?.name ?? b?.name ?? "";
+        if (row.comment === UpdateTimeline.PEOPLE_RENAME_COMMENT && b && a) return { text: C.stepOwnerRenamed(step, b.owner, a.owner) };
+        return { text: C.stepOwner(step, b?.owner ?? null, a?.owner ?? null) };
       }
       case F.reordered:
         return { text: C.REORDERED };
@@ -304,6 +364,38 @@ export class UpdateTimeline {
     return null;
   }
 
+  /** ProjectHistory.comment prefix on completion rule rows (ProjectService.COMPLETION_COMMENT_PREFIX). */
+  static readonly COMPLETION_PREFIX = "completion:";
+
+  /** A "completion" row in CompletionCopy wording (the comment holds the event code). */
+  static completionText(row: Pick<TimelineRow, "comment" | "oldValue" | "newValue">): string | null {
+    const code = row.comment?.startsWith(UpdateTimeline.COMPLETION_PREFIX) ? row.comment.slice(UpdateTimeline.COMPLETION_PREFIX.length) : null;
+    const n = row.newValue;
+    const o = row.oldValue;
+    switch (code) {
+      case "auto":
+        return n ? CompletionCopy.autoSet(n) : null;
+      case "auto_again":
+        return n ? CompletionCopy.completedAgain(n) : null;
+      case "manual":
+        return n ? CompletionCopy.manualSet(n) : null;
+      case "reopened_added":
+        return o ? CompletionCopy.reopenedAdded(o) : null;
+      case "reopened_unchecked":
+        return o ? CompletionCopy.reopenedUnchecked(o) : null;
+      case "restored":
+        return n ? CompletionCopy.restored(n) : null;
+      case "manual_removed":
+        return n ? CompletionCopy.manualRemoved(n) : null;
+      case "manual_removed_no_auto":
+        return o ? CompletionCopy.manualRemovedNoAuto(o) : null;
+      case "manual_removed_reopened":
+        return o ? CompletionCopy.manualRemovedReopened(o) : null;
+      default:
+        return null;
+    }
+  }
+
   static label(field: string): string {
     return UpdateTimeline.LABELS[field] ?? MilestoneRules.FIELD_LABELS[field] ?? field;
   }
@@ -321,6 +413,12 @@ export class UpdateTimeline {
   /** "Go-live (due 2026-10-01)" -> "Go-live" (MilestoneRules.describe). */
   private static stepName(described: string | null): string {
     return (described ?? "").replace(/ \(due \d{4}-\d{2}-\d{2}\)$/, "");
+  }
+
+  /** "Go-live: Kim Nguyen" (MilestoneRules.ownerLabel) -> parts. */
+  private static ownerParts(label: string | null): { name: string; owner: string } | null {
+    const m = label ? /^(.*): (.+)$/.exec(label) : null;
+    return m ? { name: m[1], owner: m[2] } : null;
   }
 
   /** "Go-live: 2026-10-01" (MilestoneRules.dueLabel) -> parts. */

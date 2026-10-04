@@ -124,7 +124,7 @@ export class ProjectCsv {
       next_milestone: "Vendor kickoff call",
       due_date: "2026-10-15",
       percent_complete: "25",
-      note: "Fake example row. Delete it before importing. Notes can be up to 200 characters.",
+      note: "Fake example row. Delete it before importing. Notes can be up to 2,000 characters.",
       accomplishment: "",
       completed_on: "",
       include_in_report: "yes",

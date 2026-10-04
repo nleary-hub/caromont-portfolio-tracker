@@ -1,3 +1,4 @@
+import { MilestoneService } from "@/lib/services/MilestoneService";
 import type { PrismaClient, ProjectHistory } from "@/generated/prisma/client";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
@@ -55,7 +56,8 @@ export class ProjectHistoryService {
     const rows = await ProjectHistoryService.forProject(projectId, viewer, db);
     const prior = await db.projectPriorInforNumber.findMany({ where: { projectId }, select: { number: true, recordedAt: true } });
     const people = scope ? ServiceLine.peopleNames(scope) : [];
-    return UpdateTimeline.build(rows, prior, project.inforRequestNumber, people);
+    const steps = [...(await MilestoneService.stepsFor(db, projectId))].sort((a, b) => a.position - b.position);
+    return { ...UpdateTimeline.build(rows, prior, project.inforRequestNumber, people), steps: steps.map((st) => ({ key: st.id, name: st.name, done: st.done, owner: st.owner ?? null })) };
   }
 
   private static newestFirst<T extends { changedAt: Date }>(rows: readonly T[]): T[] {
