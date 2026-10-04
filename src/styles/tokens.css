@@ -9,6 +9,7 @@
   --dark-text-primary: #E6E8EC;
   --dark-text-secondary: #9AA1AD;
   --dark-accent: #4C8DFF;
+  --dark-accent-strong: #2F6AE1; /* primary button fill: white text 4.92:1 (accent text keeps --dark-accent) */
   --dark-row-selected: #1C2230;
   --dark-input: #1D2129;
   --dark-topbar-glass: rgba(23, 26, 33, 0.72); /* --dark-card @ 72% + backdrop blur 20px */

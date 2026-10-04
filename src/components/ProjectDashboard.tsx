@@ -40,6 +40,7 @@ import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { Flags, StatusPill } from "./StatusPill";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
 import { StartDate } from "@/lib/projects/StartDate";
+import { DashboardAmbient, DrawerSpotlight } from "./DashboardAmbient";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
@@ -249,6 +250,14 @@ export function ProjectDashboard({
   const dashboardView: ViewSettingsValue = settings?.dashboard ?? { columnOrder: columnsProp, hiddenColumns: [], hiddenStatuses: [] };
   const showInfor = ViewSettings.visibleColumns(dashboardView).includes("inforNumber");
   const selected = rows.find((r) => r.id === selectedId) ?? null;
+  // The side panel slides in when it opens, not when it switches between detail and edit.
+  const drawerOpen = (mode === "new" && Boolean(admin)) || Boolean(selected);
+  const [drawerWasOpen, setDrawerWasOpen] = useState(drawerOpen);
+  const [drawerEntering, setDrawerEntering] = useState(false);
+  if (drawerWasOpen !== drawerOpen) {
+    setDrawerWasOpen(drawerOpen);
+    setDrawerEntering(drawerOpen);
+  }
   // Completed and Cancelled pages keep this view: current FY, and the dashboard's department filter.
   const closedView = { fy: FiscalYear.of(today).label, departments };
   const closedQuery = ClosedPageModel.query(closedView, today, deptOptions, line?.departments ?? ServiceAreaInfo.LEGACY);
@@ -401,7 +410,8 @@ export function ProjectDashboard({
   }, []);
 
   return (
-    <div className="relative min-h-screen">
+    <div className="pb-page relative min-h-screen">
+      <DashboardAmbient />
       <DashboardTopBar
         serviceLine={serviceLine}
         switcher={switcher}
@@ -457,7 +467,7 @@ export function ProjectDashboard({
               t === "completedFy" ? (
                 completedFiscalYear && <CompletedFiscalYearCard key={t} fy={completedFiscalYear} href={ClosedPageModel.tileHref()} />
               ) : (
-                <div key={t} data-tile={t} className="flex min-w-0 flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
+                <div key={t} data-tile={t} className="pb-tile flex min-w-0 flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
                   <div className="type-metric">{summary.byStatus[t]}</div>
                   <StatusPill status={t} />
                 </div>
@@ -498,7 +508,7 @@ export function ProjectDashboard({
             <button
               type="button"
               onClick={openNew}
-              className="ml-2 flex h-7 shrink-0 items-center rounded-control bg-accent px-3 whitespace-nowrap text-white type-table-strong"
+              className="ml-2 flex h-7 shrink-0 items-center rounded-control btn-primary bg-accent-strong px-3 whitespace-nowrap text-white type-table-strong"
             >
               + New project
             </button>
@@ -513,8 +523,8 @@ export function ProjectDashboard({
         )}
 
         {!emptyLine && (
-        <section className="overflow-hidden rounded-card border border-line bg-card">
-          <div className="max-h-[calc(100vh-260px)] overflow-auto">
+        <section className="pb-table overflow-hidden rounded-card border border-line bg-card">
+          <div data-pb-scroll className="max-h-[calc(100vh-260px)] overflow-auto">
             <DashboardTable
               rows={visible}
               settings={dashboardView}
@@ -538,8 +548,11 @@ export function ProjectDashboard({
         )}
       </main>
 
+      {drawerOpen && <DrawerSpotlight rowId={mode === "new" ? null : selectedId} />}
       {mode === "new" && admin ? (
         <ProjectDrawer
+          entering={drawerEntering}
+          onEntered={() => setDrawerEntering(false)}
           row={null}
           departments={line?.departments}
           today={today}
@@ -571,6 +584,8 @@ export function ProjectDashboard({
       ) : (
         selected && (
           <ProjectDrawer
+            entering={drawerEntering}
+            onEntered={() => setDrawerEntering(false)}
             row={selected}
             historyAction={historyAction}
             departments={line?.departments}
@@ -680,7 +695,7 @@ export function CompletedFiscalYearCard({ fy, href }: { fy: FiscalYearCount; hre
       <span className="type-caption text-(--status-on-track-dark-fg)">&#10003; {FiscalYear.completedLabel(fy.label)}</span>
     </>
   );
-  const box = "flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5";
+  const box = "pb-tile pb-fy flex flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5";
   return href ? (
     <Link href={href} data-testid="completed-fy" aria-label={ClosedPagesCopy.tileLink(fy.label)} className={`${box} hover:border-(--dark-text-secondary)`}>
       {body}
@@ -750,7 +765,12 @@ export function ProjectDrawer({
   departments,
   historyAction,
   headerAction,
+  entering = false,
+  onEntered,
 }: {
+  /** True on the render that opens the panel: it slides in once (not again when switching between detail and edit). */
+  entering?: boolean;
+  onEntered?: () => void;
   /** A secondary action in the header, right of the title (Restore to active on the Cancelled page). */
   headerAction?: ReactNode;
   /** Null for the New project form. */
@@ -787,7 +807,9 @@ export function ProjectDrawer({
       <aside
         key="drawer-form"
         aria-label={row ? "Edit project" : "New project"}
-        className="fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col overflow-hidden rounded-card border border-line bg-card shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
+        data-enter={entering || undefined}
+        onAnimationEnd={(e) => e.target === e.currentTarget && onEntered?.()}
+        className="pb-drawer fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col overflow-hidden rounded-card border border-line bg-card shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
       >
         <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
           <div className="min-w-0">
@@ -805,7 +827,9 @@ export function ProjectDrawer({
     <aside
       key="drawer-detail"
       aria-label="Project detail"
-      className="fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col gap-4 overflow-y-auto rounded-card border border-line bg-card px-6 py-5 shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
+      data-enter={entering || undefined}
+      onAnimationEnd={(e) => e.target === e.currentTarget && onEntered?.()}
+      className="pb-drawer fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col gap-4 overflow-y-auto rounded-card border border-line bg-card px-6 py-5 shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
     >
       <div className="flex items-start justify-between gap-3">
         <div>

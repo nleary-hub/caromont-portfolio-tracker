@@ -4,10 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import { Flags, StatusPill } from "@/components/StatusPill";
 import { SignInBackdrop as Backdrop, type BackdropRow } from "@/lib/auth/SignInBackdrop";
-
-// One heartbeat trace across the full width (viewBox units; stretched with preserveAspectRatio="none").
-const ECG_PATH =
-  "M0 140 H120 l14 0 8 -6 6 12 8 -6 H300 l14 0 8 -40 10 88 12 -132 10 92 8 -8 H520 l14 0 8 -6 6 12 8 -6 H700 l14 0 8 -40 10 88 12 -132 10 92 8 -8 H920 l14 0 8 -6 6 12 8 -6 H1100 l14 0 8 -40 10 88 12 -132 10 92 8 -8 H1320 l14 0 8 -6 6 12 8 -6 H1440";
+import { ECG_PATH } from "@/lib/ui/Heartbeat";
 
 // Status foreground colors (tokens.css) for the drifting particles.
 const PARTICLE_COLORS = ["var(--status-not-started-dark-fg)", "var(--status-on-track-dark-fg)", "var(--status-at-risk-dark-fg)", "var(--status-on-hold-dark-fg)", "var(--status-complete-dark-fg)", "var(--flag-changed-dark-fg)"];

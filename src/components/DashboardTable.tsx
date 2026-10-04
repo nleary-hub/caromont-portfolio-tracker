@@ -663,7 +663,7 @@ function ProjectRow({
       data-lifted={lifted || undefined}
       onClick={() => onSelect(selected ? null : row.id)}
       style={style}
-      className={`cursor-pointer ${lifted ? "" : "hover:[&>td]:bg-row-selected/60"} ${animate && !lifted ? "transition-transform duration-150 ease-out motion-reduce:transition-none" : ""}`}
+      className={`pb-row cursor-pointer ${lifted ? "" : "hover:[&>td]:bg-row-selected/60"} ${animate && !lifted ? "transition-transform duration-150 ease-out motion-reduce:transition-none" : ""}`}
       aria-selected={selected}
     >
       {columns.map((c) => {

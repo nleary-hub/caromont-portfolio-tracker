@@ -5,6 +5,7 @@
 @import "../styles/dashboard-filters.css";
 @import "../styles/service-lines.css";
 @import "../styles/signin.css";
+@import "../styles/polish.css";
 
 /* Dark theme is the default; the `dark` class on <html> drives dark: variants. */
 @custom-variant dark (&:where(.dark, .dark *));
@@ -21,6 +22,7 @@
   --color-fg: var(--dark-text-primary);
   --color-muted: var(--dark-text-secondary);
   --color-accent: var(--dark-accent);
+  --color-accent-strong: var(--dark-accent-strong);
   --color-row-selected: var(--dark-row-selected);
   --color-input: var(--dark-input);
   --color-topbar: var(--dark-topbar-glass);

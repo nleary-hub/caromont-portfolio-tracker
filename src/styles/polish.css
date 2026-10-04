@@ -1,0 +1,273 @@
+/*
+ * UI polish, Option B "Layered glass" (dashboard, side panel, edit). Everything is scoped to `.pb-page`, the dashboard
+ * root (ProjectDashboard), so the sign-in screen, Completed / Cancelled pages and admin pages render as before.
+ *  - One fixed ambient layer (grid, glow, stars, the sign-in heartbeat line) behind frosted top bar, tiles and side panel.
+ *  - The table stays solid. Rows get a soft hover sweep and an accent bar; no per-row blur.
+ *  - Side panel open: the page dims by 25% (the ceiling; 40% failed contrast on muted text), the selected row stays lit,
+ *    and the panel slides in over 260ms.
+ *  - No backdrop-filter support: solid surfaces. prefers-reduced-motion: static background, no slide or sweeps.
+ * Kept light for older PCs: blur radii 12 to 20px, only opacity / stroke animations on one layer.
+ */
+
+.pb-page {
+  isolation: isolate;
+}
+
+/* Ambient layer ------------------------------------------------------------------------------------------------- */
+.pb-ambient {
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  overflow: hidden;
+  pointer-events: none;
+  background: radial-gradient(1200px 520px at 50% -120px, #13203d 0%, rgba(10, 12, 17, 0) 70%);
+}
+.pb-grid {
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(130, 160, 255, 0.045) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(130, 160, 255, 0.045) 1px, transparent 1px);
+  background-size: 44px 44px;
+  -webkit-mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.55) 45%, rgba(0, 0, 0, 0.25) 100%);
+  mask-image: linear-gradient(to bottom, #000 0%, rgba(0, 0, 0, 0.55) 45%, rgba(0, 0, 0, 0.25) 100%);
+}
+.pb-glow {
+  position: absolute;
+  left: 50%;
+  top: 40px;
+  width: 900px;
+  height: 260px;
+  transform: translateX(-50%);
+  background: radial-gradient(closest-side, rgba(70, 120, 255, 0.18), transparent);
+  animation: pb-breathe 6s ease-in-out infinite;
+  will-change: opacity;
+}
+.pb-star {
+  position: absolute;
+  width: 2px;
+  height: 2px;
+  border-radius: 50%;
+  background: #7fa2ff;
+  opacity: 0.15;
+  animation: pb-twinkle 4.2s ease-in-out infinite;
+}
+.pb-ecg {
+  position: absolute;
+  left: 0;
+  top: 63px;
+  width: 100%;
+  height: 140px;
+}
+.pb-ecg path {
+  fill: none;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+  vector-effect: non-scaling-stroke;
+}
+.pb-ecg-base {
+  stroke: rgba(91, 147, 255, 0.32);
+  stroke-width: 1.2;
+}
+.pb-ecg-pulse {
+  stroke: #79a6ff;
+  stroke-width: 1.8;
+  stroke-dasharray: 160 2600;
+  stroke-dashoffset: 160;
+  animation: pb-ecg 5.5s linear infinite;
+}
+@keyframes pb-ecg { to { stroke-dashoffset: -2600; } }
+@keyframes pb-twinkle { 50% { opacity: 0.6; } }
+@keyframes pb-breathe { 50% { opacity: 0.7; } }
+
+/* Solid surfaces (always; glass is layered on below only where backdrop-filter works) ----------------------------- */
+.pb-page .pb-table {
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow: 0 30px 60px -30px rgba(0, 0, 0, 0.9), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+.pb-page [data-testid="group-header"] > th {
+  box-shadow: inset 2px 0 0 var(--dark-accent), inset 6px 0 14px -8px rgba(91, 147, 255, 0.6) !important;
+}
+
+/* Rows: hover sweep + accent bar on the gutter cell; selected keeps the lit gradient. */
+.pb-page .pb-row {
+  transition: background-color 0.18s;
+}
+.pb-page .pb-row > td {
+  transition: background-size 0.18s, background-color 0.18s;
+}
+.pb-page .pb-row:not([data-lifted]):hover > td,
+.pb-page .pb-row[aria-selected="true"] > td {
+  background-color: transparent;
+}
+.pb-page .pb-row:not([data-lifted]):hover {
+  background-image: linear-gradient(90deg, rgba(91, 147, 255, 0.1), rgba(91, 147, 255, 0.02) 55%, transparent);
+}
+.pb-page .pb-row[aria-selected="true"] {
+  background-image: linear-gradient(90deg, rgba(91, 147, 255, 0.16), rgba(91, 147, 255, 0.04) 60%, transparent);
+  background-color: var(--dark-card);
+}
+.pb-page .pb-row > td:first-child {
+  background-image: linear-gradient(var(--dark-accent), var(--dark-accent));
+  background-repeat: no-repeat;
+  background-position: left center;
+  background-size: 2px 0;
+}
+.pb-page .pb-row:not([data-lifted]):hover > td:first-child {
+  background-size: 2px calc(100% - 16px);
+}
+
+/* Status chips: soft ring and glow in their own color (labels and colors unchanged). */
+.pb-page .pill[class*="st-"]:not(.st-Cancelled):not(.st-NotStarted) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, currentColor 26%, transparent), 0 0 14px -4px color-mix(in srgb, currentColor 45%, transparent);
+}
+.pb-page .pill.st-NotStarted {
+  box-shadow: inset 0 0 0 1px rgba(220, 225, 232, 0.14);
+}
+
+/* Primary buttons (Generate PDF, + New project, Save): --dark-accent-strong fill with a soft lift. */
+.pb-page .btn-primary {
+  box-shadow: inset 0 0 0 1px rgba(120, 165, 255, 0.4), 0 6px 18px -6px rgba(79, 140, 255, 0.7);
+}
+.pb-page .btn-primary[aria-disabled="true"] {
+  box-shadow: none;
+}
+
+/* Active nav link on the first row: a pill, drawn with a spread shadow so the bar's measured width does not change. */
+.pb-page [data-nav-row="first"] a[aria-current="page"] {
+  border-radius: 6px;
+  background: rgba(91, 147, 255, 0.14);
+  box-shadow: 0 0 0 5px rgba(91, 147, 255, 0.14);
+  color: #dfe8ff;
+}
+
+/* Tiles: a per-status glow in the corner. */
+.pb-page .pb-tile {
+  position: relative;
+  overflow: hidden;
+  border-color: rgba(255, 255, 255, 0.07);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.05), 0 10px 30px -18px rgba(0, 0, 0, 0.8);
+  transition: border-color 0.18s;
+}
+.pb-page .pb-tile > * {
+  position: relative;
+}
+.pb-page .pb-tile::before {
+  content: "";
+  position: absolute;
+  left: -30px;
+  top: -40px;
+  width: 140px;
+  height: 110px;
+  border-radius: 50%;
+  background: var(--pb-glow, transparent);
+  opacity: 0.16;
+  filter: blur(18px);
+  pointer-events: none;
+}
+.pb-page .pb-tile:hover {
+  border-color: rgba(255, 255, 255, 0.16);
+}
+.pb-page [data-tile="NotStarted"] { --pb-glow: #9aa3b2; }
+.pb-page [data-tile="OnTrack"] { --pb-glow: #4ade80; }
+.pb-page [data-tile="AtRisk"] { --pb-glow: #f2b640; }
+.pb-page [data-tile="OffTrack"] { --pb-glow: #f87171; }
+.pb-page [data-tile="OnHold"] { --pb-glow: #6f9bff; }
+.pb-page [data-tile="Complete"] { --pb-glow: #2dd4bf; }
+.pb-page .pb-fy { --pb-glow: #4ade80; }
+.pb-page .pb-fy::before {
+  left: auto;
+  right: -30px;
+  opacity: 0.12;
+}
+
+/* Side panel: spotlight dim + slide-in ------------------------------------------------------------------------- */
+.pb-spot {
+  position: fixed;
+  z-index: 15;
+  pointer-events: none;
+  border-radius: 2px;
+  box-shadow: 0 0 0 4000px rgba(5, 7, 11, 0.25); /* DIM_MAX in DashboardAmbient.tsx */
+  animation: pb-fade 0.26s ease-out;
+}
+@keyframes pb-fade { from { opacity: 0; } }
+
+.pb-page .pb-drawer {
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.09), -30px 0 60px -20px rgba(0, 0, 0, 0.8), 0 0 0 1px rgba(91, 147, 255, 0.06);
+}
+.pb-page .pb-drawer[data-enter] {
+  animation: pb-drawer-in 0.26s cubic-bezier(0.16, 1, 0.3, 1);
+}
+@keyframes pb-drawer-in {
+  from {
+    opacity: 0;
+    transform: translateX(60px) scale(0.985);
+  }
+}
+.pb-page .pb-drawer::before {
+  content: "";
+  position: absolute;
+  right: -80px;
+  top: -80px;
+  width: 300px;
+  height: 220px;
+  background: radial-gradient(closest-side, rgba(79, 140, 255, 0.22), transparent);
+  pointer-events: none;
+}
+.pb-page .pb-drawer > * {
+  position: relative;
+}
+.pb-page .pb-drawer .bg-input {
+  background-color: rgba(8, 10, 15, 0.38);
+  border-color: rgba(255, 255, 255, 0.09);
+}
+.pb-page .pb-drawer [data-invalid] :is(input, select, textarea) {
+  border-color: #ff8a8a;
+  box-shadow: 0 0 0 3px rgba(248, 113, 113, 0.18), 0 0 18px -4px rgba(248, 113, 113, 0.5);
+}
+
+/* Glass, only where backdrop-filter works ----------------------------------------------------------------------- */
+@supports ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .pb-page [data-testid="top-bar"] {
+    background: rgba(12, 15, 21, 0.55);
+    border-bottom-color: rgba(255, 255, 255, 0.07);
+    -webkit-backdrop-filter: blur(16px) saturate(150%);
+    backdrop-filter: blur(16px) saturate(150%);
+  }
+  .pb-page .pb-tile {
+    background: rgba(22, 26, 35, 0.62);
+    -webkit-backdrop-filter: blur(12px) saturate(140%);
+    backdrop-filter: blur(12px) saturate(140%);
+  }
+  .pb-page .pb-drawer {
+    background: linear-gradient(180deg, rgba(32, 38, 52, 0.78), rgba(20, 24, 33, 0.82));
+    border-color: rgba(255, 255, 255, 0.11);
+    -webkit-backdrop-filter: blur(20px) saturate(160%);
+    backdrop-filter: blur(20px) saturate(160%);
+  }
+}
+
+/* No backdrop-filter: solid surfaces everywhere (the top bar's glass token would show the layer through unblurred). */
+@supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+  .pb-page [data-testid="top-bar"] {
+    background: var(--dark-card);
+  }
+  .pb-page .pb-drawer {
+    background: #1b2030;
+    border-color: rgba(255, 255, 255, 0.11);
+  }
+}
+
+/* Reduced motion: a fully static background, no slide, fade or sweeps. */
+@media (prefers-reduced-motion: reduce) {
+  .pb-ambient *,
+  .pb-spot,
+  .pb-page .pb-drawer[data-enter] {
+    animation: none !important;
+  }
+  .pb-page .pb-row,
+  .pb-page .pb-row > td,
+  .pb-page .pb-tile {
+    transition: none;
+  }
+}
