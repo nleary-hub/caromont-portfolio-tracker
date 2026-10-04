@@ -22,6 +22,7 @@ import { MilestoneService } from "@/lib/services/MilestoneService";
 import { MilestoneTemplateService, TemplateValidationError, type TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { ProjectValidationError } from "@/lib/validation/ProjectValidator";
+import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
 
@@ -597,14 +598,17 @@ describe("Milestones autosave (Saves as you go)", () => {
     expect(fake.state.projects.find((r) => r.id === p.id)).toMatchObject({ nextMilestone: "Trial", dueDate: null });
   });
 
-  it("is admin only, and refuses to empty the checklist of a status that needs a milestone (nothing written)", async () => {
+  it("is admin only; emptying the checklist adds \"Project complete\" back (open), so the status keeps a milestone", async () => {
     const p = await ProjectService.create(base, { changedBy: "owner@example.org" }, db);
     await expect(ProjectService.saveMilestones(p.id, { drafts: [] }, Factory.MEMBER, db)).rejects.toThrow(AdminRequiredError);
     await ProjectService.saveMilestones(p.id, { drafts: [{ id: MilestoneService.LEGACY_STEP_ID, name: "Vendor quote", dueDate: "2026-10-03", done: false, sourceTemplateId: null }] }, Factory.ADMIN, db);
     const history = fake.state.history.length;
     const steps = fake.state.milestones.length;
-    await expect(ProjectService.saveMilestones(p.id, { drafts: [] }, Factory.ADMIN, db)).rejects.toThrow(ProjectValidationError);
-    expect(fake.state.history).toHaveLength(history);
-    expect(fake.state.milestones).toHaveLength(steps);
+    expect(steps).toBe(1);
+    const after = await ProjectService.saveMilestones(p.id, { drafts: [] }, Factory.ADMIN, db);
+    expect(after.map((s) => [s.name, s.done])).toEqual([["Project complete", false]]);
+    expect(fake.state.history.slice(history).map((h) => h.field)).toEqual(["milestone_deleted", "milestone_auto_added"]);
+    expect(UpdateTimeline.line(fake.state.history[fake.state.history.length - 1] as never)?.text).toBe('Milestone "Project complete" added automatically after the last milestone was deleted.');
+    expect(fake.state.projects.find((r) => r.id === p.id)).toMatchObject({ status: "OnTrack", nextMilestone: "Project complete", dueDate: null });
   });
 });

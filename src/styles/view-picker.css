@@ -84,4 +84,25 @@
     display: flex; flex-direction: column; align-items: flex-start; gap: 6px; margin-top: 10px; padding-top: 10px;
     border-top: 1px solid var(--dark-border);
   }
+
+  /*
+   * Dashboard view drawer (task 7, values from Figma Bro): nearly solid so the menu reads over the heartbeat and tile
+   * washes. The side panel's base surface (--dark-card #171A21) at 96%, blur 16px saturate 120%, the same 1px border,
+   * a 1px inner top highlight and the popover shadow. Background only: size, padding and layout are .vp-pop's.
+   */
+  .vp-pop.vp-drawer {
+    background: rgba(23, 26, 33, 0.96);
+    -webkit-backdrop-filter: blur(16px) saturate(120%);
+    backdrop-filter: blur(16px) saturate(120%);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.06), 0 12px 32px rgba(0, 0, 0, 0.45);
+  }
+  /* No backdrop-filter (or the page marked solid by DashboardAmbient): a fully solid surface. */
+  @supports not ((-webkit-backdrop-filter: blur(1px)) or (backdrop-filter: blur(1px))) {
+    .vp-pop.vp-drawer { background: var(--dark-card); }
+  }
+  .pb-page[data-pb-solid] .vp-pop.vp-drawer {
+    background: var(--dark-card);
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+  }
 }

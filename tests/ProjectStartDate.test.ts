@@ -1,3 +1,4 @@
+import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -54,9 +55,10 @@ describe("Project start date: import default and create", () => {
     await expect(ProjectService.createFromForm({ name: "A", serviceArea: "Cath", status: "NotStarted", startDate: future }, Factory.ADMIN, fake.asClient())).rejects.toMatchObject({
       errors: { startDate: [StartDate.FUTURE_MESSAGE] },
     });
+    // A new project can't be Complete (task 5: complete only when its last milestone is marked done).
     await expect(
       ProjectService.createFromForm({ name: "A", serviceArea: "Cath", status: "Complete", completedOn: "2026-03-01", startDate: "2026-03-03" }, Factory.ADMIN, fake.asClient()),
-    ).rejects.toMatchObject({ errors: { startDate: [StartDate.AFTER_COMPLETED_MESSAGE] } });
+    ).rejects.toMatchObject({ errors: { status: [CompletionCopy.HAND_COMPLETE_REFUSED] } });
     expect(fake.state.projects).toHaveLength(0);
   });
 });
@@ -138,17 +140,21 @@ describe("Project start date: server validation on save", () => {
       expect(err).toBeInstanceOf(ProjectValidationError);
       expect(err.errors.startDate).toEqual([message]);
     }
-    const err = await ProjectService.saveForm(p.id, { startDate: "2026-03-03", status: "Complete", completedOn: "2026-03-01" }, Factory.ADMIN, fake.asClient()).catch((e) => e);
-    expect(err.errors.startDate).toEqual([StartDate.AFTER_COMPLETED_MESSAGE]);
     expect(fake.state.history).toHaveLength(n);
     expect(stored(p.id).startDateIsDefault).toBe(true);
     expect(stored(p.id).status).toBe("OnTrack");
+    // On a completed project (Complete is never set by hand): a start after the completed date.
+    const done = await oldImportedProject("Complete", { completedOn: "2026-03-05" });
+    const m = fake.state.history.length;
+    const err = await ProjectService.saveForm(done.id, { startDate: "2026-03-03", completedOn: "2026-03-01" }, Factory.ADMIN, fake.asClient()).catch((e) => e);
+    expect(err.errors.startDate).toEqual([StartDate.AFTER_COMPLETED_MESSAGE]);
+    expect(fake.state.history).toHaveLength(m);
   });
 
   it("a real start date is checked when the project is completed before it", async () => {
-    const p = await oldImportedProject();
+    const p = await oldImportedProject("Complete", { completedOn: "2026-03-05" });
     await ProjectService.saveForm(p.id, { startDate: "2026-03-03" }, Factory.ADMIN, fake.asClient());
-    const err = await ProjectService.saveForm(p.id, { status: "Complete", completedOn: "2026-03-01" }, Factory.ADMIN, fake.asClient()).catch((e) => e);
+    const err = await ProjectService.saveForm(p.id, { completedOn: "2026-03-01" }, Factory.ADMIN, fake.asClient()).catch((e) => e);
     expect(err.errors.startDate).toEqual([StartDate.AFTER_COMPLETED_MESSAGE]);
   });
 

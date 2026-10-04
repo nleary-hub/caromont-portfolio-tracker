@@ -40,6 +40,8 @@ export interface MilestoneSaveResult {
   plan: MilestonePlan;
   /** Steps before the save (done state and check day), for the completion rules (CompletionRules). */
   before: { done: boolean; doneAt: string | null }[];
+  /** The save deleted the last milestone and "Project complete" was added back (ProjectService.addBackDefaultMilestone). */
+  defaultAdded?: "open" | "done";
 }
 
 /**

@@ -1,4 +1,5 @@
 import { DisplayName } from "@/lib/auth/DisplayName";
+import { DefaultMilestone } from "@/lib/projects/DefaultMilestone";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { CompletionRules } from "@/lib/projects/CompletionRules";
@@ -56,6 +57,8 @@ export interface NoteEntry {
   who: string;
   /** The full note as entered (ProjectHistory.newValue), or null when the edit cleared the note. */
   text: string | null;
+  /** A legacy entry that kept only a shortened copy of the note (UpdateTimeline.isShortened): muted "(shortened)" tag. */
+  shortened: boolean;
 }
 
 /** A step for Project detail > Milestones (full name, owner). */
@@ -86,7 +89,7 @@ export interface TimelineDto {
   title: string;
   entries: (TimelineLine & { key: string; meta: string; hollow: boolean })[];
   previously: string | null;
-  notes: { key: string; meta: string; who: string; text: string | null }[];
+  notes: { key: string; meta: string; who: string; text: string | null; shortened: boolean }[];
   steps: TimelineStep[];
 }
 
@@ -161,6 +164,7 @@ export class UpdateTimeline {
     "milestone_due",
     "milestone_owner",
     "milestone_deleted",
+    "milestone_auto_added",
     "milestones_reordered",
     "serviceArea",
     "owner",
@@ -184,6 +188,19 @@ export class UpdateTimeline {
    * `people` are the line's People list names (owners, requesters, contracts leads): the meta line prefers their spelling
    * when exactly one of them matches the email.
    */
+  /** The old note cap (AppConfig.NOTE_MAX_LENGTH before task 2). */
+  static readonly LEGACY_NOTE_MAX = 200;
+
+  /**
+   * Detection rule for a legacy shortened copy: the stored text ends in "…" (U+2026) and is the old 200-character cap
+   * long (200 or 201 characters with the ellipsis). The app has always stored the full note (HistoryDiff.serialize), so
+   * this only flags copies cut to the old cap elsewhere (none in production on Oct 4, 2026).
+   */
+  static isShortened(text: string | null | undefined): boolean {
+    if (!text || !text.endsWith("\u2026")) return false;
+    return text.length === UpdateTimeline.LEGACY_NOTE_MAX || text.length === UpdateTimeline.LEGACY_NOTE_MAX + 1;
+  }
+
   static build(rows: readonly TimelineRow[], prior: readonly PriorInforRow[], currentInfor: number | null, people: readonly string[] = []): Timeline {
     const dated: TimelineEntry[] = [];
     const notes: NoteEntry[] = [];
@@ -192,7 +209,7 @@ export class UpdateTimeline {
       const meta = C.meta(ReportFormat.dateTimeEt(g.changedAt), who);
       g.rows
         .filter((r) => UpdateTimeline.NOTE_FIELDS.has(r.field))
-        .forEach((r, i) => notes.push({ key: `note|${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, who, text: r.newValue ? r.newValue : null }));
+        .forEach((r, i) => notes.push({ key: `note|${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, who, text: r.newValue ? r.newValue : null, shortened: UpdateTimeline.isShortened(r.newValue) }));
       UpdateTimeline.lines(g.rows.filter((r) => !UpdateTimeline.NOTE_FIELDS.has(r.field))).forEach((line, i) => {
         dated.push({ ...line, key: `${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, hollow: who === C.TRACKER });
       });
@@ -218,7 +235,7 @@ export class UpdateTimeline {
       title: t.title,
       entries: t.entries.map(({ key, meta, hollow, text, change, admin }) => ({ key, meta, hollow, text, ...(change ? { change } : {}), ...(admin ? { admin } : {}) })),
       previously: t.previously,
-      notes: t.notes.map(({ key, meta, who, text }) => ({ key, meta, who, text })),
+      notes: t.notes.map(({ key, meta, who, text, shortened }) => ({ key, meta, who, text, shortened })),
       steps: t.steps,
     };
   }
@@ -305,6 +322,10 @@ export class UpdateTimeline {
         const text = UpdateTimeline.completionText(row);
         return text ? { text } : null;
       }
+      case DefaultMilestone.HISTORY_FIELD: {
+        const text = DefaultMilestone.historyText(after);
+        return text ? { text } : null;
+      }
       case "created":
         return { text: row.comment === UpdateTimeline.CSV_IMPORT_COMMENT ? C.IMPORTED : C.PROJECT_CREATED };
       case F.added:
@@ -389,8 +410,6 @@ export class UpdateTimeline {
         return n ? CompletionCopy.manualRemoved(n) : null;
       case "manual_removed_no_auto":
         return o ? CompletionCopy.manualRemovedNoAuto(o) : null;
-      case "manual_removed_reopened":
-        return o ? CompletionCopy.manualRemovedReopened(o) : null;
       default:
         return null;
     }

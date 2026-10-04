@@ -47,7 +47,7 @@ export class PeopleComboboxModel {
   static readonly NO_MATCH = "No match";
   static readonly EMPTY = "No names yet. Type to add one.";
   /** Empty list where typing can't add a name (milestone owners): names come from Admin > People. */
-  static readonly NO_NAMES = "No names yet. Add people in Admin > People.";
+  static readonly NO_NAMES = "No people yet. Add them on the People page in Admin.";
   /** Gray tag on a closed field whose name is not on the line's list (Admin > People), e.g. Mark Wingard. */
   static readonly NOT_ON_LIST = "Not on list";
 

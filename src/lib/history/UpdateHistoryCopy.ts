@@ -94,12 +94,12 @@ export class UpdateHistoryCopy {
   static stepOwner(step: string, from: string | null, to: string | null): string {
     if (from && to) return `Owner for "${step}" changed from ${from} to ${to}.`;
     if (to) return `Owner for "${step}" set to ${to}.`;
-    return `Owner for "${step}" cleared (was ${from ?? ""}).`;
+    return `Owner for "${step}" removed (was ${from ?? ""}).`;
   }
 
   /** A People page rename that reached a step owner. */
   static stepOwnerRenamed(step: string, from: string, to: string): string {
-    return `Owner for "${step}" renamed from ${from} to ${to} on the People page.`;
+    return `Owner for "${step}" updated from ${from} to ${to} after a rename on the People page.`;
   }
 
   /**

@@ -1,4 +1,5 @@
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { PickList } from "@/lib/people/PickList";
 import { Requester } from "@/lib/domain/Requester";
@@ -350,6 +351,10 @@ export class ImportService {
         (errors[col as CsvColumn] ??= []).push(...(messages ?? []));
       }
     }
+    // Nick's completion rule (task 5): a project is complete only when its last milestone is checked off, so Complete
+    // (and with it a completion date) can't be imported.
+    if (input.status === "Complete") errors.status = [CompletionCopy.importRefused(row.line)];
+    else if (typeof input.completedOn === "string" ? input.completedOn.trim() : input.completedOn) (errors.completed_on ??= []).push(CompletionCopy.DATE_NOT_COMPLETE);
     return { input, errors };
   }
 

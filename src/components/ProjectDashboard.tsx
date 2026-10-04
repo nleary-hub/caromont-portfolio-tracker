@@ -7,6 +7,7 @@ import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ViewContext } from "@/generated/prisma/enums";
 import { AppConfig } from "@/lib/config/AppConfig";
+import { LongTextCounter } from "@/lib/projects/LongTextCounter";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
@@ -29,7 +30,7 @@ import type { ProjectFormSubmit } from "./ProjectEditForm";
 import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { DashboardTopBar, type TopBarReport } from "./DashboardTopBar";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
-import { DashboardTable, type DashboardLayoutControl } from "./DashboardTable";
+import { DashboardTable, DueFlagPill, type DashboardLayoutControl } from "./DashboardTable";
 import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
 import { ClosedPagesCopy } from "@/lib/closed/ClosedPagesCopy";
 import { ClosedPageModel } from "@/lib/closed/ClosedPageModel";
@@ -175,13 +176,19 @@ export function ProjectDashboard({
   setHeartbeatAction,
 }: Props) {
   const [query, setQuery] = useState("");
-  // Optimistic: the dashboard follows the switch at once; a failed save puts it back.
+  // The dashboard follows the switch at once. A failed save keeps the choice on screen (until a reload) and shows an
+  // inline error in the account menu instead of silently putting the switch back. Only the latest click reports.
   const [heartbeat, setHeartbeat] = useState(heartbeatProp);
+  const [heartbeatSaveFailed, setHeartbeatSaveFailed] = useState(false);
+  const heartbeatSeq = useRef(0);
   const changeHeartbeat = (on: boolean) => {
     setHeartbeat(on);
+    setHeartbeatSaveFailed(false);
+    const seq = ++heartbeatSeq.current;
+    const failed = () => seq === heartbeatSeq.current && setHeartbeatSaveFailed(true);
     void setHeartbeatAction?.(on)
-      .then((saved) => saved === null && setHeartbeat(!on))
-      .catch(() => setHeartbeat(!on));
+      .then((saved) => saved === null && failed())
+      .catch(failed);
   };
   const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
   // What "/" calls: set by the top bar (focus the search field, or open it when it is collapsed to an icon).
@@ -459,7 +466,7 @@ export function ProjectDashboard({
                 {Initials.of(userName, userEmail)}
               </div>
               <div className="flex flex-col type-caption">
-                <AccountMenu name={userName ?? userEmail} heartbeat={heartbeat} onHeartbeatChange={changeHeartbeat} />
+                <AccountMenu name={userName ?? userEmail} heartbeat={heartbeat} onHeartbeatChange={changeHeartbeat} saveFailed={heartbeatSaveFailed} />
                 <button type="submit" className="text-left hover:text-fg">
                   Sign out
                 </button>
@@ -906,12 +913,15 @@ export function ProjectDrawer({
         </dd>
         <dt className="text-muted">Next milestone</dt>
         <dd>
-          {row.nextMilestone?.trim() ? <span className="break-words whitespace-pre-wrap">{row.nextMilestone}</span> : <span className="text-muted">–</span>}
-          {MilestoneProgress.progressLabel(row.milestoneProgress) && (
-            <span className="ml-1.5 whitespace-nowrap text-muted" data-testid="milestone-progress">
-              {MilestoneProgress.progressLabel(row.milestoneProgress)}
-            </span>
-          )}
+          {/* At most 2 lines (count included); the full text is in the tooltip and the Milestones section. */}
+          <div className="line-clamp-2 break-words" title={row.nextMilestone?.trim() || undefined} data-testid="drawer-next-milestone">
+            {row.nextMilestone?.trim() ? <span className="whitespace-pre-wrap">{row.nextMilestone}</span> : <span className="text-muted">–</span>}
+            {MilestoneProgress.progressLabel(row.milestoneProgress) && (
+              <span className="ml-1.5 whitespace-nowrap text-muted" data-testid="milestone-progress">
+                {MilestoneProgress.progressLabel(row.milestoneProgress)}
+              </span>
+            )}
+          </div>
         </dd>
         {row.startDate !== undefined && (
           <>
@@ -922,13 +932,7 @@ export function ProjectDrawer({
             </dd>
           </>
         )}
-        <dt className="text-muted">Due date</dt>
-        <dd className={row.overdue ? "font-semibold text-danger" : ""}>
-          {DateFormat.long(row.dueDate) ?? "–"}
-          {row.overdue && ` · ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue`}
-        </dd>
-        <dt className="text-muted">Target completion</dt>
-        <dd>{DateFormat.long(row.targetCompletion) ?? "–"}</dd>
+        {/* Completion date right after Start date (task 5). */}
         {row.completion && (
           <>
             <dt className="text-muted">{CompletionCopy.ROW_LABEL}</dt>
@@ -939,13 +943,21 @@ export function ProjectDrawer({
                   {row.completion.source && <CompletionTag source={row.completion.source} />}
                 </>
               ) : (
-                <span className="font-medium text-(--status-at-risk-dark-fg)" data-testid="completion-date-needed">
-                  {CompletionCopy.DATE_NEEDED}
+                // The Stale chip (dashed amber border, fill, clock icon), text exactly "Completion date needed".
+                <span className="inline-flex align-middle" data-testid="completion-date-needed">
+                  <DueFlagPill kind="stale" label={CompletionCopy.DATE_NEEDED} />
                 </span>
               )}
             </dd>
           </>
         )}
+        <dt className="text-muted">Due date</dt>
+        <dd className={row.overdue ? "font-semibold text-danger" : ""}>
+          {DateFormat.long(row.dueDate) ?? "–"}
+          {row.overdue && ` · ${daysOverdue} day${daysOverdue === 1 ? "" : "s"} overdue`}
+        </dd>
+        <dt className="text-muted">Target completion</dt>
+        <dd>{DateFormat.long(row.targetCompletion) ?? "–"}</dd>
         <dt className="text-muted">% complete</dt>
         <dd>{row.percentComplete ?? "–"}</dd>
         <dt className="text-muted">In report</dt>
@@ -954,8 +966,9 @@ export function ProjectDrawer({
       <div>
         <div className="mb-1.5 flex items-baseline gap-2 uppercase tracking-[.04em] text-muted type-label">
           Note
-          <span className="normal-case tracking-normal type-caption">
-            ({(row.note?.length ?? 0).toLocaleString("en-US")}/{AppConfig.NOTE_MAX_LENGTH.toLocaleString("en-US")})
+          {/* Same counter text as the edit screen: "1,240 / 2,000". */}
+          <span className="normal-case tracking-normal type-caption" aria-label={LongTextCounter.label(row.note?.length ?? 0, AppConfig.NOTE_MAX_LENGTH)} data-testid="drawer-note-counter">
+            {LongTextCounter.text(row.note?.length ?? 0, AppConfig.NOTE_MAX_LENGTH)}
           </span>
         </div>
         <p className="rounded-[6px] border border-line bg-input px-3 py-2.5 break-words whitespace-pre-wrap type-body" data-testid="drawer-note">
@@ -963,10 +976,11 @@ export function ProjectDrawer({
         </p>
       </div>
       {historyAction && <MilestoneStepsSection timeline={history.timeline} />}
-      {adminControls}
       {historyAction && <UpdateNotesSection key={`notes-${row.id}`} timeline={history.timeline} />}
       {/* People and History are siblings: their project-specific keys must have distinct namespaces. */}
       {historyAction && <ProjectHistorySection key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />}
+      {/* Admin controls at the bottom of the side panel, below History. */}
+      {adminControls}
 
     </aside>
   );

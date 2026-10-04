@@ -15,7 +15,10 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { MilestoneDraft } from "@/lib/domain/MilestoneRules";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
+import { UpdateHistoryCopy } from "@/lib/history/UpdateHistoryCopy";
 import { UpdateNotesCopy } from "@/lib/history/UpdateNotesCopy";
+import { PeopleComboboxModel } from "@/lib/people/PeopleComboboxModel";
+import { MilestoneOwnerCopy } from "@/lib/projects/MilestoneOwnerCopy";
 import { type TimelineDto, type TimelineRow, UpdateTimeline } from "@/lib/history/UpdateTimeline";
 import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { CompletionRules, type CompletionState } from "@/lib/projects/CompletionRules";
@@ -369,7 +372,7 @@ describe("Task 5: completion date rules", () => {
 
   it("rule 2: a new milestone added reopens it to On track; the date leaves view and is kept", () => {
     const o = CompletionRules.afterChecklist(st({ status: "Complete", auto: "2026-09-24" }), change([true], [true, false], { added: true }), "2026-10-01");
-    expect(o.next).toEqual({ status: "OnTrack", manual: null, auto: null, previousAuto: "2026-09-24" });
+    expect(o.next).toEqual({ status: "OnTrack", manual: null, auto: null, previousAuto: "2026-09-24", previousManual: null });
     expect(CompletionRules.effective(o.next).date).toBeNull();
     expect(CompletionCopy.reopenedAdded("2026-09-24")).toBe("Reopened: new milestone added. Completion date Sep 24, 2026 removed");
   });
@@ -394,10 +397,18 @@ describe("Task 5: completion date rules", () => {
     expect(CompletionCopy.reopenedUnchecked("2026-09-24")).toBe("Reopened: milestone unchecked. Completion date Sep 24, 2026 removed");
   });
 
-  it("rule 5: a manual date wins over milestone changes; Use automatic date goes back to the automatic one", () => {
+  it("rule 5: a manual date reopens like an automatic one and comes back when that milestone is deleted; Use automatic date goes back to the automatic one", () => {
     const manual = st({ status: "Complete", manual: "2026-09-20", auto: "2026-09-24" });
-    expect(CompletionRules.afterChecklist(manual, change([true], [true, false], { added: true }), "2026-10-01").event).toBeNull();
     expect(CompletionRules.effective(manual)).toEqual({ date: "2026-09-20", source: "manual" });
+    const reopened = CompletionRules.afterChecklist(manual, change([true], [true, false], { added: true }), "2026-10-01");
+    expect(reopened.next).toEqual({ status: "OnTrack", manual: null, auto: null, previousAuto: "2026-09-24", previousManual: "2026-09-20" });
+    expect(reopened.event).toEqual({ code: "reopened_added", oldValue: "2026-09-20", newValue: null });
+    const back = CompletionRules.afterChecklist(reopened.next, change([true, false], [true], { removed: true }), "2026-10-02");
+    expect(back.next).toEqual({ status: "Complete", manual: "2026-09-20", auto: "2026-09-24", previousAuto: null, previousManual: null });
+    expect(back.event).toEqual({ code: "restored", oldValue: null, newValue: "2026-09-20" });
+    // Marking the new milestone done instead: completed again on that day (automatic); the kept manual date is dropped.
+    const again = CompletionRules.afterChecklist(reopened.next, change([true, false], [true, true], { checked: true }), "2026-10-03");
+    expect(again.next).toMatchObject({ status: "Complete", manual: null, auto: "2026-10-03", previousManual: null });
     const removed = CompletionRules.afterForm(manual, { ...manual, manual: null }, [{ done: true, doneAt: "2026-09-24" }]);
     expect(removed.next).toMatchObject({ status: "Complete", manual: null, auto: "2026-09-24" });
     expect(removed.event?.code).toBe("manual_removed");
@@ -466,13 +477,35 @@ describe("Task 5: completion date rules", () => {
       await ProjectService.saveForm(id, { completedOn: "2026-09-20" }, Factory.ADMIN, s.db);
       expect(DateOnly.fromDbDate(s.project(id).completedOn as Date)).toBe("2026-09-20");
       expect(s.history(id, "completion").at(-1)!.comment).toBe("completion:manual");
+      // Adding a milestone reopens it; the typed date is kept and comes back when that milestone is deleted.
       await s.save(id, [...s.drafts(id), { id: null, name: "Training", dueDate: "", done: false, sourceTemplateId: null }]);
-      expect(s.project(id).status).toBe("Complete");
+      expect(s.project(id)).toMatchObject({ status: "OnTrack", completedOn: null });
+      expect(DateOnly.fromDbDate(s.project(id).previousManualCompletedOn as Date)).toBe("2026-09-20");
+      expect(s.history(id, "completion").at(-1)).toMatchObject({ comment: "completion:reopened_added", oldValue: "2026-09-20" });
       await s.save(id, s.drafts(id).filter((d) => d.name !== "Training"));
+      expect(s.project(id)).toMatchObject({ status: "Complete", previousManualCompletedOn: null });
+      expect(DateOnly.fromDbDate(s.project(id).completedOn as Date)).toBe("2026-09-20");
+      expect(s.history(id, "completion").at(-1)).toMatchObject({ comment: "completion:restored", newValue: "2026-09-20" });
       await ProjectService.saveForm(id, { completedOn: "" }, Factory.ADMIN, s.db);
       expect(s.project(id).completedOn).toBeNull();
       expect(s.history(id, "completion").at(-1)!.comment).toBe("completion:manual_removed");
     });
+  });
+
+  it("Complete can't be set by hand, and a completion date only goes on a completed project (server)", async () => {
+    const s = new Setup();
+    const id = await s.withSteps();
+    const before = s.fake.state.history.length;
+    await expect(ProjectService.saveForm(id, { status: "Complete" }, Factory.ADMIN, s.db)).rejects.toMatchObject({ errors: { status: [CompletionCopy.HAND_COMPLETE_REFUSED] } });
+    await expect(ProjectService.saveForm(id, { completedOn: "2026-09-20" }, Factory.ADMIN, s.db)).rejects.toMatchObject({ errors: { completedOn: [CompletionCopy.DATE_NOT_COMPLETE] } });
+    await expect(ProjectService.createFromForm({ name: "New", serviceArea: "Cath", status: "Complete", startDate: "2026-09-01" }, Factory.ADMIN, s.db, null, scope())).rejects.toMatchObject({ errors: { status: [CompletionCopy.HAND_COMPLETE_REFUSED] } });
+    expect(s.fake.state.history).toHaveLength(before);
+    expect(s.project(id).status).toBe("OnTrack");
+    expect(CompletionCopy.HAND_COMPLETE_REFUSED).toBe("Complete can't be set by hand. A project is complete when its last milestone is marked done.");
+    // A completed project keeps Complete on save and its date stays editable.
+    await s.allDone(id);
+    await ProjectService.saveForm(id, { status: "Complete", completedOn: "2026-09-21" }, Factory.ADMIN, s.db);
+    expect(DateOnly.fromDbDate(s.project(id).completedOn as Date)).toBe("2026-09-21");
   });
 
   it("frozen reports are served from stored files and snapshots, never re-rendered from live data", async () => {
@@ -524,5 +557,49 @@ describe("Task 6: Infor slot", () => {
     expect(withNo).toBeGreaterThan(0);
     expect(without).toBeGreaterThan(0);
     expect([...xs]).toEqual([ReportLayout.metaLine(m, true, null, "Updated Sep 24", false)[0].x]);
+  });
+});
+
+// ---------------------------------------------------------------------------------------------------------------- Follow-ups
+describe("Follow-ups on PR #49", () => {
+  it("Task 4: a legacy shortened copy gets the muted (shortened) tag with its tooltip; full notes never do", () => {
+    const cut = `${"a".repeat(199)}\u2026`;
+    expect(UpdateTimeline.isShortened(cut)).toBe(true);
+    expect(UpdateTimeline.isShortened(`${"a".repeat(200)}\u2026`)).toBe(true);
+    expect(UpdateTimeline.isShortened("a".repeat(200))).toBe(false);
+    expect(UpdateTimeline.isShortened("Short and done\u2026")).toBe(false);
+    expect(UpdateTimeline.isShortened(`${"a".repeat(1500)}\u2026`)).toBe(false);
+    expect(UpdateTimeline.isShortened(null)).toBe(false);
+    const row = (text: string, i: number): TimelineRow => ({ field: "note", oldValue: null, newValue: text, changedAt: new Date(Date.UTC(2026, 8, 9, 1 + i, 23)), changedBy: "nick.leary@example.org", comment: null });
+    const dto = UpdateTimeline.toDto(UpdateTimeline.build([row(cut, 0), row("Full note", 1)], [], null, ["Nick Leary"]));
+    expect(dto.notes.map((n) => n.shortened)).toEqual([false, true]);
+    const html = renderToStaticMarkup(createElement(UpdateNotesSection, { timeline: dto }));
+    expect((html.match(/data-testid="update-note-shortened"/g) ?? []).length).toBe(1);
+    expect(html).toContain(`title="${UpdateNotesCopy.SHORTENED_TOOLTIP}"`);
+    expect(UpdateNotesCopy.SHORTENED).toBe("(shortened)");
+    expect(UpdateNotesCopy.SHORTENED_TOOLTIP).toBe("Only a shortened copy of this note was saved.");
+    expect(dto.notes[0].meta).toBe("Sep 8, 2026, 10:23 PM ET \u00b7 Nick Leary");
+    expect(html).toContain("whitespace-pre-wrap");
+  });
+
+  it("Task 5: the link reads Use automatic date only when an automatic date would remain, else Remove manual date", () => {
+    expect(CompletionRules.fallbackAuto([{ done: true, doneAt: "2026-09-24" }])).toBe("2026-09-24");
+    expect(CompletionRules.fallbackAuto([{ done: true, doneAt: "2026-09-24" }, { done: false }])).toBeNull();
+    expect(CompletionRules.fallbackAuto([])).toBeNull();
+    expect(CompletionCopy.manualLink(true)).toBe("Use automatic date");
+    expect(CompletionCopy.manualLink(false)).toBe(CompletionCopy.SHOW_REMOVE_MANUAL ? "Remove manual date" : null);
+    expect(CompletionCopy.manualRemovedNoAuto("2026-09-24")).toBe("Manual completion date Sep 24, 2026 removed. Completion date needed.");
+  });
+
+  it("Task 3 copy: owner history lines, empty People list, screen-reader label", () => {
+    expect(UpdateHistoryCopy.stepOwner("Go-live", null, "Kim Nguyen")).toBe('Owner for "Go-live" set to Kim Nguyen.');
+    expect(UpdateHistoryCopy.stepOwner("Go-live", "Kim Nguyen", null)).toBe('Owner for "Go-live" removed (was Kim Nguyen).');
+    expect(UpdateHistoryCopy.stepOwnerRenamed("Go-live", "Kim Nguyen", "Kim Nguyen-Lee")).toBe('Owner for "Go-live" updated from Kim Nguyen to Kim Nguyen-Lee after a rename on the People page.');
+    expect(PeopleComboboxModel.NO_NAMES).toBe("No people yet. Add them on the People page in Admin.");
+    expect(MilestoneOwnerCopy.ariaLabel(2)).toBe("Owner for step 2");
+  });
+
+  it("Task 2: the side panel note counter reads like the edit screen (1,240 / 2,000)", () => {
+    expect(LongTextCounter.text(1240, AppConfig.NOTE_MAX_LENGTH)).toBe("1,240 / 2,000");
   });
 });

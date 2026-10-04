@@ -131,7 +131,14 @@ export function UpdateNotesSection({ timeline }: { timeline: TimelineDto | null 
           <ol className="flex flex-col gap-2.5">
             {shown.map((n) => (
               <li key={n.key} className="rounded-[6px] border border-line bg-input px-3 py-2" data-testid="update-note">
-                <div className="text-muted type-table">{n.meta}</div>
+                <div className="text-muted type-table">
+                  {n.meta}
+                  {n.shortened && (
+                    <span title={N.SHORTENED_TOOLTIP} className="ml-1.5 text-muted" data-testid="update-note-shortened">
+                      {N.SHORTENED}
+                    </span>
+                  )}
+                </div>
                 <p className={`mt-0.5 whitespace-pre-wrap break-words type-body ${n.text ? "text-fg" : "text-muted"}`}>{n.text ?? N.CLEARED}</p>
               </li>
             ))}

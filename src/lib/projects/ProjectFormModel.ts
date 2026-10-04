@@ -215,12 +215,18 @@ export class ProjectFormModel {
   }
 
   /**
-   * Status change: switching to Complete prefills Completed on with today (America/New_York) when it
-   * is empty; switching away puts back the stored date so a hidden prefill is never saved.
+   * Status change (task 5). Leaving Complete empties the completion date: the server clears every completion date when
+   * the status is not Complete, so the form never keeps (or later brings back) a date the server would drop. Coming back
+   * to Complete restores, in order: `opts.resume` (the date on screen when the status left Complete in this session,
+   * even "" after "Use automatic date"), then the stored date when the project was stored as Complete, else today
+   * (America/New_York) as a visible prefill. A stored date on a project that is not Complete is stale and never reused.
    */
-  static withStatus(values: ProjectFormValues, status: string, original: ProjectFormValues, today: string = DateOnly.today()): ProjectFormValues {
-    if (status === "Complete") return { ...values, status, completedOn: values.completedOn || today };
-    return { ...values, status, completedOn: original.completedOn };
+  static withStatus(values: ProjectFormValues, status: string, original: ProjectFormValues, today: string = DateOnly.today(), opts: { resume?: string } = {}): ProjectFormValues {
+    if (status !== "Complete") return { ...values, status, completedOn: "" };
+    if (values.status === "Complete") return { ...values, status };
+    if (opts.resume !== undefined) return { ...values, status, completedOn: opts.resume };
+    if (original.status === "Complete") return { ...values, status, completedOn: original.completedOn };
+    return { ...values, status, completedOn: today };
   }
 
   static showsCompletedOn(values: ProjectFormValues): boolean {

@@ -446,7 +446,7 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
                       <PeopleCombobox
                         role="owner"
                         id={`ms-owner-${s.key}`}
-                        label={`${MilestoneOwnerCopy.LABEL}, step ${i + 1}`}
+                        label={MilestoneOwnerCopy.ariaLabel(i + 1)}
                         options={ownerOptions}
                         value={s.owner ? { kind: "name", name: s.owner } : { kind: "unset" }}
                         onPick={(next) => void commit(MilestoneEditorModel.update(state, s.key, { owner: next.kind === "name" ? next.name : null }))}

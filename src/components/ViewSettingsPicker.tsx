@@ -161,7 +161,7 @@ export function ViewSettingsPicker({ settings, counts, onSave, layoutReset, comp
       </button>
 
       {open && (
-        <div className="vp-pop" role="dialog" aria-label={AdminMenu.DASHBOARD_VIEW}>
+        <div className="vp-pop vp-drawer" role="dialog" aria-label={AdminMenu.DASHBOARD_VIEW} data-testid="dashboard-view-drawer">
           <div className="vp-seg" role="tablist">
             {ViewSettings.CONTEXTS.map((c) => (
               <button

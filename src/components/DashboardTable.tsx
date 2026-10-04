@@ -843,8 +843,8 @@ export function DueFlagsCellView({ cell }: { cell: DueFlagsCell }) {
   );
 }
 
-/** One PDF flag pill in dark tokens: Changed and Stale dashed, Overdue filled. */
-function DueFlagPill({ kind, label }: { kind: DueFlagKind; label: string }) {
+/** One PDF flag pill in dark tokens: Changed and Stale dashed, Overdue filled. Also the side panel's "Completion date needed" (Stale chip). */
+export function DueFlagPill({ kind, label }: { kind: DueFlagKind; label: string }) {
   return (
     <span className={`flag fl-${kind} flex-none`} data-flag={kind}>
       {kind === "changed" && <StatusShape status="OffTrack" />}

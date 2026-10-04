@@ -8,6 +8,7 @@ import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { ReportSchedule, type ReportPeriod } from "@/lib/report/ReportSchedule";
+import { StoredPdfMissingError } from "@/lib/report/StoredPdf";
 import { ReportArtifactService } from "@/lib/services/ReportArtifactService";
 import { ReportDeliveryService, type DeliveryDeps, type DeliveryRecord } from "@/lib/services/ReportDeliveryService";
 import { SnapshotExistsError, SnapshotService } from "@/lib/services/SnapshotService";
@@ -113,7 +114,10 @@ export class FreezeService {
     };
   }
 
-  /** Render the PDF, write handoff.json and deliver, each only if not done yet. Returns the delivery done now, if any. */
+  /**
+   * Render the PDF, write handoff.json and deliver, each only if not done yet. Returns the delivery done now, if any.
+   * Throws StoredPdfMissingError when the snapshot's PDF was stored before and is now missing (never re-rendered).
+   */
   static async complete(snapshot: ReportSnapshot, options: FreezeOptions, db: PrismaClient = Db.client): Promise<DeliveryRecord | null> {
     const env = options.env ?? process.env;
     // Scheduled reports, handoff.json and Drive delivery are for the default line (CVPSL) only.
@@ -124,6 +128,13 @@ export class FreezeService {
     const input = PdfReportRenderer.inputFromSnapshot(snapshot);
 
     let pdf: ReportArtifact | null = await ReportArtifactService.get(snapshot.id, "pdf", db);
+    // Already frozen and stored once (pdfStorageKey is set only after the PDF is stored): never rebuild it from the
+    // snapshot, which would use today's layout. Stop with a clear error; nothing else runs for this snapshot.
+    if (!pdf && snapshot.pdfStorageKey) {
+      ReportLog.error("freeze.pdf.missing", { snapshotId: snapshot.id, pdfStorageKey: snapshot.pdfStorageKey });
+      throw new StoredPdfMissingError(snapshot.id, snapshot.generatedAt);
+    }
+    // First-time generation for this snapshot (the freeze run itself, or a re-run after it stopped before storing).
     if (!pdf) {
       const bytes = await PdfReportRenderer.render(input);
       pdf = await ReportArtifactService.store(

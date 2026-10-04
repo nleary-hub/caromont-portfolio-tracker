@@ -49,7 +49,7 @@ export class ClosedPageData {
           where: { projectId: { in: ids }, field: { in: ["status", "created"] } },
           select: { projectId: true, changedAt: true, field: true, oldValue: true, newValue: true },
         }),
-        db.projectHistory.groupBy({ by: ["projectId"], where: { projectId: { in: ids }, ...VisibilityPolicy.publicHistoryWhere() }, _max: { changedAt: true } }),
+        db.projectHistory.groupBy({ by: ["projectId"], where: { projectId: { in: ids }, ...VisibilityPolicy.publicUpdateWhere() }, _max: { changedAt: true } }),
       ]);
       const latestUpdates = lastUpdates.flatMap((g) => (g._max.changedAt ? [{ projectId: g.projectId, changedAt: g._max.changedAt, field: "update" }] : []));
       const rows = FiscalYearRows.build({ projects: closed, closedHistory, history: [], latestUpdates, previousSnapshotGeneratedAt: latest?.generatedAt ?? null, today });

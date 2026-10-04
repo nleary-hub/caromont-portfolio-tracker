@@ -113,7 +113,7 @@ class DashboardData {
         where: {
           projectId: { in: listedIds },
           ...(latest ? { changedAt: { gt: latest.generatedAt } } : {}),
-          ...VisibilityPolicy.publicHistoryWhere(),
+          ...VisibilityPolicy.publicUpdateWhere(),
         },
         select: { projectId: true, changedAt: true, field: true },
         distinct: ["projectId"],
@@ -121,7 +121,7 @@ class DashboardData {
       // "Updated <date>" on the meta line: latest public history entry per listed project (all time).
       const lastUpdates = await db.projectHistory.groupBy({
         by: ["projectId"],
-        where: { projectId: { in: listedIds }, ...VisibilityPolicy.publicHistoryWhere() },
+        where: { projectId: { in: listedIds }, ...VisibilityPolicy.publicUpdateWhere() },
         _max: { changedAt: true },
       });
       const latestUpdates = lastUpdates.flatMap((g) =>

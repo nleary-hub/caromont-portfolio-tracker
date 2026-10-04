@@ -23,7 +23,18 @@ function useReducedMotion(): boolean {
  * Dashboard heartbeat switch, for everyone (admins and limited users). Esc closes and returns focus to the name;
  * a click outside closes. The switch's accessible name is its visible label (label for=).
  */
-export function AccountMenu({ name, heartbeat, onHeartbeatChange }: { name: string; heartbeat: boolean; onHeartbeatChange: (on: boolean) => void }) {
+export function AccountMenu({
+  name,
+  heartbeat,
+  onHeartbeatChange,
+  saveFailed = false,
+}: {
+  name: string;
+  heartbeat: boolean;
+  onHeartbeatChange: (on: boolean) => void;
+  /** The last save failed: the switch keeps the choice for this page and an inline error says it was not saved. */
+  saveFailed?: boolean;
+}) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
@@ -83,7 +94,7 @@ export function AccountMenu({ name, heartbeat, onHeartbeatChange }: { name: stri
               type="button"
               role="switch"
               aria-checked={heartbeat}
-              aria-describedby={helpId}
+              aria-describedby={saveFailed ? `${helpId} ${helpId}-error` : helpId}
               onClick={() => onHeartbeatChange(!heartbeat)}
               className="acct-switch"
               data-testid="heartbeat-switch"
@@ -91,6 +102,11 @@ export function AccountMenu({ name, heartbeat, onHeartbeatChange }: { name: stri
               <span aria-hidden className="acct-thumb" />
             </button>
           </div>
+          {saveFailed && (
+            <p id={`${helpId}-error`} role="alert" className="acct-error" data-testid="heartbeat-save-error">
+              {HeartbeatCopy.SAVE_FAILED}
+            </p>
+          )}
         </div>
       )}
     </div>

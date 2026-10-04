@@ -15,5 +15,7 @@ export async function GET(_request: Request, ctx: { params: Promise<{ id: string
   const scope = await ServiceLineAccess.activeOrNull(viewer);
   if (!scope) return ReportHttp.notFound();
   const artifact = await ReportArchiveService.file(viewer, id, file, undefined, scope);
-  return artifact ? ReportHttp.artifact(artifact) : ReportHttp.notFound();
+  if (artifact) return ReportHttp.artifact(artifact);
+  const missing = file === "pdf" ? await ReportArchiveService.storedPdfMissing(id, undefined, scope) : null;
+  return missing ? ReportHttp.storedPdfMissing(missing.generatedAt) : ReportHttp.notFound();
 }

@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
+import type { ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 
 // The server actions resolve the viewer from the session and use Db.client; both are fakes here.
 const h = vi.hoisted(() => ({ viewer: null as Viewer | null, db: null as unknown }));
@@ -114,11 +115,30 @@ describe("ProjectFormModel", () => {
     expect(complete.completedOn).toBe(today);
     expect(ProjectFormModel.accomplishmentHint(complete)).toBe("Add an accomplishment for the report");
     expect(ProjectFormModel.accomplishmentHint({ ...complete, accomplishment: "Opened" })).toBeNull();
-    // An existing date is kept; switching back restores the stored (empty) date.
-    expect(ProjectFormModel.withStatus({ ...original, completedOn: "2026-09-01" }, "Complete", original).completedOn).toBe("2026-09-01");
+    // A stale stored date on a project that is not Complete is never reused; switching back empties the date.
+    expect(ProjectFormModel.withStatus({ ...original, completedOn: "2026-09-01" }, "Complete", original).completedOn).toBe(today);
     const back = ProjectFormModel.withStatus(complete, "OnTrack", original);
     expect(back.completedOn).toBe("");
     expect(ProjectFormModel.showsCompletedOn(back)).toBe(false);
+  });
+
+  it("leaving Complete never brings back a manual date the server clears (task 5)", () => {
+    const today = DateOnly.today("America/New_York");
+    const stored: ProjectFormValues = { ...original, status: "Complete", completedOn: "2026-09-16" };
+    // Away from Complete: the date is emptied, as the server clears it on save (it used to restore the stored date).
+    const away = ProjectFormModel.withStatus(stored, "OnTrack", stored);
+    expect(away.completedOn).toBe("");
+    expect(ProjectFormModel.changes(away, stored).completedOn).toBe("");
+    // Back to Complete in the same session: what was on screen when it left, including a removed date.
+    expect(ProjectFormModel.withStatus(away, "Complete", stored, today, { resume: "2026-09-16" }).completedOn).toBe("2026-09-16");
+    expect(ProjectFormModel.withStatus(away, "Complete", stored, today, { resume: "" }).completedOn).toBe("");
+    expect(ProjectFormModel.withStatus(away, "Complete", stored, today, { resume: "2026-09-20" }).completedOn).toBe("2026-09-20");
+    // Without a session value, the stored date of a project stored as Complete.
+    expect(ProjectFormModel.withStatus(away, "Complete", stored, today).completedOn).toBe("2026-09-16");
+    // Stored as On track with a stale date (cleared by the server on reopen): never brought back.
+    const reopened: ProjectFormValues = { ...original, status: "OnTrack", completedOn: "2026-09-16" };
+    expect(ProjectFormModel.withStatus(reopened, "Complete", reopened, today).completedOn).toBe(today);
+    expect(ProjectFormModel.withStatus(reopened, "AtRisk", reopened, today).completedOn).toBe("");
   });
 
   it("the prefill uses the New York date late in the evening", () => {
@@ -236,7 +256,10 @@ describe("edit form server actions", () => {
     const created = fake.state.projects[0];
     expect(r.ok && r.id).toBe(created.id);
     expect(created).toMatchObject({ name: "Hybrid OR scheduling", status: "NotStarted", serviceArea: "Cath", inforRequestNumber: 4656, updatedBy: Factory.ADMIN.email });
-    expect(fake.state.history.filter((h) => h.projectId === created.id).map((h) => h.field)).toEqual(["created"]);
+    // Created without milestones: "Project complete" is added, open, with its own history row (never a public update).
+    expect(fake.state.history.filter((h) => h.projectId === created.id).map((h) => h.field)).toEqual(["created", "milestone_auto_added"]);
+    expect(fake.state.milestones.filter((m) => m.projectId === created.id).map((m) => [m.name, m.done])).toEqual([["Project complete", false]]);
+    expect(created.nextMilestone).toBe("Project complete");
   });
 
   it("delete: soft delete keeps the record and history; the form cannot save a deleted project", async () => {

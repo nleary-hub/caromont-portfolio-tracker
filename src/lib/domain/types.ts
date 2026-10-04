@@ -38,6 +38,8 @@ export interface ProjectRecord {
   completedAtAuto?: Date | null;
   /** Automatic date kept while reopened (migration 0030). */
   previousAutoCompletedAt?: Date | null;
+  /** Hand-entered date kept while reopened (migration 0031). */
+  previousManualCompletedOn?: Date | null;
   includeInReport: boolean;
   archivedAt: Date | null;
   deletedBy: string | null;

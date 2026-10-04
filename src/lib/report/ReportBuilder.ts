@@ -140,7 +140,7 @@ export class ReportBuilder {
     return history.some(
       (h) =>
         h.projectId === projectId &&
-        !VisibilityPolicy.isAdminOnlyHistoryField(h.field) &&
+        VisibilityPolicy.isPublicUpdateField(h.field) &&
         (previousSnapshotGeneratedAt === null || h.changedAt.getTime() > previousSnapshotGeneratedAt.getTime()),
     );
   }
@@ -204,7 +204,7 @@ export class ReportBuilder {
   static updatedOn(projectId: string, history: readonly HistoryEntryRecord[]): string | null {
     let latest: Date | null = null;
     for (const h of history) {
-      if (h.projectId !== projectId || VisibilityPolicy.isAdminOnlyHistoryField(h.field)) continue;
+      if (h.projectId !== projectId || !VisibilityPolicy.isPublicUpdateField(h.field)) continue;
       if (!latest || h.changedAt.getTime() > latest.getTime()) latest = h.changedAt;
     }
     return latest ? DateOnly.inZone(latest) : null;
