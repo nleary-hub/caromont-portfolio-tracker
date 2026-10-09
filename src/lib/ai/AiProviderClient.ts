@@ -1,3 +1,4 @@
+import { AiCopy } from "./AiCopy";
 import type { AiPrompt } from "./AiPrompts";
 import { AiProviders, type AiProviderId } from "./AiProviders";
 
@@ -13,7 +14,7 @@ export interface AiRuntimeConfig {
 
 export type AiCallResult =
   | { ok: true; text: string; ms: number }
-  | { ok: false; kind: "timeout" | "http" | "network" | "empty"; status?: number; message: string; ms: number };
+  | { ok: false; kind: "timeout" | "http" | "network" | "empty" | "length"; status?: number; message: string; ms: number };
 
 export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{
   ok: boolean;
@@ -23,11 +24,17 @@ export type FetchLike = (url: string, init: { method: string; headers: Record<st
 
 /**
  * Calls the configured provider over HTTPS with a plain fetch (no SDK): OpenAI chat completions, Anthropic messages,
- * Azure OpenAI chat completions, or an OpenAI-compatible base URL. About 20 s timeout. Errors come back as data with
+ * Azure OpenAI chat completions, or an OpenAI-compatible base URL. About 60 s timeout (reasoning models are slow). Errors come back as data with
  * the provider's message, scrubbed of the key, never thrown. `fetchImpl` is injected so tests never reach a provider.
  */
 export class AiProviderClient {
-  static readonly TIMEOUT_MS = 20_000;
+  static readonly TIMEOUT_MS = 60_000;
+  /**
+   * Anthropic max_tokens and OpenAI-compatible max_tokens are hard output caps that must stay within the model's limit,
+   * so the large reasoning budgets are capped here. 4,096 is valid for every current Claude model and typical
+   * compatible servers, and far above what the prompts' 2,000-character replies need.
+   */
+  static readonly CAPPED_MAX_TOKENS = 4096;
   private static readonly MESSAGE_MAX = 300;
 
   static async complete(config: AiRuntimeConfig, prompt: AiPrompt, fetchImpl: FetchLike = fetch as unknown as FetchLike, timeoutMs = AiProviderClient.TIMEOUT_MS): Promise<AiCallResult> {
@@ -45,7 +52,11 @@ export class AiProviderClient {
     const raw = await res.text().catch(() => "");
     if (!res.ok) return { ok: false, kind: "http", status: res.status, message: AiProviderClient.errorMessage(raw, res.status, config.apiKey), ms: ms() };
     const text = AiProviderClient.textOf(config.provider, raw);
-    if (!text) return { ok: false, kind: "empty", status: res.status, message: "The provider returned no text", ms: ms() };
+    if (!text) {
+      // Out of tokens before any visible text (finish_reason "length" / stop_reason "max_tokens"): say so plainly.
+      if (AiProviderClient.hitLimit(config.provider, raw)) return { ok: false, kind: "length", status: res.status, message: AiCopy.OUT_OF_REPLY_LENGTH, ms: ms() };
+      return { ok: false, kind: "empty", status: res.status, message: "The provider returned no text", ms: ms() };
+    }
     return { ok: true, text, ms: ms() };
   }
 
@@ -61,7 +72,7 @@ export class AiProviderClient {
         return {
           url: "https://api.anthropic.com/v1/messages",
           headers: { ...json, "x-api-key": c.apiKey, "anthropic-version": "2023-06-01" },
-          body: { model: c.model, max_tokens: p.maxTokens, temperature: 0.2, system: p.system, messages: [{ role: "user", content: p.user }] },
+          body: { model: c.model, max_tokens: Math.min(p.maxTokens, AiProviderClient.CAPPED_MAX_TOKENS), temperature: 0.2, system: p.system, messages: [{ role: "user", content: p.user }] },
         };
       case "azure_openai":
         return {
@@ -73,7 +84,7 @@ export class AiProviderClient {
         return {
           url: `${(c.baseUrl ?? "").replace(/\/+$/, "")}/chat/completions`,
           headers: { ...json, authorization: `Bearer ${c.apiKey}` },
-          body: { model: c.model, messages, max_tokens: p.maxTokens, temperature: 0.2 },
+          body: { model: c.model, messages, max_tokens: Math.min(p.maxTokens, AiProviderClient.CAPPED_MAX_TOKENS), temperature: 0.2 },
         };
       case "openai":
       default:
@@ -101,6 +112,18 @@ export class AiProviderClient {
       return typeof content === "string" ? content.trim() : "";
     } catch {
       return "";
+    }
+  }
+
+  /** The reply stopped at its token limit: OpenAI-style finish_reason "length", Anthropic stop_reason "max_tokens". */
+  static hitLimit(provider: AiProviderId, raw: string): boolean {
+    try {
+      const j = JSON.parse(raw) as Record<string, unknown>;
+      if (provider === "anthropic") return j.stop_reason === "max_tokens";
+      const choice = Array.isArray(j.choices) ? (j.choices[0] as { finish_reason?: unknown } | undefined) : undefined;
+      return choice?.finish_reason === "length";
+    } catch {
+      return false;
     }
   }
 

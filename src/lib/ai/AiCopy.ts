@@ -144,6 +144,8 @@ export class AiCopy {
   static readonly RATE_LIMITED = "Too many AI requests in the last minute. Wait a moment and try again.";
   static readonly PROVIDER_ERROR = "The AI service didn't respond. Your note is unchanged. Try again in a moment.";
   static readonly TIMEOUT = "The AI service took too long to respond. Your note is unchanged. Try again in a moment.";
+  /** 200 with no text because the reply hit its token limit (reasoning models can spend it all thinking). */
+  static readonly OUT_OF_REPLY_LENGTH = "The model used up its reply length before answering. Try again, or pick a smaller model.";
   static readonly UNAVAILABLE = "The writing assistant is off. Your note is unchanged.";
   static readonly NOT_ALLOWED = "You can't use the writing assistant on this project.";
   static readonly SUGGESTION_PHI = "The suggestion looks like it has patient information, so it can't be accepted. Discard it and try again.";

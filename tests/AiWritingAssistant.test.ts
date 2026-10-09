@@ -412,7 +412,7 @@ describe("provider calls (mocked), timeouts and rate limits", () => {
     const r = await AiWritingService.suggest({ db, viewer: ADMIN, scope: SCOPE, projectId: PROJECT, feature: "fit_for_report", text: "quote rcvd", env: ENV, fetchImpl: slow });
     expect(r).toEqual({ ok: false, kind: "timeout", message: AiCopy.TIMEOUT });
     expect(db.usage.at(-1)).toMatchObject({ event: "failed", suggestedText: null });
-    expect(AiProviderClient.TIMEOUT_MS).toBe(20_000);
+    expect(AiProviderClient.TIMEOUT_MS).toBe(60_000);
     errors.mockRestore();
   });
 

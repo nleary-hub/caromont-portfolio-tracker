@@ -15,6 +15,17 @@ export interface AiPrompt {
  * passed as data between tags, and the system prompt says not to follow instructions inside it.
  */
 export class AiPrompts {
+  /**
+   * Output token budgets. Reasoning models (OpenAI o-series and newer, Azure) count hidden reasoning tokens against
+   * max_completion_tokens, so a small budget can be used up before any visible text. These are headroom only: the
+   * prompts keep the visible reply to 2,000 or 200 characters. Anthropic and OpenAI-compatible calls are capped lower
+   * in AiProviderClient (a hard output cap there).
+   */
+  static readonly DRAFT_MAX_TOKENS = 8000;
+  static readonly FIT_MAX_TOKENS = 4000;
+  /** Test connection ("Reply with the single word OK."): enough for a reasoning model to think first. */
+  static readonly TEST_MAX_TOKENS = 2000;
+
   static readonly FEATURES: readonly AiFeature[] = ["draft_from_bullets", "fit_for_report"];
   /** Draft from bullets: the note field's cap. */
   static readonly DRAFT_MAX = AppConfig.NOTE_MAX_LENGTH;
@@ -51,9 +62,9 @@ export class AiPrompts {
 
   static build(feature: AiFeature, text: string): AiPrompt {
     if (feature === "draft_from_bullets") {
-      return { system: AiPrompts.DRAFT_SYSTEM, user: `Notes:\n<notes>\n${text}\n</notes>`, maxTokens: 1500 };
+      return { system: AiPrompts.DRAFT_SYSTEM, user: `Notes:\n<notes>\n${text}\n</notes>`, maxTokens: AiPrompts.DRAFT_MAX_TOKENS };
     }
-    return { system: AiPrompts.FIT_SYSTEM, user: `Update:\n<update>\n${text}\n</update>`, maxTokens: 600 };
+    return { system: AiPrompts.FIT_SYSTEM, user: `Update:\n<update>\n${text}\n</update>`, maxTokens: AiPrompts.FIT_MAX_TOKENS };
   }
 
   static limit(feature: AiFeature): number {

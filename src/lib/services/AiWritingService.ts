@@ -130,7 +130,11 @@ export class AiWritingService {
         await log("failed");
         // The provider's message stays on the server (scrubbed of the key); the editor gets a friendly one.
         console.error("AI writing assistant: provider call failed", { kind: result.kind, status: result.status, message: result.message });
-        return { ok: false, kind: result.kind === "timeout" ? "timeout" : "provider", message: result.kind === "timeout" ? AiCopy.TIMEOUT : AiCopy.PROVIDER_ERROR };
+        return {
+          ok: false,
+          kind: result.kind === "timeout" ? "timeout" : "provider",
+          message: result.kind === "timeout" ? AiCopy.TIMEOUT : result.kind === "length" ? AiCopy.OUT_OF_REPLY_LENGTH : AiCopy.PROVIDER_ERROR,
+        };
       }
       const suggestion = AiPrompts.clean(result.text);
       const numbers = AiNumberCheck.check(text, suggestion);
@@ -186,8 +190,9 @@ export class AiWritingService {
 
   /** Test connection on Admin > AI settings: a tiny prompt with the saved settings. Never returns the key. */
   static async testConnection(config: AiRuntimeConfig, fetchImpl?: FetchLike): Promise<{ ok: true; ms: number } | { ok: false; message: string }> {
-    const r = await AiProviderClient.complete(config, { system: "Reply with the single word OK.", user: "Connection test.", maxTokens: 16 }, fetchImpl);
-    // A 200 with no text still proves the endpoint, model and key work (reasoning models can spend a tiny budget thinking).
+    const r = await AiProviderClient.complete(config, { system: "Reply with the single word OK.", user: "Connection test.", maxTokens: AiPrompts.TEST_MAX_TOKENS }, fetchImpl);
+    // A 200 with no text still proves the endpoint, model and key work. Running out of tokens is reported plainly instead,
+    // because Draft and Fit would hit the same limit.
     if (r.ok || r.kind === "empty") return { ok: true, ms: r.ms };
     const message = r.kind === "timeout" ? `Timed out after ${AiProviderClient.TIMEOUT_MS / 1000} s` : r.message;
     return { ok: false, message: AiProviderClient.scrub(message, config.apiKey) };
