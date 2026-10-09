@@ -27,6 +27,7 @@ describe("AdminMenu.itemsFor", () => {
       ["admin", "Dashboard view", "/#view-settings"],
       ["admin", "Service lines", "/admin/service-lines"],
       ["admin", "Templates", "/admin/templates"],
+      ["admin", "AI settings", "/admin/ai"],
     ]);
     expect(items.find((i) => i.id === "generate-pdf")).toMatchObject({ kind: "action", caption: "Draft" });
   });
@@ -120,9 +121,9 @@ describe("AdminMenuButton (open)", () => {
   const html = renderToStaticMarkup(createElement(AdminMenuButton, { items: AdminMenu.itemsFor(ADMIN)!, initialOpen: true }));
 
   it("renders every shipped item as a menuitem, with a divider between each of the three groups", () => {
-    expect(html.match(/role="menuitem"/g)).toHaveLength(13);
+    expect(html.match(/role="menuitem"/g)).toHaveLength(14);
     expect(html.match(/role="separator"/g)).toHaveLength(2);
-    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "Report freeze", "Report contents", "Departments", "People", "Audit log", "Dashboard view", "Service lines", "Templates"]) {
+    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "Report freeze", "Report contents", "Departments", "People", "Audit log", "Dashboard view", "Service lines", "Templates", "AI settings"]) {
       expect(html).toContain(`>${label}<`);
     }
     expect(html).toContain('<span class="am-caption">Draft</span>');

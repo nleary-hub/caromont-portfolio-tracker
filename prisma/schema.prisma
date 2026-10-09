@@ -774,3 +774,66 @@ model DepartmentAccessHistory {
   @@index([email, changedAt])
   @@map("department_access_history")
 }
+
+/// Admin > AI settings (migration 0033). One row, id "ai"; no row = AI off. The API key is stored only as
+/// AES-256-GCM ciphertext (AiKeyCipher, key from AI_SETTINGS_ENCRYPTION_KEY) and is never sent to the browser.
+model AiSettings {
+  id               String    @id @default("ai")
+  enabled          Boolean   @default(false)
+  /// "openai" | "anthropic" | "azure_openai" | "openai_compatible" (DB check constraint).
+  provider         String?
+  model            String?
+  /// OpenAI-compatible base URL (e.g. https://host/v1).
+  baseUrl          String?
+  azureEndpoint    String?
+  azureDeployment  String?
+  /// "v1:<iv>:<tag>:<ciphertext>" (base64). Never returned to the client.
+  apiKeyCiphertext String?
+  /// Last 4 characters of the key, for the masked "ending in" display.
+  apiKeyLast4      String?
+  apiKeySetAt      DateTime?
+  apiKeySetBy      String?
+  updatedAt        DateTime  @default(now())
+  updatedBy        String
+
+  @@map("ai_settings")
+}
+
+/// Append-only change log of AI settings (trigger). Key changes never carry values (check constraint).
+model AiSettingsHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  field     String
+  /// "changed" | "key_set" | "key_replaced" | "key_cleared"
+  action    String
+  oldValue  String?
+  newValue  String?
+  changedAt DateTime @default(now())
+  changedBy String
+
+  @@index([changedAt])
+  @@map("ai_settings_history")
+}
+
+/// Append-only AI usage log (trigger). One row per event of a suggestion; suggestedText only when it passed the PHI check.
+model AiUsageLog {
+  id                String   @id @default(uuid()) @db.Uuid
+  suggestionId      String   @db.Uuid
+  userEmail         String
+  projectId         String   @db.Uuid
+  /// "draft_from_bullets" | "fit_for_report"
+  feature           String
+  /// "suggested" | "accepted" | "edited" | "discarded" | "blocked_phi" | "failed"
+  event             String
+  provider          String?
+  model             String?
+  inputLength       Int
+  outputLength      Int?
+  numberCheckPassed Boolean?
+  suggestedText     String?
+  createdAt         DateTime @default(now())
+
+  @@index([userEmail, createdAt])
+  @@index([suggestionId])
+  @@index([projectId, createdAt])
+  @@map("ai_usage_log")
+}

@@ -59,6 +59,8 @@ export interface NoteEntry {
   text: string | null;
   /** A legacy entry that kept only a shortened copy of the note (UpdateTimeline.isShortened): muted "(shortened)" tag. */
   shortened: boolean;
+  /** Saved from an accepted AI suggestion (comment UpdateTimeline.AI_ASSISTED_COMMENT): "AI-assisted" tag. Absent otherwise. */
+  aiAssisted?: true;
 }
 
 /** A step for Project detail > Milestones (full name, owner). */
@@ -89,7 +91,7 @@ export interface TimelineDto {
   title: string;
   entries: (TimelineLine & { key: string; meta: string; hollow: boolean })[];
   previously: string | null;
-  notes: { key: string; meta: string; who: string; text: string | null; shortened: boolean }[];
+  notes: { key: string; meta: string; who: string; text: string | null; shortened: boolean; aiAssisted?: true }[];
   steps: TimelineStep[];
 }
 
@@ -209,7 +211,17 @@ export class UpdateTimeline {
       const meta = C.meta(ReportFormat.dateTimeEt(g.changedAt), who);
       g.rows
         .filter((r) => UpdateTimeline.NOTE_FIELDS.has(r.field))
-        .forEach((r, i) => notes.push({ key: `note|${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, who, text: r.newValue ? r.newValue : null, shortened: UpdateTimeline.isShortened(r.newValue) }));
+        .forEach((r, i) =>
+          notes.push({
+            key: `note|${g.changedAt.getTime()}|${g.changedBy}|${i}`,
+            at: g.changedAt,
+            meta,
+            who,
+            text: r.newValue ? r.newValue : null,
+            shortened: UpdateTimeline.isShortened(r.newValue),
+            ...(r.comment === UpdateTimeline.AI_ASSISTED_COMMENT ? { aiAssisted: true as const } : {}),
+          }),
+        );
       UpdateTimeline.lines(g.rows.filter((r) => !UpdateTimeline.NOTE_FIELDS.has(r.field))).forEach((line, i) => {
         dated.push({ ...line, key: `${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, hollow: who === C.TRACKER });
       });
@@ -235,7 +247,7 @@ export class UpdateTimeline {
       title: t.title,
       entries: t.entries.map(({ key, meta, hollow, text, change, admin }) => ({ key, meta, hollow, text, ...(change ? { change } : {}), ...(admin ? { admin } : {}) })),
       previously: t.previously,
-      notes: t.notes.map(({ key, meta, who, text, shortened }) => ({ key, meta, who, text, shortened })),
+      notes: t.notes.map(({ key, meta, who, text, shortened, aiAssisted }) => ({ key, meta, who, text, shortened, ...(aiAssisted ? { aiAssisted } : {}) })),
       steps: t.steps,
     };
   }
@@ -384,6 +396,9 @@ export class UpdateTimeline {
     if (b !== null) return { text: C.cleared(label, b) };
     return null;
   }
+
+  /** ProjectHistory.comment on a note row saved from an accepted AI suggestion (ProjectService.AI_ASSISTED_COMMENT). */
+  static readonly AI_ASSISTED_COMMENT = "ai:assisted";
 
   /** ProjectHistory.comment prefix on completion rule rows (ProjectService.COMPLETION_COMMENT_PREFIX). */
   static readonly COMPLETION_PREFIX = "completion:";

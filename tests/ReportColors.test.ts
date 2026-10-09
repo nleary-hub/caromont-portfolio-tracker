@@ -289,9 +289,9 @@ class M27 {
 describe("0027_report_colors on production-shaped data (PGlite)", () => {
   it("follows 0026_project_start_date (applied on top of it); only the batch migrations come after it", () => {
     const f = M27.folders();
-    // Later migrations (0028 to 0032, the next-release batch) come after it; it still follows 0026 directly.
+    // Later migrations (0028 to 0032, the next-release batch, then 0033 AI writing assistant) come after it; it still follows 0026 directly.
     expect(f.indexOf(M)).toBe(f.indexOf("0026_project_start_date") + 1);
-    expect(f.filter((x) => x > M)).toEqual(["0028_dashboard_heartbeat", "0029_milestone_owner", "0030_completion_dates", "0031_previous_manual_completion", "0032_project_complete_milestone"]);
+    expect(f.filter((x) => x > M)).toEqual(["0028_dashboard_heartbeat", "0029_milestone_owner", "0030_completion_dates", "0031_previous_manual_completion", "0032_project_complete_milestone", "0033_ai_writing_assistant"]);
   });
 
   it("is additive: two defaulted columns on report_options; every other table, column and row unchanged", async () => {

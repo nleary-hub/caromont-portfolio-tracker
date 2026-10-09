@@ -14,6 +14,8 @@ import { MilestoneService, type MilestoneStepDto } from "@/lib/services/Mileston
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectValidationError, type FieldErrors } from "@/lib/validation/ProjectValidator";
+import { Db } from "@/lib/db/Db";
+import { AiWritingService, type AiWritingDb } from "@/lib/services/AiWritingService";
 
 export type AdminActionResult = { ok: true } | { ok: false; error: string };
 
@@ -92,17 +94,22 @@ class ProjectFormAction {
  * Save the changed non-People fields of a project together with its checklist (one history entry).
  * `milestones` is omitted when the checklist was not touched.
  */
-export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
-  return ProjectFormAction.run("saveProjectForm", (admin, scope) =>
-    ProjectService.saveForm(
+export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>, milestones?: unknown, meta?: unknown): Promise<ProjectFormResult> {
+  return ProjectFormAction.run("saveProjectForm", async (admin, scope) => {
+    const values = ProjectFormAction.values(changes);
+    // AI-assisted tag on the note row: only when the note is in this save and this admin really used that suggestion.
+    const suggestionId = meta && typeof meta === "object" ? (meta as { aiSuggestionId?: unknown }).aiSuggestionId : undefined;
+    const aiAssisted = values.note !== undefined && suggestionId !== undefined && (await AiWritingService.wasUsed(Db.client as unknown as AiWritingDb, admin, String(projectId), suggestionId));
+    return ProjectService.saveForm(
       String(projectId),
-      ProjectFormModel.toInput(ProjectFormAction.values(changes)),
+      ProjectFormModel.toInput(values),
       admin,
       undefined,
       ProjectFormAction.milestones(milestones),
       scope,
-    ),
-  );
+      { aiAssisted },
+    );
+  });
 }
 
 /** Drawer Milestones autosave: one checklist change, saved immediately. Returns the stored steps. */

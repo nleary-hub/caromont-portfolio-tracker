@@ -18,6 +18,8 @@ import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { FieldErrors } from "@/lib/validation/ProjectValidator";
 import { StartDate } from "@/lib/projects/StartDate";
 import { MilestonesEditor } from "./MilestonesEditor";
+import { AiNoteAssistant, type AiNoteActions } from "./AiNoteAssistant";
+import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
 
 /**
@@ -27,6 +29,8 @@ import { StartDateDefaultTag } from "./StartDateDefaultTag";
 export type ProjectFormSubmit = (
   values: Partial<ProjectFormValues>,
   milestones: MilestoneEdit | null,
+  /** The AI suggestion used for the note in this edit (AI-assisted tag; the server checks it). */
+  meta?: { aiSuggestionId?: string },
 ) => Promise<{ ok: true; id: string } | { ok: false; error: string; fieldErrors?: FieldErrors }>;
 
 export interface ProjectEditFormProps {
@@ -63,6 +67,8 @@ export interface ProjectEditFormProps {
   confirmDiscard: boolean;
   onKeepEditing: () => void;
   onDiscard: () => void;
+  /** Writing assistant for the update note: passed only when AI is on and configured and the viewer can edit. */
+  ai?: AiNoteActions;
 }
 
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
@@ -93,6 +99,7 @@ export function ProjectEditForm({
   confirmDiscard,
   onKeepEditing,
   onDiscard,
+  ai,
 }: ProjectEditFormProps) {
   const isNew = mode === "new";
   // Snapshot at open: a People autosave refreshes the page data but must not reset the form.
@@ -103,6 +110,9 @@ export function ProjectEditForm({
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // The AI suggestion last used for the note in this edit (Accept or "Use this text"), for the AI-assisted tag.
+  const [aiUsedId, setAiUsedId] = useState<string | null>(null);
+  const showAi = Boolean(ai) && AiWritingModel.showsButtons({ aiOn: Boolean(ai), canEdit: true, mode });
   const bodyRef = useRef<HTMLDivElement>(null);
 
   // Checklist. Edit mode: every change autosaves (one history row per action), so it is not part of Save or
@@ -179,7 +189,10 @@ export function ProjectEditForm({
     setSaving(true);
     setFormError(null);
     try {
-      const result = await onSubmit(isNew ? values : ProjectFormModel.changes(values, original), isNew ? MilestoneEditorModel.edit(ms, msOriginal) : null);
+      const aiSuggestionId = isNew ? null : AiWritingModel.assistedId(aiUsedId, values.note, original.note);
+      const changes = isNew ? values : ProjectFormModel.changes(values, original);
+      const checklist = isNew ? MilestoneEditorModel.edit(ms, msOriginal) : null;
+      const result = await (aiSuggestionId ? onSubmit(changes, checklist, { aiSuggestionId }) : onSubmit(changes, checklist));
       if (result.ok) return onSaved(result.id);
       setFormError(result.error);
       if (result.fieldErrors) {
@@ -388,6 +401,17 @@ export function ProjectEditForm({
               onChange={(e) => set("note", e.target.value)}
             />
           </Field>
+          {showAi && ai && (
+            <AiNoteAssistant
+              value={values.note}
+              noteMax={ProjectFormModel.maxLength("note")}
+              actions={ai}
+              onUse={(text, id) => {
+                set("note", text);
+                setAiUsedId(id);
+              }}
+            />
+          )}
           <Field
             field="accomplishment"
             label="Accomplishment"

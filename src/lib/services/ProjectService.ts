@@ -32,6 +32,8 @@ export interface Actor {
   /** Email (or name) of the signed-in user making the change. */
   changedBy: string;
   comment?: string | null;
+  /** Comment for one field's history row instead of `comment` (the AI-assisted tag goes on the note row only). */
+  fieldComments?: Readonly<Record<string, string>>;
 }
 
 export interface MilestoneCompletion {
@@ -443,10 +445,12 @@ export class ProjectService {
     db: PrismaClient = Db.client,
     milestones?: MilestoneEdit | null,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
+    options: { aiAssisted?: boolean } = {},
   ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const patch = ProjectService.pickFormFields(values);
-    const actor = ProjectService.actorOf(admin);
+    // A note written with an accepted AI suggestion: its history row carries the AI-assisted tag (UpdateTimeline shows it).
+    const actor: Actor = options.aiAssisted ? { ...ProjectService.actorOf(admin), fieldComments: { note: ProjectService.AI_ASSISTED_COMMENT } } : ProjectService.actorOf(admin);
     const startDate = values.startDate === undefined || values.startDate === null ? undefined : String(values.startDate);
     return db.$transaction(async (tx) => {
       const at = new Date();
@@ -524,6 +528,9 @@ export class ProjectService {
       return MilestoneService.stepsFor(tx, id);
     });
   }
+
+  /** ProjectHistory.comment on the note row of a form save that used an accepted AI suggestion (AiWritingService). */
+  static readonly AI_ASSISTED_COMMENT = "ai:assisted";
 
   /** ProjectHistory.comment prefix on rows the completion rules write ("completion:auto", ...). */
   static readonly COMPLETION_COMMENT_PREFIX = "completion:";
@@ -918,7 +925,7 @@ export class ProjectService {
         newValue: text(c, c.newValue),
         changedAt: at,
         changedBy: actor.changedBy,
-        comment: actor.comment ?? null,
+        comment: actor.fieldComments?.[c.field] ?? actor.comment ?? null,
       })),
     });
   }

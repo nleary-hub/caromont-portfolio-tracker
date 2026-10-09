@@ -8,7 +8,7 @@ import type { Viewer } from "@/lib/auth/AdminPolicy";
  */
 export type AdminMenuItemKind = "link" | "download" | "action" | "viewSettings";
 
-export type AdminMenuIcon = "upload" | "file" | "download" | "pdf" | "archive" | "snowflake" | "template" | "people" | "audit" | "settings" | "tag" | "departments" | "reportSettings";
+export type AdminMenuIcon = "upload" | "file" | "download" | "pdf" | "archive" | "snowflake" | "template" | "people" | "audit" | "settings" | "tag" | "departments" | "reportSettings" | "sparkle";
 
 /** Display groups, in order, separated by dividers. */
 export type AdminMenuGroup = "work" | "library" | "admin";
@@ -44,6 +44,8 @@ export class AdminMenu {
   static readonly DASHBOARD_VIEW = "Dashboard view";
   static readonly REPORT_CONTENTS = "Report contents";
   static readonly REPORT_FREEZE = "Report freeze";
+  /** Menu item, page heading and metadata title of /admin/ai (AiCopy.MENU_LABEL). */
+  static readonly AI_SETTINGS = "AI settings";
 
   private static readonly DEFINITIONS: readonly AdminMenuDefinition[] = [
     // Group 1: day-to-day work.
@@ -65,6 +67,8 @@ export class AdminMenu {
     { id: "service-lines", group: "admin", kind: "link", icon: "tag", label: "Service lines", href: "/admin/service-lines", shipped: true },
     // Milestone templates.
     { id: "templates", group: "admin", kind: "link", icon: "template", label: "Templates", href: "/admin/templates", shipped: true },
+    // Writing assistant: provider, model and API key (off by default).
+    { id: "ai-settings", group: "admin", kind: "link", icon: "sparkle", label: AdminMenu.AI_SETTINGS, href: "/admin/ai", shipped: true },
   ];
 
   /** Every defined item, shipped or not (for tests and docs). */
