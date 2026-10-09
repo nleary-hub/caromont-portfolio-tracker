@@ -37,6 +37,9 @@ import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
 
+/** AI Draft/Fit/Test connection server actions run on this page; the provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
+export const maxDuration = 90;
+
 interface DashboardLoad {
   rows: DashboardRow[];
   columns: ViewColumn[];

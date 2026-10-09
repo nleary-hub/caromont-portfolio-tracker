@@ -9,6 +9,9 @@ import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { AiSettingsService, type AiSettingsDb, type AiSettingsHistoryRow, type AiSettingsView } from "@/lib/services/AiSettingsService";
 
+/** AI Draft/Fit/Test connection server actions run on this page; the provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
+export const maxDuration = 90;
+
 export const metadata: Metadata = { title: AdminMenu.AI_SETTINGS };
 
 class AiPageFormat {
