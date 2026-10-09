@@ -1,19 +1,27 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
+import { AiSuggestionMarks, type AiMarkSegment } from "@/lib/ai/AiSuggestionMarks";
 import { AiWritingModel, type AiSuggestion } from "@/lib/ai/AiWritingModel";
 import type { AiOutcome, AiSuggestResult } from "@/lib/services/AiWritingService";
 
 /** The two actions, bound to the project on the server side of the dashboard. */
 export interface AiNoteActions {
   suggest: (feature: AiFeature, text: string) => Promise<AiSuggestResult>;
-  outcome: (suggestionId: string, outcome: AiOutcome) => Promise<boolean>;
+  outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
 }
 
-const BTN = "inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control border border-line bg-input px-2.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50";
-const AMBER = "text-(--status-at-risk-dark-fg)";
+/** 2px focus ring on every control of the assistant (keyboard focus only). */
+export const AI_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+const BTN = `inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control border border-line bg-input px-2.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${AI_FOCUS}`;
+/** Primary (Accept, Use this text). Disabled is the neutral gray control, not a dimmed blue. */
+const PRIMARY = `h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${AI_FOCUS}`;
+const GHOST = `h-7 rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${AI_FOCUS}`;
+/** The two marks in the suggestion (and their legend swatches). Amber matches the warning alert box. */
+const MARK_WORD = "rounded-[2px] bg-[rgba(76,141,255,0.18)] text-fg";
+const MARK_NUMBER = "rounded-[2px] bg-[rgba(245,184,61,0.14)] text-fg underline decoration-(--status-at-risk-dark-fg) decoration-2 underline-offset-[3px]";
 
 function Sparkle() {
   return (
@@ -23,17 +31,92 @@ function Sparkle() {
   );
 }
 
+function AlertIcon({ tone }: { tone: "danger" | "warning" }) {
+  return (
+    <svg width="14" height="14" viewBox="0 0 16 16" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mt-px shrink-0">
+      {tone === "warning" ? (
+        <>
+          <path d="M8 2L14.5 13.5h-13z" />
+          <path d="M8 6.5v3M8 11.6v.1" />
+        </>
+      ) : (
+        <>
+          <circle cx="8" cy="8" r="6.25" />
+          <path d="M3.6 12.4l8.8-8.8" />
+        </>
+      )}
+    </svg>
+  );
+}
+
+/** One alert box for the assistant: the PHI block (danger) and the number check (warning) share it. */
+export function AiAlert({ tone, testId, children }: { tone: "danger" | "warning"; testId: string; children?: ReactNode }) {
+  const color = tone === "danger" ? "bg-(--status-off-track-dark-bg) text-danger" : "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)";
+  return (
+    <p role="alert" className={`flex items-start gap-2 rounded-control px-2.5 py-1.5 type-table ${color}`} data-testid={testId}>
+      <AlertIcon tone={tone} />
+      <span className="min-w-0">{children}</span>
+    </p>
+  );
+}
+
+/** The suggestion with its marks; the screen-reader list names each marked value, missing numbers and dates first. */
+function MarkedText({ segments }: { segments: readonly AiMarkSegment[] }) {
+  const announced = AiSuggestionMarks.announced(segments);
+  return (
+    <>
+      {announced.length > 0 && (
+        <ul className="sr-only" data-testid="ai-marks-sr">
+          {announced.map((v) => (
+            <li key={v}>{C.notInText(v)}</li>
+          ))}
+        </ul>
+      )}
+      {segments.map((s, i) =>
+        s.mark === null ? (
+          <span key={i}>{s.text}</span>
+        ) : (
+          <mark key={i} className={s.mark === "number" ? MARK_NUMBER : MARK_WORD} data-mark={s.mark}>
+            {s.text}
+          </mark>
+        ),
+      )}
+    </>
+  );
+}
+
+function Legend({ numbers }: { numbers: boolean }) {
+  return (
+    <div className="flex flex-col gap-1 text-muted type-caption" data-testid="ai-legend">
+      <span className="flex items-center gap-2">
+        <span aria-hidden className={`inline-block h-2.5 w-4 shrink-0 ${MARK_WORD}`} />
+        {C.LEGEND_WORDS}
+      </span>
+      {numbers && (
+        <span className="flex items-center gap-2" data-testid="ai-legend-numbers">
+          <span aria-hidden className="inline-block h-2.5 w-4 shrink-0 rounded-[2px] border-b-2 border-(--status-at-risk-dark-fg) bg-[rgba(245,184,61,0.14)]" />
+          {C.LEGEND_NUMBERS}
+        </span>
+      )}
+    </div>
+  );
+}
+
 /**
  * Writing assistant under the update-note field: Draft from bullets and Fit for report. A result shows as a
  * suggestion next to the original with Accept, Edit and Discard; the field changes only on Accept or "Use this text",
- * and nothing is saved until the form is saved. Discard records only a usage-log row (no history). Fixed layout: the
- * toolbar row, the message line and the panel always appear in the same place under the field.
+ * and nothing is saved until the form is saved. Discard records only a usage-log row (no history). Both columns grow
+ * to fit (no inner scroll). Words that aren't in the original get a subtle fill; numbers and dates the number check
+ * can't find get the amber underline. In Edit, "Use this text" needs the live number check to pass, or the explicit
+ * "I checked these numbers and dates" box (logged as accepted_with_override with the count of unconfirmed values).
  */
 export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: string; noteMax: number; actions: AiNoteActions; onUse: (text: string, suggestionId: string) => void }) {
   const [busy, setBusy] = useState<AiFeature | null>(null);
   const [message, setMessage] = useState<{ text: string; kind: "phi" | "error" } | null>(null);
   const [suggestion, setSuggestion] = useState<(AiSuggestion & { original: string }) | null>(null);
   const [edited, setEdited] = useState<string | null>(null);
+  // The override box: ticked for exactly this list of missing values (a new missing value unticks it).
+  const [confirmedFor, setConfirmedFor] = useState<string | null>(null);
 
   const run = async (feature: AiFeature) => {
     if (busy) return;
@@ -43,6 +126,7 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
     setMessage(null);
     setSuggestion(null);
     setEdited(null);
+    setConfirmedFor(null);
     try {
       const r = await actions.suggest(feature, value);
       if (r.ok) setSuggestion({ suggestionId: r.suggestionId, feature: r.feature, text: r.text, limit: r.limit, numbers: r.numbers, phiOk: r.phiOk, original: value });
@@ -57,6 +141,7 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
   const close = () => {
     setSuggestion(null);
     setEdited(null);
+    setConfirmedFor(null);
   };
   const discard = () => {
     if (suggestion) void actions.outcome(suggestion.suggestionId, "discarded");
@@ -68,17 +153,32 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
     void actions.outcome(suggestion.suggestionId, "accepted");
     close();
   };
+
+  const numbers = suggestion ? (edited === null ? suggestion.numbers : AiWritingModel.recheck(suggestion.original, edited)) : { ok: true, missing: [] };
+  const confirmed = !numbers.ok && confirmedFor === AiWritingModel.confirmKey(numbers.missing);
+  const canUseEdited = suggestion !== null && edited !== null && AiWritingModel.canUseEdited(suggestion, suggestion.original, edited, noteMax, confirmed);
+
   const useEdited = () => {
-    if (!suggestion || edited === null || !AiWritingModel.canUseEdited(suggestion, edited, noteMax)) return;
+    if (!suggestion || edited === null || !canUseEdited) return;
     onUse(edited, suggestion.suggestionId);
-    void actions.outcome(suggestion.suggestionId, "edited");
+    if (numbers.ok) void actions.outcome(suggestion.suggestionId, "edited");
+    else void actions.outcome(suggestion.suggestionId, "accepted_with_override", numbers.missing.length);
     close();
   };
 
   const shown = edited ?? suggestion?.text ?? "";
-  const numbers = suggestion ? (edited === null ? suggestion.numbers : AiWritingModel.recheck(suggestion.original, edited)) : { ok: true, missing: [] };
   const overLimit = suggestion ? shown.length > suggestion.limit : false;
   const acceptable = suggestion ? AiWritingModel.canAccept(suggestion) : false;
+  const segments = suggestion && edited === null ? AiSuggestionMarks.segments(suggestion.original, suggestion.text) : [];
+  const footNote = !suggestion
+    ? ""
+    : edited === null
+      ? !acceptable && suggestion.phiOk && !suggestion.numbers.ok
+        ? C.ACCEPT_BLOCKED
+        : C.PANEL_NOTE
+      : suggestion.phiOk && !numbers.ok && !confirmed
+        ? C.USE_EDITED_BLOCKED
+        : C.PANEL_NOTE;
 
   return (
     <div className="flex flex-col gap-2" data-testid="ai-assistant">
@@ -95,11 +195,16 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
       <p className="-mt-1 text-muted type-caption" data-testid="ai-phi-helper">
         {C.PHI_HELPER}
       </p>
-      {message && (
-        <p role="alert" className={`rounded-control px-2.5 py-1.5 type-table ${message.kind === "phi" ? "bg-(--status-off-track-dark-bg) text-danger" : "text-danger"}`} data-testid={message.kind === "phi" ? "ai-phi-blocked" : "ai-error"}>
-          {message.text}
-        </p>
-      )}
+      {message &&
+        (message.kind === "phi" ? (
+          <AiAlert tone="danger" testId="ai-phi-blocked">
+            {message.text}
+          </AiAlert>
+        ) : (
+          <p role="alert" className="px-0.5 text-danger type-table" data-testid="ai-error">
+            {message.text}
+          </p>
+        ))}
       {suggestion && (
         <section
           aria-label={suggestion.feature === "fit_for_report" ? C.PANEL_TITLE_FIT : C.PANEL_TITLE_DRAFT}
@@ -115,23 +220,24 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
               {C.count(shown.length, suggestion.limit)}
             </span>
           </div>
-          <div className="grid grid-cols-2 gap-2">
+          {edited === null && suggestion.phiOk && <Legend numbers={!suggestion.numbers.ok} />}
+          <div className="grid grid-cols-2 items-start gap-2">
             <div className="flex min-w-0 flex-col gap-1">
               <span className="text-muted type-label">{C.PANEL_ORIGINAL}</span>
-              <p className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-control border border-line bg-input/60 px-2.5 py-2 text-muted type-table" data-testid="ai-original">
+              <p className="whitespace-pre-wrap break-words rounded-control border border-line bg-input/60 px-2.5 py-2 text-muted type-table" data-testid="ai-original">
                 {suggestion.original}
               </p>
             </div>
             <div className="flex min-w-0 flex-col gap-1">
               <span className="text-muted type-label">{C.PANEL_SUGGESTION}</span>
               {edited === null ? (
-                <p className="max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-control border border-accent/40 bg-input px-2.5 py-2 text-fg type-table" data-testid="ai-suggestion-text">
-                  {suggestion.text}
+                <p className="whitespace-pre-wrap break-words rounded-control border border-accent/40 bg-input px-2.5 py-2 text-fg type-table" data-testid="ai-suggestion-text">
+                  {suggestion.phiOk ? <MarkedText segments={segments} /> : suggestion.text}
                 </p>
               ) : (
                 <textarea
                   aria-label={C.PANEL_SUGGESTION}
-                  className="block h-48 w-full min-w-0 resize-none rounded-control border border-accent bg-input px-2.5 py-2 text-fg type-table focus:outline-none"
+                  className={`block min-h-24 w-full min-w-0 resize-none rounded-control border border-accent bg-input px-2.5 py-2 text-fg type-table field-sizing-content ${AI_FOCUS}`}
                   value={edited}
                   maxLength={noteMax}
                   onChange={(e) => setEdited(e.target.value)}
@@ -142,49 +248,50 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
             </div>
           </div>
           {!suggestion.phiOk && (
-            <p role="alert" className="text-danger type-table" data-testid="ai-suggestion-phi">
+            <AiAlert tone="danger" testId="ai-suggestion-phi">
               {C.SUGGESTION_PHI}
-            </p>
+            </AiAlert>
           )}
           {suggestion.phiOk && !numbers.ok && (
-            <p role="alert" className={`type-table ${AMBER}`} data-testid="ai-number-warning">
+            <AiAlert tone="warning" testId="ai-number-warning">
               {C.numberWarning(numbers.missing)}
-            </p>
+            </AiAlert>
+          )}
+          {suggestion.phiOk && !numbers.ok && edited !== null && (
+            <label className="flex items-center gap-2 px-0.5 text-fg type-table" data-testid="ai-override">
+              <input
+                type="checkbox"
+                className={`size-3.5 shrink-0 accent-(--dark-accent) ${AI_FOCUS}`}
+                checked={confirmed}
+                onChange={(e) => setConfirmedFor(e.target.checked ? AiWritingModel.confirmKey(numbers.missing) : null)}
+                data-testid="ai-override-checkbox"
+              />
+              {C.OVERRIDE_CHECKBOX}
+            </label>
           )}
           {suggestion.phiOk && numbers.ok && overLimit && edited === null && (
-            <p role="status" className={`type-table ${AMBER}`} data-testid="ai-over-limit">
+            <p role="status" className="type-table text-(--status-at-risk-dark-fg)" data-testid="ai-over-limit">
               {C.OVER_LIMIT}
             </p>
           )}
           <div className="flex items-center gap-2">
-            <span className="min-w-0 flex-1 text-muted type-caption">{edited === null && !acceptable && suggestion.phiOk && !suggestion.numbers.ok ? C.ACCEPT_BLOCKED : C.PANEL_NOTE}</span>
-            <button type="button" onClick={discard} className="h-7 rounded-control px-2.5 text-muted type-table-strong hover:text-fg" data-testid="ai-discard">
+            <span className="min-w-0 flex-1 text-muted type-caption" data-testid="ai-foot-note">
+              {footNote}
+            </span>
+            <button type="button" onClick={discard} className={`h-7 rounded-control px-2.5 text-muted type-table-strong hover:text-fg ${AI_FOCUS}`} data-testid="ai-discard">
               {C.DISCARD}
             </button>
             {edited === null ? (
               <>
-                <button type="button" onClick={() => setEdited(suggestion.text)} disabled={!suggestion.phiOk} className="h-7 rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50" data-testid="ai-edit">
+                <button type="button" onClick={() => setEdited(suggestion.text)} disabled={!suggestion.phiOk} className={GHOST} data-testid="ai-edit">
                   {C.EDIT}
                 </button>
-                <button
-                  type="button"
-                  onClick={accept}
-                  aria-disabled={!acceptable}
-                  disabled={!acceptable}
-                  className="h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:opacity-50"
-                  data-testid="ai-accept"
-                >
+                <button type="button" onClick={accept} aria-disabled={!acceptable} disabled={!acceptable} className={PRIMARY} data-testid="ai-accept">
                   {C.ACCEPT}
                 </button>
               </>
             ) : (
-              <button
-                type="button"
-                onClick={useEdited}
-                disabled={!AiWritingModel.canUseEdited(suggestion, edited, noteMax)}
-                className="h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:opacity-50"
-                data-testid="ai-use-edited"
-              >
+              <button type="button" onClick={useEdited} aria-disabled={!canUseEdited} disabled={!canUseEdited} className={PRIMARY} data-testid="ai-use-edited">
                 {C.USE_EDITED}
               </button>
             )}
@@ -192,5 +299,27 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
         </section>
       )}
     </div>
+  );
+}
+
+/**
+ * Under the note after Accept or "Use this text", until the project is saved: "AI suggestion applied, not saved." and
+ * Undo, which restores the note as it was before the assistant (no other field changes). After Undo: "Your original
+ * text is back."
+ */
+export function AiUndoLine({ state, onUndo }: { state: "applied" | "undone"; onUndo: () => void }) {
+  return (
+    <p role="status" className="-mt-1 flex items-center gap-1.5 text-muted type-caption" data-testid="ai-undo-line">
+      {state === "applied" ? (
+        <>
+          <span>{C.APPLIED_NOT_SAVED}</span>
+          <button type="button" onClick={onUndo} className={`rounded-[3px] text-accent underline underline-offset-2 type-caption hover:text-fg ${AI_FOCUS}`} data-testid="ai-undo">
+            {C.UNDO}
+          </button>
+        </>
+      ) : (
+        <span>{C.UNDONE}</span>
+      )}
+    </p>
   );
 }

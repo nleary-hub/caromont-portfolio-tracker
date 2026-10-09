@@ -15,10 +15,11 @@ export interface AiSuggestion {
 export class AiWritingModel {
   /**
    * The Draft from bullets and Fit for report buttons show only when AI is on and configured (the server sends the
-   * actions only then) and the viewer can edit this project (the edit form, admin-only today). Never in New project.
+   * actions only then) and the viewer can edit this project (the edit form, admin-only today) or create one (the New
+   * project form, also admin-only).
    */
   static showsButtons(input: { aiOn: boolean; canEdit: boolean; mode: "edit" | "new" }): boolean {
-    return input.aiOn && input.canEdit && input.mode === "edit";
+    return input.aiOn && input.canEdit;
   }
 
   /** One-click Accept: the numbers check passed, the text passed the PHI check, and it fits the limit. */
@@ -26,9 +27,19 @@ export class AiWritingModel {
     return s.numbers.ok && s.phiOk && s.text.length > 0 && s.text.length <= s.limit;
   }
 
-  /** "Use this text" after Edit: anything non-empty within the note's cap (the user reviewed it), never PHI-flagged. */
-  static canUseEdited(s: AiSuggestion, edited: string, noteMax: number): boolean {
-    return s.phiOk && edited.trim().length > 0 && edited.length <= noteMax;
+  /**
+   * "Use this text" after Edit: non-empty, within the note's cap, never PHI-flagged, and the live number check of the
+   * edited text passes. When it still finds numbers or dates that aren't in the original, only the explicit "I checked
+   * these numbers and dates" box (`confirmed`) lets it through, and that use is logged as accepted_with_override.
+   */
+  static canUseEdited(s: AiSuggestion, original: string, edited: string, noteMax: number, confirmed = false): boolean {
+    if (!s.phiOk || edited.trim().length === 0 || edited.length > noteMax) return false;
+    return AiWritingModel.recheck(original, edited).ok || confirmed;
+  }
+
+  /** The override applies only to the values the user saw when ticking the box; a new missing value unticks it. */
+  static confirmKey(missing: readonly string[]): string {
+    return missing.join("\u0000");
   }
 
   /** The live number check while editing (same rule as the server). */

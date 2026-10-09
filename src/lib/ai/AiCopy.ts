@@ -43,7 +43,7 @@ export class AiCopy {
   static readonly SAVE = "Save";
   static readonly SAVING = "Saving…";
   static readonly SAVED = "Saved.";
-  static readonly SAVE_FAILED = "Could not save the change.";
+  static readonly SAVE_FAILED = "Couldn't save the change. Try again.";
   static readonly FIX_FIELDS = "Fix the highlighted fields.";
   static readonly REQUIRED_PROVIDER = "Select a provider";
   static readonly REQUIRED_MODEL = "Enter the model name";
@@ -125,8 +125,8 @@ export class AiCopy {
   // ---- Update-note editor --------------------------------------------------------------------------------------
   static readonly DRAFT_BUTTON = "Draft from bullets";
   static readonly FIT_BUTTON = "Fit for report";
-  static readonly DRAFT_TOOLTIP = "Turn the notes in this field into a clean update of 2,000 characters or less. Nothing is saved until you save.";
-  static readonly FIT_TOOLTIP = "Shorten this update to 200 characters or less, the length the dashboard and report show. Nothing is saved until you save.";
+  static readonly DRAFT_TOOLTIP = "Turn the notes in this field into a clean update of 2,000 characters or fewer. Nothing changes until you save the project.";
+  static readonly FIT_TOOLTIP = "Shorten this update to 200 characters or fewer, the length the dashboard and report show. Nothing changes until you save the project.";
   static readonly PHI_HELPER = "Don't include patient information.";
   static readonly WORKING = "Writing…";
   static readonly EMPTY_INPUT = "Type some notes first.";
@@ -139,10 +139,10 @@ export class AiCopy {
   static readonly EDIT = "Edit";
   static readonly USE_EDITED = "Use this text";
   static readonly DISCARD = "Discard";
-  static readonly ACCEPT_BLOCKED = "Check the numbers and dates first, then use Edit.";
+  static readonly ACCEPT_BLOCKED = "Use Edit to check the numbers and dates first.";
   static readonly OVER_LIMIT = "Over the limit. Use Edit to shorten it.";
   static readonly AI_ASSISTED_TAG = "AI-assisted";
-  static readonly AI_ASSISTED_TOOLTIP = "Written with the AI writing assistant and reviewed before saving.";
+  static readonly AI_ASSISTED_TOOLTIP = "Drafted with the writing assistant and accepted before saving.";
   static readonly RATE_LIMITED = "Too many AI requests in the last minute. Wait a moment and try again.";
   static readonly PROVIDER_ERROR = "The AI service didn't respond. Your note is unchanged. Try again in a moment.";
   static readonly TIMEOUT = "The AI service took too long to respond. Your note is unchanged. Try again in a moment.";
@@ -150,8 +150,25 @@ export class AiCopy {
   static readonly NOT_ALLOWED = "You can't use the writing assistant on this project.";
   static readonly SUGGESTION_PHI = "The suggestion looks like it has patient information, so it can't be accepted. Discard it and try again.";
 
+  /** Edit mode: the explicit override when the edited text still has numbers or dates that aren't in the original. */
+  static readonly OVERRIDE_CHECKBOX = "I checked these numbers and dates against my notes.";
+  /** Edit mode: shown next to the disabled "Use this text" while the number check fails and the box is not ticked. */
+  static readonly USE_EDITED_BLOCKED = "Fix the numbers and dates above, or check the box to confirm them.";
+  /** Under the field after Accept or "Use this text", until the project is saved; followed by the Undo link. */
+  static readonly APPLIED_NOT_SAVED = "AI suggestion applied, not saved.";
+  static readonly UNDO = "Undo";
+  static readonly UNDONE = "Your original text is back.";
+  /** Legend above the suggestion: one line per mark type (the amber line only when the number check fails). */
+  static readonly LEGEND_WORDS = "Highlighted words aren't in your text.";
+  static readonly LEGEND_NUMBERS = "Underlined numbers and dates aren't in your text. Check them before you use this.";
+
+  /** Screen-reader label of each marked value (new word or missing number/date). */
+  static notInText(value: string): string {
+    return `${value}, not in your text`;
+  }
+
   static numberWarning(missing: readonly string[]): string {
-    return `These numbers or dates are not in your text: ${missing.join(", ")}. Check them before you use this suggestion.`;
+    return `These numbers or dates aren't in your text: ${missing.join(", ")}. Use Edit to check or remove them.`;
   }
 
   static count(n: number, limit: number): string {
@@ -162,14 +179,14 @@ export class AiCopy {
   static phiBlocked(kinds: readonly PhiKind[]): string {
     const names = kinds.map((k) => AiCopy.PHI_NAMES[k]);
     const list = names.length <= 1 ? names.join("") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
-    return `This looks like patient information (${list}). Remove it and try again. Nothing was sent.`;
+    return `This might be patient information (${list}). Remove it and try again. Nothing was sent.`;
   }
 
   private static readonly PHI_NAMES: Record<PhiKind, string> = {
-    mrn: "a medical record number",
-    dob: "a date of birth",
+    mrn: "a number that could be a medical record number",
+    dob: "a date that could be a date of birth",
     ssn: "a Social Security number",
     phone: "a phone number",
-    patient_name: "a patient name",
+    patient_name: "a name that could be a patient's",
   };
 }

@@ -43,7 +43,8 @@ export default async function AiSettingsPage() {
   const section = "flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4 backdrop-blur-[20px]";
 
   return (
-    <main className="mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-6">
+    // .pb-page: the standard focus ring on inputs, selects and textareas (polish.css), as in the dashboard and editor.
+    <main className="pb-page mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-6">
       <div className="flex items-center justify-between gap-4">
         <h1 className="type-title whitespace-nowrap">{AiCopy.PAGE_TITLE}</h1>
         <div className="flex items-center gap-3">

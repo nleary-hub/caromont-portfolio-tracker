@@ -203,11 +203,13 @@ describe("off by default", () => {
 });
 
 describe("buttons: hidden when AI is off and for anyone who can't edit", () => {
-  it("shows only with AI on, edit rights and the edit form (never New project)", () => {
+  it("shows only with AI on and edit rights, in the edit form and the New project form", () => {
     expect(AiWritingModel.showsButtons({ aiOn: true, canEdit: true, mode: "edit" })).toBe(true);
     expect(AiWritingModel.showsButtons({ aiOn: false, canEdit: true, mode: "edit" })).toBe(false);
     expect(AiWritingModel.showsButtons({ aiOn: true, canEdit: false, mode: "edit" })).toBe(false);
-    expect(AiWritingModel.showsButtons({ aiOn: true, canEdit: true, mode: "new" })).toBe(false);
+    // The New project form gets the assistant too (creating a project is admin-only).
+    expect(AiWritingModel.showsButtons({ aiOn: true, canEdit: true, mode: "new" })).toBe(true);
+    expect(AiWritingModel.showsButtons({ aiOn: false, canEdit: true, mode: "new" })).toBe(false);
   });
 
   it("read-only (non-admin) users get no suggestion, and the AI settings item is admin-only", async () => {
@@ -243,7 +245,13 @@ describe("PHI guard", () => {
   it.each([
     ["MRN 00123456 called about the delay", "mrn"],
     ["Medical record # 4455 flagged", "mrn"],
-    ["Follow up on 12345678 tomorrow", "mrn"],
+    ["acct # 99812 on the bill", "mrn"],
+    ["account number is 5512345", "mrn"],
+    ["pt id 12345 rescheduled", "mrn"],
+    ["Record no. 5512 was pulled", "mrn"],
+    ["MR# 12345", "mrn"],
+    ["00123456 (MRN) flagged", "mrn"],
+    ["4455 is the account number", "mrn"],
     ["DOB 3/4/1950 on the form", "dob"],
     ["date of birth was missing", "dob"],
     ["SSN 123-45-6789", "ssn"],
@@ -264,6 +272,10 @@ describe("PHI guard", () => {
     "Go-live moved to 11/04/2026. 30 percent at signature, 60 percent at go-live.",
     "PT Department staffing approved for FY27.",
     "Install window is the first week of November.",
+    "Quote 4471823 received from the vendor.",
+    "Follow up on 12345678 tomorrow.",
+    "PO 7712345 and REQ-50812 approved; capital request 2026001845 confirmed.",
+    "Accounts payable got invoice 1234567.",
   ])("lets ordinary project notes through: %j", (text) => {
     expect(AiPhiGuard.check(text)).toEqual({ ok: true });
   });
@@ -273,7 +285,7 @@ describe("PHI guard", () => {
     const p = new MockProvider();
     const r = await suggest(db, p, "pt John Smith DOB 1/2/1950 call 704-555-0182");
     expect(r).toMatchObject({ ok: false, kind: "phi" });
-    if (!r.ok) expect(r.message).toBe("This looks like patient information (a date of birth, a phone number and a patient name). Remove it and try again. Nothing was sent.");
+    if (!r.ok) expect(r.message).toBe("This might be patient information (a date that could be a date of birth, a phone number and a name that could be a patient's). Remove it and try again. Nothing was sent.");
     expect(p.calls).toHaveLength(0);
     expect(db.usage).toHaveLength(1);
     expect(db.usage[0]).toMatchObject({ event: "blocked_phi", suggestedText: null, outputLength: null, projectId: PROJECT, userEmail: ADMIN.email, feature: "draft_from_bullets" });
@@ -286,7 +298,8 @@ describe("PHI guard", () => {
     expect(db.usage.at(-1)).toMatchObject({ event: "suggested", suggestedText: null });
     if (r.ok) {
       expect(AiWritingModel.canAccept(r)).toBe(false);
-      expect(AiWritingModel.canUseEdited(r, "Call back needed", 2000)).toBe(false);
+      expect(AiWritingModel.canUseEdited(r, "Call back needed", "Call back needed", 2000)).toBe(false);
+      expect(AiWritingModel.canUseEdited(r, "Call back needed", "Call back needed", 2000, true)).toBe(false);
     }
   });
 });
@@ -302,7 +315,7 @@ describe("number check", () => {
 
   it("flags a changed or invented number or date, listing it as written", () => {
     expect(AiNumberCheck.check("quote $1,250,000 rcvd oct 6", "Quote of $1,300,000 received Oct 6.")).toEqual({ ok: false, missing: ["1,300,000"] });
-    expect(AiNumberCheck.check("go-live in nov", "Go-live on Nov 14.")).toEqual({ ok: false, missing: ["14"] });
+    expect(AiNumberCheck.check("go-live in nov", "Go-live on Nov 14.")).toEqual({ ok: false, missing: ["Nov 14"] });
     expect(AiNumberCheck.check("go-live on 11/14", "Go-live in December, on Friday.")).toEqual({ ok: false, missing: ["December", "Friday"] });
     expect(AiNumberCheck.check("contract signed", "Contract signed today, 2 weeks early.")).toEqual({ ok: false, missing: ["today", "2"] });
     expect(AiNumberCheck.check("30 percent at signature", "Forty percent at signature.")).toEqual({ ok: true }); // "forty" is not tracked
@@ -315,9 +328,9 @@ describe("number check", () => {
     expect(db.usage.at(-1)).toMatchObject({ event: "suggested", numberCheckPassed: false });
     if (!r.ok) return;
     expect(AiWritingModel.canAccept(r)).toBe(false);
-    expect(AiWritingModel.canUseEdited(r, "Quote of $1,250,000 received Oct 6.", 2000)).toBe(true);
+    expect(AiWritingModel.canUseEdited(r, "quote $1,250,000 rcvd oct 6", "Quote of $1,250,000 received Oct 6.", 2000)).toBe(true);
     expect(AiWritingModel.recheck("quote $1,250,000 rcvd oct 6", "Quote of $1,250,000 received Oct 6.")).toEqual({ ok: true, missing: [] });
-    expect(AiCopy.numberWarning(r.numbers.missing)).toBe("These numbers or dates are not in your text: 1,300,000. Check them before you use this suggestion.");
+    expect(AiCopy.numberWarning(r.numbers.missing)).toBe("These numbers or dates aren't in your text: 1,300,000. Use Edit to check or remove them.");
   });
 
   it("Fit for report: over 200 characters can't be accepted in one click", () => {
@@ -427,11 +440,12 @@ describe("provider calls (mocked), timeouts and rate limits", () => {
     errors.mockRestore();
   });
 
-  it("rate limits each user to 6 provider calls a minute", async () => {
+  it("rate limits each user to 10 provider calls a minute", async () => {
+    expect(AiWritingService.RATE_LIMIT).toBe(10);
     const db = await configured();
     const p = new MockProvider();
     for (let i = 0; i < AiWritingService.RATE_LIMIT; i++) expect((await suggest(db, p, `note ${i}`)).ok).toBe(true);
-    expect(await suggest(db, p, "note 6")).toEqual({ ok: false, kind: "rate", message: AiCopy.RATE_LIMITED });
+    expect(await suggest(db, p, "note 10")).toEqual({ ok: false, kind: "rate", message: AiCopy.RATE_LIMITED });
     expect(p.calls).toHaveLength(AiWritingService.RATE_LIMIT);
   });
 

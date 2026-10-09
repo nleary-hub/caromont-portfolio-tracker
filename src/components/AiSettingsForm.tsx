@@ -6,14 +6,17 @@ import { AiCopy as C } from "@/lib/ai/AiCopy";
 import { AiProviders, type AiProviderId } from "@/lib/ai/AiProviders";
 import type { AiSettingsView } from "@/lib/services/AiSettingsService";
 
-const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none disabled:opacity-50 aria-invalid:border-danger";
-const GHOST = "h-7 rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50";
-const PRIMARY = "h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:opacity-50";
+/** 2px focus ring on every control (keyboard focus); the page is wrapped in .pb-page, which rings inputs the same way. */
+const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
+const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger ${FOCUS}`;
+const GHOST = `h-7 rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
+const PRIMARY = `h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${FOCUS}`;
 
 /**
  * Admin > AI settings form. The key is write-only: the page gets only whether it is set, its last 4 characters and who
  * saved it when. Pasting a key and saving replaces it; Clear key removes it. With no encryption key on the server the
- * key field is disabled and says why; the other settings still save (turning AI off must always work).
+ * key field stays visible but disabled, with the reason; the other settings still save (turning AI off must always
+ * work). Test connection is disabled until a provider, model and readable key are saved (it uses the saved settings).
  */
 export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettingsView; keySavedLine: string | null; dbReady: boolean }) {
   const [state, action, pending] = useActionState<AiSettingsFormState, FormData>(saveAiSettings, null);
@@ -34,6 +37,7 @@ export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettin
   const [clearing, startClear] = useTransition();
   const err = (f: string) => (state && !state.ok ? state.fieldErrors?.[f] : undefined);
   const keyBlocked = !view.encryption.ready;
+  const canTest = dbReady && view.ready;
   const status = !view.enabled ? C.STATUS_OFF : view.ready ? C.STATUS_READY : C.STATUS_NOT_READY;
   const statusClass = !view.enabled ? "bg-(--status-not-started-dark-bg) text-(--status-not-started-dark-fg)" : view.ready ? "bg-(--status-on-track-dark-bg) text-(--status-on-track-dark-fg)" : "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)";
   const switchHelp = !enabled ? C.SWITCH_HELP_OFF : view.enabled && view.ready ? C.SWITCH_HELP_ON : C.SWITCH_ON_NOT_READY;
@@ -128,12 +132,12 @@ export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettin
           {confirmClear && (
             <div className="flex items-center gap-2 rounded-control bg-(--status-off-track-dark-bg) px-3 py-2" role="alert">
               <span className="min-w-0 flex-1 text-fg type-table">{C.KEY_CLEAR_CONFIRM}</span>
-              <button type="button" className="h-7 rounded-control px-2.5 text-muted type-table-strong hover:text-fg" onClick={() => setConfirmClear(false)}>
+              <button type="button" className={`h-7 rounded-control px-2.5 text-muted type-table-strong hover:text-fg ${FOCUS}`} onClick={() => setConfirmClear(false)} data-testid="ai-key-clear-cancel">
                 {C.KEY_CLEAR_NO}
               </button>
               <button
                 type="button"
-                className="h-7 rounded-control bg-(--status-off-track-dark-bg) px-2.5 text-danger type-table-strong ring-1 ring-danger/40"
+                className={`h-7 rounded-control bg-(--status-off-track-dark-bg) px-2.5 text-danger type-table-strong ring-1 ring-danger/40 ${FOCUS}`}
                 disabled={clearing}
                 onClick={() =>
                   startClear(async () => {
@@ -150,29 +154,30 @@ export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettin
             </div>
           )}
           {view.key.set && !view.key.readable && view.encryption.ready && <p className="text-(--status-at-risk-dark-fg) type-table">{C.KEY_UNREADABLE}</p>}
-          {keyBlocked ? (
+          {keyBlocked && (
             <p className="rounded-control bg-(--status-at-risk-dark-bg) px-3 py-2 text-(--status-at-risk-dark-fg) type-table" role="status" data-testid="ai-encryption-missing">
               {view.encryption.problem === "invalid" ? C.ENCRYPTION_INVALID : C.ENCRYPTION_MISSING}
             </p>
-          ) : (
-            keyInput && (
-              <>
-                <input
-                  id="ai-api-key"
-                  name="apiKey"
-                  type="password"
-                  aria-label={C.KEY_LABEL}
-                  className={`${INPUT} font-mono`}
-                  placeholder={view.key.set ? C.KEY_PLACEHOLDER_REPLACE : C.KEY_PLACEHOLDER_NEW}
-                  autoComplete="new-password"
-                  spellCheck={false}
-                  aria-invalid={Boolean(err("apiKey")) || undefined}
-                  disabled={!dbReady}
-                  data-testid="ai-key-input"
-                />
-                {err("apiKey") ? <p className="text-danger type-table">{err("apiKey")}</p> : <p className="text-muted type-caption">{C.KEY_HELP}</p>}
-              </>
-            )
+          )}
+          {(keyInput || keyBlocked) && (
+            <>
+              <input
+                id="ai-api-key"
+                name="apiKey"
+                type="password"
+                aria-label={C.KEY_LABEL}
+                className={`${INPUT} font-mono`}
+                placeholder={view.key.set ? C.KEY_PLACEHOLDER_REPLACE : C.KEY_PLACEHOLDER_NEW}
+                autoComplete="new-password"
+                spellCheck={false}
+                aria-invalid={Boolean(err("apiKey")) || undefined}
+                aria-describedby={keyBlocked ? "ai-key-blocked" : undefined}
+                disabled={!dbReady || keyBlocked}
+                data-testid="ai-key-input"
+              />
+              {keyBlocked ? null : err("apiKey") ? <p className="text-danger type-table">{err("apiKey")}</p> : <p className="text-muted type-caption">{C.KEY_HELP}</p>}
+              {keyBlocked && <span id="ai-key-blocked" className="sr-only">{view.encryption.problem === "invalid" ? C.ENCRYPTION_INVALID : C.ENCRYPTION_MISSING}</span>}
+            </>
           )}
           {keyMessage && (
             <p className="text-muted type-table" role="status">
@@ -194,10 +199,10 @@ export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettin
       {/* Test connection: the saved settings, a tiny prompt; the result never contains the key. */}
       <div className="flex flex-col gap-2 rounded-control border border-line bg-input/60 px-3 py-2.5" data-testid="ai-test">
         <div className="flex items-center gap-3">
-          <button type="button" className={GHOST} disabled={testing || !dbReady} onClick={() => startTest(async () => setTest(await testAiConnection()))} data-testid="ai-test-button">
+          <button type="button" className={GHOST} disabled={testing || !canTest} onClick={() => startTest(async () => setTest(await testAiConnection()))} data-testid="ai-test-button">
             {testing ? C.TESTING : C.TEST}
           </button>
-          <span className="text-muted type-caption">{C.TEST_HELP}</span>
+          <span className="text-muted type-caption" data-testid="ai-test-help">{canTest ? C.TEST_HELP : C.TEST_NEEDS_SETTINGS}</span>
         </div>
         {test && (
           <p role="status" className={`flex items-start gap-2 type-table ${test.ok ? "text-(--status-on-track-dark-fg)" : "text-danger"}`} data-testid={test.ok ? "ai-test-ok" : "ai-test-error"}>

@@ -628,6 +628,7 @@ export class ProjectService {
     db: PrismaClient = Db.client,
     milestones?: MilestoneEdit | null,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
+    options: { aiAssisted?: boolean } = {},
   ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const input: ProjectInput = { name: "", ...ProjectService.pickFormFields(values), status: values.status || "NotStarted" };
@@ -650,7 +651,9 @@ export class ProjectService {
     const actor = ProjectService.actorOf(admin);
     return db.$transaction(async (tx) => {
       const at = new Date();
-      const project = await ProjectService.createInTx(tx, input, actor, data, at, scope, { defaultMilestone: drafts.length === 0 });
+      // A first note written with an accepted AI suggestion: the "created" row carries the AI-assisted comment.
+      const createdBy: Actor = options.aiAssisted ? { ...actor, comment: ProjectService.AI_ASSISTED_COMMENT } : actor;
+      const project = await ProjectService.createInTx(tx, input, createdBy, data, at, scope, { defaultMilestone: drafts.length === 0 });
       if (drafts.length > 0) {
         await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, project.id, drafts, actor, at, milestones?.applied ?? null, scope));
       }

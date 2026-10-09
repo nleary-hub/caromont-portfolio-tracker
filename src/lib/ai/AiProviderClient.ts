@@ -119,12 +119,36 @@ export class AiProviderClient {
     return AiProviderClient.scrub(msg, apiKey);
   }
 
-  /** Removes the key (and anything that looks like a bearer token or sk- key) from text bound for the UI or logs. */
+  /** What replaces anything key-shaped in text bound for the UI or logs. */
+  static readonly REDACTED = "[key hidden]";
+
+  /**
+   * Removes the key, and anything key-shaped, from text bound for the UI or logs: the saved key itself; "sk-", "pk-" and
+   * "rk-" style keys (including the provider's own masked echo such as "sk-proj-****abcd" or "bad-****-0000"); Bearer
+   * tokens; whatever follows "API key provided:"; and long tokens (20+ characters) of hex, base64 or mixed letters and
+   * digits. So no prefix and no last 4 ever reach the page. Then whitespace is collapsed and the text capped.
+   */
   static scrub(text: string, apiKey: string): string {
+    const X = AiProviderClient.REDACTED;
     let s = text;
-    if (apiKey) s = s.split(apiKey).join("[key hidden]");
-    s = s.replace(/\b(sk|sk-ant|sk-proj)-[A-Za-z0-9_-]{6,}/g, "[key hidden]").replace(/Bearer\s+\S+/gi, "Bearer [key hidden]");
+    if (apiKey) s = s.split(apiKey).join(X);
+    s = s
+      .replace(/Bearer\s+\S+/gi, `Bearer ${X}`)
+      .replace(/(api[\s_-]?key[^:\n]{0,30}:\s+)(?!\[key hidden\])[^\s,;]*[^\s,;.]/gi, `$1${X}`)
+      .replace(/(?<![A-Za-z0-9])(?:sk|pk|rk)[-_][A-Za-z0-9_*.\u2026-]{3,}/gi, X)
+      .replace(/[A-Za-z0-9_.-]*(?:\*{2,}|\u2026|\.{3})[A-Za-z0-9_.*-]*[A-Za-z0-9]/g, (m) => (/[A-Za-z0-9]/.test(m.replace(/[*.\u2026]/g, "")) ? X : m))
+      .replace(/(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/=_-]{20,}(?![A-Za-z0-9+/=_-])/g, (m) => (AiProviderClient.keyShaped(m) ? X : m));
     s = s.replace(/\s+/g, " ").trim();
     return s.length > AiProviderClient.MESSAGE_MAX ? `${s.slice(0, AiProviderClient.MESSAGE_MAX - 1)}…` : s;
+  }
+
+  /** A long run that reads as a secret, not as a word, URL path or model name: hex, or letters mixed with digits. */
+  private static keyShaped(t: string): boolean {
+    if (/^[0-9a-f]{20,}$/i.test(t)) return true;
+    if (!/\d/.test(t) || !/[A-Za-z]/.test(t)) return false;
+    // Model names and paths ("claude-3-5-haiku-20241022", "gpt-4o-mini-2024-07-18") are short dash-separated words.
+    const parts = t.split(/[-_/]/);
+    if (parts.length > 1 && parts.every((p) => p.length <= 12)) return false;
+    return true;
   }
 }

@@ -266,13 +266,13 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               ...(aiOn
                 ? {
                     aiWriting: {
-                      suggestAction: async (projectId: string, feature: AiFeature, text: string) => {
+                      suggestAction: async (projectId: string | null, feature: AiFeature, text: string) => {
                         "use server";
                         return suggestNote(projectId, feature, text);
                       },
-                      outcomeAction: async (suggestionId: string, outcome: AiOutcome) => {
+                      outcomeAction: async (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => {
                         "use server";
-                        return recordSuggestionOutcome(suggestionId, outcome);
+                        return recordSuggestionOutcome(suggestionId, outcome, unverifiedCount);
                       },
                     },
                   }
@@ -281,9 +281,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 "use server";
                 return saveProjectMilestones(projectId, milestones);
               },
-              createProjectAction: async (values, milestones) => {
+              createProjectAction: async (values, milestones, meta) => {
                 "use server";
-                return createProjectFromForm(values, milestones);
+                return createProjectFromForm(values, milestones, meta);
               },
               saveColumnLayoutAction: async (value) => {
                 "use server";

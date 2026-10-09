@@ -136,10 +136,14 @@ export async function saveProjectMilestones(projectId: string, milestones: unkno
 export type MilestoneSaveActionResult = { ok: true; steps: MilestoneStepDto[] } | { ok: false; error: string };
 
 /** Create a project from the New project drawer (name and department required), with its checklist. */
-export async function createProjectFromForm(values: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
-  return ProjectFormAction.run("createProjectFromForm", (admin, scope) =>
-    ProjectService.createFromForm(ProjectFormModel.toInput(ProjectFormAction.values(values)), admin, undefined, ProjectFormAction.milestones(milestones), scope),
-  );
+export async function createProjectFromForm(values: Partial<ProjectFormValues>, milestones?: unknown, meta?: unknown): Promise<ProjectFormResult> {
+  return ProjectFormAction.run("createProjectFromForm", async (admin, scope) => {
+    const parsed = ProjectFormAction.values(values);
+    // AI-assisted: a note drafted in this New project form with a suggestion this admin accepted (null project).
+    const suggestionId = meta && typeof meta === "object" ? (meta as { aiSuggestionId?: unknown }).aiSuggestionId : undefined;
+    const aiAssisted = Boolean(parsed.note) && suggestionId !== undefined && (await AiWritingService.wasUsed(Db.client as unknown as AiWritingDb, admin, null, suggestionId));
+    return ProjectService.createFromForm(ProjectFormModel.toInput(parsed), admin, undefined, ProjectFormAction.milestones(milestones), scope, { aiAssisted });
+  });
 }
 
 export async function saveViewSettings(context: string, value: unknown): Promise<AdminActionResult> {

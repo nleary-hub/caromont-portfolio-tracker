@@ -28,13 +28,16 @@ class AiActions {
   }
 }
 
-/** Draft from bullets / Fit for report on the update note of `projectId`. Returns a suggestion only; saves nothing. */
-export async function suggestNote(projectId: string, feature: string, text: string): Promise<AiSuggestResult> {
+/**
+ * Draft from bullets / Fit for report on the update note of `projectId` (null: the New project form). Returns a
+ * suggestion only; saves nothing.
+ */
+export async function suggestNote(projectId: string | null, feature: string, text: string): Promise<AiSuggestResult> {
   const viewer = await AiActions.admin();
   if (!viewer || !Db.isConfigured()) return { ok: false, kind: "not_allowed", message: AiCopy.NOT_ALLOWED };
   try {
     const scope = await ServiceLineAccess.activeFor(viewer);
-    return await AiWritingService.suggest({ db: AiActions.db(), viewer, scope, projectId: String(projectId), feature, text });
+    return await AiWritingService.suggest({ db: AiActions.db(), viewer, scope, projectId: projectId === null ? null : String(projectId), feature, text });
   } catch (e) {
     console.error("AI writing assistant failed", (e as Error)?.name);
     return { ok: false, kind: "provider", message: AiCopy.PROVIDER_ERROR };
@@ -42,11 +45,11 @@ export async function suggestNote(projectId: string, feature: string, text: stri
 }
 
 /** Accept, Edit or Discard of a suggestion: a usage-log row only (never project history). */
-export async function recordSuggestionOutcome(suggestionId: string, outcome: AiOutcome): Promise<boolean> {
+export async function recordSuggestionOutcome(suggestionId: string, outcome: AiOutcome, unverifiedCount?: number): Promise<boolean> {
   const viewer = await AiActions.admin();
   if (!viewer || !Db.isConfigured()) return false;
   try {
-    return await AiWritingService.recordOutcome(AiActions.db(), viewer, suggestionId, outcome);
+    return await AiWritingService.recordOutcome(AiActions.db(), viewer, suggestionId, outcome, new Date(), unverifiedCount);
   } catch {
     return false;
   }

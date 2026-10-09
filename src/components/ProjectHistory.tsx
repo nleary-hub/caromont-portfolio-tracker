@@ -140,7 +140,7 @@ export function UpdateNotesSection({ timeline }: { timeline: TimelineDto | null 
                     </span>
                   )}
                   {n.aiAssisted && (
-                    <span title={AiCopy.AI_ASSISTED_TOOLTIP} className="ml-1.5 rounded-pill border border-accent/40 px-1.5 py-px text-accent type-label" data-testid="update-note-ai-assisted">
+                    <span title={AiCopy.AI_ASSISTED_TOOLTIP} className="ml-1.5 inline-flex h-4 items-center rounded-[4px] border border-accent/40 px-1 align-middle text-[10.5px] leading-none font-medium text-accent" data-testid="update-note-ai-assisted">
                       {AiCopy.AI_ASSISTED_TAG}
                     </span>
                   )}

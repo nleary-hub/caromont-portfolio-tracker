@@ -13,13 +13,14 @@ import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 
 type Env = Record<string, string | undefined>;
 
-export type AiUsageEvent = "suggested" | "accepted" | "edited" | "discarded" | "blocked_phi" | "failed";
+export type AiUsageEvent = "suggested" | "accepted" | "edited" | "accepted_with_override" | "discarded" | "blocked_phi" | "failed";
 
 export interface AiUsageRow {
   id: string;
   suggestionId: string;
   userEmail: string;
-  projectId: string;
+  /** Null for the New project form (no project yet). */
+  projectId: string | null;
   feature: string;
   event: string;
   provider: string | null;
@@ -28,6 +29,8 @@ export interface AiUsageRow {
   outputLength: number | null;
   numberCheckPassed: boolean | null;
   suggestedText: string | null;
+  /** accepted_with_override only: how many numbers or dates were still not in the original (never the values). */
+  unverifiedCount?: number | null;
   createdAt: Date;
 }
 
@@ -48,7 +51,14 @@ export type AiSuggestResult =
   | { ok: true; suggestionId: string; feature: AiFeature; text: string; limit: number; numbers: { ok: boolean; missing: string[] }; phiOk: boolean }
   | { ok: false; kind: "off" | "not_allowed" | "empty" | "phi" | "rate" | "timeout" | "provider"; message: string };
 
-export type AiOutcome = "accepted" | "edited" | "discarded";
+/** accepted_with_override: "Use this text" after Edit with the number check still failing and the box ticked. */
+export type AiOutcome = "accepted" | "edited" | "accepted_with_override" | "discarded";
+
+/** The outcomes that put the suggestion's text (as accepted or edited) into the note: they allow the AI-assisted tag. */
+const USED: readonly string[] = ["accepted", "edited", "accepted_with_override"];
+const OUTCOMES: readonly string[] = [...USED, "discarded"];
+/** Upper bound for the override's unverified count (a suggestion is at most 2,000 characters). */
+const UNVERIFIED_MAX = 1000;
 
 /**
  * The writing assistant (update-note editor): guard, call, check, log. It returns text only: it never writes to the
@@ -56,13 +66,15 @@ export type AiOutcome = "accepted" | "edited" | "discarded";
  */
 export class AiWritingService {
   /** Provider calls (suggested or failed) per user per minute. */
-  static readonly RATE_LIMIT = 6;
+  static readonly RATE_LIMIT = 10;
   static readonly RATE_WINDOW_MS = 60_000;
   /** One request at a time per user on this instance (the DB count covers the rest). */
   private static readonly inFlight = new Set<string>();
 
   /** The viewer may edit this project: admin (editing is admin-only today), project in the active line and their departments. */
-  static async canEdit(db: AiWritingDb, viewer: Viewer, projectId: string, scope: Pick<ServiceLineScope, "id" | "departmentLimit">): Promise<boolean> {
+  static async canEdit(db: AiWritingDb, viewer: Viewer, projectId: string | null, scope: Pick<ServiceLineScope, "id" | "departmentLimit">): Promise<boolean> {
+    // The New project form (null): creating a project is admin-only, so any admin may draft its first note.
+    if (projectId === null) return viewer.isAdmin;
     if (!viewer.isAdmin || typeof projectId !== "string" || !/^[0-9a-f-]{36}$/i.test(projectId)) return false;
     const p = await db.project.findUnique({ where: { id: projectId } });
     return Boolean(p) && !p!.archivedAt && ServiceLineAccess.inScope(p, scope) && DepartmentAccess.allows(scope, p!.departmentId);
@@ -72,7 +84,8 @@ export class AiWritingService {
     db: AiWritingDb;
     viewer: Viewer;
     scope: Pick<ServiceLineScope, "id" | "departmentLimit">;
-    projectId: string;
+    /** Null: the New project form. */
+    projectId: string | null;
     feature: unknown;
     text: unknown;
     env?: Env;
@@ -138,14 +151,17 @@ export class AiWritingService {
   }
 
   /**
-   * Accept, Edit (use edited text) or Discard: one usage-log row, nothing else. In particular no ProjectHistory row, so
+   * Accept, Edit (use edited text, with or without the number-check override) or Discard: one usage-log row, nothing else. In particular no ProjectHistory row, so
    * a discard can't set Changed or reset Stale. Only the user who got the suggestion can record it, once.
    */
-  static async recordOutcome(db: AiWritingDb, viewer: Viewer, suggestionId: unknown, outcome: unknown, now: Date = new Date()): Promise<boolean> {
-    if (typeof suggestionId !== "string" || (outcome !== "accepted" && outcome !== "edited" && outcome !== "discarded")) return false;
+  static async recordOutcome(db: AiWritingDb, viewer: Viewer, suggestionId: unknown, outcome: unknown, now: Date = new Date(), unverifiedCount?: unknown): Promise<boolean> {
+    if (typeof suggestionId !== "string" || typeof outcome !== "string" || !OUTCOMES.includes(outcome)) return false;
+    // The override row carries the count of numbers and dates the user confirmed by hand (1 or more), never the values.
+    const override = outcome === "accepted_with_override";
+    if (override && !(Number.isInteger(unverifiedCount) && (unverifiedCount as number) >= 1 && (unverifiedCount as number) <= UNVERIFIED_MAX)) return false;
     const suggested = await db.aiUsageLog.findFirst({ where: { suggestionId, userEmail: viewer.email, event: "suggested" } });
     if (!suggested) return false;
-    const done = await db.aiUsageLog.findFirst({ where: { suggestionId, userEmail: viewer.email, event: { in: ["accepted", "edited", "discarded"] } } });
+    const done = await db.aiUsageLog.findFirst({ where: { suggestionId, userEmail: viewer.email, event: { in: [...OUTCOMES] } } });
     if (done) return done.event === outcome;
     await db.aiUsageLog.create({
       data: {
@@ -161,6 +177,7 @@ export class AiWritingService {
         outputLength: suggested.outputLength,
         numberCheckPassed: suggested.numberCheckPassed,
         suggestedText: null,
+        unverifiedCount: override ? (unverifiedCount as number) : null,
         createdAt: now,
       },
     });
@@ -168,10 +185,11 @@ export class AiWritingService {
   }
 
   /** The save may carry the AI-assisted tag: this user accepted (or edited and used) this suggestion for this project. */
-  static async wasUsed(db: AiWritingDb, viewer: Viewer, projectId: string, suggestionId: unknown): Promise<boolean> {
+  /** `projectId` null: a New project save (the suggestion must have been made in the New project form). */
+  static async wasUsed(db: AiWritingDb, viewer: Viewer, projectId: string | null, suggestionId: unknown): Promise<boolean> {
     if (typeof suggestionId !== "string" || !/^[0-9a-f-]{36}$/i.test(suggestionId)) return false;
     try {
-      const row = await db.aiUsageLog.findFirst({ where: { suggestionId, userEmail: viewer.email, event: { in: ["accepted", "edited"] } } });
+      const row = await db.aiUsageLog.findFirst({ where: { suggestionId, userEmail: viewer.email, event: { in: [...USED] } } });
       return Boolean(row) && row!.projectId === projectId;
     } catch {
       return false;

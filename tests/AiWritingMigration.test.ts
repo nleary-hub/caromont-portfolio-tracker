@@ -73,9 +73,9 @@ class M33 {
   }
 
   static usage(extra: Partial<Record<string, string>> = {}): string {
-    const v = { event: "'suggested'", feature: "'fit_for_report'", text: "'Quote received.'", ...extra };
-    return `insert into ai_usage_log (id, "suggestionId", "userEmail", "projectId", feature, event, provider, model, "inputLength", "outputLength", "numberCheckPassed", "suggestedText")
-            values (gen_random_uuid(), gen_random_uuid(), 'nick@example.org', '${PROJECT}', ${v.feature}, ${v.event}, 'openai', 'gpt-4o-mini', 40, 15, true, ${v.text})`;
+    const v = { event: "'suggested'", feature: "'fit_for_report'", text: "'Quote received.'", unverified: "null", ...extra };
+    return `insert into ai_usage_log (id, "suggestionId", "userEmail", "projectId", feature, event, provider, model, "inputLength", "outputLength", "numberCheckPassed", "suggestedText", "unverifiedCount")
+            values (gen_random_uuid(), gen_random_uuid(), 'nick@example.org', '${PROJECT}', ${v.feature}, ${v.event}, 'openai', 'gpt-4o-mini', 40, 15, true, ${v.text}, ${v.unverified})`;
   }
 }
 
@@ -152,6 +152,11 @@ describe("0033_ai_writing_assistant on production-shaped data (PGlite)", () => {
     expect((await db.query<{ n: number }>(`select count(*)::int as n from ai_usage_log`)).rows[0].n).toBe(2);
     await expect(db.exec(M33.usage({ event: "'rewritten'" }))).rejects.toThrow(/ai_usage_log_event/);
     await expect(db.exec(M33.usage({ feature: "'translate'" }))).rejects.toThrow(/ai_usage_log_feature/);
+    // The number-check override: its own event with the count of unconfirmed values (1 or more); no other row has one.
+    await db.exec(M33.usage({ event: "'accepted_with_override'", text: "null", unverified: "2" }));
+    await expect(db.exec(M33.usage({ event: "'accepted_with_override'", text: "null" }))).rejects.toThrow(/ai_usage_log_override_count/);
+    await expect(db.exec(M33.usage({ event: "'accepted_with_override'", text: "null", unverified: "0" }))).rejects.toThrow(/ai_usage_log_override_count/);
+    await expect(db.exec(M33.usage({ event: "'edited'", text: "null", unverified: "1" }))).rejects.toThrow(/ai_usage_log_override_count/);
     // Same guard function as report_artifacts.
     const fn = await db.query<{ t: string; f: string }>(`select tgrelid::regclass::text as t, tgfoid::regproc::text as f from pg_trigger where tgname in ('ai_usage_log_append_only', 'report_artifacts_immutable') order by 1`);
     expect(fn.rows).toEqual([

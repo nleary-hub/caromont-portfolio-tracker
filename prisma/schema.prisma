@@ -819,10 +819,11 @@ model AiUsageLog {
   id                String   @id @default(uuid()) @db.Uuid
   suggestionId      String   @db.Uuid
   userEmail         String
-  projectId         String   @db.Uuid
+  /// null: a suggestion made in the New project form (no project yet)
+  projectId         String?  @db.Uuid
   /// "draft_from_bullets" | "fit_for_report"
   feature           String
-  /// "suggested" | "accepted" | "edited" | "discarded" | "blocked_phi" | "failed"
+  /// "suggested" | "accepted" | "edited" | "accepted_with_override" | "discarded" | "blocked_phi" | "failed"
   event             String
   provider          String?
   model             String?
@@ -830,6 +831,8 @@ model AiUsageLog {
   outputLength      Int?
   numberCheckPassed Boolean?
   suggestedText     String?
+  /// accepted_with_override only: how many numbers or dates were still not in the original (the count, never the values)
+  unverifiedCount   Int?
   createdAt         DateTime @default(now())
 
   @@index([userEmail, createdAt])

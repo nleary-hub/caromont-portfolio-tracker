@@ -93,11 +93,12 @@ export interface AdminDashboardProps {
    * AI on and it is fully configured; absent, the editor is exactly as before.
    */
   aiWriting?: {
-    suggestAction: (projectId: string, feature: AiFeature, text: string) => Promise<AiSuggestResult>;
-    outcomeAction: (suggestionId: string, outcome: AiOutcome) => Promise<boolean>;
+    /** projectId null: the New project form. */
+    suggestAction: (projectId: string | null, feature: AiFeature, text: string) => Promise<AiSuggestResult>;
+    outcomeAction: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
   };
   /** New project drawer: create (name and department required), with its checklist. */
-  createProjectAction: (values: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
+  createProjectAction: (values: Partial<ProjectFormValues>, milestones: MilestoneEdit | null, meta?: { aiSuggestionId?: string }) => ReturnType<ProjectFormSubmit>;
   /** Line layout: save column order and width shares (null = reset columns). */
   saveColumnLayoutAction: (columns: ColumnLayoutValue | null) => Promise<string | null>;
   /** Line layout: one department's manual order (empty = report order there). */
@@ -610,6 +611,15 @@ export function ProjectDashboard({
               people={null}
               adminDelete={null}
               onSubmit={admin.createProjectAction}
+              {...(admin.aiWriting
+                ? {
+                    ai: {
+                      suggest: (feature: AiFeature, text: string) => admin.aiWriting!.suggestAction(null, feature, text),
+                      outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) =>
+                        unverifiedCount === undefined ? admin.aiWriting!.outcomeAction(suggestionId, outcome) : admin.aiWriting!.outcomeAction(suggestionId, outcome, unverifiedCount),
+                    },
+                  }
+                : {})}
               onSaved={onSaved}
               onCancel={requestClose}
               onDirtyChange={onDirtyChange}
@@ -703,7 +713,8 @@ export function ProjectDashboard({
                     ? {
                         ai: {
                           suggest: (feature: AiFeature, text: string) => admin.aiWriting!.suggestAction(selected.id, feature, text),
-                          outcome: (suggestionId: string, outcome: AiOutcome) => admin.aiWriting!.outcomeAction(suggestionId, outcome),
+                          outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) =>
+                            unverifiedCount === undefined ? admin.aiWriting!.outcomeAction(suggestionId, outcome) : admin.aiWriting!.outcomeAction(suggestionId, outcome, unverifiedCount),
                         },
                       }
                     : {})}

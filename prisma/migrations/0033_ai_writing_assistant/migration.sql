@@ -9,9 +9,12 @@
 --                        Never deleted (trigger); clearing the key is an UPDATE.
 --   ai_settings_history  append-only change log (who, when, which field). Key changes record the action only: the
 --                        CHECK constraint refuses any value on an "apiKey" row.
---   ai_usage_log         append-only usage log: user, project, feature, provider, model, input and output length,
---                        event (suggested, accepted, edited, discarded, blocked_phi, failed), time. The suggested text
---                        is kept only when it passed the PHI check.
+--   ai_usage_log         append-only usage log: user, project (null for the New project form), feature, provider,
+--                        model, input and output length,
+--                        event (suggested, accepted, edited, accepted_with_override, discarded, blocked_phi, failed),
+--                        time. The suggested text is kept only when it passed the PHI check. accepted_with_override
+--                        (edited text used with the "I checked these numbers and dates" box ticked while the number
+--                        check still failed) carries "unverifiedCount", how many values were unconfirmed, never them.
 -- The two logs are append-only with the same trigger function as report_artifacts and ProjectHistory
 -- (portfolio_block_mutation, 0001). Nothing here is read by the report freeze, the PDF or handoff.json.
 --
@@ -62,7 +65,7 @@ CREATE TABLE IF NOT EXISTS "ai_usage_log" (
     "id" UUID NOT NULL,
     "suggestionId" UUID NOT NULL,
     "userEmail" TEXT NOT NULL,
-    "projectId" UUID NOT NULL,
+    "projectId" UUID,
     "feature" TEXT NOT NULL,
     "event" TEXT NOT NULL,
     "provider" TEXT,
@@ -71,11 +74,13 @@ CREATE TABLE IF NOT EXISTS "ai_usage_log" (
     "outputLength" INTEGER,
     "numberCheckPassed" BOOLEAN,
     "suggestedText" TEXT,
+    "unverifiedCount" INTEGER,
     "createdAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP,
 
     CONSTRAINT "ai_usage_log_pkey" PRIMARY KEY ("id"),
     CONSTRAINT "ai_usage_log_feature" CHECK ("feature" IN ('draft_from_bullets', 'fit_for_report')),
-    CONSTRAINT "ai_usage_log_event" CHECK ("event" IN ('suggested', 'accepted', 'edited', 'discarded', 'blocked_phi', 'failed'))
+    CONSTRAINT "ai_usage_log_event" CHECK ("event" IN ('suggested', 'accepted', 'edited', 'accepted_with_override', 'discarded', 'blocked_phi', 'failed')),
+    CONSTRAINT "ai_usage_log_override_count" CHECK ((("event" = 'accepted_with_override') = ("unverifiedCount" IS NOT NULL)) AND ("unverifiedCount" IS NULL OR "unverifiedCount" >= 1))
 );
 CREATE INDEX IF NOT EXISTS "ai_usage_log_userEmail_createdAt_idx" ON "ai_usage_log"("userEmail", "createdAt");
 CREATE INDEX IF NOT EXISTS "ai_usage_log_suggestionId_idx" ON "ai_usage_log"("suggestionId");
