@@ -6,7 +6,6 @@ import { renderToStaticMarkup } from "react-dom/server";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { AiNoteAssistant } from "@/components/AiNoteAssistant";
-import { UpdateNotesSection } from "@/components/ProjectHistory";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
@@ -16,10 +15,8 @@ import { AiPrompts } from "@/lib/ai/AiPrompts";
 import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiWritingModel, type AiSuggestion } from "@/lib/ai/AiWritingModel";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
-import { UpdateTimeline, type TimelineRow } from "@/lib/history/UpdateTimeline";
 import { AiSettingsService } from "@/lib/services/AiSettingsService";
 import { AiWritingService } from "@/lib/services/AiWritingService";
-import { ProjectHistoryService } from "@/lib/services/ProjectHistoryService";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { FakeAiDb } from "./helpers/FakeAiDb";
 import { FakeDb } from "./helpers/FakeDb";
@@ -354,9 +351,6 @@ describe("discard writes no history", () => {
     expect(await AiWritingService.recordOutcome(db, ADMIN, r.suggestionId, "accepted")).toBe(false);
     expect(await AiWritingService.recordOutcome(db, MEMBER, r.suggestionId, "discarded")).toBe(false);
     expect(db.writes).toEqual(["aiUsageLog.create"]);
-    // A discarded suggestion can't tag a save as AI-assisted.
-    expect(await AiWritingService.wasUsed(db, ADMIN, PROJECT, r.suggestionId)).toBe(false);
-    expect(AiWritingModel.assistedId(null, "typed by hand", "old")).toBeNull();
   });
 
   it("with the real project service: a discard leaves history untouched, so Changed and Stale don't move", async () => {
@@ -371,24 +365,6 @@ describe("discard writes no history", () => {
     await AiWritingService.recordOutcome(db, ADMIN, r.suggestionId, "discarded");
     expect(JSON.stringify(fake.state.history)).toBe(before);
     expect(fake.state.projects.find((x) => x.id === p.id)!.note ?? null).toBeNull();
-  });
-
-  it("an accepted suggestion saved through the normal flow tags only the note row AI-assisted; History shows the tag", async () => {
-    const fake = new FakeDb();
-    const pdb: PrismaClient = fake.asClient();
-    const p = await ProjectService.create({ name: "Closure device", serviceArea: "Cath", status: "OnTrack", nextMilestone: "Vendor quote", dueDate: "2026-10-03" }, { changedBy: "owner@example.org" }, pdb);
-    await ProjectService.saveForm(p.id, { note: "Quote received Oct 6.", percentComplete: 40 } as never, ADMIN, pdb, null, ServiceLine.defaultScope(), { aiAssisted: true });
-    const rows = fake.state.history.filter((h) => h.projectId === p.id && (h.field === "note" || h.field === "percentComplete"));
-    expect(rows.find((h) => h.field === "note")!.comment).toBe(ProjectService.AI_ASSISTED_COMMENT);
-    expect(rows.find((h) => h.field === "percentComplete")?.comment ?? null).toBeNull();
-    const t = await ProjectHistoryService.timeline(p.id, ADMIN, pdb);
-    expect(t.notes[0]).toMatchObject({ text: "Quote received Oct 6.", aiAssisted: true });
-    const html = renderToStaticMarkup(createElement(UpdateNotesSection, { timeline: t }));
-    expect(html).toContain(AiCopy.AI_ASSISTED_TAG);
-    // A plain save has no tag (and the DTO has no aiAssisted key at all).
-    expect(UpdateTimeline.AI_ASSISTED_COMMENT).toBe(ProjectService.AI_ASSISTED_COMMENT);
-    const plain = UpdateTimeline.toDto(UpdateTimeline.build([{ projectId: p.id, field: "note", oldValue: null, newValue: "x", changedAt: new Date(), changedBy: "a@x.org", comment: null } as TimelineRow], [], null));
-    expect(plain.notes[0]).not.toHaveProperty("aiAssisted");
   });
 });
 

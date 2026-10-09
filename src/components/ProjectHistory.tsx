@@ -4,7 +4,6 @@ import { useEffect, useState } from "react";
 import { UpdateHistoryCopy as C } from "@/lib/history/UpdateHistoryCopy";
 import { UpdateTimeline, type TimelineDto } from "@/lib/history/UpdateTimeline";
 import { UpdateNotesCopy as N } from "@/lib/history/UpdateNotesCopy";
-import { AiCopy } from "@/lib/ai/AiCopy";
 import { MilestoneOwnerCopy } from "@/lib/projects/MilestoneOwnerCopy";
 
 export type HistoryLoader = (projectId: string) => Promise<TimelineDto | null>;
@@ -137,11 +136,6 @@ export function UpdateNotesSection({ timeline }: { timeline: TimelineDto | null 
                   {n.shortened && (
                     <span title={N.SHORTENED_TOOLTIP} className="ml-1.5 text-muted" data-testid="update-note-shortened">
                       {N.SHORTENED}
-                    </span>
-                  )}
-                  {n.aiAssisted && (
-                    <span title={AiCopy.AI_ASSISTED_TOOLTIP} className="ml-1.5 inline-flex h-4 items-center rounded-[4px] border border-accent/40 px-1 align-middle text-[10.5px] leading-none font-medium text-accent" data-testid="update-note-ai-assisted">
-                      {AiCopy.AI_ASSISTED_TAG}
                     </span>
                   )}
                 </div>

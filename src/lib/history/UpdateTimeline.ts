@@ -59,8 +59,6 @@ export interface NoteEntry {
   text: string | null;
   /** A legacy entry that kept only a shortened copy of the note (UpdateTimeline.isShortened): muted "(shortened)" tag. */
   shortened: boolean;
-  /** Saved from an accepted AI suggestion (comment UpdateTimeline.AI_ASSISTED_COMMENT): "AI-assisted" tag. Absent otherwise. */
-  aiAssisted?: true;
 }
 
 /** A step for Project detail > Milestones (full name, owner). */
@@ -91,7 +89,7 @@ export interface TimelineDto {
   title: string;
   entries: (TimelineLine & { key: string; meta: string; hollow: boolean })[];
   previously: string | null;
-  notes: { key: string; meta: string; who: string; text: string | null; shortened: boolean; aiAssisted?: true }[];
+  notes: { key: string; meta: string; who: string; text: string | null; shortened: boolean }[];
   steps: TimelineStep[];
 }
 
@@ -211,17 +209,13 @@ export class UpdateTimeline {
       const meta = C.meta(ReportFormat.dateTimeEt(g.changedAt), who);
       g.rows
         .filter((r) => UpdateTimeline.NOTE_FIELDS.has(r.field))
-        .forEach((r, i) =>
-          notes.push({
-            key: `note|${g.changedAt.getTime()}|${g.changedBy}|${i}`,
-            at: g.changedAt,
-            meta,
-            who,
-            text: r.newValue ? r.newValue : null,
-            shortened: UpdateTimeline.isShortened(r.newValue),
-            ...(r.comment === UpdateTimeline.AI_ASSISTED_COMMENT ? { aiAssisted: true as const } : {}),
-          }),
-        );
+        .forEach((r, i) => notes.push({ key: `note|${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, who, text: r.newValue ? r.newValue : null, shortened: UpdateTimeline.isShortened(r.newValue) }));
+      // A project's first note (entered when it was created) lives in the "created" row's snapshot, not in a "note" row.
+      // Read here for display only: the stored rows are not changed, and History still shows "Project created."
+      for (const r of g.rows) {
+        const first = r.field === "created" ? UpdateTimeline.createdNote(r.newValue) : null;
+        if (first) notes.push({ key: `note|created|${g.changedAt.getTime()}|${g.changedBy}`, at: g.changedAt, meta, who, text: first, shortened: UpdateTimeline.isShortened(first) });
+      }
       UpdateTimeline.lines(g.rows.filter((r) => !UpdateTimeline.NOTE_FIELDS.has(r.field))).forEach((line, i) => {
         dated.push({ ...line, key: `${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, hollow: who === C.TRACKER });
       });
@@ -247,9 +241,20 @@ export class UpdateTimeline {
       title: t.title,
       entries: t.entries.map(({ key, meta, hollow, text, change, admin }) => ({ key, meta, hollow, text, ...(change ? { change } : {}), ...(admin ? { admin } : {}) })),
       previously: t.previously,
-      notes: t.notes.map(({ key, meta, who, text, shortened, aiAssisted }) => ({ key, meta, who, text, shortened, ...(aiAssisted ? { aiAssisted } : {}) })),
+      notes: t.notes.map(({ key, meta, who, text, shortened }) => ({ key, meta, who, text, shortened })),
       steps: t.steps,
     };
+  }
+
+  /** The note in a "created" row's snapshot (JSON of the tracked fields), or null when it had none or can't be read. */
+  static createdNote(snapshot: string | null): string | null {
+    if (!snapshot) return null;
+    try {
+      const v = (JSON.parse(snapshot) as Record<string, unknown> | null)?.note;
+      return typeof v === "string" && v.trim() !== "" ? v : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Earlier numbers, newest first: replaced numbers from history, then recorded ones, never the current one. */
@@ -396,9 +401,6 @@ export class UpdateTimeline {
     if (b !== null) return { text: C.cleared(label, b) };
     return null;
   }
-
-  /** ProjectHistory.comment on a note row saved from an accepted AI suggestion (ProjectService.AI_ASSISTED_COMMENT). */
-  static readonly AI_ASSISTED_COMMENT = "ai:assisted";
 
   /** ProjectHistory.comment prefix on completion rule rows (ProjectService.COMPLETION_COMMENT_PREFIX). */
   static readonly COMPLETION_PREFIX = "completion:";

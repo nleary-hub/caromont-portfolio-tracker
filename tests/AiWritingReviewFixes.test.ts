@@ -15,10 +15,7 @@ import { AiSettingsService } from "@/lib/services/AiSettingsService";
 import { AiWritingService } from "@/lib/services/AiWritingService";
 import type { FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
-import { DateOnly } from "@/lib/domain/DateOnly";
-import { ProjectService } from "@/lib/services/ProjectService";
 import { FakeAiDb } from "./helpers/FakeAiDb";
-import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
 
 const ENV = { AI_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
@@ -41,7 +38,7 @@ async function suggestion(input: string, output: string) {
 }
 
 describe("Writing Bot copy (exact strings)", () => {
-  it("PHI block, number check, tooltips, tag tooltip and save failure", () => {
+  it("PHI block, number check, tooltips and save failure", () => {
     expect(AiCopy.phiBlocked(["mrn"])).toBe("This might be patient information (a medical record number). Remove it and try again. Nothing was sent.");
     expect(AiCopy.phiBlocked(["mrn", "dob", "ssn", "phone", "patient_name"])).toBe(
       "This might be patient information (a medical record number, a date that could be a date of birth, a Social Security number, a phone number and a name that could be a patient's). Remove it and try again. Nothing was sent.",
@@ -50,7 +47,6 @@ describe("Writing Bot copy (exact strings)", () => {
     expect(AiCopy.ACCEPT_BLOCKED).toBe("Use Edit to check the numbers and dates first.");
     expect(AiCopy.DRAFT_TOOLTIP).toBe("Turn the notes in this field into a clean update of 2,000 characters or fewer. Nothing changes until you save the project.");
     expect(AiCopy.FIT_TOOLTIP).toBe("Shorten this update to 200 characters or fewer, the length the dashboard and report show. Nothing changes until you save the project.");
-    expect(AiCopy.AI_ASSISTED_TOOLTIP).toBe("Drafted with the writing assistant and accepted before saving.");
     expect(AiCopy.SAVE_FAILED).toBe("Couldn't save the change. Try again.");
   });
 
@@ -96,16 +92,15 @@ describe("number check bypass is closed (Edit > Use this text)", () => {
     expect(src).toContain("AiWritingModel.canUseEdited(suggestion, suggestion.original, edited, noteMax, confirmed)");
     expect(src).toMatch(/disabled=\{!canUseEdited\}/);
     expect(src).toMatch(/if \(!suggestion \|\| edited === null \|\| !canUseEdited\) return;/);
-    expect(src).toContain('{ outcome: "accepted_with_override", unverifiedCount: numbers.missing.length }');
+    expect(src).toContain('log(suggestion.suggestionId, "accepted_with_override", numbers.missing.length);');
   });
 
-  it("the override is logged as accepted_with_override with the count only (no text), and still tags the save", async () => {
+  it("the override is logged as accepted_with_override with the count only (no text)", async () => {
     const { db, r } = await suggestion(input, output);
     expect(await AiWritingService.recordOutcome(db, ADMIN, r.suggestionId, "accepted_with_override", new Date(), 1)).toBe(true);
     const row = db.usage.at(-1)!;
     expect(row).toMatchObject({ event: "accepted_with_override", unverifiedCount: 1, suggestedText: null, numberCheckPassed: false });
     expect(JSON.stringify(row)).not.toContain("Nov 14");
-    expect(await AiWritingService.wasUsed(db, ADMIN, PROJECT, r.suggestionId)).toBe(true);
     // Recorded once.
     expect(await AiWritingService.recordOutcome(db, ADMIN, r.suggestionId, "edited")).toBe(false);
   });
@@ -200,7 +195,7 @@ describe("test connection redacts anything key-shaped", () => {
   });
 });
 
-describe("settings page, alert box, undo line and tag", () => {
+describe("settings page, alert box and undo line", () => {
   it("encryption key missing: the key input is shown disabled; Test connection waits for saved provider, model and key", () => {
     const src = SRC("src/components/AiSettingsForm.tsx");
     expect(src).toContain("{(keyInput || keyBlocked) && (");
@@ -235,16 +230,13 @@ describe("settings page, alert box, undo line and tag", () => {
     expect(src).toMatch(/if \(result\.ok\) \{\s+setAiUndo\(null\);/);
   });
 
-  it("every new control has a 2px focus-visible outline; the AI-assisted tag is 16px, 10.5px text, 4px radius", () => {
+  it("every new control has a 2px focus-visible outline", () => {
     const a = SRC("src/components/AiNoteAssistant.tsx");
     expect(a).toContain('"focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"');
     for (const id of ["ai-discard", "ai-edit", "ai-accept", "ai-use-edited", "ai-suggestion-edit", "ai-override-checkbox", "ai-draft", "ai-fit", "ai-undo"]) expect(a).toContain(`data-testid="${id}"`);
     expect(a.match(/\$\{AI_FOCUS\}/g)!.length).toBeGreaterThanOrEqual(6);
     const f = SRC("src/components/AiSettingsForm.tsx");
     expect(f.match(/\$\{FOCUS\}/g)!.length).toBeGreaterThanOrEqual(5);
-    const h = SRC("src/components/ProjectHistory.tsx");
-    expect(h).toMatch(/data-testid="update-note-ai-assisted"/);
-    expect(h).toMatch(/h-4 [^"]*rounded-\[4px\][^"]*text-\[10\.5px\]/);
   });
 
   it("a fresh suggestion with a missing value keeps Accept disabled", () => {
@@ -274,26 +266,13 @@ describe("New project form", () => {
     const member = await AiWritingService.suggest({ db, viewer: Factory.MEMBER, scope: SCOPE, projectId: null, feature: "draft_from_bullets", text: "quote", env: ENV, fetchImpl: reply("x") });
     expect(member).toMatchObject({ ok: false, kind: "not_allowed" });
     if (!r.ok) return;
-    // Accepted in the New project form: tags a create (null project), never an existing project's save.
-    expect(await AiWritingService.wasUsed(db, ADMIN, null, r.suggestionId)).toBe(false);
-    await AiWritingService.recordOutcome(db, ADMIN, r.suggestionId, "accepted");
-    expect(await AiWritingService.wasUsed(db, ADMIN, null, r.suggestionId)).toBe(true);
-    expect(await AiWritingService.wasUsed(db, ADMIN, PROJECT, r.suggestionId)).toBe(false);
-  });
-
-  it("an AI-assisted create puts the tag comment on the created row only", async () => {
-    const fake = new FakeDb();
-    const p = await ProjectService.createFromForm({ name: "Form", serviceArea: "Cath", status: "NotStarted", startDate: DateOnly.today(), note: "Quote received Oct 6." }, ADMIN, fake.asClient(), null, ServiceLine.defaultScope(), { aiAssisted: true });
-    const rows = fake.state.history.filter((h) => h.projectId === p.id);
-    expect(rows.find((h) => h.field === "created")!.comment).toBe(ProjectService.AI_ASSISTED_COMMENT);
-    expect(rows.filter((h) => h.field !== "created").every((h) => h.comment !== ProjectService.AI_ASSISTED_COMMENT)).toBe(true);
-    const plain = await ProjectService.createFromForm({ name: "Plain", serviceArea: "Cath", status: "NotStarted", startDate: DateOnly.today(), note: "Typed." }, ADMIN, fake.asClient());
-    expect(fake.state.history.find((h) => h.projectId === plain.id && h.field === "created")!.comment ?? null).toBeNull();
+    // Accepted in the New project form: one usage row with the null project (admin audit only).
+    expect(await AiWritingService.recordOutcome(db, ADMIN, r.suggestionId, "accepted")).toBe(true);
+    expect(db.usage.at(-1)).toMatchObject({ event: "accepted", projectId: null, suggestedText: null });
   });
 
   it("the dashboard passes the assistant to the New project form only when AI is on", () => {
     const d = SRC("src/components/ProjectDashboard.tsx");
     expect(d).toContain("admin.aiWriting!.suggestAction(null, feature, text)");
-    expect(SRC("src/app/actions/admin.ts")).toContain("AiWritingService.assistedOnSave(Db.client as unknown as AiWritingDb, admin, null, meta)");
   });
 });

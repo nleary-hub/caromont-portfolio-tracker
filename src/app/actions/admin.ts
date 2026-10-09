@@ -14,8 +14,6 @@ import { MilestoneService, type MilestoneStepDto } from "@/lib/services/Mileston
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectValidationError, type FieldErrors } from "@/lib/validation/ProjectValidator";
-import { Db } from "@/lib/db/Db";
-import { AiWritingService, type AiWritingDb } from "@/lib/services/AiWritingService";
 
 export type AdminActionResult = { ok: true } | { ok: false; error: string };
 
@@ -94,22 +92,17 @@ class ProjectFormAction {
  * Save the changed non-People fields of a project together with its checklist (one history entry).
  * `milestones` is omitted when the checklist was not touched.
  */
-export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>, milestones?: unknown, meta?: unknown): Promise<ProjectFormResult> {
-  return ProjectFormAction.run("saveProjectForm", async (admin, scope) => {
-    const values = ProjectFormAction.values(changes);
-    // AI-assisted tag on the note row: only when the note is in this save and this admin really used that suggestion
-    // (the server records the use from the Save if the client's outcome write hasn't landed yet).
-    const aiAssisted = values.note !== undefined && (await AiWritingService.assistedOnSave(Db.client as unknown as AiWritingDb, admin, String(projectId), meta));
-    return ProjectService.saveForm(
+export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
+  return ProjectFormAction.run("saveProjectForm", (admin, scope) =>
+    ProjectService.saveForm(
       String(projectId),
-      ProjectFormModel.toInput(values),
+      ProjectFormModel.toInput(ProjectFormAction.values(changes)),
       admin,
       undefined,
       ProjectFormAction.milestones(milestones),
       scope,
-      { aiAssisted },
-    );
-  });
+    ),
+  );
 }
 
 /** Drawer Milestones autosave: one checklist change, saved immediately. Returns the stored steps. */
@@ -136,13 +129,10 @@ export async function saveProjectMilestones(projectId: string, milestones: unkno
 export type MilestoneSaveActionResult = { ok: true; steps: MilestoneStepDto[] } | { ok: false; error: string };
 
 /** Create a project from the New project drawer (name and department required), with its checklist. */
-export async function createProjectFromForm(values: Partial<ProjectFormValues>, milestones?: unknown, meta?: unknown): Promise<ProjectFormResult> {
-  return ProjectFormAction.run("createProjectFromForm", async (admin, scope) => {
-    const parsed = ProjectFormAction.values(values);
-    // AI-assisted: a note drafted in this New project form with a suggestion this admin accepted (null project).
-    const aiAssisted = Boolean(parsed.note) && (await AiWritingService.assistedOnSave(Db.client as unknown as AiWritingDb, admin, null, meta));
-    return ProjectService.createFromForm(ProjectFormModel.toInput(parsed), admin, undefined, ProjectFormAction.milestones(milestones), scope, { aiAssisted });
-  });
+export async function createProjectFromForm(values: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
+  return ProjectFormAction.run("createProjectFromForm", (admin, scope) =>
+    ProjectService.createFromForm(ProjectFormModel.toInput(ProjectFormAction.values(values)), admin, undefined, ProjectFormAction.milestones(milestones), scope),
+  );
 }
 
 export async function saveViewSettings(context: string, value: unknown): Promise<AdminActionResult> {

@@ -54,7 +54,7 @@ export type AiSuggestResult =
 /** accepted_with_override: "Use this text" after Edit with the number check still failing and the box ticked. */
 export type AiOutcome = "accepted" | "edited" | "accepted_with_override" | "discarded";
 
-/** The outcomes that put the suggestion's text (as accepted or edited) into the note: they allow the AI-assisted tag. */
+/** The outcomes that put the suggestion's text (as accepted or edited) into the note field (usage log, admin audit). */
 const USED: readonly string[] = ["accepted", "edited", "accepted_with_override"];
 const OUTCOMES: readonly string[] = [...USED, "discarded"];
 /** Upper bound for the override's unverified count (a suggestion is at most 2,000 characters). */
@@ -182,40 +182,6 @@ export class AiWritingService {
       },
     });
     return true;
-  }
-
-  /** The save may carry the AI-assisted tag: this user accepted (or edited and used) this suggestion for this project. */
-  /** `projectId` null: a New project save (the suggestion must have been made in the New project form). */
-  static async wasUsed(db: AiWritingDb, viewer: Viewer, projectId: string | null, suggestionId: unknown): Promise<boolean> {
-    if (typeof suggestionId !== "string" || !/^[0-9a-f-]{36}$/i.test(suggestionId)) return false;
-    try {
-      const row = await db.aiUsageLog.findFirst({ where: { suggestionId, userEmail: viewer.email, event: { in: [...USED] } } });
-      return Boolean(row) && row!.projectId === projectId;
-    } catch {
-      return false;
-    }
-  }
-
-  /**
-   * Save of a note that went in through the assistant: whether to tag it AI-assisted. `meta` comes from the client
-   * ({ aiSuggestionId, aiOutcome, aiUnverifiedCount }). The client's outcome write is fire-and-forget, so Save can
-   * arrive first: when the suggestion is this user's own, for this same project (null: New project form), the outcome
-   * is recorded here (recordOutcome is idempotent and refuses a different outcome already logged, e.g. discarded).
-   * The tag then needs the logged use, exactly as before. A missing or foreign id never tags.
-   */
-  static async assistedOnSave(db: AiWritingDb, viewer: Viewer, projectId: string | null, meta: unknown): Promise<boolean> {
-    if (!meta || typeof meta !== "object") return false;
-    const { aiSuggestionId: id, aiOutcome, aiUnverifiedCount } = meta as Record<string, unknown>;
-    if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) return false;
-    if (typeof aiOutcome === "string" && USED.includes(aiOutcome)) {
-      try {
-        const suggested = await db.aiUsageLog.findFirst({ where: { suggestionId: id, userEmail: viewer.email, event: "suggested" } });
-        if (suggested && suggested.projectId === projectId) await AiWritingService.recordOutcome(db, viewer, id, aiOutcome, new Date(), aiUnverifiedCount);
-      } catch {
-        // The usage-log check below decides.
-      }
-    }
-    return AiWritingService.wasUsed(db, viewer, projectId, id);
   }
 
   /** Test connection on Admin > AI settings: a tiny prompt with the saved settings. Never returns the key. */

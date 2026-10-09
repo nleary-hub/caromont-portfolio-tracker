@@ -47,33 +47,5 @@ export class AiWritingModel {
     const r = AiNumberCheck.check(original, edited);
     return r.ok ? { ok: true, missing: [] } : { ok: false, missing: r.missing };
   }
-
-  /** The id to send with Save for the AI-assisted tag: only while the note still differs from the stored note. */
-  static assistedId(usedId: string | null, note: string, storedNote: string): string | null {
-    return usedId && note !== storedNote ? usedId : null;
-  }
-
-  /** Longest Save waits for the outcome write after Accept (the server records the outcome itself if it hasn't landed). */
-  static readonly LOG_WAIT_MS = 3000;
-
-  /** Resolves when the outcome write settles or after `ms`, whichever is first. Never rejects. */
-  static settle(write: Promise<unknown> | null, ms: number = AiWritingModel.LOG_WAIT_MS): Promise<void> {
-    if (!write) return Promise.resolve();
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const cap = new Promise<void>((resolve) => {
-      timer = setTimeout(resolve, ms);
-    });
-    return Promise.race([write.then(() => undefined, () => undefined), cap]).finally(() => clearTimeout(timer));
-  }
 }
 
-/**
- * Sent with Save when the note went in through the assistant: the suggestion id and how it was used. The server
- * checks the suggestion belongs to this user and project, records the outcome if the client's write hasn't landed,
- * and only then tags the note AI-assisted.
- */
-export interface AiSaveMeta {
-  aiSuggestionId?: string;
-  aiOutcome?: "accepted" | "edited" | "accepted_with_override";
-  aiUnverifiedCount?: number;
-}

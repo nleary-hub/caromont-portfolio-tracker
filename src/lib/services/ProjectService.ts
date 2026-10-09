@@ -32,8 +32,6 @@ export interface Actor {
   /** Email (or name) of the signed-in user making the change. */
   changedBy: string;
   comment?: string | null;
-  /** Comment for one field's history row instead of `comment` (the AI-assisted tag goes on the note row only). */
-  fieldComments?: Readonly<Record<string, string>>;
 }
 
 export interface MilestoneCompletion {
@@ -445,12 +443,10 @@ export class ProjectService {
     db: PrismaClient = Db.client,
     milestones?: MilestoneEdit | null,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
-    options: { aiAssisted?: boolean } = {},
   ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const patch = ProjectService.pickFormFields(values);
-    // A note written with an accepted AI suggestion: its history row carries the AI-assisted tag (UpdateTimeline shows it).
-    const actor: Actor = options.aiAssisted ? { ...ProjectService.actorOf(admin), fieldComments: { note: ProjectService.AI_ASSISTED_COMMENT } } : ProjectService.actorOf(admin);
+    const actor = ProjectService.actorOf(admin);
     const startDate = values.startDate === undefined || values.startDate === null ? undefined : String(values.startDate);
     return db.$transaction(async (tx) => {
       const at = new Date();
@@ -528,9 +524,6 @@ export class ProjectService {
       return MilestoneService.stepsFor(tx, id);
     });
   }
-
-  /** ProjectHistory.comment on the note row of a form save that used an accepted AI suggestion (AiWritingService). */
-  static readonly AI_ASSISTED_COMMENT = "ai:assisted";
 
   /** ProjectHistory.comment prefix on rows the completion rules write ("completion:auto", ...). */
   static readonly COMPLETION_COMMENT_PREFIX = "completion:";
@@ -628,7 +621,6 @@ export class ProjectService {
     db: PrismaClient = Db.client,
     milestones?: MilestoneEdit | null,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
-    options: { aiAssisted?: boolean } = {},
   ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     const input: ProjectInput = { name: "", ...ProjectService.pickFormFields(values), status: values.status || "NotStarted" };
@@ -651,9 +643,7 @@ export class ProjectService {
     const actor = ProjectService.actorOf(admin);
     return db.$transaction(async (tx) => {
       const at = new Date();
-      // A first note written with an accepted AI suggestion: the "created" row carries the AI-assisted comment.
-      const createdBy: Actor = options.aiAssisted ? { ...actor, comment: ProjectService.AI_ASSISTED_COMMENT } : actor;
-      const project = await ProjectService.createInTx(tx, input, createdBy, data, at, scope, { defaultMilestone: drafts.length === 0 });
+      const project = await ProjectService.createInTx(tx, input, actor, data, at, scope, { defaultMilestone: drafts.length === 0 });
       if (drafts.length > 0) {
         await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, project.id, drafts, actor, at, milestones?.applied ?? null, scope));
       }
@@ -928,7 +918,7 @@ export class ProjectService {
         newValue: text(c, c.newValue),
         changedAt: at,
         changedBy: actor.changedBy,
-        comment: actor.fieldComments?.[c.field] ?? actor.comment ?? null,
+        comment: actor.comment ?? null,
       })),
     });
   }

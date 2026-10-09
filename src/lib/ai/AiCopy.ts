@@ -141,8 +141,6 @@ export class AiCopy {
   static readonly DISCARD = "Discard";
   static readonly ACCEPT_BLOCKED = "Use Edit to check the numbers and dates first.";
   static readonly OVER_LIMIT = "Over the limit. Use Edit to shorten it.";
-  static readonly AI_ASSISTED_TAG = "AI-assisted";
-  static readonly AI_ASSISTED_TOOLTIP = "Drafted with the writing assistant and accepted before saving.";
   static readonly RATE_LIMITED = "Too many AI requests in the last minute. Wait a moment and try again.";
   static readonly PROVIDER_ERROR = "The AI service didn't respond. Your note is unchanged. Try again in a moment.";
   static readonly TIMEOUT = "The AI service took too long to respond. Your note is unchanged. Try again in a moment.";

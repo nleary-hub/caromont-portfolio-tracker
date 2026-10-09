@@ -18,8 +18,8 @@ import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { FieldErrors } from "@/lib/validation/ProjectValidator";
 import { StartDate } from "@/lib/projects/StartDate";
 import { MilestonesEditor } from "./MilestonesEditor";
-import { AiNoteAssistant, AiUndoLine, type AiNoteActions, type AiUse } from "./AiNoteAssistant";
-import { AiWritingModel, type AiSaveMeta } from "@/lib/ai/AiWritingModel";
+import { AiNoteAssistant, AiUndoLine, type AiNoteActions } from "./AiNoteAssistant";
+import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
 
 /**
@@ -29,8 +29,6 @@ import { StartDateDefaultTag } from "./StartDateDefaultTag";
 export type ProjectFormSubmit = (
   values: Partial<ProjectFormValues>,
   milestones: MilestoneEdit | null,
-  /** The AI suggestion used for the note in this edit (AI-assisted tag; the server checks it). */
-  meta?: AiSaveMeta,
 ) => Promise<{ ok: true; id: string } | { ok: false; error: string; fieldErrors?: FieldErrors }>;
 
 export interface ProjectEditFormProps {
@@ -110,11 +108,6 @@ export function ProjectEditForm({
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
-  // The AI suggestion last used for the note in this edit (Accept or "Use this text"), for the AI-assisted tag.
-  const [aiUsedId, setAiUsedId] = useState<string | null>(null);
-  // How that suggestion was used (sent with Save) and its usage-log write, which Save waits for (capped).
-  const [aiUse, setAiUse] = useState<Omit<AiUse, "logged"> | null>(null);
-  const aiLogged = useRef<Promise<boolean> | null>(null);
   // Undo after Accept / "Use this text": the note as it was before the assistant touched it in this edit (the first
   // use wins, so Undo after two accepts still restores the user's own text). Cleared once the project is saved.
   const [aiUndo, setAiUndo] = useState<{ before: string; state: "applied" | "undone" } | null>(null);
@@ -195,13 +188,9 @@ export function ProjectEditForm({
     setSaving(true);
     setFormError(null);
     try {
-      const aiSuggestionId = AiWritingModel.assistedId(aiUsedId, values.note, original.note);
       const changes = isNew ? values : ProjectFormModel.changes(values, original);
       const checklist = isNew ? MilestoneEditorModel.edit(ms, msOriginal) : null;
-      // Save right after Accept: let the outcome write land first; the outcome also goes with Save for the server.
-      if (aiSuggestionId) await AiWritingModel.settle(aiLogged.current);
-      const meta: AiSaveMeta | null = aiSuggestionId ? { aiSuggestionId, ...(aiUse ? { aiOutcome: aiUse.outcome, ...(aiUse.unverifiedCount ? { aiUnverifiedCount: aiUse.unverifiedCount } : {}) } : {}) } : null;
-      const result = await (meta ? onSubmit(changes, checklist, meta) : onSubmit(changes, checklist));
+      const result = await onSubmit(changes, checklist);
       if (result.ok) {
         setAiUndo(null);
         return onSaved(result.id);
@@ -423,9 +412,6 @@ export function ProjectEditForm({
               onUndo={() => {
                 // Only the note goes back; every other field keeps its edits. The restored text is the user's own.
                 set("note", aiUndo.before);
-                setAiUsedId(null);
-                setAiUse(null);
-                aiLogged.current = null;
                 setAiUndo({ before: aiUndo.before, state: "undone" });
               }}
             />
@@ -435,12 +421,9 @@ export function ProjectEditForm({
               value={values.note}
               noteMax={ProjectFormModel.maxLength("note")}
               actions={ai}
-              onUse={(text, id, { logged, ...use }) => {
+              onUse={(text) => {
                 setAiUndo((u) => ({ before: u?.state === "applied" ? u.before : values.note, state: "applied" }));
                 set("note", text);
-                setAiUsedId(id);
-                setAiUse(use);
-                aiLogged.current = logged;
               }}
               onRun={() => setAiUndo((u) => (u?.state === "undone" ? null : u))}
             />

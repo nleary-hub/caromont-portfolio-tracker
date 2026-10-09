@@ -258,9 +258,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 const r = await setProjectPeopleField(projectId, field, value);
                 return r.ok ? null : r.error;
               },
-              saveProjectFormAction: async (projectId, changes, milestones, meta) => {
+              saveProjectFormAction: async (projectId, changes, milestones) => {
                 "use server";
-                return saveProjectForm(projectId, changes, milestones, meta);
+                return saveProjectForm(projectId, changes, milestones);
               },
               // Writing assistant: only when an admin turned AI on and it is fully configured (off by default).
               ...(aiOn
@@ -281,9 +281,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 "use server";
                 return saveProjectMilestones(projectId, milestones);
               },
-              createProjectAction: async (values, milestones, meta) => {
+              createProjectAction: async (values, milestones) => {
                 "use server";
-                return createProjectFromForm(values, milestones, meta);
+                return createProjectFromForm(values, milestones);
               },
               saveColumnLayoutAction: async (value) => {
                 "use server";

@@ -14,17 +14,6 @@ export interface AiNoteActions {
   outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
 }
 
-/**
- * How a suggestion went into the note: the outcome, the override count, and the usage-log write in flight. The form
- * waits for `logged` before Save and also sends the outcome with Save, so the server can record it if the write
- * hasn't landed (the AI-assisted tag never depends on a fire-and-forget write).
- */
-export interface AiUse {
-  outcome: Exclude<AiOutcome, "discarded">;
-  unverifiedCount?: number;
-  logged: Promise<boolean>;
-}
-
 /** 2px focus ring on every control of the assistant (keyboard focus only). */
 export const AI_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const BTN = `inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control border border-line bg-input px-2.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${AI_FOCUS}`;
@@ -132,7 +121,8 @@ export function AiNoteAssistant({
   value: string;
   noteMax: number;
   actions: AiNoteActions;
-  onUse: (text: string, suggestionId: string, use: AiUse) => void;
+  /** Accept or "Use this text": the text for the note field (the outcome goes to the usage log, for admin audit). */
+  onUse: (text: string) => void;
   /** Called when Draft or Fit is pressed (the form clears its "Your original text is back." line). */
   onRun?: () => void;
 }) {
@@ -173,11 +163,12 @@ export function AiNoteAssistant({
     if (suggestion) void actions.outcome(suggestion.suggestionId, "discarded");
     close();
   };
-  // The outcome write; never rejects (a failed write is recorded again by the server on Save).
-  const log = (id: string, outcome: AiUse["outcome"], count?: number) => actions.outcome(id, outcome, count).catch(() => false);
+  // Usage log for admin audit only: fire-and-forget, and nothing in the project depends on it.
+  const log = (id: string, outcome: Exclude<AiOutcome, "discarded">, count?: number) => void actions.outcome(id, outcome, count).catch(() => false);
   const accept = () => {
     if (!suggestion || !AiWritingModel.canAccept(suggestion)) return;
-    onUse(suggestion.text, suggestion.suggestionId, { outcome: "accepted", logged: log(suggestion.suggestionId, "accepted") });
+    onUse(suggestion.text);
+    log(suggestion.suggestionId, "accepted");
     close();
   };
 
@@ -187,8 +178,9 @@ export function AiNoteAssistant({
 
   const useEdited = () => {
     if (!suggestion || edited === null || !canUseEdited) return;
-    const use: Omit<AiUse, "logged"> = numbers.ok ? { outcome: "edited" } : { outcome: "accepted_with_override", unverifiedCount: numbers.missing.length };
-    onUse(edited, suggestion.suggestionId, { ...use, logged: log(suggestion.suggestionId, use.outcome, use.unverifiedCount) });
+    onUse(edited);
+    if (numbers.ok) log(suggestion.suggestionId, "edited");
+    else log(suggestion.suggestionId, "accepted_with_override", numbers.missing.length);
     close();
   };
 
