@@ -3,6 +3,10 @@ import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { loadProjectHistory } from "@/app/actions/history";
+import { recordSuggestionOutcome, suggestNote } from "@/app/actions/ai";
+import type { AiFeature } from "@/lib/ai/AiPrompts";
+import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
+import type { AiOutcome } from "@/lib/services/AiWritingService";
 import { setDashboardHeartbeat } from "@/app/actions/preferences";
 import { DashboardPrefsService } from "@/lib/services/DashboardPrefsService";
 import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
@@ -211,6 +215,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const today = DateOnly.today();
   const { rows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
+  // Off by default: no settings row, the switch off, an incomplete setup or no tables yet all mean no AI buttons.
+  const aiOn = Boolean(admin) && Db.isConfigured() ? await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb) : false;
 
   return (
     <ProjectDashboard
@@ -256,6 +262,21 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 "use server";
                 return saveProjectForm(projectId, changes, milestones);
               },
+              // Writing assistant: only when an admin turned AI on and it is fully configured (off by default).
+              ...(aiOn
+                ? {
+                    aiWriting: {
+                      suggestAction: async (projectId: string | null, feature: AiFeature, text: string) => {
+                        "use server";
+                        return suggestNote(projectId, feature, text);
+                      },
+                      outcomeAction: async (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => {
+                        "use server";
+                        return recordSuggestionOutcome(suggestionId, outcome, unverifiedCount);
+                      },
+                    },
+                  }
+                : {}),
               saveMilestonesAction: async (projectId, milestones) => {
                 "use server";
                 return saveProjectMilestones(projectId, milestones);

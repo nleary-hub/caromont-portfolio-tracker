@@ -210,6 +210,12 @@ export class UpdateTimeline {
       g.rows
         .filter((r) => UpdateTimeline.NOTE_FIELDS.has(r.field))
         .forEach((r, i) => notes.push({ key: `note|${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, who, text: r.newValue ? r.newValue : null, shortened: UpdateTimeline.isShortened(r.newValue) }));
+      // A project's first note (entered when it was created) lives in the "created" row's snapshot, not in a "note" row.
+      // Read here for display only: the stored rows are not changed, and History still shows "Project created."
+      for (const r of g.rows) {
+        const first = r.field === "created" ? UpdateTimeline.createdNote(r.newValue) : null;
+        if (first) notes.push({ key: `note|created|${g.changedAt.getTime()}|${g.changedBy}`, at: g.changedAt, meta, who, text: first, shortened: UpdateTimeline.isShortened(first) });
+      }
       UpdateTimeline.lines(g.rows.filter((r) => !UpdateTimeline.NOTE_FIELDS.has(r.field))).forEach((line, i) => {
         dated.push({ ...line, key: `${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, hollow: who === C.TRACKER });
       });
@@ -238,6 +244,17 @@ export class UpdateTimeline {
       notes: t.notes.map(({ key, meta, who, text, shortened }) => ({ key, meta, who, text, shortened })),
       steps: t.steps,
     };
+  }
+
+  /** The note in a "created" row's snapshot (JSON of the tracked fields), or null when it had none or can't be read. */
+  static createdNote(snapshot: string | null): string | null {
+    if (!snapshot) return null;
+    try {
+      const v = (JSON.parse(snapshot) as Record<string, unknown> | null)?.note;
+      return typeof v === "string" && v.trim() !== "" ? v : null;
+    } catch {
+      return null;
+    }
   }
 
   /** Earlier numbers, newest first: replaced numbers from history, then recorded ones, never the current one. */

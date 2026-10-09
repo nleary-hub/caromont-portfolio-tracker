@@ -37,6 +37,8 @@ class AdminMenuIcons {
       </>
     ),
     settings: <path d="M2 4h7M12 4h2M2 12h2M7 12h7M9 2.5v3M5 10.5v3M11 4a1 1 0 11-2 0 1 1 0 012 0zM6 12a1 1 0 11-2 0 1 1 0 012 0z" />,
+    // AI settings: a four-point sparkle.
+    sparkle: <path d="M8 1.5l1.6 4.3 4.4 1.7-4.4 1.7L8 13.5l-1.6-4.3L2 7.5l4.4-1.7zM13 1.5v2.5M11.75 2.75h2.5" />,
   };
 
   static of(name: AdminMenuIcon | "gear"): ReactNode {

@@ -27,6 +27,8 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { ProjectFormSubmit } from "./ProjectEditForm";
+import type { AiFeature } from "@/lib/ai/AiPrompts";
+import type { AiOutcome, AiSuggestResult } from "@/lib/services/AiWritingService";
 import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { DashboardTopBar, type TopBarReport } from "./DashboardTopBar";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
@@ -86,6 +88,15 @@ export interface AdminDashboardProps {
   saveMilestonesAction: (projectId: string, milestones: MilestoneEdit) => Promise<MilestoneSaveActionResult>;
   /** Edit form Save: the changed non-People fields, saved together (one history entry). Milestones autosave. */
   saveProjectFormAction: (projectId: string, changes: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
+  /**
+   * Writing assistant (Draft from bullets, Fit for report) in the update-note editor. Present only when an admin turned
+   * AI on and it is fully configured; absent, the editor is exactly as before.
+   */
+  aiWriting?: {
+    /** projectId null: the New project form. */
+    suggestAction: (projectId: string | null, feature: AiFeature, text: string) => Promise<AiSuggestResult>;
+    outcomeAction: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
+  };
   /** New project drawer: create (name and department required), with its checklist. */
   createProjectAction: (values: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
   /** Line layout: save column order and width shares (null = reset columns). */
@@ -600,6 +611,15 @@ export function ProjectDashboard({
               people={null}
               adminDelete={null}
               onSubmit={admin.createProjectAction}
+              {...(admin.aiWriting
+                ? {
+                    ai: {
+                      suggest: (feature: AiFeature, text: string) => admin.aiWriting!.suggestAction(null, feature, text),
+                      outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) =>
+                        unverifiedCount === undefined ? admin.aiWriting!.outcomeAction(suggestionId, outcome) : admin.aiWriting!.outcomeAction(suggestionId, outcome, unverifiedCount),
+                    },
+                  }
+                : {})}
               onSaved={onSaved}
               onCancel={requestClose}
               onDirtyChange={onDirtyChange}
@@ -689,6 +709,15 @@ export function ProjectDashboard({
                     />
                   }
                   onSubmit={(changes, milestones) => submitForm(selected.id, selected.name, changes, milestones)}
+                  {...(admin.aiWriting
+                    ? {
+                        ai: {
+                          suggest: (feature: AiFeature, text: string) => admin.aiWriting!.suggestAction(selected.id, feature, text),
+                          outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) =>
+                            unverifiedCount === undefined ? admin.aiWriting!.outcomeAction(suggestionId, outcome) : admin.aiWriting!.outcomeAction(suggestionId, outcome, unverifiedCount),
+                        },
+                      }
+                    : {})}
                   saveMilestones={(edit) => admin.saveMilestonesAction(selected.id, edit)}
                   onSaved={onSaved}
                   onCancel={() =>

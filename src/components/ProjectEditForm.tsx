@@ -18,6 +18,8 @@ import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { FieldErrors } from "@/lib/validation/ProjectValidator";
 import { StartDate } from "@/lib/projects/StartDate";
 import { MilestonesEditor } from "./MilestonesEditor";
+import { AiNoteAssistant, AiUndoLine, type AiNoteActions } from "./AiNoteAssistant";
+import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
 
 /**
@@ -63,6 +65,8 @@ export interface ProjectEditFormProps {
   confirmDiscard: boolean;
   onKeepEditing: () => void;
   onDiscard: () => void;
+  /** Writing assistant for the update note: passed only when AI is on and configured and the viewer can edit. */
+  ai?: AiNoteActions;
 }
 
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
@@ -93,6 +97,7 @@ export function ProjectEditForm({
   confirmDiscard,
   onKeepEditing,
   onDiscard,
+  ai,
 }: ProjectEditFormProps) {
   const isNew = mode === "new";
   // Snapshot at open: a People autosave refreshes the page data but must not reset the form.
@@ -103,6 +108,10 @@ export function ProjectEditForm({
   const [serverErrors, setServerErrors] = useState<FieldErrors>({});
   const [formError, setFormError] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
+  // Undo after Accept / "Use this text": the note as it was before the assistant touched it in this edit (the first
+  // use wins, so Undo after two accepts still restores the user's own text). Cleared once the project is saved.
+  const [aiUndo, setAiUndo] = useState<{ before: string; state: "applied" | "undone" } | null>(null);
+  const showAi = Boolean(ai) && AiWritingModel.showsButtons({ aiOn: Boolean(ai), canEdit: true, mode });
   const bodyRef = useRef<HTMLDivElement>(null);
 
   // Checklist. Edit mode: every change autosaves (one history row per action), so it is not part of Save or
@@ -179,8 +188,13 @@ export function ProjectEditForm({
     setSaving(true);
     setFormError(null);
     try {
-      const result = await onSubmit(isNew ? values : ProjectFormModel.changes(values, original), isNew ? MilestoneEditorModel.edit(ms, msOriginal) : null);
-      if (result.ok) return onSaved(result.id);
+      const changes = isNew ? values : ProjectFormModel.changes(values, original);
+      const checklist = isNew ? MilestoneEditorModel.edit(ms, msOriginal) : null;
+      const result = await onSubmit(changes, checklist);
+      if (result.ok) {
+        setAiUndo(null);
+        return onSaved(result.id);
+      }
       setFormError(result.error);
       if (result.fieldErrors) {
         setServerErrors(result.fieldErrors);
@@ -385,9 +399,35 @@ export function ProjectEditForm({
               value={values.note}
               maxLength={ProjectFormModel.maxLength("note")}
               aria-describedby="pf-note-counter"
-              onChange={(e) => set("note", e.target.value)}
+              onChange={(e) => {
+                set("note", e.target.value);
+                // Typing after Undo: the "Your original text is back." line has done its job.
+                if (aiUndo?.state === "undone") setAiUndo(null);
+              }}
             />
           </Field>
+          {showAi && aiUndo && (
+            <AiUndoLine
+              state={aiUndo.state}
+              onUndo={() => {
+                // Only the note goes back; every other field keeps its edits. The restored text is the user's own.
+                set("note", aiUndo.before);
+                setAiUndo({ before: aiUndo.before, state: "undone" });
+              }}
+            />
+          )}
+          {showAi && ai && (
+            <AiNoteAssistant
+              value={values.note}
+              noteMax={ProjectFormModel.maxLength("note")}
+              actions={ai}
+              onUse={(text) => {
+                setAiUndo((u) => ({ before: u?.state === "applied" ? u.before : values.note, state: "applied" }));
+                set("note", text);
+              }}
+              onRun={() => setAiUndo((u) => (u?.state === "undone" ? null : u))}
+            />
+          )}
           <Field
             field="accomplishment"
             label="Accomplishment"
