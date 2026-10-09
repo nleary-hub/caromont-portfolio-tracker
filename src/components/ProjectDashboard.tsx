@@ -21,6 +21,7 @@ import type { StatusCounts } from "@/lib/domain/types";
 import { ViewSettings, type ViewColumn, type ViewSettingsByContext, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import type { AdminMenuItem } from "@/lib/admin/AdminMenu";
 import type { ServiceLineScope, ServiceLineValue } from "@/lib/domain/ServiceLine";
+import type { AiSaveMeta } from "@/lib/ai/AiWritingModel";
 import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
@@ -87,7 +88,7 @@ export interface AdminDashboardProps {
   /** Drawer Milestones autosave ("Saves as you go"): one checklist change, saved immediately. */
   saveMilestonesAction: (projectId: string, milestones: MilestoneEdit) => Promise<MilestoneSaveActionResult>;
   /** Edit form Save: the changed non-People fields, saved together (one history entry). Milestones autosave. */
-  saveProjectFormAction: (projectId: string, changes: Partial<ProjectFormValues>, milestones: MilestoneEdit | null, meta?: { aiSuggestionId?: string }) => ReturnType<ProjectFormSubmit>;
+  saveProjectFormAction: (projectId: string, changes: Partial<ProjectFormValues>, milestones: MilestoneEdit | null, meta?: AiSaveMeta) => ReturnType<ProjectFormSubmit>;
   /**
    * Writing assistant (Draft from bullets, Fit for report) in the update-note editor. Present only when an admin turned
    * AI on and it is fully configured; absent, the editor is exactly as before.
@@ -98,7 +99,7 @@ export interface AdminDashboardProps {
     outcomeAction: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
   };
   /** New project drawer: create (name and department required), with its checklist. */
-  createProjectAction: (values: Partial<ProjectFormValues>, milestones: MilestoneEdit | null, meta?: { aiSuggestionId?: string }) => ReturnType<ProjectFormSubmit>;
+  createProjectAction: (values: Partial<ProjectFormValues>, milestones: MilestoneEdit | null, meta?: AiSaveMeta) => ReturnType<ProjectFormSubmit>;
   /** Line layout: save column order and width shares (null = reset columns). */
   saveColumnLayoutAction: (columns: ColumnLayoutValue | null) => Promise<string | null>;
   /** Line layout: one department's manual order (empty = report order there). */
@@ -299,7 +300,7 @@ export function ProjectDashboard({
   const [toast, setToast] = useState<ActionToastValue | null>(null);
   // Set when an edit form save changes the status to Cancelled: the project leaves the dashboard at once.
   const cancelledRef = useRef<{ id: string; name: string } | null>(null);
-  const submitForm = (id: string, name: string, changes: Partial<ProjectFormValues>, milestones: MilestoneEdit | null, meta?: { aiSuggestionId?: string }) =>
+  const submitForm = (id: string, name: string, changes: Partial<ProjectFormValues>, milestones: MilestoneEdit | null, meta?: AiSaveMeta) =>
     (meta ? admin!.saveProjectFormAction(id, changes, milestones, meta) : admin!.saveProjectFormAction(id, changes, milestones)).then(
       (r) => {
         const cancelling = changes.status === "Cancelled";

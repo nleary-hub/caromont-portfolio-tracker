@@ -9,10 +9,10 @@ export class AiCopy {
   // ---- Admin > AI settings -------------------------------------------------------------------------------------
   static readonly MENU_LABEL = "AI settings";
   static readonly PAGE_TITLE = "AI settings";
-  static readonly PAGE_INTRO = "Only admins can see this page. These settings turn on the writing assistant in the update-note editor for everyone who can edit a project. Every change is recorded below.";
+  static readonly PAGE_INTRO = "Only admins can see this page. These settings turn on the writing assistant for everyone who can edit a project. Every change is recorded below.";
   static readonly SWITCH_LABEL = "Writing assistant";
-  static readonly SWITCH_HELP_OFF = "Off. The update-note editor shows no AI buttons.";
-  static readonly SWITCH_HELP_ON = "On. Editors see Draft from bullets and Fit for report in the update-note editor.";
+  static readonly SWITCH_HELP_OFF = "Off. No AI buttons show when anyone writes an update.";
+  static readonly SWITCH_HELP_ON = "On. Editors see Draft from bullets and Fit for report when they write an update.";
   static readonly SWITCH_ON_NOT_READY = "On, but not ready. Add the provider, model and API key before anyone sees the buttons.";
   static readonly PROVIDER_LABEL = "Provider";
   static readonly PROVIDER_PLACEHOLDER = "Select a provider";
@@ -134,7 +134,7 @@ export class AiCopy {
   static readonly PANEL_TITLE_FIT = "Suggested short version";
   static readonly PANEL_ORIGINAL = "Your text";
   static readonly PANEL_SUGGESTION = "Suggestion";
-  static readonly PANEL_NOTE = "Nothing is saved until you save the project.";
+  static readonly PANEL_NOTE = "Nothing changes until you save the project.";
   static readonly ACCEPT = "Accept";
   static readonly EDIT = "Edit";
   static readonly USE_EDITED = "Use this text";
@@ -161,6 +161,8 @@ export class AiCopy {
   /** Legend above the suggestion: one line per mark type (the amber line only when the number check fails). */
   static readonly LEGEND_WORDS = "Highlighted words aren't in your text.";
   static readonly LEGEND_NUMBERS = "Underlined numbers and dates aren't in your text. Check them before you use this.";
+  /** Edit mode: label over the read-only marked suggestion shown above the edit box. */
+  static readonly REFERENCE_LABEL = "Suggestion, for reference";
 
   /** Screen-reader label of each marked value (new word or missing number/date). */
   static notInText(value: string): string {
@@ -183,7 +185,7 @@ export class AiCopy {
   }
 
   private static readonly PHI_NAMES: Record<PhiKind, string> = {
-    mrn: "a number that could be a medical record number",
+    mrn: "a medical record number",
     dob: "a date that could be a date of birth",
     ssn: "a Social Security number",
     phone: "a phone number",

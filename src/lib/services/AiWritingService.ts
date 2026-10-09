@@ -196,6 +196,28 @@ export class AiWritingService {
     }
   }
 
+  /**
+   * Save of a note that went in through the assistant: whether to tag it AI-assisted. `meta` comes from the client
+   * ({ aiSuggestionId, aiOutcome, aiUnverifiedCount }). The client's outcome write is fire-and-forget, so Save can
+   * arrive first: when the suggestion is this user's own, for this same project (null: New project form), the outcome
+   * is recorded here (recordOutcome is idempotent and refuses a different outcome already logged, e.g. discarded).
+   * The tag then needs the logged use, exactly as before. A missing or foreign id never tags.
+   */
+  static async assistedOnSave(db: AiWritingDb, viewer: Viewer, projectId: string | null, meta: unknown): Promise<boolean> {
+    if (!meta || typeof meta !== "object") return false;
+    const { aiSuggestionId: id, aiOutcome, aiUnverifiedCount } = meta as Record<string, unknown>;
+    if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) return false;
+    if (typeof aiOutcome === "string" && USED.includes(aiOutcome)) {
+      try {
+        const suggested = await db.aiUsageLog.findFirst({ where: { suggestionId: id, userEmail: viewer.email, event: "suggested" } });
+        if (suggested && suggested.projectId === projectId) await AiWritingService.recordOutcome(db, viewer, id, aiOutcome, new Date(), aiUnverifiedCount);
+      } catch {
+        // The usage-log check below decides.
+      }
+    }
+    return AiWritingService.wasUsed(db, viewer, projectId, id);
+  }
+
   /** Test connection on Admin > AI settings: a tiny prompt with the saved settings. Never returns the key. */
   static async testConnection(config: AiRuntimeConfig, fetchImpl?: FetchLike): Promise<{ ok: true; ms: number } | { ok: false; message: string }> {
     const r = await AiProviderClient.complete(config, { system: "Reply with the single word OK.", user: "Connection test.", maxTokens: 16 }, fetchImpl);

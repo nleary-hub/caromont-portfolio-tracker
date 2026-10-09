@@ -42,9 +42,9 @@ async function suggestion(input: string, output: string) {
 
 describe("Writing Bot copy (exact strings)", () => {
   it("PHI block, number check, tooltips, tag tooltip and save failure", () => {
-    expect(AiCopy.phiBlocked(["mrn"])).toBe("This might be patient information (a number that could be a medical record number). Remove it and try again. Nothing was sent.");
+    expect(AiCopy.phiBlocked(["mrn"])).toBe("This might be patient information (a medical record number). Remove it and try again. Nothing was sent.");
     expect(AiCopy.phiBlocked(["mrn", "dob", "ssn", "phone", "patient_name"])).toBe(
-      "This might be patient information (a number that could be a medical record number, a date that could be a date of birth, a Social Security number, a phone number and a name that could be a patient's). Remove it and try again. Nothing was sent.",
+      "This might be patient information (a medical record number, a date that could be a date of birth, a Social Security number, a phone number and a name that could be a patient's). Remove it and try again. Nothing was sent.",
     );
     expect(AiCopy.numberWarning(["Nov 14", "Oct 20"])).toBe("These numbers or dates aren't in your text: Nov 14, Oct 20. Use Edit to check or remove them.");
     expect(AiCopy.ACCEPT_BLOCKED).toBe("Use Edit to check the numbers and dates first.");
@@ -96,7 +96,7 @@ describe("number check bypass is closed (Edit > Use this text)", () => {
     expect(src).toContain("AiWritingModel.canUseEdited(suggestion, suggestion.original, edited, noteMax, confirmed)");
     expect(src).toMatch(/disabled=\{!canUseEdited\}/);
     expect(src).toMatch(/if \(!suggestion \|\| edited === null \|\| !canUseEdited\) return;/);
-    expect(src).toContain('"accepted_with_override", numbers.missing.length');
+    expect(src).toContain('{ outcome: "accepted_with_override", unverifiedCount: numbers.missing.length }');
   });
 
   it("the override is logged as accepted_with_override with the count only (no text), and still tags the save", async () => {
@@ -294,6 +294,6 @@ describe("New project form", () => {
   it("the dashboard passes the assistant to the New project form only when AI is on", () => {
     const d = SRC("src/components/ProjectDashboard.tsx");
     expect(d).toContain("admin.aiWriting!.suggestAction(null, feature, text)");
-    expect(SRC("src/app/actions/admin.ts")).toContain("AiWritingService.wasUsed(Db.client as unknown as AiWritingDb, admin, null, suggestionId)");
+    expect(SRC("src/app/actions/admin.ts")).toContain("AiWritingService.assistedOnSave(Db.client as unknown as AiWritingDb, admin, null, meta)");
   });
 });

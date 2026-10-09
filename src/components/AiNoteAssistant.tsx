@@ -6,11 +6,23 @@ import type { AiFeature } from "@/lib/ai/AiPrompts";
 import { AiSuggestionMarks, type AiMarkSegment } from "@/lib/ai/AiSuggestionMarks";
 import { AiWritingModel, type AiSuggestion } from "@/lib/ai/AiWritingModel";
 import type { AiOutcome, AiSuggestResult } from "@/lib/services/AiWritingService";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
 
 /** The two actions, bound to the project on the server side of the dashboard. */
 export interface AiNoteActions {
   suggest: (feature: AiFeature, text: string) => Promise<AiSuggestResult>;
   outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
+}
+
+/**
+ * How a suggestion went into the note: the outcome, the override count, and the usage-log write in flight. The form
+ * waits for `logged` before Save and also sends the outcome with Save, so the server can record it if the write
+ * hasn't landed (the AI-assisted tag never depends on a fire-and-forget write).
+ */
+export interface AiUse {
+  outcome: Exclude<AiOutcome, "discarded">;
+  unverifiedCount?: number;
+  logged: Promise<boolean>;
 }
 
 /** 2px focus ring on every control of the assistant (keyboard focus only). */
@@ -110,9 +122,22 @@ function Legend({ numbers }: { numbers: boolean }) {
  * can't find get the amber underline. In Edit, "Use this text" needs the live number check to pass, or the explicit
  * "I checked these numbers and dates" box (logged as accepted_with_override with the count of unconfirmed values).
  */
-export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: string; noteMax: number; actions: AiNoteActions; onUse: (text: string, suggestionId: string) => void }) {
+export function AiNoteAssistant({
+  value,
+  noteMax,
+  actions,
+  onUse,
+  onRun,
+}: {
+  value: string;
+  noteMax: number;
+  actions: AiNoteActions;
+  onUse: (text: string, suggestionId: string, use: AiUse) => void;
+  /** Called when Draft or Fit is pressed (the form clears its "Your original text is back." line). */
+  onRun?: () => void;
+}) {
   const [busy, setBusy] = useState<AiFeature | null>(null);
-  const [message, setMessage] = useState<{ text: string; kind: "phi" | "error" } | null>(null);
+  const [message, setMessage] = useState<{ text: string; kind: "phi" | "error" | "empty" } | null>(null);
   const [suggestion, setSuggestion] = useState<(AiSuggestion & { original: string }) | null>(null);
   const [edited, setEdited] = useState<string | null>(null);
   // The override box: ticked for exactly this list of missing values (a new missing value unticks it).
@@ -120,7 +145,8 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
 
   const run = async (feature: AiFeature) => {
     if (busy) return;
-    if (!value.trim()) return setMessage({ text: C.EMPTY_INPUT, kind: "error" });
+    onRun?.();
+    if (!value.trim()) return setMessage({ text: C.EMPTY_INPUT, kind: "empty" });
     if (suggestion) void actions.outcome(suggestion.suggestionId, "discarded");
     setBusy(feature);
     setMessage(null);
@@ -147,10 +173,11 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
     if (suggestion) void actions.outcome(suggestion.suggestionId, "discarded");
     close();
   };
+  // The outcome write; never rejects (a failed write is recorded again by the server on Save).
+  const log = (id: string, outcome: AiUse["outcome"], count?: number) => actions.outcome(id, outcome, count).catch(() => false);
   const accept = () => {
     if (!suggestion || !AiWritingModel.canAccept(suggestion)) return;
-    onUse(suggestion.text, suggestion.suggestionId);
-    void actions.outcome(suggestion.suggestionId, "accepted");
+    onUse(suggestion.text, suggestion.suggestionId, { outcome: "accepted", logged: log(suggestion.suggestionId, "accepted") });
     close();
   };
 
@@ -160,16 +187,15 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
 
   const useEdited = () => {
     if (!suggestion || edited === null || !canUseEdited) return;
-    onUse(edited, suggestion.suggestionId);
-    if (numbers.ok) void actions.outcome(suggestion.suggestionId, "edited");
-    else void actions.outcome(suggestion.suggestionId, "accepted_with_override", numbers.missing.length);
+    const use: Omit<AiUse, "logged"> = numbers.ok ? { outcome: "edited" } : { outcome: "accepted_with_override", unverifiedCount: numbers.missing.length };
+    onUse(edited, suggestion.suggestionId, { ...use, logged: log(suggestion.suggestionId, use.outcome, use.unverifiedCount) });
     close();
   };
 
   const shown = edited ?? suggestion?.text ?? "";
   const overLimit = suggestion ? shown.length > suggestion.limit : false;
   const acceptable = suggestion ? AiWritingModel.canAccept(suggestion) : false;
-  const segments = suggestion && edited === null ? AiSuggestionMarks.segments(suggestion.original, suggestion.text) : [];
+  const segments = suggestion && suggestion.phiOk ? AiSuggestionMarks.segments(suggestion.original, suggestion.text) : [];
   const footNote = !suggestion
     ? ""
     : edited === null
@@ -201,9 +227,16 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
             {message.text}
           </AiAlert>
         ) : (
-          <p role="alert" className="px-0.5 text-danger type-table" data-testid="ai-error">
-            {message.text}
-          </p>
+          message.kind === "empty" ? (
+            <p role="alert" className="px-0.5 text-danger type-table" data-testid="ai-error">
+              {message.text}
+            </p>
+          ) : (
+            // Provider error, timeout, rate limit and the rest: the same red alert box as the PHI block.
+            <AiAlert tone="danger" testId="ai-error">
+              {message.text}
+            </AiAlert>
+          )
         ))}
       {suggestion && (
         <section
@@ -221,6 +254,16 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
             </span>
           </div>
           {edited === null && suggestion.phiOk && <Legend numbers={!suggestion.numbers.ok} />}
+          {edited !== null && suggestion.phiOk && (
+            // Edit mode: the suggestion as it came back, with its marks, stays visible above the edit box for reference.
+            <div className="flex flex-col gap-1.5" data-testid="ai-reference">
+              <span className="text-muted type-label">{C.REFERENCE_LABEL}</span>
+              <Legend numbers={!suggestion.numbers.ok} />
+              <p className="whitespace-pre-wrap break-words rounded-control border border-line bg-input/60 px-2.5 py-2 text-fg type-table" data-testid="ai-reference-text">
+                <MarkedText segments={segments} />
+              </p>
+            </div>
+          )}
           <div className="grid grid-cols-2 items-start gap-2">
             <div className="flex min-w-0 flex-col gap-1">
               <span className="text-muted type-label">{C.PANEL_ORIGINAL}</span>
@@ -235,9 +278,10 @@ export function AiNoteAssistant({ value, noteMax, actions, onUse }: { value: str
                   {suggestion.phiOk ? <MarkedText segments={segments} /> : suggestion.text}
                 </p>
               ) : (
-                <textarea
+                <AutoGrowTextarea
                   aria-label={C.PANEL_SUGGESTION}
-                  className={`block min-h-24 w-full min-w-0 resize-none rounded-control border border-accent bg-input px-2.5 py-2 text-fg type-table field-sizing-content ${AI_FOCUS}`}
+                  rows={4}
+                  className={`block min-h-24 w-full min-w-0 resize-none rounded-control border border-accent bg-input px-2.5 py-2 text-fg type-table ${AI_FOCUS}`}
                   value={edited}
                   maxLength={noteMax}
                   onChange={(e) => setEdited(e.target.value)}
@@ -313,7 +357,7 @@ export function AiUndoLine({ state, onUndo }: { state: "applied" | "undone"; onU
       {state === "applied" ? (
         <>
           <span>{C.APPLIED_NOT_SAVED}</span>
-          <button type="button" onClick={onUndo} className={`rounded-[3px] text-accent underline underline-offset-2 type-caption hover:text-fg ${AI_FOCUS}`} data-testid="ai-undo">
+          <button type="button" onClick={onUndo} className={`-my-1 inline-flex min-h-6 items-center rounded-[3px] px-1 text-accent underline underline-offset-2 type-caption hover:text-fg ${AI_FOCUS}`} data-testid="ai-undo">
             {C.UNDO}
           </button>
         </>
