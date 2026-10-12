@@ -955,8 +955,10 @@ function HeaderLabel({ column, header, sort, onSort, chips }: { column: string; 
             }}
             className={`flex min-w-0 items-center gap-1 uppercase tracking-[.04em] hover:text-fg focus-visible:outline-2 focus-visible:outline-(--color-accent) ${state !== "none" ? "text-fg" : ""} ${i > 0 ? "text-[11px]" : ""}`}
           >
-            {/* Milestone owner (120 to 136px) wraps to two lines in the 36px header instead of truncating. */}
-            <span className={column === "milestoneOwner" ? "line-clamp-2 whitespace-normal text-left leading-[14px]" : "truncate"}>{label}</span>
+            {/* Milestone owner (120 to 136px): one line, tighter tracking, ellipsis if needed; the tooltip has the full name. */}
+            <span className={column === "milestoneOwner" ? "truncate tracking-[.01em]" : "truncate"} title={column === "milestoneOwner" ? label : undefined}>
+              {label}
+            </span>
             {/* The arrow takes room only while active, so narrow headers ("Milestone owner", 136px) show in full. */}
             {state !== "none" && (
               <span aria-hidden="true" className="w-2 shrink-0" style={{ color: "#4C8DFF" }}>

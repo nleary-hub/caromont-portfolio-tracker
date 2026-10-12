@@ -179,3 +179,11 @@ describe("status chip toggles and the PDF legend", () => {
     expect(ReportLayout.legendText("stale", true)).toBe(ReportLayout.legendText("stale"));
   });
 });
+
+describe("review copy", () => {
+  it("per-row and bulk buttons say 'as reviewed'", async () => {
+    const { QueryCopy } = await import("@/components/DashboardQueryControls");
+    expect(QueryCopy.MARK_REVIEWED).toBe("Mark as reviewed");
+    expect(QueryCopy.markAll(7)).toBe("Mark all as reviewed (7)");
+  });
+});

@@ -7,7 +7,7 @@ export interface ActionToastValue {
   text: string;
   link?: { href: string; label: string };
   error?: boolean;
-  /** How long it stays (ms); default 6000. Mark reviewed uses 8000 with Undo. */
+  /** How long it stays (ms); default 6000. Mark as reviewed uses 8000 with Undo. */
   ms?: number;
   /** A button after the text (Undo). Runs once, then the toast closes. */
   action?: { label: string; run: () => void };

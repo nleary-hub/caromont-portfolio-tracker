@@ -23,7 +23,7 @@ export class ProjectEditPolicy {
     return ServiceLineAccess.inScope(project, scope) && DepartmentAccess.allows(scope, project.departmentId ?? null);
   }
 
-  /** May this viewer edit projects of the line at all (shows the bulk "Mark all reviewed" control). */
+  /** May this viewer edit projects of the line at all (shows the bulk "Mark all as reviewed" control). */
   static canEditLine(viewer: Viewer | null | undefined): boolean {
     return Boolean(viewer?.isAdmin);
   }

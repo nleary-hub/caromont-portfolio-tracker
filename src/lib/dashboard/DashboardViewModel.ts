@@ -57,7 +57,7 @@ export interface DashboardRow {
   accomplishment?: string | null;
   /** Every checklist step, by position (search: milestone names and owners). */
   milestones?: DashboardMilestone[];
-  /** The viewer may edit this project (ProjectEditPolicy): shows "Mark reviewed". Set by the page. */
+  /** The viewer may edit this project (ProjectEditPolicy): shows "Mark as reviewed". Set by the page. */
   editable?: boolean;
 }
 

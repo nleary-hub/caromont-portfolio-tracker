@@ -346,7 +346,7 @@ export class UpdateTimeline {
       case "reviewed":
         // "Mark as reviewed" (migration 0034): clears Changed only; never an update.
         if (row.comment === "undo") return { text: "Undid Mark as reviewed." };
-        return { text: row.comment === "bulk" ? "Marked as reviewed (Mark all reviewed)." : "Marked as reviewed." };
+        return { text: row.comment === "bulk" ? "Marked as reviewed (Mark all as reviewed)." : "Marked as reviewed." };
       case "created":
         return { text: row.comment === UpdateTimeline.CSV_IMPORT_COMMENT ? C.IMPORTED : C.PROJECT_CREATED };
       case F.added:

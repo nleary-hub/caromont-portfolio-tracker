@@ -6,7 +6,7 @@ import { DashboardQuery, type DueFilter, type DueFilterKind, type OwnerOption } 
 import { Chevron, FieldControlStyle } from "./FieldControl";
 import { SmallCheck, usePopover } from "./DashboardFilterControls";
 
-/** Copy for the filter bar, sort chip and Mark reviewed (no em dashes). */
+/** Copy for the filter bar, sort chip and Mark as reviewed (no em dashes). */
 export class QueryCopy {
   static readonly CLEAR_ALL = "Clear all";
   static readonly CLEAR = "Clear";
@@ -16,12 +16,12 @@ export class QueryCopy {
   static noSearchMatch(q: string): string {
     return `No projects or milestones match "${q}"`;
   }
-  static readonly MARK_REVIEWED = "Mark reviewed";
+  static readonly MARK_REVIEWED = "Mark as reviewed";
   static markReviewedLabel(name: string): string {
     return `Mark ${name} as reviewed`;
   }
   static markAll(n: number): string {
-    return `Mark all reviewed (${n})`;
+    return `Mark all as reviewed (${n})`;
   }
   static readonly NONE_CHANGED = "No Changed projects in view";
   static confirmTitle(n: number): string {
@@ -185,7 +185,7 @@ export function SortChip({ text, onManual }: { text: string | null; onManual: ()
   );
 }
 
-/** Bulk "✓ Mark all reviewed (n)": counts the visible Changed rows the viewer may edit. */
+/** Bulk "✓ Mark all as reviewed (n)": counts the visible Changed rows the viewer may edit. */
 export function MarkAllReviewedButton({ count, onClick }: { count: number; onClick: () => void }) {
   return (
     <button
@@ -201,7 +201,7 @@ export function MarkAllReviewedButton({ count, onClick }: { count: number; onCli
   );
 }
 
-/** Count confirm for Mark all reviewed. Focus starts on Cancel; Esc cancels. */
+/** Count confirm for Mark all as reviewed. Focus starts on Cancel; Esc cancels. */
 export function ReviewConfirmDialog({ count, filtered, onCancel, onConfirm }: { count: number; filtered: boolean; onCancel: () => void; onConfirm: () => Promise<string | null> }) {
   const cancelRef = useRef<HTMLButtonElement>(null);
   const [pending, setPending] = useState(false);
