@@ -5,7 +5,7 @@ import { DashboardTable, type DashboardLayoutControl } from "@/components/Dashbo
 import { DashboardViewModel } from "@/lib/dashboard/DashboardViewModel";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
-import { DashboardSort } from "@/lib/dashboard/DashboardSort";
+import { QueryCopy } from "@/components/DashboardQueryControls";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ColumnShares, LayoutCopy, LineLayout, RowOrder, WidthFit, type ColumnLayoutValue, type LayoutKey } from "@/lib/layout/LineLayout";
@@ -27,7 +27,7 @@ const ADMIN = Factory.ADMIN;
 const MEMBER = Factory.MEMBER;
 const actor = { changedBy: ADMIN.email };
 const CVPSL = ServiceLine.defaultScope();
-const REPORT = ViewSettings.defaults("report");
+const REPORT = ViewSettings.normalize("report", null); // classic PDF columns (no chips key)
 const KEYS = LineLayout.KEYS;
 const sum = (xs: number[]) => xs.reduce((a, b) => a + b, 0);
 
@@ -55,27 +55,27 @@ class Fixture {
 
 describe("share math (dashboard)", () => {
   it("saves shares of the table width that sum to 1, and turns them back into the same pixels at the same width", () => {
-    const px = { project: 300, people: 200, status: 120, milestoneUpdate: 500, dueFlags: 188 };
+    const px = { project: 300, people: 200, status: 120, milestoneUpdate: 500, dueFlags: 258 };
     const shares = ColumnShares.toShares(px);
     expect(sum(Object.values(shares))).toBeCloseTo(1, 12);
-    const back = ColumnShares.toPixels(KEYS, shares, 1308);
+    const back = ColumnShares.toPixels(KEYS, shares, 1378);
     for (const k of KEYS) expect(back[k]).toBeCloseTo(px[k], 9);
     // At another width the proportions hold (no pixels stored).
-    const wide = ColumnShares.toPixels(KEYS, shares, 1308 * 1.5);
+    const wide = ColumnShares.toPixels(KEYS, shares, 1378 * 1.5);
     expect(wide.milestoneUpdate / wide.project).toBeCloseTo(500 / 300, 9);
   });
 
   it("enforces the dashboard minimums, taking width back from the widest column first", () => {
-    expect(ColumnShares.MIN_PX).toEqual({ project: 200, people: 140, status: 110, milestoneUpdate: 240, dueFlags: 188 });
-    // Status and Due / Flags far too narrow at 1000px; Next milestone is the widest and pays first.
-    const shares = Fixture.shares({ project: 250, people: 200, status: 10, milestoneUpdate: 530, dueFlags: 10 });
-    const px = ColumnShares.toPixels(KEYS, shares, 1000);
+    expect(ColumnShares.MIN_PX).toEqual({ project: 200, people: 140, status: 110, milestoneUpdate: 240, dueFlags: 258 }); // Due / Flags now also holds the Milestone owner (Oct 12, 2026)
+    // Status and Due / Flags far too narrow at 1100px; Next milestone is the widest and pays first.
+    const shares = Fixture.shares({ project: 250, people: 200, status: 10, milestoneUpdate: 630, dueFlags: 10 });
+    const px = ColumnShares.toPixels(KEYS, shares, 1100);
     expect(px.status).toBeCloseTo(110, 9);
-    expect(px.dueFlags).toBeCloseTo(188, 9);
+    expect(px.dueFlags).toBeCloseTo(258, 9);
     expect(px.project).toBeCloseTo(250, 9);
     expect(px.people).toBeCloseTo(200, 9);
-    expect(px.milestoneUpdate).toBeCloseTo(1000 - 250 - 200 - 110 - 188, 9);
-    expect(sum(Object.values(px))).toBeCloseTo(1000, 9);
+    expect(px.milestoneUpdate).toBeCloseTo(1100 - 250 - 200 - 110 - 258, 9);
+    expect(sum(Object.values(px))).toBeCloseTo(1100, 9);
   });
 
   it("water-fills: the widest shrinks to the next widest, then both shrink together, never below their minimums", () => {
@@ -160,7 +160,7 @@ describe("column order", () => {
     expect(LayoutResetCopy.title("rows", "ONC")).toBe("Reset row order for ONC?");
     expect(LayoutResetCopy.body("rows")).toBe("This restores the default order in every department for everyone on this service line, including the next PDF.");
     expect(LayoutResetCopy.button("rows")).toBe("Reset row order");
-    expect(DashboardSort.OPTIONS[0].label).toBe("Manual order");
+    expect(QueryCopy.MANUAL_ORDER).toBe("Manual order");
   });
 });
 
@@ -393,7 +393,7 @@ describe("dashboard table with the line layout", () => {
         today: TODAY,
         emptyText: "",
         renderMeta: () => null,
-        ...(layout ? { layout: { value: LineLayout.defaults(), canEdit: false, sort: "manual", onColumns: () => {}, onRowOrder: () => {}, ...layout } as DashboardLayoutControl } : {}),
+        ...(layout ? { layout: { value: LineLayout.defaults(), canEdit: false, sort: null, onColumns: () => {}, onRowOrder: () => {}, ...layout } as DashboardLayoutControl } : {}),
       }),
     );
   const rowKeys = (html: string) => [...html.matchAll(/data-row-key="([^"]+)"/g)].map((x) => x[1]);
@@ -420,10 +420,10 @@ describe("dashboard table with the line layout", () => {
   });
 
   it("hides the grips while a sort is active; Manual order brings them back", () => {
-    const sorted = render({ canEdit: true, sort: "name" });
+    const sorted = render({ canEdit: true, sort: { key: "name", dir: "asc" } });
     expect(sorted).not.toContain("data-grip");
     expect(rowKeys(sorted)).toEqual(["c1", "c3", "c2", "e1"]);
-    expect(render({ canEdit: true, sort: "manual" })).toContain("data-grip");
+    expect(render({ canEdit: true, sort: null })).toContain("data-grip");
   });
 
   it("without a layout, and for a non-admin with the default layout, the table renders the same default columns", () => {

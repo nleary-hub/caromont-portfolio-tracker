@@ -50,6 +50,8 @@ class PickerCopy {
   /** Same admin-only footnote on both tabs (picker.html). */
   static readonly NOTE = "Only you see this menu. Hidden items are left out of every count, flag, and export that others see.";
   static readonly TAB_LABEL: Record<ViewContext, string> = { dashboard: "Dashboard", report: "Report" };
+  /** The Flags entry is the status chips switch (migration 0034, off by default on both tabs). */
+  static readonly STATUS_CHIPS = "Show status chips (Changed, Overdue, Stale)";
 }
 
 export function ViewSettingsPicker({ settings, counts, onSave, layoutReset, compact = false }: ViewSettingsPickerProps) {
@@ -362,17 +364,25 @@ function ColumnCheck({
 }) {
   const locked = ViewSettings.isLocked(column);
   const visible = ViewSettings.isColumnVisible(value, column);
+  // Flags is the "Show status chips" setting (migration 0034, default off): one switch per tab (screen, PDF).
+  const chips = column === "flags";
   return (
-    <label className="vp-check">
+    <label className="vp-check" data-testid={chips ? `status-chips-${context}` : undefined}>
       <input
         type="checkbox"
         className="sr-only"
         checked={visible}
         disabled={locked}
-        onChange={(e) => onChange(ViewSettings.withColumnHidden(context, value, column, !e.target.checked))}
+        onChange={(e) =>
+          onChange(
+            chips
+              ? ViewSettings.withStatusChips(context, value, e.target.checked)
+              : ViewSettings.withColumnHidden(context, value, column, !e.target.checked),
+          )
+        }
       />
       <CheckBox on={visible} locked={locked} />
-      <span className="vp-lbl">{ViewSettings.columnLabel(context, column)}</span>
+      <span className="vp-lbl">{chips ? PickerCopy.STATUS_CHIPS : ViewSettings.columnLabel(context, column)}</span>
     </label>
   );
 }

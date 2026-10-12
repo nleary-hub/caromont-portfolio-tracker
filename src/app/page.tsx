@@ -36,6 +36,8 @@ import { ProjectLink } from "@/lib/access/ProjectLink";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
+import { ProjectEditPolicy } from "@/lib/access/ProjectEditPolicy";
+import { markProjectsReviewed, undoProjectsReviewed } from "@/app/actions/review";
 
 /** AI Draft/Fit/Test connection server actions run on this page; the provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
 export const maxDuration = 90;
@@ -86,6 +88,12 @@ class DashboardData {
     return out;
   }
 
+  static stepsByProject<S extends { projectId: string }>(steps: readonly S[]): Map<string, S[]> {
+    const out = new Map<string, S[]>();
+    for (const s of steps) out.set(s.projectId, [...(out.get(s.projectId) ?? []), s]);
+    return out;
+  }
+
   /** Everything is filtered through VisibilityPolicy on the server; non-admins never receive hidden data. */
   /** Scoped to the viewer's active service line: projects, people, templates and the latest report. */
   static async load(viewer: Viewer, today: string, scope: ServiceLineScope): Promise<DashboardLoad> {
@@ -123,6 +131,8 @@ class DashboardData {
           ...VisibilityPolicy.publicUpdateWhere(),
         },
         select: { projectId: true, changedAt: true, field: true },
+        // Latest row per project, so "Mark as reviewed" (ReportBuilder.isReviewed) sees the newest update.
+        orderBy: [{ projectId: "asc" }, { changedAt: "desc" }],
         distinct: ["projectId"],
       });
       // "Updated <date>" on the meta line: latest public history entry per listed project (all time).
@@ -155,7 +165,8 @@ class DashboardData {
           latestUpdates,
           scope.departments,
           completedInPeriod,
-        ),
+          DashboardData.stepsByProject(steps),
+        ).map((r) => ({ ...r, editable: ProjectEditPolicy.canEdit(viewer, scope, stored.find((p) => p.id === r.id) ?? null) })),
         columns: ViewSettings.visibleColumns(settings.dashboard),
         latestReport: latest
           ? {
@@ -230,6 +241,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       userName={viewer.name}
       heartbeat={await DashboardPrefsService.heartbeat(viewer.email)}
       setHeartbeatAction={setDashboardHeartbeat}
+      // Mark as reviewed: for viewers who may edit the line's projects (each row's editable flag; re-checked on the server).
+      {...(ProjectEditPolicy.canEditLine(viewer) ? { review: { markAction: markProjectsReviewed, undoAction: undoProjectsReviewed } } : {})}
       latestReport={latestReport}
       completedFiscalYear={completedFiscalYear}
       loadError={error}

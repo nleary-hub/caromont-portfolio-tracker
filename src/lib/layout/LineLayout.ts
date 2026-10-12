@@ -265,7 +265,7 @@ export class ColumnShares {
     people: 140,
     status: 110,
     milestoneUpdate: 240,
-    dueFlags: 188,
+    dueFlags: 258,
   };
 
   /** Which visible column takes spare width when a fit makes a column narrower (same preference as the flex column). */
@@ -288,7 +288,7 @@ export class ColumnShares {
 
   /** Default widths as shares (Next milestone / Latest update at its 280px minimum), for hidden columns without a saved share. */
   static defaultShares(): Record<LayoutKey, number> {
-    const px: Record<LayoutKey, number> = { project: 256, people: 200, status: 112, milestoneUpdate: 280, dueFlags: 188 };
+    const px: Record<LayoutKey, number> = { project: 256, people: 200, status: 112, milestoneUpdate: 280, dueFlags: 258 };
     const sum = Object.values(px).reduce((a, b) => a + b, 0);
     return Object.fromEntries(LineLayout.KEYS.map((k) => [k, px[k] / sum])) as Record<LayoutKey, number>;
   }

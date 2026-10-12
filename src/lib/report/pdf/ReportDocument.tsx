@@ -289,9 +289,10 @@ function FirstHeader({ h, band }: { h: HeaderModel; band: BandPalette | null }) 
       );
     }
   });
-  // Legend
+  // Legend (only while the status chips are shown; report setting)
   const ly = top + meta.length * G.META_ROW_H + (meta.length - 1) * G.META_GAP + 6;
   const { changed, overdue, stale } = h.legend;
+  if (h.chips !== false) {
   els.push(<Line key="lg1" x={0} y={ly + 1} w={30} text="Flags:" size={S.small} weight={600} color={C.MUTED} lh={G.SMALL_LH} />);
   els.push(<Flag key="lgc" flag={changed} x={24} y={ly} />);
   els.push(
@@ -324,6 +325,7 @@ function FirstHeader({ h, band }: { h: HeaderModel; band: BandPalette | null }) 
       lh={G.SMALL_LH}
     />,
   );
+  }
   els.push(<GridView key="grid" h={h} x={G.CONTENT_W - h.grid.width} top={top} />);
 
   const bleed = ReportColorScheme.BAND_BLEED;
@@ -668,6 +670,27 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
           lh={G.TABLE_LH}
         />
       );
+    case "milestoneOwner": {
+      // Spec: 7.5/9 pt, owner #15171C weight 500; Unassigned amber (#855500; the embedded Inter has no italic); "–" muted.
+      const o = ReportLayout.MS_OWNER;
+      return (
+        <>
+          {cell.lines.map((l, i) => (
+            <Line
+              key={i}
+              x={cell.x}
+              y={i * o.lh + 0.5}
+              w={cell.w}
+              text={l}
+              size={o.size}
+              weight={cell.tone === "owner" ? o.weight : 400}
+              color={cell.tone === "owner" ? C.TEXT : cell.tone === "unassigned" ? C.STALE.fg : C.MUTED}
+              lh={o.lh}
+            />
+          ))}
+        </>
+      );
+    }
     case "flags":
       return <Flags flags={cell.flags} x={cell.x} y={-0.25} />;
   }
@@ -918,11 +941,13 @@ function KeyPage({ k, h, top, summary, summaryOnly = false }: { k: KeyModel; h: 
     y += 16;
   }
   y += 8;
-  section("FLAGS");
-  for (const f of k.flags) {
-    els.push(<Flag key={`f${f.flag.kind}`} flag={f.flag} x={0} y={y} />);
-    els.push(<Line key={`fm${f.flag.kind}`} x={90} y={y} w={330} text={f.meaning} size={S.table} lh={G.TABLE_LH + 0.5} />);
-    y += 16;
+  if (k.flags.length) {
+    section("FLAGS");
+    for (const f of k.flags) {
+      els.push(<Flag key={`f${f.flag.kind}`} flag={f.flag} x={0} y={y} />);
+      els.push(<Line key={`fm${f.flag.kind}`} x={90} y={y} w={330} text={f.meaning} size={S.table} lh={G.TABLE_LH + 0.5} />);
+      y += 16;
+    }
   }
   y += 8;
   section("ROW DETAILS");

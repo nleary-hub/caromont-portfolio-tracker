@@ -1,12 +1,16 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useRef } from "react";
+import { useEffect, useRef, useState } from "react";
 
 export interface ActionToastValue {
   text: string;
   link?: { href: string; label: string };
   error?: boolean;
+  /** How long it stays (ms); default 6000. Mark reviewed uses 8000 with Undo. */
+  ms?: number;
+  /** A button after the text (Undo). Runs once, then the toast closes. */
+  action?: { label: string; run: () => void };
 }
 
 /** A row leaving a list (Restore to active, a project set to Cancelled): fades out before the list drops it. */
@@ -30,6 +34,7 @@ export function ActionToast({ value, onDone, ms = 6000 }: { value: ActionToastVa
     const t = window.setTimeout(() => done.current(), ms);
     return () => window.clearTimeout(t);
   }, [value, ms]);
+  const [used, setUsed] = useState(false);
   return (
     <div
       role={value.error ? "alert" : "status"}
@@ -41,6 +46,19 @@ export function ActionToast({ value, onDone, ms = 6000 }: { value: ActionToastVa
         <Link href={value.link.href} className="whitespace-nowrap text-accent type-table-strong hover:underline">
           {value.link.label}
         </Link>
+      )}
+      {value.action && (
+        <button
+          type="button"
+          disabled={used}
+          onClick={() => {
+            setUsed(true);
+            value.action!.run();
+          }}
+          className="whitespace-nowrap font-semibold text-accent hover:underline"
+        >
+          {value.action.label}
+        </button>
       )}
     </div>
   );

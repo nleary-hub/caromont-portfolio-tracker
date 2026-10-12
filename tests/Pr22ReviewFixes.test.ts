@@ -8,7 +8,7 @@ import { ReportGeometry, ReportLayout, type RowCell } from "@/lib/report/pdf/Rep
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 
 const m = new TextMeasure();
-const REPORT = ViewSettings.defaults("report");
+const REPORT = ViewSettings.normalize("report", null);
 const S = ReportGeometry.SIZE;
 
 class Fx {

@@ -11,7 +11,7 @@ import { FlagSlots } from "@/lib/domain/FlagSlots";
 const m = new TextMeasure();
 
 const ALL = ViewSettings.normalize("report", { hiddenStatuses: [] });
-const DEFAULTS = ViewSettings.defaults("report");
+const DEFAULTS = ViewSettings.normalize("report", null);
 
 class Many {
   /** n sample rows visible under the default report settings (cycled, unique ids and names), long notes on every third row. */
@@ -84,7 +84,7 @@ describe("ReportLayout pagination", () => {
 
   it("never cuts the note off (wraps, no ellipsis) and runs it from Next milestone to the right margin", () => {
     const long = { ...rows[0], note: `${SampleReportData.LONG_NOTE} ${SampleReportData.LONG_NOTE}`, changed: true };
-    const r = ReportLayout.rowLayout(m, long, ViewSettings.defaults("report"), SampleReportData.REPORT_DATE);
+    const r = ReportLayout.rowLayout(m, long, ViewSettings.normalize("report", null), SampleReportData.REPORT_DATE);
     expect(r.note!.lines.length).toBeGreaterThan(2);
     expect(r.note!.lines.map((l) => l.text).join(" ")).toBe(long.note);
     expect(r.note!.lines.some((l) => l.text.includes("\u2026"))).toBe(false);
@@ -97,7 +97,7 @@ describe("ReportLayout pagination", () => {
   it("a 200-character note with the No change. prefix still wraps fully and the row grows as needed", () => {
     const note = `${SampleReportData.LONG_NOTE} Next check-in 10/1.`.slice(0, 200).trimEnd().padEnd(200, ".");
     expect(note).toHaveLength(200);
-    const settings = ViewSettings.defaults("report");
+    const settings = ViewSettings.normalize("report", null);
     const changed = ReportLayout.rowLayout(m, { ...rows[0], note, changed: true }, settings, SampleReportData.REPORT_DATE);
     const unchanged = ReportLayout.rowLayout(m, { ...rows[0], note, changed: false }, settings, SampleReportData.REPORT_DATE);
     expect(changed.note!.lines.length).toBeGreaterThanOrEqual(2);
@@ -113,7 +113,7 @@ describe("ReportLayout pagination", () => {
     expect(ReportGeometry.MILESTONE_WEIGHT).toBe(600);
     expect(ReportGeometry.NOTE_GAP).toBe(3);
     expect(ReportGeometry.SIZE.table).toBe(8);
-    const settings = ViewSettings.defaults("report");
+    const settings = ViewSettings.normalize("report", null);
     const milestoneText = "Vendor contract signed and returned to legal for final countersignature review";
     const r = ReportLayout.rowLayout(m, { ...rows[0], nextMilestone: milestoneText, note: "Short note.", changed: true }, settings, SampleReportData.REPORT_DATE);
     const cell = r.cells.find((c) => c.kind === "nextMilestone")!;
@@ -125,7 +125,7 @@ describe("ReportLayout pagination", () => {
   });
 
   it("fixed flag slots: each flag keeps its slot index and x whichever other flags apply (all 8 combinations)", () => {
-    const settings = ViewSettings.defaults("report");
+    const settings = ViewSettings.normalize("report", null);
     const slots = ReportLayout.flagSlots(m);
     expect(slots.map((s) => s.kind)).toEqual(FlagSlots.ORDER);
     expect(slots[0].dx).toBe(0);
@@ -148,7 +148,7 @@ describe("ReportLayout pagination", () => {
   });
 
   it("all flag slots fit the Flags column at its current width", () => {
-    const flagsCol = ReportLayout.columns(ViewSettings.defaults("report")).find((c) => c.key === "flags")!;
+    const flagsCol = ReportLayout.columns(ViewSettings.normalize("report", null)).find((c) => c.key === "flags")!;
     expect(flagsCol.w / 72).toBeCloseTo(1.86, 9);
     expect(ReportLayout.flagSlotsWidth(m)).toBeLessThanOrEqual(flagsCol.w - ReportGeometry.CELL_PAD_R);
   });
@@ -176,7 +176,7 @@ describe("ReportLayout pagination", () => {
   });
 
   it("uses the spec column widths in inches", () => {
-    const cols = ReportLayout.columns(ViewSettings.defaults("report"));
+    const cols = ReportLayout.columns(ViewSettings.normalize("report", null));
     expect(cols.map((c) => [c.key, c.w / 72])).toEqual(
       ([["project", 2.4], ["owner", 1.5], ["status", 0.85], ["nextMilestone", 2.89], ["due", 0.5], ["flags", 1.86]] as const).map(([k, w]) => [k, expect.closeTo(w, 9)]),
     );
@@ -215,7 +215,7 @@ describe("ReportLayout pagination", () => {
     const r = ReportLayout.rowLayout(
       m,
       { ...rows[0], changed: false, note: "Waiting on vendor.", status: "AtRisk", statusFrom: "OnTrack" },
-      ViewSettings.defaults("report"),
+      ViewSettings.normalize("report", null),
       SampleReportData.REPORT_DATE,
     );
     expect(r.note!.lines[0]).toEqual({ text: "No change. Waiting on vendor.", mutedPrefix: "No change.".length });
@@ -291,7 +291,7 @@ describe("ReportLayout visibility", () => {
       hiddenFromReport: false,
       ...extra,
     });
-    const settings = ViewSettings.defaults("report"); // Complete + Cancelled hidden
+    const settings = ViewSettings.normalize("report", null); // Complete + Cancelled hidden
     const { rows, header } = ReportBuilder.build({
       projects: [
         p("Visible A"),

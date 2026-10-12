@@ -1,3 +1,4 @@
+import { DueFlags } from "@/lib/dashboard/StackedCells";
 import type { ViewContext } from "@/generated/prisma/enums";
 import { ViewSettings, type ViewColumn, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 
@@ -155,7 +156,26 @@ export class DashboardColumnModel {
       if (c === "status" && ViewSettings.isColumnVisible(settings, c) && !keys.includes("status")) keys.push("status");
     }
     const flexKey = DashboardColumnModel.FLEX_PREFERENCE.find((k) => keys.includes(k));
-    return keys.map((k) => ({ ...DashboardColumnModel.spec(k), flex: k === flexKey }));
+    return keys.map((k) => {
+      const spec = { ...DashboardColumnModel.spec(k), flex: k === flexKey };
+      if (k !== "dueFlags") return spec;
+      const width = DashboardColumnModel.dueFlagsWidth(settings);
+      return { ...spec, header: DashboardColumnModel.dueFlagsHeader(settings), width, minWidth: width };
+    });
+  }
+
+  /**
+   * Due / Flags also carries the Milestone owner (Option A, Oct 12, 2026) to the right of the date and chips:
+   * 24px padding + the date column (90) or the date and chip grid (164) + 8px gap + the owner (136 with chips off,
+   * 120 with chips on). Not a new layout key, so saved line layouts keep loading.
+   */
+  static dueFlagsWidth(settings: ViewSettingsValue): number {
+    const chips = ViewSettings.isColumnVisible(settings, "flags");
+    return 24 + (chips ? DueFlags.gridWidthPx() : DueFlags.COLUMN_WIDTHS_PX[0]) + 8 + (chips ? 120 : 136);
+  }
+
+  static dueFlagsHeader(settings: ViewSettingsValue): string {
+    return ViewSettings.isColumnVisible(settings, "flags") ? "Due / Flags · Milestone owner" : "Due · Milestone owner";
   }
 
   /** Smallest table width that honors every column's width (the flex column at its minimum). */

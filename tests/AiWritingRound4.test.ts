@@ -86,7 +86,8 @@ describe("Update notes shows a new project's first note (read from the created r
   it("this PR changes no report, PDF, freeze, snapshot or handoff code (diff against the base commit)", () => {
     let changed: string[];
     try {
-      changed = execFileSync("git", ["diff", "--name-only", "d3893fb", "--", "src"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
+      // That PR's own range (base to its last commit), so later PRs that do touch report code do not trip it.
+      changed = execFileSync("git", ["diff", "--name-only", "d3893fb", "2eff81118bd7d9bda90fe49393927e84e813352d", "--", "src"], { cwd: ROOT, encoding: "utf8" }).split("\n").filter(Boolean);
     } catch {
       return; // no git history in this environment (e.g. a tarball); the read-time test above still holds
     }

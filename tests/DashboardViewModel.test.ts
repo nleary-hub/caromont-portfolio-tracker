@@ -104,7 +104,7 @@ describe("PdfReportLayout", () => {
   });
 
   it("lays out line-1 columns from the frozen report settings (order, visibility, full width)", () => {
-    const defaults = PdfReportLayout.lineOneColumns(ViewSettings.defaults("report"));
+    const defaults = PdfReportLayout.lineOneColumns(ViewSettings.normalize("report", null));
     expect(defaults.map((c) => c.key)).toEqual(["project", "owner", "status", "nextMilestone", "due", "flags"]);
     expect(defaults.map((c) => c.widthIn)).toEqual([2.4, 1.5, 0.85, 2.89, 0.5, 1.86].map((w) => expect.closeTo(w)));
 
@@ -117,6 +117,6 @@ describe("PdfReportLayout", () => {
     expect(cols.reduce((s, c) => s + c.widthIn, 0)).toBeCloseTo(PdfReportLayout.contentWidthIn());
     expect(PdfReportLayout.showsChampion(custom)).toBe(false); // champion renders under Owner
     expect(PdfReportLayout.showsNote(custom)).toBe(false);
-    expect(PdfReportLayout.showsNote(ViewSettings.defaults("report"))).toBe(true);
+    expect(PdfReportLayout.showsNote(ViewSettings.normalize("report", null))).toBe(true);
   });
 });

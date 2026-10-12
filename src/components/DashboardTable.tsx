@@ -1,7 +1,7 @@
 "use client";
 
 import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
-import { useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
+import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
   DashboardColumnModel,
   type DashboardColumn,
@@ -10,7 +10,10 @@ import {
   type PeopleVisibility,
 } from "@/lib/dashboard/DashboardColumnModel";
 import { DashboardGroups, type DashboardGroup } from "@/lib/dashboard/DashboardGroups";
-import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardSort";
+import { DashboardQuery, type DashboardSortKey, type DashboardSortState, type SearchHit } from "@/lib/dashboard/DashboardQuery";
+import { MilestoneOwner } from "@/lib/domain/MilestoneOwner";
+import { ViewSettings } from "@/lib/domain/ViewSettings";
+import { Highlight, QueryCopy } from "./DashboardQueryControls";
 import type { AreaGroup, DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ColumnShares, LayoutCopy, LineLayout, RowOrder, type ColumnLayoutValue, type LayoutKey, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import type { DashboardRow } from "@/lib/dashboard/DashboardViewModel";
@@ -38,6 +41,16 @@ export interface DashboardTableProps {
   layout?: DashboardLayoutControl;
   /** The line's departments (headings, order, announcement names). Absent = ServiceAreaInfo.LEGACY. */
   departments?: DepartmentList;
+  /** Header sort (ascending, descending, manual). Absent = no sort buttons. */
+  onSort?: (key: DashboardSortKey) => void;
+  /** Search text: highlights, "Matched in" hints and the milestone matches sub-row. */
+  search?: string;
+  /** While filtering: each department's row count before the filters ("IR · 3 of 5"). */
+  groupTotals?: Partial<Record<AreaGroup, number>>;
+  /** Present when the viewer may mark rows reviewed (per row: row.editable). */
+  onReview?: (row: DashboardRow) => void;
+  /** Rendered instead of the plain empty text (filters: "No projects match these filters" + Clear all filters). */
+  empty?: ReactNode;
 }
 
 /** Layout input of the table: the line's layout, who may change it, the active sort, and where changes go. */
@@ -45,7 +58,8 @@ export interface DashboardLayoutControl {
   value: LineLayoutValue;
   /** Admins only: resize handles, header drag, row grips. */
   canEdit: boolean;
-  sort: DashboardSortKey;
+  /** Header sort; null = manual order (grips show). Sorting only ever reorders rows inside a department. */
+  sort: DashboardSortState;
   onColumns: (next: ColumnLayoutValue) => void;
   /** One department's new manual order (an empty list restores the report order there). */
   onRowOrder: (area: AreaGroup, ids: string[]) => void;
@@ -150,7 +164,7 @@ class TableMeasure {
  * flexible column. Admins resize from each header's right edge, drag headers (Project stays first) and drag
  * rows within their department; everyone else sees the same layout with no handles or grips.
  */
-export function DashboardTable({ rows, settings, selectedId, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments }: DashboardTableProps) {
+export function DashboardTable({ rows, settings, selectedId, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, empty }: DashboardTableProps) {
   const value = layout?.value ?? LineLayout.defaults();
   const effective = value.columns ? LineLayout.orderedSettings("dashboard", settings, value.columns.order) : settings;
   const columns = DashboardColumnModel.columns(effective);
@@ -158,13 +172,16 @@ export function DashboardTable({ rows, settings, selectedId, flashId = null, onS
   const baseOrder = value.columns?.order ?? LineLayout.orderFromSettings("dashboard", settings);
   const shares = value.columns?.shares ?? null;
   const editable = Boolean(layout?.canEdit);
-  const manual = !layout || !DashboardSort.isActive(layout.sort);
+  const sort = layout?.sort ?? null;
+  const manual = sort === null;
   const showGrips = editable && manual;
   const people = DashboardColumnModel.peopleVisibility(settings);
   const stack = DashboardColumnModel.milestoneUpdateVisibility(settings);
   const dueFlags = DashboardColumnModel.dueFlagsVisibility(settings);
-  const ordered = manual ? RowOrder.apply(rows, value.rows) : rows;
-  const groups = DashboardGroups.group(ordered, layout ? DashboardSort.comparator(layout.sort) : undefined, departments);
+  const chips = ViewSettings.chipsShown(settings) && dueFlags.flags;
+  // Manual order first, so ties under a header sort keep it (stable sort). Groups and their order never change.
+  const ordered = RowOrder.apply(rows, value.rows);
+  const groups = DashboardGroups.group(ordered, DashboardQuery.comparator(sort), departments);
   const span = columns.length;
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -439,6 +456,7 @@ export function DashboardTable({ rows, settings, selectedId, flashId = null, onS
                   key={c.key}
                   scope="col"
                   data-col={c.key}
+                  aria-sort={onSort && HeaderSort.keysOf(c.key).length ? HeaderSort.ariaSort(c.key, sort) : undefined}
                   tabIndex={movable ? 0 : undefined}
                   aria-keyshortcuts={movable ? "Alt+ArrowLeft Alt+ArrowRight" : undefined}
                   onPointerDown={movable ? (e) => onHeaderDown(e, key) : undefined}
@@ -449,7 +467,7 @@ export function DashboardTable({ rows, settings, selectedId, flashId = null, onS
                   style={dragging ? { opacity: 0.9, transform: `translateX(${colDrag.dx}px)`, filter: GroupedTableStyle.LIFT_SHADOW, zIndex: 6 } : undefined}
                   className={`sticky top-0 z-[3] h-9 border-b border-line bg-card px-3 text-left uppercase tracking-[.04em] text-muted type-label ${movable ? "cursor-grab select-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-(--color-accent)" : ""} ${dragging ? "cursor-grabbing" : ""}`}
                 >
-                  <span className="block truncate">{c.header}</span>
+                  <HeaderLabel column={c.key} header={c.header} sort={sort} onSort={onSort} chips={chips} />
                   {editable && (
                     <span
                       role="separator"
@@ -483,7 +501,7 @@ export function DashboardTable({ rows, settings, selectedId, flashId = null, onS
           <tbody>
             <tr>
               <td colSpan={span} className="h-20 text-center text-muted">
-                {emptyText}
+                {empty ?? emptyText}
               </td>
             </tr>
           </tbody>
@@ -495,12 +513,13 @@ export function DashboardTable({ rows, settings, selectedId, flashId = null, onS
                 <td colSpan={span} className="h-6 p-0" />
               </tr>
             )}
-            <GroupHeader group={g} span={span} />
+            <GroupHeader group={g} span={span} total={groupTotals?.[g.area]} />
             {g.rows.map((r) => {
               const drag = rowStyle(r.id, g.area);
+              const hit = search.trim() ? DashboardQuery.search(r, search, departments) : null;
               return (
+                <Fragment key={r.id}>
                 <ProjectRow
-                  key={r.id}
                   row={r}
                   columns={columns}
                   people={people}
@@ -509,6 +528,10 @@ export function DashboardTable({ rows, settings, selectedId, flashId = null, onS
                   today={today}
                   selected={r.id === selectedId || r.id === flashId}
                   onSelect={onSelect}
+                  chips={chips}
+                  search={search}
+                  hit={hit}
+                  onReview={onReview && r.editable && r.changed ? () => onReview(r) : undefined}
                   renderMeta={renderMeta}
                   style={drag.style}
                   lifted={drag.lifted}
@@ -527,6 +550,8 @@ export function DashboardTable({ rows, settings, selectedId, flashId = null, onS
                     ) : null
                   }
                 />
+                {hit && hit.milestones.length > 0 && <MilestoneMatches hit={hit} search={search} span={span} />}
+                </Fragment>
               );
             })}
           </tbody>
@@ -611,14 +636,14 @@ export function RowGrip({
   );
 }
 
-function GroupHeader({ group, span }: { group: DashboardGroup<DashboardRow>; span: number }) {
+function GroupHeader({ group, span, total }: { group: DashboardGroup<DashboardRow>; span: number; total?: number }) {
   const edge = group.muted ? GroupedTableStyle.GROUP_EDGE_MUTED : GroupedTableStyle.GROUP_EDGE;
   const style: CSSProperties = { background: GroupedTableStyle.GROUP_HEADER_BG, boxShadow: `inset 3px 0 0 ${edge}`, top: GroupedTableStyle.HEADER_H };
   return (
     <tr data-testid="group-header">
       <th colSpan={span} scope="colgroup" style={style} className="sticky z-[2] h-9 border-b border-line px-3 text-left align-middle">
         <span className={`text-[13px] leading-[18px] font-semibold uppercase tracking-[.04em] ${group.muted ? "text-muted" : "text-fg"}`}>{group.label}</span>
-        <span className="ml-2 font-normal text-muted type-table">{group.countText}</span>
+        <span className="ml-2 font-normal text-muted type-table">{total !== undefined ? `· ${DashboardQuery.groupCount(group.rows.length, total)}` : group.countText}</span>
       </th>
     </tr>
   );
@@ -642,6 +667,10 @@ function ProjectRow({
   style,
   lifted = false,
   animate = false,
+  chips = true,
+  search = "",
+  hit = null,
+  onReview,
 }: {
   row: DashboardRow;
   columns: readonly DashboardColumn[];
@@ -656,8 +685,15 @@ function ProjectRow({
   style?: CSSProperties;
   lifted?: boolean;
   animate?: boolean;
+  chips?: boolean;
+  search?: string;
+  hit?: SearchHit | null;
+  onReview?: () => void;
 }) {
   const td = `${CELL} ${selected ? "bg-row-selected" : lifted ? "bg-card" : ""}`;
+  // Chips hidden: a Changed row keeps a quiet cue (2px lilac inset rule and "• Changed" under the meta line).
+  const changedCue = !chips && row.changed;
+  const projectShadow = selected ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : changedCue ? "shadow-[inset_2px_0_0_#B9A3FF]" : "";
   return (
     <tr
       data-row-key={row.id}
@@ -679,12 +715,36 @@ function ProjectRow({
             );
           case "project":
             return (
-              <td key={c.key} data-col={c.key} className={`${td} type-table-strong ${selected ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : ""}`}>
+              <td key={c.key} data-col={c.key} data-changed-cue={changedCue || undefined} className={`${td} type-table-strong ${projectShadow}`}>
                 {/* The full name wraps between words (a single over-long word breaks anywhere, no hyphens); the row grows. */}
                 <div data-part="project-name" className={NAME_WRAP}>
-                  {row.name}
+                  <Highlight text={row.name} query={search} />
                 </div>
                 {renderMeta(row)}
+                {changedCue && (
+                  <div data-part="changed-cue" className="text-[12px] leading-4 font-normal" style={{ color: "#B9A3FF" }}>
+                    • Changed
+                  </div>
+                )}
+                {hit && hit.hiddenFields.length > 0 && (
+                  <div data-part="matched-in" className="text-[12px] leading-4 font-normal text-muted">
+                    ⌕ Matched in: {hit.hiddenFields.join(", ")}
+                  </div>
+                )}
+                {onReview && (
+                  <button
+                    type="button"
+                    data-testid="mark-reviewed"
+                    aria-label={QueryCopy.markReviewedLabel(row.name)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      onReview();
+                    }}
+                    className="pb-review-btn mt-1 inline-flex h-6 items-center gap-1 rounded-control border border-line bg-card px-2 text-[12px] leading-4 font-semibold text-fg hover:bg-row-selected focus-visible:outline-2 focus-visible:outline-(--color-accent)"
+                  >
+                    <span aria-hidden="true">✓</span> {QueryCopy.MARK_REVIEWED}
+                  </button>
+                )}
               </td>
             );
           case "people":
@@ -708,7 +768,10 @@ function ProjectRow({
           case "dueFlags":
             return (
               <td key={c.key} data-col={c.key} className={td}>
-                <DueFlagsCellView cell={DueFlags.cell(row, dueFlags, today)} />
+                <div className="flex items-start gap-2">
+                  <DueFlagsCellView cell={DueFlags.cell(row, dueFlags, today)} />
+                  <MilestoneOwnerView row={row} chips={chips} />
+                </div>
               </td>
             );
         }
@@ -860,5 +923,134 @@ function ClockIcon() {
       <circle cx="5" cy="5" r="4" fill="none" stroke="currentColor" strokeWidth="1.3" />
       <path d="M5 2.6V5l1.7 1.2" fill="none" stroke="currentColor" strokeWidth="1.3" />
     </svg>
+  );
+}
+
+/**
+ * Header text with its sort button(s): click cycles ascending, descending, manual (aria-sort on the th is set by the
+ * caller through data). Project carries a second button for Updated; Due / Milestone owner has one per field. The
+ * resize handle sits outside these buttons and never sorts. Flags is not sortable.
+ */
+function HeaderLabel({ column, header, sort, onSort, chips }: { column: string; header: string; sort: DashboardSortState; onSort?: (key: DashboardSortKey) => void; chips: boolean }) {
+  const keys = HeaderSort.keysOf(column);
+  if (!onSort || keys.length === 0) return <span className="block truncate">{header}</span>;
+  return (
+    <span className="flex min-w-0 items-center gap-2">
+      {keys.map((k, i) => {
+        const state = DashboardQuery.ariaSort(sort, k);
+        const label = HeaderSort.label(column, k, header, chips);
+        return (
+          <button
+            key={k}
+            type="button"
+            data-sort={k}
+            aria-label={`Sort by ${DashboardQuery.SORT_LABELS[k]}${state === "none" ? "" : `, ${state}`}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              onSort(k);
+            }}
+            className={`flex min-w-0 items-center gap-1 uppercase tracking-[.04em] hover:text-fg focus-visible:outline-2 focus-visible:outline-(--color-accent) ${state !== "none" ? "text-fg" : ""} ${i > 0 ? "text-[11px]" : ""}`}
+          >
+            <span className="truncate">{label}</span>
+            <span aria-hidden="true" className="w-2 shrink-0" style={{ color: "#4C8DFF" }}>
+              {state === "ascending" ? "▲" : state === "descending" ? "▼" : ""}
+            </span>
+          </button>
+        );
+      })}
+    </span>
+  );
+}
+
+/** Which sort keys each dashboard column header offers. */
+export class HeaderSort {
+  static keysOf(column: string): DashboardSortKey[] {
+    switch (column) {
+      case "project":
+        return ["name", "updated"];
+      case "people":
+        return ["owner"];
+      case "status":
+        return ["status"];
+      case "milestoneUpdate":
+        return ["nextMilestone"];
+      case "dueFlags":
+        return ["due", "milestoneOwner"];
+      default:
+        return [];
+    }
+  }
+
+  static label(column: string, key: DashboardSortKey, header: string, chips: boolean): string {
+    if (column === "dueFlags") return key === "due" ? (chips ? "Due / Flags" : "Due") : "Milestone owner";
+    if (column === "project" && key === "updated") return "Updated";
+    return header;
+  }
+
+  /** aria-sort for a column header: the state of its first key that is active. */
+  static ariaSort(column: string, sort: DashboardSortState): "ascending" | "descending" | "none" {
+    for (const k of HeaderSort.keysOf(column)) {
+      const s = DashboardQuery.ariaSort(sort, k);
+      if (s !== "none") return s;
+    }
+    return "none";
+  }
+}
+
+/**
+ * Milestone owner (Option A): 12px Inter 500 #E6E8EC, up to two lines then ellipsis; physician names as
+ * "Dr. A. Lastname"; tooltip and aria-label carry the full name. Unassigned italic amber; no open milestone a muted
+ * en dash ("No open milestone"). 136px with chips off, 120px with chips on.
+ */
+export function MilestoneOwnerView({ row, chips }: { row: DashboardRow; chips: boolean }) {
+  const cell = MilestoneOwner.cell(row);
+  const width = chips ? MilestoneOwnerStyle.WIDTH_CHIPS_ON : MilestoneOwnerStyle.WIDTH_CHIPS_OFF;
+  const label = MilestoneOwner.label(cell);
+  return (
+    <span
+      data-part="milestone-owner"
+      data-owner-kind={cell.kind}
+      title={label}
+      aria-label={cell.kind === "owner" ? `Milestone owner: ${label}` : label}
+      className={`line-clamp-2 block shrink-0 break-words text-[12px] leading-[18px] ${cell.kind === "unassigned" ? "italic" : cell.kind === "none" ? "text-muted" : "font-medium"}`}
+      style={{ width, color: cell.kind === "unassigned" ? "#F5B83D" : cell.kind === "owner" ? "#E6E8EC" : undefined }}
+    >
+      {MilestoneOwner.text(cell)}
+    </span>
+  );
+}
+
+export class MilestoneOwnerStyle {
+  static readonly WIDTH_CHIPS_OFF = 136;
+  static readonly WIDTH_CHIPS_ON = 120;
+  static readonly GAP = 8;
+}
+
+/** "Matches in milestones (n)": up to 3, then "+N more" (search). */
+function MilestoneMatches({ hit, search, span }: { hit: SearchHit; search: string; span: number }) {
+  const shown = hit.milestones.slice(0, DashboardQuery.MILESTONE_MATCHES_SHOWN);
+  const more = hit.milestones.length - shown.length;
+  return (
+    <tr data-testid="milestone-matches">
+      <td aria-hidden="true" className="border-b border-line p-0" />
+      <td colSpan={span - 1} className="border-b border-line px-3 pt-0 pb-2 text-[12px] leading-[18px] text-muted">
+        <span className="font-semibold">Matches in milestones ({hit.milestones.length}):</span>{" "}
+        {shown.map((m, i) => (
+          <span key={i} className={m.done ? "line-through" : ""}>
+            {i > 0 && " · "}
+            <Highlight text={m.name} query={search} />
+            {m.owner && (
+              <>
+                {" ("}
+                <Highlight text={MilestoneOwner.short(m.owner)} query={search} />
+                {")"}
+              </>
+            )}
+          </span>
+        ))}
+        {more > 0 && ` +${more} more`}
+      </td>
+    </tr>
   );
 }

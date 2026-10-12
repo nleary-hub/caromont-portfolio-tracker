@@ -2,7 +2,7 @@ import { CompletionRules } from "@/lib/projects/CompletionRules";
 import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
 import { DateOnly } from "@/lib/domain/DateOnly";
-import type { MilestoneCount } from "@/lib/domain/MilestoneProgress";
+import { MilestoneProgress, type MilestoneCount, type MilestoneStepLike } from "@/lib/domain/MilestoneProgress";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { HistoryEntryRecord, ProjectRecord, StatusCounts } from "@/lib/domain/types";
@@ -50,6 +50,21 @@ export interface DashboardRow {
    * date shows "Completion date needed". Absent on every other status, so a reopened project shows no Completed row.
    */
   completion?: { date: string | null; source: "auto" | "manual" | null };
+  /** The next open step's owner (null = Unassigned or none); see MilestoneOwner for what the column shows. */
+  nextMilestoneOwner?: string | null;
+  /** Search only (full-text search, Oct 12, 2026). */
+  description?: string | null;
+  accomplishment?: string | null;
+  /** Every checklist step, by position (search: milestone names and owners). */
+  milestones?: DashboardMilestone[];
+  /** The viewer may edit this project (ProjectEditPolicy): shows "Mark reviewed". Set by the page. */
+  editable?: boolean;
+}
+
+export interface DashboardMilestone {
+  name: string;
+  owner: string | null;
+  done: boolean;
 }
 
 export interface DashboardSummary {
@@ -81,12 +96,18 @@ export class DashboardViewModel {
      * department group, with their Complete chip and the Changed flag only (never Overdue or Stale), until the next freeze. Cancelled projects never show.
      */
     completedInPeriod?: ReadonlySet<string>,
+    /** Checklist steps per project (search over milestone names and owners). */
+    steps?: ReadonlyMap<string, readonly MilestoneStepLike[]>,
   ): DashboardRow[] {
     const visible = VisibilityPolicy.visibleProjects(projects, "dashboard", settings, completedInPeriod);
     const ids = visible.map((p) => p.id);
     const publicHistory = VisibilityPolicy.publicHistory(history, ids);
     const publicUpdates = VisibilityPolicy.publicHistory(latestUpdates, ids);
-    return ReportBuilder.sortProjects(visible, departments).map((p) => DashboardViewModel.toRow(p, publicHistory, publicUpdates, previousSnapshotGeneratedAt, today));
+    return ReportBuilder.sortProjects(visible, departments).map((p) => {
+      const row = DashboardViewModel.toRow(p, publicHistory, publicUpdates, previousSnapshotGeneratedAt, today);
+      const list = steps?.get(p.id);
+      return list ? { ...row, milestones: MilestoneProgress.ordered(list).map((s) => ({ name: s.name, owner: s.owner?.trim() || null, done: s.done })) } : row;
+    });
   }
 
   /** Full rows (drawer-ready) for the given projects, in the given order, without the status settings. */
@@ -144,6 +165,9 @@ export class DashboardViewModel {
       overdue: flags.overdue,
       updatedOn,
       stale: ReportBuilder.isStale({ status: p.status, updatedOn }, today),
+      nextMilestoneOwner: p.nextMilestoneOwner ?? null,
+      description: p.description ?? null,
+      accomplishment: p.accomplishment ?? null,
       ...(p.startDate !== undefined ? { startDate: DateOnly.fromDbDate(p.startDate), startDateIsDefault: Boolean(p.startDateIsDefault) } : {}),
       ...(p.status === "Complete"
         ? { completion: CompletionRules.effective({ status: p.status, manual: DateOnly.fromDbDate(p.completedOn), auto: DateOnly.fromDbDate(p.completedAtAuto ?? null) }) }

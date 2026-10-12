@@ -119,13 +119,25 @@ export class ReportBuilder {
    * the PDF, on the dashboard and in handoff.json's changed list, but never gets Overdue (or Stale, see isStale). A
    * Cancelled row never carries a flag (it is not listed anywhere).
    */
-  static flags(project: Pick<ProjectRecord, "id" | "dueDate" | "status"> & Partial<Pick<ProjectRecord, "completedOn">> & { createdAt?: Date }, history: readonly HistoryEntryRecord[], previousSnapshotGeneratedAt: Date | null, reportDate: string): RowFlags {
+  static flags(project: Pick<ProjectRecord, "id" | "dueDate" | "status"> & Partial<Pick<ProjectRecord, "completedOn" | "reviewedAt">> & { createdAt?: Date }, history: readonly HistoryEntryRecord[], previousSnapshotGeneratedAt: Date | null, reportDate: string): RowFlags {
     if (project.status === "Cancelled") return { changed: false, overdue: false };
-    if (project.status === "Complete") return { changed: CompletedChangedRule.changed({ completedOn: null, ...project }, history, previousSnapshotGeneratedAt, reportDate), overdue: false };
+    const reviewed = (changed: boolean) => changed && !ReportBuilder.isReviewed(project, history);
+    if (project.status === "Complete") return { changed: reviewed(CompletedChangedRule.changed({ completedOn: null, ...project }, history, previousSnapshotGeneratedAt, reportDate)), overdue: false };
     return {
-      changed: ReportBuilder.isChanged(project.id, history, previousSnapshotGeneratedAt),
+      changed: reviewed(ReportBuilder.isChanged(project.id, history, previousSnapshotGeneratedAt)),
       overdue: ReportBuilder.isOverdue(project, reportDate),
     };
+  }
+
+  /**
+   * "Mark as reviewed" (migration 0034): reviewed and no public update since. Clears Changed only; the next real
+   * edit (any public update after reviewedAt) brings Changed back. Marking is not an update (VisibilityPolicy), so it
+   * never sets Changed, never resets Stale and never moves "Updated". History is never touched.
+   */
+  static isReviewed(project: Partial<Pick<ProjectRecord, "id" | "reviewedAt">>, history: readonly HistoryEntryRecord[]): boolean {
+    const at = project.reviewedAt?.getTime();
+    if (at === undefined || Number.isNaN(at)) return false;
+    return !history.some((h) => h.projectId === project.id && VisibilityPolicy.isPublicUpdateField(h.field) && h.changedAt.getTime() > at);
   }
 
   /**

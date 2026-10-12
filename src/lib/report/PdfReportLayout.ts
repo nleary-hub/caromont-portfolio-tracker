@@ -2,8 +2,11 @@ import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { ViewSettings, type ViewColumn, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { LineLayout, WidthFit, type ColumnLayoutValue, type LayoutKey } from "@/lib/layout/LineLayout";
 
+/** Line-one PDF columns: the classic six plus the Milestone owner column (Option A, Oct 12, 2026). */
+export type LineOneKey = keyof typeof PdfReportLayout.COLUMNS_IN | "milestoneOwner";
+
 export interface LayoutColumn {
-  key: keyof typeof PdfReportLayout.COLUMNS_IN;
+  key: LineOneKey;
   widthIn: number;
 }
 
@@ -81,22 +84,58 @@ export class PdfReportLayout {
   }
 
   /**
+   * The Milestone owner column (spec: 146 pt with the status chips off, 92 pt with them on). Only for view settings
+   * that carry the chips setting (saved after migration 0034). Settings frozen before it have no such key and keep
+   * today's layout (owner inline after the milestone), so a snapshot re-rendered from its JSON never changes.
+   */
+  static readonly MILESTONE_OWNER_IN = { chipsOff: 146 / 72, chipsOn: 92 / 72 } as const;
+
+  static hasOwnerColumn(settings: Pick<ViewSettingsValue, "showStatusChips">): boolean {
+    return typeof settings.showStatusChips === "boolean";
+  }
+
+  /**
+   * Base line-one widths (inches, total 10) for the settings. Classic (no chips key): COLUMNS_IN. Chips off: Flags
+   * goes and Next milestone takes the rest beside the 146 pt owner column. Chips on: Project 2.1, Owner 1.4 and the
+   * 92 pt owner column, Flags at its 1.86 minimum, Next milestone the rest.
+   */
+  static widthsIn(settings: Pick<ViewSettingsValue, "showStatusChips">): Record<LineOneKey, number> {
+    const c = PdfReportLayout.COLUMNS_IN;
+    if (!PdfReportLayout.hasOwnerColumn(settings)) return { ...c, milestoneOwner: 0 };
+    const total = PdfReportLayout.contentWidthIn();
+    if (!ViewSettings.chipsShown(settings)) {
+      const owner = PdfReportLayout.MILESTONE_OWNER_IN.chipsOff;
+      return { project: c.project, owner: c.owner, status: c.status, nextMilestone: total - c.project - c.owner - c.status - c.due - owner, due: c.due, flags: c.flags, milestoneOwner: owner };
+    }
+    const owner = PdfReportLayout.MILESTONE_OWNER_IN.chipsOn;
+    const project = 2.1;
+    const people = 1.4;
+    return { project, owner: people, status: c.status, nextMilestone: total - project - people - c.status - c.due - c.flags - owner, due: c.due, flags: c.flags, milestoneOwner: owner };
+  }
+
+  /**
    * Line-1 columns for the frozen report view settings: visible columns in the saved order,
    * widths scaled so they still fill the content width. The requester always renders
    * under Owner and the note always renders as line 2, so neither takes a line-1 column.
    */
   static lineOneColumns(settings: ReportColumnSettings): LayoutColumn[] {
     const keys = PdfReportLayout.lineOneKeys(settings);
+    const base = PdfReportLayout.widthsIn(settings);
     const custom = settings.widthsIn;
-    if (custom) return keys.map((key) => ({ key, widthIn: custom[key] ?? PdfReportLayout.COLUMNS_IN[key] }));
-    const used = keys.reduce((sum, k) => sum + PdfReportLayout.COLUMNS_IN[k], 0);
+    if (custom) return keys.map((key) => ({ key, widthIn: custom[key] ?? base[key] }));
+    const used = keys.reduce((sum, k) => sum + base[k], 0);
     const scale = used > 0 ? PdfReportLayout.contentWidthIn() / used : 1;
-    return keys.map((key) => ({ key, widthIn: PdfReportLayout.COLUMNS_IN[key] * scale }));
+    return keys.map((key) => ({ key, widthIn: base[key] * scale }));
   }
 
   static lineOneKeys(settings: ViewSettingsValue): LayoutColumn["key"][] {
-    const isLineOne = (c: ViewColumn): c is LayoutColumn["key"] => c in PdfReportLayout.COLUMNS_IN;
-    return ViewSettings.visibleColumns(settings).filter(isLineOne);
+    const isLineOne = (c: ViewColumn): c is Exclude<LineOneKey, "milestoneOwner"> => c in PdfReportLayout.COLUMNS_IN;
+    const keys: LineOneKey[] = ViewSettings.visibleColumns(settings).filter(isLineOne);
+    if (!PdfReportLayout.hasOwnerColumn(settings)) return keys;
+    // Right after Due (Option A); after Next milestone when Due is hidden; else last.
+    const after = keys.indexOf("due") >= 0 ? keys.indexOf("due") : keys.indexOf("nextMilestone");
+    keys.splice(after >= 0 ? after + 1 : keys.length, 0, "milestoneOwner");
+    return keys;
   }
 
   /**
@@ -119,6 +158,7 @@ export class PdfReportLayout {
     nextMilestone: "milestoneUpdate",
     due: "dueFlags",
     flags: "dueFlags",
+    milestoneOwner: "dueFlags",
   };
 
   /**
@@ -143,8 +183,9 @@ export class PdfReportLayout {
       if (!groups.includes(g)) groups.push(g);
     }
     const parts = (g: LayoutKey) => keys.filter((k) => PdfReportLayout.LAYOUT_KEY[k] === g);
+    const base = PdfReportLayout.widthsIn(settings);
     const minOf = (g: LayoutKey) =>
-      g === "dueFlags" ? parts(g).reduce((s, k) => s + PdfReportLayout.COLUMNS_IN[k], 0) : PdfReportLayout.LAYOUT_MIN_IN[g];
+      g === "dueFlags" ? parts(g).reduce((s, k) => s + base[k], 0) : PdfReportLayout.LAYOUT_MIN_IN[g];
     const total = PdfReportLayout.contentWidthIn();
     const shareSum = groups.reduce((s, g) => s + shares[g], 0) || 1;
     const fitted = WidthFit.enforce(
@@ -154,7 +195,14 @@ export class PdfReportLayout {
     const out: Partial<Record<LayoutColumn["key"], number>> = {};
     for (const item of fitted) {
       const cols = parts(item.key);
-      if (item.key === "dueFlags" && cols.length === 2) {
+      if (item.key === "dueFlags" && cols.includes("milestoneOwner") && cols.length > 1) {
+        // Due keeps its base width; the rest (Milestone owner, Flags) split the remainder in their base ratio.
+        const due = cols.includes("due") ? base.due : 0;
+        if (due) out.due = due;
+        const rest = cols.filter((k) => k !== "due");
+        const restBase = rest.reduce((s, k) => s + base[k], 0) || 1;
+        for (const k of rest) out[k] = ((item.width - due) * base[k]) / restBase;
+      } else if (item.key === "dueFlags" && cols.length === 2) {
         // Due and Flags split the width in today's 0.5 : 1.86 ratio, so a wider Due/Flags column never squeezes
         // the date; at the minimum both keep today's widths.
         out.due = PdfReportLayout.dueShareIn(item.width);
