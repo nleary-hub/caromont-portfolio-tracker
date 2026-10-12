@@ -325,14 +325,14 @@ describe("Column model and show/hide", () => {
   const flexKey = (v: ViewSettingsValue) => DashboardColumnModel.columns(v).filter((c) => c.flex).map((c) => c.key);
 
   it("default: gutter, Project, People, Status, Next milestone / Latest update (flex), Due / Flags; no department column", () => {
-    expect(keys(dash())).toEqual(["gutter", "project", "people", "status", "milestoneUpdate", "dueFlags"]);
+    expect(keys(dash())).toEqual(["gutter", "project", "people", "status", "milestoneUpdate", "dueFlags", "milestoneOwner"]);
     const cols = DashboardColumnModel.columns(dash());
     expect(flexKey(dash())).toEqual(["milestoneUpdate"]);
     expect(DashboardColumnModel.spec("milestoneUpdate")).toMatchObject({ header: "Next milestone / Latest update", width: 280, minWidth: 280, flex: true });
     expect(DashboardColumnModel.spec("dueFlags")).toMatchObject({ header: "Due / Flags", width: 188, minWidth: 188, flex: false });
     expect(DashboardColumnModel.spec("people")).toMatchObject({ header: "People", width: 200, minWidth: 160 });
     expect(DashboardColumnModel.spec("gutter")).toMatchObject({ width: 24, structural: true });
-    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 200 + 112 + 280 + 316); // legacy view (no chips key): chips on, so Due / Flags + owner is 316
+    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 200 + 112 + 280 + 188 + 120); // legacy view (no chips key): chips on, so Milestone owner is 120
     expect(ViewSettings.defaults("dashboard").columnOrder).not.toContain("serviceArea");
   });
 
@@ -356,14 +356,14 @@ describe("Column model and show/hide", () => {
     expect(DashboardColumnModel.milestoneUpdateVisibility(hide("latestUpdate"))).toEqual({ milestone: true, update: false });
     expect(keys(hide("latestUpdate"))).toContain("milestoneUpdate");
     expect(keys(hide("nextMilestone"))).toContain("milestoneUpdate");
-    expect(keys(hide("nextMilestone", "latestUpdate"))).toEqual(["gutter", "project", "people", "status", "dueFlags"]);
+    expect(keys(hide("nextMilestone", "latestUpdate"))).toEqual(["gutter", "project", "people", "status", "dueFlags", "milestoneOwner"]);
   });
 
   it("Due date and Flags hide separately; the column goes only when both are hidden", () => {
     expect(DashboardColumnModel.dueFlagsVisibility(hide("flags"))).toEqual({ due: true, flags: false });
     expect(keys(hide("due"))).toContain("dueFlags");
     expect(keys(hide("flags"))).toContain("dueFlags");
-    expect(keys(hide("due", "flags"))).toEqual(["gutter", "project", "people", "status", "milestoneUpdate"]);
+    expect(keys(hide("due", "flags"))).toEqual(["gutter", "project", "people", "status", "milestoneUpdate", "milestoneOwner"]);
   });
 
   it("stacked columns follow the first of their keys in the saved order; Project stays first", () => {
@@ -387,7 +387,7 @@ describe("Flexible column fallback", () => {
   it("hiding both moves the flexible role to People", () => {
     const cols = DashboardColumnModel.columns(hide(...BOTH_MU));
     expect(flexKey(hide(...BOTH_MU))).toEqual(["people"]);
-    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 160 + 112 + 316);
+    expect(DashboardColumnModel.minTableWidth(cols)).toBe(24 + 256 + 160 + 112 + 188 + 120);
   });
 
   it("People keeps the role with any one person line shown", () => {
@@ -397,8 +397,8 @@ describe("Flexible column fallback", () => {
   it("with People hidden too, Project becomes flexible", () => {
     const v = hide(...BOTH_MU, ...ALL_PEOPLE);
     expect(flexKey(v)).toEqual(["project"]);
-    expect(keys(v)).toEqual(["gutter", "project", "status", "dueFlags"]);
-    expect(DashboardColumnModel.minTableWidth(DashboardColumnModel.columns(v))).toBe(24 + 200 + 112 + 316);
+    expect(keys(v)).toEqual(["gutter", "project", "status", "dueFlags", "milestoneOwner"]);
+    expect(DashboardColumnModel.minTableWidth(DashboardColumnModel.columns(v))).toBe(24 + 200 + 112 + 188 + 120);
   });
 
   it("with only Project left, Project is flexible; exactly one flex column in every combination", () => {
@@ -495,7 +495,7 @@ describe("Old saved views still load", () => {
     const v = ViewSettings.normalize("dashboard", saved);
     expect(v.columnOrder).not.toContain("serviceArea");
     expect(v.hiddenColumns).toEqual(["flags"]);
-    expect(keys(v)).toEqual(["gutter", "project", "people", "status", "milestoneUpdate", "dueFlags"]);
+    expect(keys(v)).toEqual(["gutter", "project", "people", "status", "milestoneUpdate", "dueFlags", "milestoneOwner"]);
     expect(DashboardColumnModel.dueFlagsVisibility(v)).toEqual({ due: true, flags: false });
     expect(() => DashboardColumnModel.pickerEntries("dashboard", v)).not.toThrow();
     // The group header row still names the department and its count.
@@ -551,10 +551,12 @@ describe("Grouped table markup", () => {
     expect(html).toContain('data-col="gutter" style="width:24px"');
     expect(html).toContain(">People</span></th>");
     expect(html).toContain(">Next milestone / Latest update</span></th>");
-    expect(html).toContain(">Due / Flags · Milestone owner</span></th>");
+    expect(html).toContain(">Due / Flags</span></th>");
+    expect(html).toContain(">Milestone owner</span></th>");
     expect(html).not.toContain(">Service area</span></th>");
     expect(html).toContain('data-col="milestoneUpdate" style="min-width:280px"');
-    expect(html).toContain('data-col="dueFlags" style="width:316px"'); // legacy view: chips on + owner
+    expect(html).toContain('data-col="dueFlags" style="width:188px"');
+    expect(html).toContain('data-col="milestoneOwner" style="width:120px"'); // legacy view: chips on
     expect(html).toContain('data-testid="milestone-update"');
     expect(html).toContain('data-testid="due-flags"');
     expect(html).toContain("py-[10px] align-top");

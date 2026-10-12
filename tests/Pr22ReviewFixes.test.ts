@@ -19,7 +19,7 @@ class Fx {
 
   /** Narrow People (the 1.0 in PDF minimum), Status last. */
   static narrowPeopleStatusLast(): ReportColumnSettings {
-    return Fx.settings(["project", "milestoneUpdate", "people", "dueFlags", "status"], { project: 316, people: 60, status: 112, milestoneUpdate: 610, dueFlags: 188 });
+    return Fx.settings(["project", "milestoneUpdate", "people", "dueFlags", "status"], { project: 316, people: 60, status: 112, milestoneUpdate: 610, dueFlags: 188, milestoneOwner: 136 });
   }
 
   static row(over: Partial<ReportRow> = {}): ReportRow {

@@ -449,6 +449,8 @@ export interface HeaderModel {
   legend: Record<FlagKind, FlagBox>;
   /** Status chips shown (report view setting). Off: no Flags column, no page 1 legend, no flags in any key. */
   chips: boolean;
+  /** Changed legend says "edited since the last report or review" (settings with the chips key, migration 0034). */
+  reviewCopy: boolean;
   /** Width of the meta block left of the grid on page 1. */
   metaWidth: number;
   /** Page 1 meta: key/value pairs, font size (9 pt, or 8 pt when the grid leaves little room) and key column width. */
@@ -756,8 +758,9 @@ export class ReportLayout {
    * Page 1 legend text beside each flag chip. Stale is built from AppConfig.STALE_AFTER_DAYS (read at
    * call time), so the flag, legend and key page always agree on the threshold.
    */
-  static legendText(kind: FlagKind): string {
-    if (kind === "changed") return "differs from last report";
+  static legendText(kind: FlagKind, review = false): string {
+    // Reports with the chips setting (migration 0034) know "Mark as reviewed"; frozen classic reports keep their text.
+    if (kind === "changed") return review ? "edited since the last report or review" : "differs from last report";
     if (kind === "overdue") return "due date has passed";
     return `no update in ${AppConfig.STALE_AFTER_DAYS}+ days`;
   }
@@ -1272,10 +1275,11 @@ export class ReportLayout {
       departments: departmentsDetail,
       totalsGrid,
       band,
-      keyLine: usesBand && input.showKeyPage === false ? ReportLayout.keyLine(m, statuses, legend, ReportGeometry.CONTENT_W, chips ? FlagSlots.ORDER : []) : null,
+      keyLine: usesBand && input.showKeyPage === false ? ReportLayout.keyLine(m, statuses, legend, ReportGeometry.CONTENT_W, chips ? FlagSlots.ORDER : [], PdfReportLayout.hasOwnerColumn(settings)) : null,
       grid: { columns, rows: [...areaRows, totalRow], width: gridWidth },
       legend,
       chips,
+      reviewCopy: PdfReportLayout.hasOwnerColumn(settings),
       metaWidth,
       meta,
       strip,
@@ -1543,7 +1547,7 @@ export class ReportLayout {
    * The status labels are never dropped: if it still does not fit with every explanation cut, it wraps
    * (an item that would cross `maxW` starts the next row at x 0).
    */
-  static keyLine(m: Measurer, statuses: readonly ProjectStatus[], legend: Record<FlagKind, FlagBox>, maxW: number = ReportGeometry.CONTENT_W, flags: readonly FlagKind[] = FlagSlots.ORDER): KeyLineModel {
+  static keyLine(m: Measurer, statuses: readonly ProjectStatus[], legend: Record<FlagKind, FlagBox>, maxW: number = ReportGeometry.CONTENT_W, flags: readonly FlagKind[] = FlagSlots.ORDER, review = false): KeyLineModel {
     const k = ReportGeometry.KEYLINE;
     type Placed = "x" | "row" | "textX";
     type Piece = (Omit<Extract<KeyLineItem, { kind: "status" }>, Placed> | Omit<Extract<KeyLineItem, { kind: "flag" }>, Placed>) & { textOffset: number };
@@ -1555,7 +1559,7 @@ export class ReportLayout {
       }
       flags.forEach((kind, i) => {
         const flag = legend[kind];
-        const text = i < keepTexts ? ReportLayout.legendText(kind) : null;
+        const text = i < keepTexts ? ReportLayout.legendText(kind, review) : null;
         pieces.push({ kind: "flag", flag, text, w: flag.width + (text ? k.textGap + m.width(text, k.size, 400) : 0), textOffset: flag.width + k.textGap });
       });
       let x = 0;

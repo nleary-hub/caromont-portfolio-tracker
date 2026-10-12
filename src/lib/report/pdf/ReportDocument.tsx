@@ -296,7 +296,7 @@ function FirstHeader({ h, band }: { h: HeaderModel; band: BandPalette | null }) 
   els.push(<Line key="lg1" x={0} y={ly + 1} w={30} text="Flags:" size={S.small} weight={600} color={C.MUTED} lh={G.SMALL_LH} />);
   els.push(<Flag key="lgc" flag={changed} x={24} y={ly} />);
   els.push(
-    <Line key="lg2" x={24 + changed.width + 4} y={ly + 1} w={h.metaWidth} text={ReportLayout.legendText("changed")} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />,
+    <Line key="lg2" x={24 + changed.width + 4} y={ly + 1} w={h.metaWidth} text={ReportLayout.legendText("changed", h.reviewCopy)} size={S.small} color={C.MUTED} lh={G.SMALL_LH} />,
   );
   els.push(<Flag key="lgo" flag={overdue} x={24} y={ly + G.LEGEND_LINE_H} />);
   els.push(

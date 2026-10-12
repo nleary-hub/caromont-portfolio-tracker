@@ -368,8 +368,8 @@ describe("Infor request number: report PDF", () => {
   it("the Updated x is one constant on every row and page: same for 1, 4656, 10041, 99999 and no number, at every column width", () => {
     // Default widths, the Sep 29 custom widths (Project 0.16 of the table), and a much wider Project column.
     const order = [...LineLayout.KEYS];
-    const sep29 = PdfReportLayout.withLayout(settings, { order, shares: { project: 0.16, people: 0.131611, status: 0.085, milestoneUpdate: 0.387389, dueFlags: 0.236 } });
-    const wide = PdfReportLayout.withLayout(settings, { order, shares: { project: 0.36, people: 0.12, status: 0.085, milestoneUpdate: 0.199, dueFlags: 0.236 } });
+    const sep29 = PdfReportLayout.withLayout(settings, { order, shares: { project: 0.16, people: 0.131611, status: 0.085, milestoneUpdate: 0.387389, dueFlags: 0.236, milestoneOwner: 0.1 } });
+    const wide = PdfReportLayout.withLayout(settings, { order, shares: { project: 0.36, people: 0.12, status: 0.085, milestoneUpdate: 0.199, dueFlags: 0.236, milestoneOwner: 0.1 } });
     expect(ReportLayout.columns(sep29)[0].w).toBeCloseTo(115.2, 1);
     for (const s of [settings, sep29, wide]) {
       const xs = [1, 4656, 10041, 99999, null].map((n) => project(layout(n, s).cells).meta.find((r) => r.font === "sans")!.x);

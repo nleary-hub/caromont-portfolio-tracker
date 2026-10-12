@@ -3,7 +3,8 @@ import { ServiceAreaInfo, type AreaGroup, type DepartmentList } from "@/lib/doma
 import type { ViewColumn, ViewSettingsValue } from "@/lib/domain/ViewSettings";
 
 /** A resizable, movable table column (the dashboard's data columns; the PDF maps each onto its own columns). */
-export type LayoutKey = "project" | "people" | "status" | "milestoneUpdate" | "dueFlags";
+/** "milestoneOwner" (Option A, Oct 12, 2026) is a dashboard-only column; the PDF keeps its owner after Due inside its own layout. */
+export type LayoutKey = "project" | "people" | "status" | "milestoneUpdate" | "dueFlags" | "milestoneOwner";
 
 /** Column order and widths of one line. Shares are fractions of the table width (never pixels). */
 export interface ColumnLayoutValue {
@@ -29,8 +30,10 @@ export interface LineLayoutValue {
  * path for it, so the default dashboard and PDF are unchanged.
  */
 export class LineLayout {
-  static readonly KEYS: readonly LayoutKey[] = ["project", "people", "status", "milestoneUpdate", "dueFlags"];
+  static readonly KEYS: readonly LayoutKey[] = ["project", "people", "status", "milestoneUpdate", "dueFlags", "milestoneOwner"];
   static readonly PINNED: LayoutKey = "project";
+  /** Milestone owner's share when a saved layout predates it: 136px of the default 1128px data width. */
+  static readonly OWNER_DEFAULT_SHARE = 136 / (256 + 200 + 112 + 280 + 188 + 136);
 
   /** Header names (the announcement text: "Next milestone moved to column 3 of 6."). */
   static readonly LABELS: Readonly<Record<LayoutKey, string>> = {
@@ -39,6 +42,7 @@ export class LineLayout {
     status: "Status",
     milestoneUpdate: "Next milestone",
     dueFlags: "Due / Flags",
+    milestoneOwner: "Milestone owner",
   };
 
   /** View settings keys each layout column stands for, per context (a column moves with all of its keys). */
@@ -49,6 +53,8 @@ export class LineLayout {
       status: ["status"],
       milestoneUpdate: ["nextMilestone", "latestUpdate", "note"],
       dueFlags: ["due", "flags"],
+      // No view settings key: the column is derived from the checklist and always shown.
+      milestoneOwner: [],
     },
     report: {
       project: ["project"],
@@ -56,6 +62,7 @@ export class LineLayout {
       status: ["status"],
       milestoneUpdate: ["nextMilestone", "note"],
       dueFlags: ["due", "flags"],
+      milestoneOwner: [],
     },
   };
 
@@ -67,18 +74,39 @@ export class LineLayout {
     return typeof k === "string" && (LineLayout.KEYS as readonly string[]).includes(k);
   }
 
-  /** Any order to a valid one: known keys once, missing keys appended in default order, Project first. */
-  static normalizeOrder(raw: unknown): LayoutKey[] {
+  /**
+   * Any order to a valid one: known keys once, Project first. A missing key goes right after the key before it in
+   * `reference` (default: the default order), so a layout saved before Milestone owner existed gets it right after
+   * Due / Flags, wherever Due / Flags was moved.
+   */
+  static normalizeOrder(raw: unknown, reference: readonly LayoutKey[] = LineLayout.KEYS): LayoutKey[] {
     const seen: LayoutKey[] = [];
     if (Array.isArray(raw)) for (const k of raw) if (LineLayout.isKey(k) && !seen.includes(k)) seen.push(k);
-    for (const k of LineLayout.KEYS) if (!seen.includes(k)) seen.push(k);
+    const ref = [...reference.filter((k) => LineLayout.isKey(k)), ...LineLayout.KEYS.filter((k) => !reference.includes(k))];
+    for (const k of ref) {
+      if (seen.includes(k)) continue;
+      // Missing keys are appended (as always), except Milestone owner, which follows its reference neighbor.
+      const before = k === "milestoneOwner" ? ref.slice(0, ref.indexOf(k)).reverse().find((p) => seen.includes(p)) : undefined;
+      seen.splice(before ? seen.indexOf(before) + 1 : seen.length, 0, k);
+    }
     return [LineLayout.PINNED, ...seen.filter((k) => k !== LineLayout.PINNED)];
   }
 
-  /** Positive finite shares for every key, scaled to sum 1; anything else is null (default widths). */
+  /**
+   * Positive finite shares for every key, scaled to sum 1; anything else is null (default widths). Shares saved
+   * before Milestone owner existed get its default share added, the other columns keeping their ratios (so the PDF,
+   * which never reads that share, lays out exactly as before).
+   */
   static normalizeShares(raw: unknown): Record<LayoutKey, number> | null {
     if (!raw || typeof raw !== "object") return null;
     const r = raw as Record<string, unknown>;
+    if (r.milestoneOwner === undefined) {
+      const old = LineLayout.KEYS.filter((k) => k !== "milestoneOwner").map((k) => r[k]);
+      if (!old.every((v) => typeof v === "number" && Number.isFinite(v) && v > 0)) return null;
+      const oldSum = (old as number[]).reduce((a, b) => a + b, 0);
+      const d = LineLayout.OWNER_DEFAULT_SHARE;
+      return { ...Object.fromEntries(LineLayout.KEYS.filter((k) => k !== "milestoneOwner").map((k, i) => [k, ((old[i] as number) / oldSum) * (1 - d)])), milestoneOwner: d } as Record<LayoutKey, number>;
+    }
     const values = LineLayout.KEYS.map((k) => r[k]);
     if (!values.every((v) => typeof v === "number" && Number.isFinite(v) && v > 0)) return null;
     const sum = (values as number[]).reduce((a, b) => a + b, 0);
@@ -191,15 +219,18 @@ export class LineLayout {
     return { ...settings, columnOrder };
   }
 
-  /** The layout order a view settings column order implies (a layout column sits where its first key is). */
-  static orderFromSettings(context: ViewContext, settings: ViewSettingsValue): LayoutKey[] {
+  /**
+   * The layout order a view settings column order implies (a layout column sits where its first key is). Columns
+   * without view settings keys (Milestone owner) keep their place from `reference` (the line's saved order).
+   */
+  static orderFromSettings(context: ViewContext, settings: ViewSettingsValue, reference?: readonly LayoutKey[]): LayoutKey[] {
     const members = LineLayout.MEMBERS[context];
     const order: LayoutKey[] = [];
     for (const c of settings.columnOrder) {
       const key = LineLayout.KEYS.find((k) => members[k].includes(c));
       if (key && !order.includes(key)) order.push(key);
     }
-    return LineLayout.normalizeOrder(order);
+    return LineLayout.normalizeOrder(order, reference);
   }
 }
 
@@ -265,7 +296,8 @@ export class ColumnShares {
     people: 140,
     status: 110,
     milestoneUpdate: 240,
-    dueFlags: 258,
+    dueFlags: 188,
+    milestoneOwner: 120,
   };
 
   /** Which visible column takes spare width when a fit makes a column narrower (same preference as the flex column). */
@@ -288,7 +320,7 @@ export class ColumnShares {
 
   /** Default widths as shares (Next milestone / Latest update at its 280px minimum), for hidden columns without a saved share. */
   static defaultShares(): Record<LayoutKey, number> {
-    const px: Record<LayoutKey, number> = { project: 256, people: 200, status: 112, milestoneUpdate: 280, dueFlags: 258 };
+    const px: Record<LayoutKey, number> = { project: 256, people: 200, status: 112, milestoneUpdate: 280, dueFlags: 188, milestoneOwner: 136 };
     const sum = Object.values(px).reduce((a, b) => a + b, 0);
     return Object.fromEntries(LineLayout.KEYS.map((k) => [k, px[k] / sum])) as Record<LayoutKey, number>;
   }

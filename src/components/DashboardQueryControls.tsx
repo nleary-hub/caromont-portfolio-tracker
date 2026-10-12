@@ -30,7 +30,7 @@ export class QueryCopy {
   static readonly CONFIRM_BODY = "This clears their Changed flag. History is kept, and the next edit brings Changed back.";
   static readonly CONFIRM_FILTER_NOTE = "Only projects in the current view are included.";
   static confirmButton(n: number): string {
-    return `Mark ${n} reviewed`;
+    return `Mark ${n} as reviewed`;
   }
   static markedOne(name: string): string {
     return `Marked "${name}" as reviewed.`;

@@ -168,5 +168,14 @@ describe("status chip toggles and the PDF legend", () => {
 
   it("legacy settings (no key, frozen snapshots) keep the classic chips and legend", () => {
     expect(head(ViewSettings.normalize("report", null)).chips).toBe(true);
+    expect(head(ViewSettings.normalize("report", null)).reviewCopy).toBe(false);
+    expect(ReportLayout.legendText("changed")).toBe("differs from last report");
+  });
+
+  it("chips on: the Changed legend mentions the review; Overdue and Stale unchanged", () => {
+    expect(head(on).reviewCopy).toBe(true);
+    expect(ReportLayout.legendText("changed", true)).toBe("edited since the last report or review");
+    expect(ReportLayout.legendText("overdue", true)).toBe(ReportLayout.legendText("overdue"));
+    expect(ReportLayout.legendText("stale", true)).toBe(ReportLayout.legendText("stale"));
   });
 });

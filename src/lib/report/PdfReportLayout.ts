@@ -143,7 +143,7 @@ export class PdfReportLayout {
    * width (the visible parts of 0.5 + 1.86). Status keeps today's 0.85 so the widest pill fits, and the owner stack
    * keeps its 1.0 base width.
    */
-  static readonly LAYOUT_MIN_IN: Readonly<Record<Exclude<LayoutKey, "dueFlags">, number>> = {
+  static readonly LAYOUT_MIN_IN: Readonly<Record<Exclude<LayoutKey, "dueFlags" | "milestoneOwner">, number>> = {
     project: 1.6,
     people: PdfReportLayout.OWNER_BASE_IN,
     status: 0.85,
@@ -185,7 +185,7 @@ export class PdfReportLayout {
     const parts = (g: LayoutKey) => keys.filter((k) => PdfReportLayout.LAYOUT_KEY[k] === g);
     const base = PdfReportLayout.widthsIn(settings);
     const minOf = (g: LayoutKey) =>
-      g === "dueFlags" ? parts(g).reduce((s, k) => s + base[k], 0) : PdfReportLayout.LAYOUT_MIN_IN[g];
+      g === "dueFlags" || g === "milestoneOwner" ? parts(g).reduce((s, k) => s + base[k], 0) : PdfReportLayout.LAYOUT_MIN_IN[g];
     const total = PdfReportLayout.contentWidthIn();
     const shareSum = groups.reduce((s, g) => s + shares[g], 0) || 1;
     const fitted = WidthFit.enforce(

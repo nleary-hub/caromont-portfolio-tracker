@@ -52,6 +52,8 @@ class PickerCopy {
   static readonly TAB_LABEL: Record<ViewContext, string> = { dashboard: "Dashboard", report: "Report" };
   /** The Flags entry is the status chips switch (migration 0034, off by default on both tabs). */
   static readonly STATUS_CHIPS = "Show status chips (Changed, Overdue, Stale)";
+  /** Report tab wording (PDF). */
+  static readonly STATUS_CHIPS_REPORT = "Status chips (Changed, Overdue, Stale)";
 }
 
 export function ViewSettingsPicker({ settings, counts, onSave, layoutReset, compact = false }: ViewSettingsPickerProps) {
@@ -382,7 +384,7 @@ function ColumnCheck({
         }
       />
       <CheckBox on={visible} locked={locked} />
-      <span className="vp-lbl">{chips ? PickerCopy.STATUS_CHIPS : ViewSettings.columnLabel(context, column)}</span>
+      <span className="vp-lbl">{chips ? (context === "report" ? PickerCopy.STATUS_CHIPS_REPORT : PickerCopy.STATUS_CHIPS) : ViewSettings.columnLabel(context, column)}</span>
     </label>
   );
 }

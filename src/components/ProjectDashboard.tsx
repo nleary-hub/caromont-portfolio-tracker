@@ -407,7 +407,7 @@ export function ProjectDashboard({
     if (context === "dashboard" && lineLayout.columns) {
       // This line has its own column order: a reorder in the View menu changes the line layout (not the order
       // shared by every line); show/hide still saves to the dashboard view settings.
-      const order = LineLayout.orderFromSettings("dashboard", value);
+      const order = LineLayout.orderFromSettings("dashboard", value, lineLayout.columns.order);
       if (order.join() !== lineLayout.columns.order.join()) {
         const err = await saveColumns({ ...lineLayout.columns, order });
         if (err) return err;
@@ -609,7 +609,7 @@ export function ProjectDashboard({
           <DueFilterSelect value={q.due} onChange={(due) => setQ({ ...q, due })} />
           <MultiFilterSelect label="Status" testId="status-filter" options={statusOptions(deptRows)} value={q.statuses} onChange={(v) => setQ({ ...q, statuses: v as DashboardQueryState["statuses"] })} width={130} />
           <MultiFilterSelect label="Project owner" testId="project-owner-filter" searchable options={DashboardQuery.ownerOptions(deptRows, "project")} value={q.projectOwners} onChange={(v) => setQ({ ...q, projectOwners: v })} width={160} />
-          <MultiFilterSelect label="Task owner" testId="task-owner-filter" searchable options={DashboardQuery.ownerOptions(deptRows, "task")} value={q.taskOwners} onChange={(v) => setQ({ ...q, taskOwners: v })} width={150} />
+          <MultiFilterSelect label="Milestone owner" testId="task-owner-filter" searchable options={DashboardQuery.ownerOptions(deptRows, "task")} value={q.taskOwners} onChange={(v) => setQ({ ...q, taskOwners: v })} width={150} />
           <div className="flex-1" />
           {layoutError && (
             <span role="alert" className="mr-2 text-danger type-caption">
@@ -679,7 +679,7 @@ export function ProjectDashboard({
             <span>
               {visible.length} of {rows.length} projects
             </span>
-            <span>Changed = any edit since the last report or the last review</span>
+            <span>Changed means edited since the last report or the last review.</span>
           </div>
         </section>
         )}

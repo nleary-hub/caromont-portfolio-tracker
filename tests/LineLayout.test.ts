@@ -55,27 +55,27 @@ class Fixture {
 
 describe("share math (dashboard)", () => {
   it("saves shares of the table width that sum to 1, and turns them back into the same pixels at the same width", () => {
-    const px = { project: 300, people: 200, status: 120, milestoneUpdate: 500, dueFlags: 258 };
+    const px = { project: 300, people: 200, status: 120, milestoneUpdate: 500, dueFlags: 188, milestoneOwner: 136 };
     const shares = ColumnShares.toShares(px);
     expect(sum(Object.values(shares))).toBeCloseTo(1, 12);
-    const back = ColumnShares.toPixels(KEYS, shares, 1378);
+    const back = ColumnShares.toPixels(KEYS, shares, 1444);
     for (const k of KEYS) expect(back[k]).toBeCloseTo(px[k], 9);
     // At another width the proportions hold (no pixels stored).
-    const wide = ColumnShares.toPixels(KEYS, shares, 1378 * 1.5);
+    const wide = ColumnShares.toPixels(KEYS, shares, 1444 * 1.5);
     expect(wide.milestoneUpdate / wide.project).toBeCloseTo(500 / 300, 9);
   });
 
   it("enforces the dashboard minimums, taking width back from the widest column first", () => {
-    expect(ColumnShares.MIN_PX).toEqual({ project: 200, people: 140, status: 110, milestoneUpdate: 240, dueFlags: 258 }); // Due / Flags now also holds the Milestone owner (Oct 12, 2026)
-    // Status and Due / Flags far too narrow at 1100px; Next milestone is the widest and pays first.
-    const shares = Fixture.shares({ project: 250, people: 200, status: 10, milestoneUpdate: 630, dueFlags: 10 });
-    const px = ColumnShares.toPixels(KEYS, shares, 1100);
+    expect(ColumnShares.MIN_PX).toEqual({ project: 200, people: 140, status: 110, milestoneUpdate: 240, dueFlags: 188, milestoneOwner: 120 });
+    // Status and Due / Flags far too narrow at 1000px; Next milestone is the widest and pays first.
+    const shares = Fixture.shares({ project: 250, people: 200, status: 10, milestoneUpdate: 530, dueFlags: 10, milestoneOwner: 136 });
+    const px = ColumnShares.toPixels(KEYS, shares, 1136);
     expect(px.status).toBeCloseTo(110, 9);
-    expect(px.dueFlags).toBeCloseTo(258, 9);
+    expect(px.dueFlags).toBeCloseTo(188, 9);
     expect(px.project).toBeCloseTo(250, 9);
     expect(px.people).toBeCloseTo(200, 9);
-    expect(px.milestoneUpdate).toBeCloseTo(1100 - 250 - 200 - 110 - 258, 9);
-    expect(sum(Object.values(px))).toBeCloseTo(1100, 9);
+    expect(px.milestoneUpdate).toBeCloseTo(1136 - 250 - 200 - 110 - 188 - 136, 9);
+    expect(sum(Object.values(px))).toBeCloseTo(1136, 9);
   });
 
   it("water-fills: the widest shrinks to the next widest, then both shrink together, never below their minimums", () => {
@@ -93,7 +93,7 @@ describe("share math (dashboard)", () => {
   });
 
   it("a hidden column keeps its share, and the shown columns share the table between them", () => {
-    const shares = Fixture.shares({ project: 300, people: 200, status: 120, milestoneUpdate: 500, dueFlags: 188 });
+    const shares = Fixture.shares({ project: 300, people: 200, status: 120, milestoneUpdate: 500, dueFlags: 188, milestoneOwner: 136 });
     const px = ColumnShares.toPixels(["project", "status", "milestoneUpdate", "dueFlags"], shares, 1108);
     expect(px.people).toBeUndefined();
     expect(sum(Object.values(px))).toBeCloseTo(1108, 9);
@@ -102,16 +102,19 @@ describe("share math (dashboard)", () => {
   });
 
   it("drag resize moves width to or from the right neighbor (left one for the last column), clamped at both minimums", () => {
-    const w = { project: 256, people: 200, status: 112, milestoneUpdate: 600, dueFlags: 188 };
+    const w = { project: 256, people: 200, status: 112, milestoneUpdate: 600, dueFlags: 188, milestoneOwner: 136 };
     expect(ColumnShares.resize(KEYS, w, "project", 40)).toMatchObject({ project: 296, people: 160 });
     expect(ColumnShares.resize(KEYS, w, "project", 200)).toMatchObject({ project: 316, people: 140 });
     expect(ColumnShares.resize(KEYS, w, "project", -200)).toMatchObject({ project: 200, people: 256 });
-    expect(ColumnShares.resize(KEYS, w, "dueFlags", 50)).toMatchObject({ dueFlags: 238, milestoneUpdate: 550 });
-    expect(ColumnShares.resize(KEYS, w, "dueFlags", -50)).toMatchObject({ dueFlags: 188, milestoneUpdate: 600 });
+    // Due / Flags' right neighbor is now Milestone owner (min 120), the last column's is Due / Flags (min 188).
+    expect(ColumnShares.resize(KEYS, w, "dueFlags", 50)).toMatchObject({ dueFlags: 204, milestoneOwner: 120 });
+    expect(ColumnShares.resize(KEYS, w, "dueFlags", -50)).toMatchObject({ dueFlags: 188, milestoneOwner: 136 });
+    expect(ColumnShares.resize(KEYS, w, "milestoneOwner", -10)).toMatchObject({ milestoneOwner: 126, dueFlags: 198 });
+    expect(ColumnShares.resize(KEYS, w, "milestoneOwner", 50)).toMatchObject({ milestoneOwner: 136, dueFlags: 188 });
   });
 
   it("double-click fit grows to the widest cell (taken widest first) or shrinks to it, never below the minimum", () => {
-    const w = { project: 256, people: 200, status: 112, milestoneUpdate: 600, dueFlags: 188 };
+    const w = { project: 256, people: 200, status: 112, milestoneUpdate: 600, dueFlags: 188, milestoneOwner: 136 };
     const grown = ColumnShares.fit(KEYS, w, "people", 320);
     expect(grown.people).toBe(320);
     expect(grown.milestoneUpdate).toBe(480);
@@ -127,16 +130,27 @@ describe("column order", () => {
   it("keeps Project pinned first and moves a column among the shown ones", () => {
     const order = [...KEYS];
     expect(LineLayout.moveColumn(order, "project", 3)).toEqual(order);
-    expect(LineLayout.moveColumn(order, "dueFlags", 0)).toEqual(["project", "dueFlags", "people", "status", "milestoneUpdate"]);
-    expect(LineLayout.moveVisible(order, KEYS, "milestoneUpdate", 1)).toEqual(["project", "milestoneUpdate", "people", "status", "dueFlags"]);
+    expect(LineLayout.moveColumn(order, "dueFlags", 0)).toEqual(["project", "dueFlags", "people", "status", "milestoneUpdate", "milestoneOwner"]);
+    expect(LineLayout.moveVisible(order, KEYS, "milestoneUpdate", 1)).toEqual(["project", "milestoneUpdate", "people", "status", "dueFlags", "milestoneOwner"]);
     // With People hidden, "position 2 of the shown" lands after Status.
-    expect(LineLayout.moveVisible(order, ["project", "status", "milestoneUpdate", "dueFlags"], "dueFlags", 2)).toEqual(["project", "people", "status", "dueFlags", "milestoneUpdate"]);
-    expect(LineLayout.normalizeOrder(["status", "project", "bogus", "status"])).toEqual(["project", "status", "people", "milestoneUpdate", "dueFlags"]);
+    expect(LineLayout.moveVisible(order, ["project", "status", "milestoneUpdate", "dueFlags"], "dueFlags", 2)).toEqual(["project", "people", "status", "dueFlags", "milestoneUpdate", "milestoneOwner"]);
+    expect(LineLayout.normalizeOrder(["status", "project", "bogus", "status"])).toEqual(["project", "status", "people", "milestoneUpdate", "dueFlags", "milestoneOwner"]);
+    // A layout saved before Milestone owner existed gets it right after Due / Flags, wherever that was moved.
+    expect(LineLayout.normalizeOrder(["project", "dueFlags", "status", "people", "milestoneUpdate"])).toEqual(["project", "dueFlags", "milestoneOwner", "status", "people", "milestoneUpdate"]);
+    // Read back from view settings, Milestone owner keeps its place from the line's saved order.
+    expect(LineLayout.normalizeOrder(["project", "people", "status", "milestoneUpdate", "dueFlags"], ["project", "milestoneOwner", "people", "status", "milestoneUpdate", "dueFlags"])).toEqual(["project", "milestoneOwner", "people", "status", "milestoneUpdate", "dueFlags"]);
+  });
+
+  it("old saved shares (no Milestone owner) keep their ratios and get the owner's default share", () => {
+    const s = LineLayout.normalizeShares({ project: 0.2, people: 0.2, status: 0.1, milestoneUpdate: 0.3, dueFlags: 0.2 })!;
+    expect(s.milestoneOwner).toBeCloseTo(LineLayout.OWNER_DEFAULT_SHARE, 12);
+    expect(s.project / s.milestoneUpdate).toBeCloseTo(0.2 / 0.3, 12);
+    expect(sum(Object.values(s))).toBeCloseTo(1, 12);
   });
 
   it("reorders the view settings keys as blocks, and reads the order back", () => {
     const dash = ViewSettings.defaults("dashboard");
-    const order: LayoutKey[] = ["project", "milestoneUpdate", "status", "people", "dueFlags"];
+    const order: LayoutKey[] = ["project", "milestoneUpdate", "status", "people", "dueFlags", "milestoneOwner"];
     const s = LineLayout.orderedSettings("dashboard", dash, order);
     expect(s.columnOrder).toEqual(["project", "nextMilestone", "latestUpdate", "status", "owner", "physicianChampion", "contractsLead", "due", "flags", "inforNumber"]);
     expect(LineLayout.orderFromSettings("dashboard", s)).toEqual(order);
@@ -175,7 +189,7 @@ describe("PDF widths from shares", () => {
   });
 
   it("applies the shares to the 10 in printable width, keeping Due at 0.5 in and Flags the rest", () => {
-    const shares = Fixture.shares({ project: 250, people: 150, status: 100, milestoneUpdate: 300, dueFlags: 200 });
+    const shares = Fixture.shares({ project: 250, people: 150, status: 100, milestoneUpdate: 300, dueFlags: 200, milestoneOwner: 136 });
     const w = PdfReportLayout.layoutWidthsIn(REPORT, shares);
     expect(sum(Object.values(w) as number[])).toBeCloseTo(10, 9);
     expect(w.owner).toBeCloseTo(1.5, 9);
@@ -190,7 +204,7 @@ describe("PDF widths from shares", () => {
   it("enforces Project 1.6 in, Next milestone 2.0 in and Due / Flags at today's width, taking from the widest column first", () => {
     expect(PdfReportLayout.LAYOUT_MIN_IN.project).toBe(1.6);
     expect(PdfReportLayout.LAYOUT_MIN_IN.milestoneUpdate).toBe(2.0);
-    const shares = Fixture.shares({ project: 50, people: 800, status: 50, milestoneUpdate: 50, dueFlags: 50 });
+    const shares = Fixture.shares({ project: 50, people: 800, status: 50, milestoneUpdate: 50, dueFlags: 50, milestoneOwner: 136 });
     const w = PdfReportLayout.layoutWidthsIn(REPORT, shares);
     expect(w.project).toBeCloseTo(1.6, 9);
     expect(w.nextMilestone).toBeCloseTo(2.0, 9);
@@ -202,7 +216,7 @@ describe("PDF widths from shares", () => {
   });
 
   it("draws the PDF with the layout: column order and widths in the column head, notes still start at the first column after the line-2 columns", () => {
-    const shares = Fixture.shares({ project: 320, people: 170, status: 110, milestoneUpdate: 340, dueFlags: 260 });
+    const shares = Fixture.shares({ project: 320, people: 170, status: 110, milestoneUpdate: 340, dueFlags: 260, milestoneOwner: 136 });
     const columns: ColumnLayoutValue = { order: ["project", "status", "people", "dueFlags", "milestoneUpdate"], shares };
     const l = Fixture.layout({ layout: { columns, rows: {} } });
     expect(l.header.columns.map((c) => c.key)).toEqual(["project", "status", "owner", "due", "flags", "nextMilestone"]);
@@ -303,7 +317,7 @@ describe("LineLayoutService", () => {
   it("resets columns and rows separately, each audited", async () => {
     const a = await Fixture.project(db, "A", "Cath");
     const b = await Fixture.project(db, "B", "Cath");
-    await LineLayoutService.setColumns({ order: [...KEYS], shares: Fixture.shares({ project: 1, people: 1, status: 1, milestoneUpdate: 1, dueFlags: 1 }) }, ADMIN, db, CVPSL);
+    await LineLayoutService.setColumns({ order: [...KEYS], shares: Fixture.shares({ project: 1, people: 1, status: 1, milestoneUpdate: 1, dueFlags: 1, milestoneOwner: 136 }) }, ADMIN, db, CVPSL);
     await LineLayoutService.setRowOrder("Cath", [b.id, a.id], ADMIN, db, CVPSL);
     await LineLayoutService.resetColumns(ADMIN, db, CVPSL);
     expect(await LineLayoutService.get(db, CVPSL)).toEqual({ columns: null, rows: { Cath: [b.id, a.id] } });
@@ -340,7 +354,7 @@ describe("snapshot freezing of the layout", () => {
     const db = fake.asClient();
     const a = await Fixture.project(db, "Alpha", "Cath");
     const b = await Fixture.project(db, "Bravo", "Cath");
-    const cols = { order: ["project", "status", "people", "milestoneUpdate", "dueFlags"] as LayoutKey[], shares: null };
+    const cols = { order: ["project", "status", "people", "milestoneUpdate", "dueFlags", "milestoneOwner"] as LayoutKey[], shares: null };
     await LineLayoutService.setColumns(cols, ADMIN, db, CVPSL);
     await LineLayoutService.setRowOrder("Cath", [b.id, a.id], ADMIN, db, CVPSL);
     const snap = await SnapshotService.create({ periodStart: "2026-09-16", periodEnd: "2026-09-29", generatedBy: "cron", now: new Date("2026-09-29T21:30:00Z") }, db);
@@ -402,7 +416,7 @@ describe("dashboard table with the line layout", () => {
   it("non-admins see the same layout with no resize handles, header drag or row grips", () => {
     const value = { columns: { order: ["project", "dueFlags", "status", "people", "milestoneUpdate"] as LayoutKey[], shares: null }, rows: { Cath: ["c3", "c1"] } };
     const html = render({ value, canEdit: false });
-    expect(headers(html)).toEqual(["project", "dueFlags", "status", "people", "milestoneUpdate"]);
+    expect(headers(html)).toEqual(["project", "dueFlags", "milestoneOwner", "status", "people", "milestoneUpdate"]);
     expect(rowKeys(html)).toEqual(["c3", "c1", "c2", "e1"]);
     expect(html).not.toContain("data-resize");
     expect(html).not.toContain("data-grip");
@@ -412,8 +426,8 @@ describe("dashboard table with the line layout", () => {
 
   it("admins get a handle on every header, a keyboard-movable header for all but Project, and a grip per row", () => {
     const html = render({ canEdit: true });
-    expect([...html.matchAll(/data-resize="([^"]+)"/g)].map((x) => x[1])).toEqual(["project", "people", "status", "milestoneUpdate", "dueFlags"]);
-    expect([...html.matchAll(/<th[^>]*data-col="([^"]+)"[^>]*tabindex="0"/g)].map((x) => x[1])).toEqual(["people", "status", "milestoneUpdate", "dueFlags"]);
+    expect([...html.matchAll(/data-resize="([^"]+)"/g)].map((x) => x[1])).toEqual(["project", "people", "status", "milestoneUpdate", "dueFlags", "milestoneOwner"]);
+    expect([...html.matchAll(/<th[^>]*data-col="([^"]+)"[^>]*tabindex="0"/g)].map((x) => x[1])).toEqual(["people", "status", "milestoneUpdate", "dueFlags", "milestoneOwner"]);
     expect(html.match(/data-grip/g)).toHaveLength(4);
     expect(html).toContain(LayoutCopy.RESIZE_TOOLTIP);
     expect(html).toContain(LayoutCopy.GRIP_TOOLTIP);

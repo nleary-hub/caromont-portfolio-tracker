@@ -167,9 +167,9 @@ class TableMeasure {
 export function DashboardTable({ rows, settings, selectedId, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, empty }: DashboardTableProps) {
   const value = layout?.value ?? LineLayout.defaults();
   const effective = value.columns ? LineLayout.orderedSettings("dashboard", settings, value.columns.order) : settings;
-  const columns = DashboardColumnModel.columns(effective);
-  const dataKeys = columns.filter((c) => !c.structural).map((c) => c.key as LayoutKey);
   const baseOrder = value.columns?.order ?? LineLayout.orderFromSettings("dashboard", settings);
+  const columns = DashboardColumnModel.columns(effective, baseOrder);
+  const dataKeys = columns.filter((c) => !c.structural).map((c) => c.key as LayoutKey);
   const shares = value.columns?.shares ?? null;
   const editable = Boolean(layout?.canEdit);
   const sort = layout?.sort ?? null;
@@ -768,10 +768,13 @@ function ProjectRow({
           case "dueFlags":
             return (
               <td key={c.key} data-col={c.key} className={td}>
-                <div className="flex items-start gap-2">
-                  <DueFlagsCellView cell={DueFlags.cell(row, dueFlags, today)} />
-                  <MilestoneOwnerView row={row} chips={chips} />
-                </div>
+                <DueFlagsCellView cell={DueFlags.cell(row, dueFlags, today)} />
+              </td>
+            );
+          case "milestoneOwner":
+            return (
+              <td key={c.key} data-col={c.key} className={td}>
+                <MilestoneOwnerView row={row} />
               </td>
             );
         }
@@ -928,7 +931,7 @@ function ClockIcon() {
 
 /**
  * Header text with its sort button(s): click cycles ascending, descending, manual (aria-sort on the th is set by the
- * caller through data). Project carries a second button for Updated; Due / Milestone owner has one per field. The
+ * caller through data). Project carries a second button for Updated; Due and Milestone owner each have one. The
  * resize handle sits outside these buttons and never sorts. Flags is not sortable.
  */
 function HeaderLabel({ column, header, sort, onSort, chips }: { column: string; header: string; sort: DashboardSortState; onSort?: (key: DashboardSortKey) => void; chips: boolean }) {
@@ -952,10 +955,14 @@ function HeaderLabel({ column, header, sort, onSort, chips }: { column: string; 
             }}
             className={`flex min-w-0 items-center gap-1 uppercase tracking-[.04em] hover:text-fg focus-visible:outline-2 focus-visible:outline-(--color-accent) ${state !== "none" ? "text-fg" : ""} ${i > 0 ? "text-[11px]" : ""}`}
           >
-            <span className="truncate">{label}</span>
-            <span aria-hidden="true" className="w-2 shrink-0" style={{ color: "#4C8DFF" }}>
-              {state === "ascending" ? "▲" : state === "descending" ? "▼" : ""}
-            </span>
+            {/* Milestone owner (120 to 136px) wraps to two lines in the 36px header instead of truncating. */}
+            <span className={column === "milestoneOwner" ? "line-clamp-2 whitespace-normal text-left leading-[14px]" : "truncate"}>{label}</span>
+            {/* The arrow takes room only while active, so narrow headers ("Milestone owner", 136px) show in full. */}
+            {state !== "none" && (
+              <span aria-hidden="true" className="w-2 shrink-0" style={{ color: "#4C8DFF" }}>
+                {state === "ascending" ? "▲" : "▼"}
+              </span>
+            )}
           </button>
         );
       })}
@@ -976,14 +983,16 @@ export class HeaderSort {
       case "milestoneUpdate":
         return ["nextMilestone"];
       case "dueFlags":
-        return ["due", "milestoneOwner"];
+        return ["due"];
+      case "milestoneOwner":
+        return ["milestoneOwner"];
       default:
         return [];
     }
   }
 
   static label(column: string, key: DashboardSortKey, header: string, chips: boolean): string {
-    if (column === "dueFlags") return key === "due" ? (chips ? "Due / Flags" : "Due") : "Milestone owner";
+    if (column === "dueFlags") return chips ? header : "Due";
     if (column === "project" && key === "updated") return "Updated";
     return header;
   }
@@ -1001,11 +1010,10 @@ export class HeaderSort {
 /**
  * Milestone owner (Option A): 12px Inter 500 #E6E8EC, up to two lines then ellipsis; physician names as
  * "Dr. A. Lastname"; tooltip and aria-label carry the full name. Unassigned italic amber; no open milestone a muted
- * en dash ("No open milestone"). 136px with chips off, 120px with chips on.
+ * en dash ("No open milestone"). Its own column right after Due (DashboardColumnModel: 136px, 120px with chips on).
  */
-export function MilestoneOwnerView({ row, chips }: { row: DashboardRow; chips: boolean }) {
+export function MilestoneOwnerView({ row }: { row: DashboardRow }) {
   const cell = MilestoneOwner.cell(row);
-  const width = chips ? MilestoneOwnerStyle.WIDTH_CHIPS_ON : MilestoneOwnerStyle.WIDTH_CHIPS_OFF;
   const label = MilestoneOwner.label(cell);
   return (
     <span
@@ -1013,18 +1021,12 @@ export function MilestoneOwnerView({ row, chips }: { row: DashboardRow; chips: b
       data-owner-kind={cell.kind}
       title={label}
       aria-label={cell.kind === "owner" ? `Milestone owner: ${label}` : label}
-      className={`line-clamp-2 block shrink-0 break-words text-[12px] leading-[18px] ${cell.kind === "unassigned" ? "italic" : cell.kind === "none" ? "text-muted" : "font-medium"}`}
-      style={{ width, color: cell.kind === "unassigned" ? "#F5B83D" : cell.kind === "owner" ? "#E6E8EC" : undefined }}
+      className={`line-clamp-2 block break-words text-[12px] leading-[18px] ${cell.kind === "unassigned" ? "italic" : cell.kind === "none" ? "text-muted" : "font-medium"}`}
+      style={{ color: cell.kind === "unassigned" ? "#F5B83D" : cell.kind === "owner" ? "#E6E8EC" : undefined }}
     >
       {MilestoneOwner.text(cell)}
     </span>
   );
-}
-
-export class MilestoneOwnerStyle {
-  static readonly WIDTH_CHIPS_OFF = 136;
-  static readonly WIDTH_CHIPS_ON = 120;
-  static readonly GAP = 8;
 }
 
 /** "Matches in milestones (n)": up to 3, then "+N more" (search). */
