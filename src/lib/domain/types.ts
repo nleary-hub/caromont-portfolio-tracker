@@ -49,6 +49,9 @@ export interface ProjectRecord {
   startDate?: Date | null;
   /** True while startDate is the import default (drawer "Default" tag). */
   startDateIsDefault?: boolean;
+  /** "Mark as reviewed" time (migration 0034). Absent on rows read without it. */
+  reviewedAt?: Date | null;
+  reviewedBy?: string | null;
 }
 
 export interface RecipientRecord {

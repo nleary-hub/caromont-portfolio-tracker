@@ -13,7 +13,7 @@ import { ReportGeometry as G, ReportLayout, type DocumentLayout, type PageLayout
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 
 const m = new TextMeasure();
-const DEFAULTS = ViewSettings.defaults("report");
+const DEFAULTS = ViewSettings.normalize("report", null);
 const ALL = ViewSettings.normalize("report", { hiddenStatuses: [] });
 
 class Doc {

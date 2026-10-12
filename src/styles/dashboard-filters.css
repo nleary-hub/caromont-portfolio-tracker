@@ -23,6 +23,10 @@
   }
   .df-icon-btn:hover, .df-icon-btn[aria-expanded="true"] { background: var(--dark-row-selected); color: var(--dark-text-primary); }
   .df-icon-btn:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: 1px; }
+  /* "Mark as reviewed" on a Changed row: shown on row hover or keyboard focus (Option A). */
+  .pb-review-btn { opacity: 0; transition: opacity 120ms ease-out; }
+  tr:hover .pb-review-btn, .pb-review-btn:focus-visible { opacity: 1; }
+  @media (hover: none) { .pb-review-btn { opacity: 1; } }
   /* Admin "Totals grid" segmented control: the picker's segmented control with three options. */
   .vp-seg.df-seg3 { grid-template-columns: repeat(3, 1fr); max-width: 360px; }
 }

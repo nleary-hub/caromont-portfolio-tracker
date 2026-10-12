@@ -46,7 +46,7 @@ export class VisibilityPolicy {
    * History fields shown in History but never a public update: no Changed flag, no Stale reset, no "Updated" date.
    * The "Project complete" milestone added automatically (DefaultMilestone, migration 0032).
    */
-  static readonly NOT_AN_UPDATE_HISTORY_FIELDS: readonly string[] = [DefaultMilestone.HISTORY_FIELD];
+  static readonly NOT_AN_UPDATE_HISTORY_FIELDS: readonly string[] = [DefaultMilestone.HISTORY_FIELD, "reviewed"];
 
   static isDeleted(project: Pick<ProjectRecord, "archivedAt">): boolean {
     return project.archivedAt !== null;

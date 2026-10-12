@@ -123,7 +123,18 @@ export class AuditText {
     if (stored === null || stored === "") return null;
     if (field === StartDate.HISTORY_FIELD) return StartDate.auditValue(stored);
     if (field === "hiddenFromDashboard" || field === "hiddenFromReport") return AuditText.generic(AuditText.parse(stored));
+    if (field === "reviewed") return AuditText.reviewed(stored);
     return AuditText.generic(AuditText.parse(stored));
+  }
+
+  /** A "reviewed" history value: {"at": ISO, "by": email} as "Sep 12, 2026, 11:00 AM ET by nick@...". */
+  static reviewed(stored: string | null): string | null {
+    if (!stored) return null;
+    const v = AuditText.parse(stored);
+    if (!AuditText.isObj(v) || typeof v.at !== "string") return AuditText.generic(v);
+    const at = new Date(v.at);
+    const when = Number.isNaN(at.getTime()) ? v.at : AuditText.when(at);
+    return typeof v.by === "string" && v.by ? `${when} by ${v.by}` : when;
   }
 
   private static viewSettings(v: unknown, subject?: string): string | null {
@@ -135,6 +146,7 @@ export class AuditText {
       const cols = v.hiddenColumns.map((c) => AuditText.viewColumnLabel(ctx, c));
       parts.push(`${AuditCopy.VALUES.hiddenColumns}: ${AuditText.list(cols)}`);
     }
+    if (typeof v.showStatusChips === "boolean") parts.push(`Status chips: ${v.showStatusChips ? "shown" : "hidden"}`);
     return parts.join("; ");
   }
 

@@ -36,7 +36,9 @@ import { DashboardTable, DueFlagPill, type DashboardLayoutControl } from "./Dash
 import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
 import { ClosedPagesCopy } from "@/lib/closed/ClosedPagesCopy";
 import { ClosedPageModel } from "@/lib/closed/ClosedPageModel";
-import { DashboardSort, type DashboardSortKey } from "@/lib/dashboard/DashboardSort";
+import { DashboardQuery, type DashboardQueryState, type DashboardSortKey } from "@/lib/dashboard/DashboardQuery";
+import { DueFilterSelect, MarkAllReviewedButton, MultiFilterSelect, QueryCopy, ReviewConfirmDialog, SortChip, statusOptions } from "./DashboardQueryControls";
+import type { ReviewActionResult } from "@/app/actions/review";
 import { LayoutCopy, LineLayout, type ColumnLayoutValue, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import type { AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { DepartmentsSelect, TileVisibilityButton } from "./DashboardFilterControls";
@@ -145,6 +147,14 @@ interface Props {
   heartbeat?: boolean;
   /** Saves the switch; resolves to the saved value, or null when the save failed (the switch goes back). */
   setHeartbeatAction?: (on: boolean) => Promise<boolean | null>;
+  /**
+   * "Mark as reviewed" and its Undo. Present when the viewer may edit projects of the line (ProjectEditPolicy); each
+   * row's own `editable` decides whether it gets the button, and the server re-checks every project.
+   */
+  review?: {
+    markAction: (ids: string[], bulk: boolean) => Promise<ReviewActionResult>;
+    undoAction: (ids: string[], at: string) => Promise<ReviewActionResult>;
+  };
 }
 
 /** Browser localStorage, or null (server render, private mode, or storage blocked). */
@@ -185,8 +195,12 @@ export function ProjectDashboard({
   initialProjectId,
   heartbeat: heartbeatProp = true,
   setHeartbeatAction,
+  review,
 }: Props) {
-  const [query, setQuery] = useState("");
+  // Filters, search and sort (per user and line in localStorage, like Departments). The search box updates at once;
+  // the rows follow after DashboardQuery.SEARCH_DEBOUNCE_MS.
+  const [q, setQState] = useState<DashboardQueryState>(() => DashboardQuery.empty());
+  const [query, setQueryInput] = useState("");
   // The dashboard follows the switch at once. A failed save keeps the choice on screen (until a reload) and shows an
   // inline error in the account menu instead of silently putting the switch back. Only the latest click reports.
   const [heartbeat, setHeartbeat] = useState(heartbeatProp);
@@ -217,7 +231,7 @@ export function ProjectDashboard({
   // Line layout (server side, shared by everyone on the line). Admin changes apply optimistically and roll back on failure.
   const [lineLayout, setLineLayout] = useState<LineLayoutValue>(layoutProp ?? LineLayout.defaults());
   const [layoutError, setLayoutError] = useState<string | null>(null);
-  const [sort, setSort] = useState<DashboardSortKey>("manual");
+  const sort = q.sort;
   const persistLayout = async (next: LineLayoutValue, save: () => Promise<string | null>): Promise<string | null> => {
     const previous = lineLayout;
     setLineLayout(next);
@@ -263,7 +277,33 @@ export function ProjectDashboard({
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of browser-only storage after hydration
     setDepartmentsState(DashboardPrefs.readDepartments(storage, userEmail, line));
     setHiddenTilesState(DashboardPrefs.readHiddenTiles(storage, userEmail, line));
+    const saved = DashboardQuery.read(storage, userEmail, line);
+    setQState(saved);
+    setQueryInput(saved.search);
   }, [userEmail, line]);
+  const setQ = (next: DashboardQueryState) => {
+    setQState(next);
+    DashboardQuery.write(DashboardPrefsBrowser.storage(), userEmail, next, line);
+  };
+  const qRef = useRef(q);
+  useEffect(() => {
+    qRef.current = q;
+  });
+  const setQuery = (text: string) => setQueryInput(text);
+  useEffect(() => {
+    if (query === qRef.current.search) return;
+    const t = setTimeout(() => {
+      const next = { ...qRef.current, search: query };
+      setQState(next);
+      DashboardQuery.write(DashboardPrefsBrowser.storage(), userEmail, next, line);
+    }, query ? DashboardQuery.SEARCH_DEBOUNCE_MS : 0);
+    return () => clearTimeout(t);
+  }, [query, userEmail, line]);
+  const onSort = (key: DashboardSortKey) => setQ({ ...q, sort: DashboardQuery.nextSort(q.sort, key) });
+  const clearAll = () => {
+    setQueryInput("");
+    setQ(DashboardQuery.clearAll(q));
+  };
   const setDepartments = (next: DepartmentKey[]) => {
     setDepartmentsState(next);
     DashboardPrefs.writeDepartments(DashboardPrefsBrowser.storage(), userEmail, next, line);
@@ -277,11 +317,59 @@ export function ProjectDashboard({
   // Unassigned group all follow it. Options are the line's departments (every department for CVPSL).
   const deptRows = useMemo(() => DepartmentFilter.apply(rows, departments, deptOptions), [rows, departments, deptOptions]);
   const summary = useMemo(() => DashboardViewModel.summarize(deptRows), [deptRows]);
-  const visible = useMemo(() => DashboardViewModel.filter(deptRows, query), [deptRows, query]);
+  const visible = useMemo(() => DashboardQuery.apply(deptRows, q, today, line?.departments), [deptRows, q, today, line]);
+  const filtered = DashboardQuery.isFiltered(q);
+  // "IR · 3 of 5" while filtering: each department's rows before the filters (after Departments).
+  const groupTotals = useMemo(() => {
+    if (!filtered) return undefined;
+    const out: Partial<Record<string, number>> = {};
+    for (const r of deptRows) {
+      const g = ServiceAreaInfo.groupOf(r.serviceArea);
+      out[g] = (out[g] ?? 0) + 1;
+    }
+    return out;
+  }, [deptRows, filtered]);
+  // Mark as reviewed: rows marked here drop Changed at once (the server data follows on refresh).
+  const [reviewedIds, setReviewedIds] = useState<ReadonlySet<string>>(new Set());
+  const [confirmBulk, setConfirmBulk] = useState(false);
+  const shownRows = useMemo(() => (reviewedIds.size ? visible.map((r) => (reviewedIds.has(r.id) && r.changed ? { ...r, changed: false } : r)) : visible), [visible, reviewedIds]);
+  const reviewable = review ? shownRows.filter((r) => r.changed && r.editable) : [];
+  const markReviewed = async (ids: string[], bulk: boolean, name: string | null): Promise<string | null> => {
+    if (!review || ids.length === 0) return null;
+    let r: ReviewActionResult;
+    try {
+      r = await review.markAction(ids, bulk);
+    } catch {
+      r = { ok: false, error: "Could not save the change." };
+    }
+    if (!r.ok) {
+      setToast({ text: r.error, error: true });
+      return r.error;
+    }
+    setReviewedIds((cur) => new Set([...cur, ...ids]));
+    const at = r.at;
+    setToast({
+      text: bulk || !name ? QueryCopy.markedMany(r.count) : QueryCopy.markedOne(name),
+      ms: QueryCopy.UNDO_MS,
+      action: {
+        label: QueryCopy.UNDO,
+        run: () => {
+          void review.undoAction(ids, at).then((u) => {
+            if (u.ok) {
+              setReviewedIds((cur) => new Set([...cur].filter((id) => !ids.includes(id))));
+              setToast({ text: QueryCopy.UNDONE });
+            } else setToast({ text: u.error, error: true });
+          });
+        },
+      },
+    });
+    return null;
+  };
   const tiles = DashboardPrefs.visibleTiles(hiddenTiles, Boolean(completedFiscalYear));
   const tileTemplate = DashboardPrefs.gridTemplate(tiles);
   const emptyLine = DashboardViewModel.isEmptyLine(line, rows.length, Boolean(loadError));
   // Non-admins get only the visible columns in order; that is the same model with nothing hidden.
+  // Non-admins: flags is in columnsProp only when the status chips are on (the server applied the setting).
   const dashboardView: ViewSettingsValue = settings?.dashboard ?? { columnOrder: columnsProp, hiddenColumns: [], hiddenStatuses: [] };
   const showInfor = ViewSettings.visibleColumns(dashboardView).includes("inforNumber");
   const selected = rows.find((r) => r.id === selectedId) ?? null;
@@ -319,7 +407,7 @@ export function ProjectDashboard({
     if (context === "dashboard" && lineLayout.columns) {
       // This line has its own column order: a reorder in the View menu changes the line layout (not the order
       // shared by every line); show/hide still saves to the dashboard view settings.
-      const order = LineLayout.orderFromSettings("dashboard", value);
+      const order = LineLayout.orderFromSettings("dashboard", value, lineLayout.columns.order);
       if (order.join() !== lineLayout.columns.order.join()) {
         const err = await saveColumns({ ...lineLayout.columns, order });
         if (err) return err;
@@ -398,7 +486,7 @@ export function ProjectDashboard({
     setMode("view");
     if (created && id) {
       // Show the new project whatever the current filter, then scroll its row into view.
-      setQuery("");
+      clearAll();
       setDepartments(DepartmentFilter.all(deptOptions));
       setSelectedId(id);
       scrollToRef.current = id;
@@ -515,33 +603,21 @@ export function ProjectDashboard({
         )}
 
         {!emptyLine && (
-        <section className="flex items-center gap-1.5" aria-label="Department filter">
+        <section className="flex flex-col gap-1.5" aria-label="Filters">
+        <div className="flex flex-wrap items-center gap-1.5" data-testid="filter-bar">
+          <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} list={line?.departments} limited={Boolean(line?.departmentLimit)} />
+          <DueFilterSelect value={q.due} onChange={(due) => setQ({ ...q, due })} />
+          <MultiFilterSelect label="Status" testId="status-filter" options={statusOptions(deptRows)} value={q.statuses} onChange={(v) => setQ({ ...q, statuses: v as DashboardQueryState["statuses"] })} width={130} />
+          <MultiFilterSelect label="Project owner" testId="project-owner-filter" searchable options={DashboardQuery.ownerOptions(deptRows, "project")} value={q.projectOwners} onChange={(v) => setQ({ ...q, projectOwners: v })} width={160} />
+          <MultiFilterSelect label="Milestone owner" testId="task-owner-filter" searchable options={DashboardQuery.ownerOptions(deptRows, "task")} value={q.taskOwners} onChange={(v) => setQ({ ...q, taskOwners: v })} width={150} />
           <div className="flex-1" />
           {layoutError && (
             <span role="alert" className="mr-2 text-danger type-caption">
               {layoutError}
             </span>
           )}
-          <span className="type-caption text-muted">Showing {visible.length} projects</span>
-          <label className="ml-2 flex h-7 items-center gap-1.5 rounded-control border border-line bg-input pr-1 pl-2.5 text-muted type-table">
-            Sort
-            <select
-              value={sort}
-              onChange={(e) => setSort(e.target.value as DashboardSortKey)}
-              aria-label="Sort projects"
-              data-testid="sort-menu"
-              className="h-6 bg-transparent text-fg type-table-strong focus:outline-none"
-            >
-              {DashboardSort.OPTIONS.map((o) => (
-                <option key={o.key} value={o.key}>
-                  {o.label}
-                </option>
-              ))}
-            </select>
-          </label>
-          <div className="ml-2">
-            <DepartmentsSelect value={departments} onChange={setDepartments} options={deptOptions} list={line?.departments} limited={Boolean(line?.departmentLimit)} />
-          </div>
+          <SortChip text={DashboardQuery.sortChip(sort)} onManual={() => setQ({ ...q, sort: null })} />
+          {review && <MarkAllReviewedButton count={reviewable.length} onClick={() => setConfirmBulk(true)} />}
           {admin && (
             <button
               type="button"
@@ -557,6 +633,15 @@ export function ProjectDashboard({
             labelOf={(t) => (t === "completedFy" ? DashboardPrefs.tileLabel(t, completedFiscalYear?.label ?? null) : <span className={`pill st-${t}`}>{ProjectStatusInfo.label(t)}</span>)}
             onChange={setHiddenTiles}
           />
+        </div>
+        <div className="flex items-center gap-2 type-caption text-muted" data-testid="count-line">
+          <span role="status">{DashboardQuery.countLine(visible.length, deptRows.length, q.search)}</span>
+          {filtered && (
+            <button type="button" onClick={clearAll} className="text-accent hover:underline" data-testid="clear-all">
+              {QueryCopy.CLEAR_ALL}
+            </button>
+          )}
+        </div>
         </section>
         )}
 
@@ -564,7 +649,21 @@ export function ProjectDashboard({
         <section className="pb-table overflow-hidden rounded-card border border-line bg-card">
           <div data-pb-scroll className="max-h-[calc(100vh-260px)] overflow-auto">
             <DashboardTable
-              rows={visible}
+              rows={shownRows}
+              onSort={onSort}
+              search={q.search}
+              groupTotals={groupTotals}
+              onReview={review ? (r) => void markReviewed([r.id], false, r.name) : undefined}
+              empty={
+                filtered && rows.length > 0 ? (
+                  <span className="flex flex-col items-center gap-2" data-testid="filters-empty">
+                    <span>{q.search.trim() && !DashboardQuery.isFiltered({ ...q, search: "" }) ? QueryCopy.noSearchMatch(q.search.trim()) : QueryCopy.NO_MATCH}</span>
+                    <button type="button" onClick={clearAll} className="rounded-control border border-line px-3 py-1 text-fg type-table-strong hover:bg-row-selected">
+                      {QueryCopy.CLEAR_ALL_FILTERS}
+                    </button>
+                  </span>
+                ) : undefined
+              }
               settings={dashboardView}
               selectedId={selectedId}
               flashId={flashId}
@@ -580,7 +679,7 @@ export function ProjectDashboard({
             <span>
               {visible.length} of {rows.length} projects
             </span>
-            <span>Changed = any edit since the last report</span>
+            <span>Changed means edited since the last report or the last review.</span>
           </div>
         </section>
         )}
@@ -736,7 +835,19 @@ export function ProjectDashboard({
           />
         )
       )}
-      {toast && <ActionToast value={toast} onDone={() => setToast(null)} />}
+      {confirmBulk && review && (
+        <ReviewConfirmDialog
+          count={reviewable.length}
+          filtered={filtered || !DepartmentFilter.isAll(departments, deptOptions)}
+          onCancel={() => setConfirmBulk(false)}
+          onConfirm={async () => {
+            const err = await markReviewed(reviewable.map((r) => r.id), true, null);
+            if (!err) setConfirmBulk(false);
+            return err;
+          }}
+        />
+      )}
+      {toast && <ActionToast key={toast.text} value={toast} ms={toast.ms} onDone={() => setToast(null)} />}
     </div>
   );
 }

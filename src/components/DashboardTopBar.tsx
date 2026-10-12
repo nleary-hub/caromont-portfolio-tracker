@@ -174,6 +174,14 @@ function SearchInput({ inputRef, query, onQuery }: { inputRef: RefObject<HTMLInp
       ref={inputRef}
       value={query}
       onChange={(e) => onQuery(e.target.value)}
+      onKeyDown={(e) => {
+        // Esc clears the search (spec); with nothing typed it falls through to the page (closes the drawer).
+        if (e.key === "Escape" && query) {
+          e.preventDefault();
+          e.stopPropagation();
+          onQuery("");
+        }
+      }}
       placeholder={TopBarCopy.SEARCH_PLACEHOLDER}
       aria-label={TopBarCopy.SEARCH_LABEL}
       className="min-w-0 flex-1 bg-transparent text-fg placeholder:text-muted focus:outline-none"

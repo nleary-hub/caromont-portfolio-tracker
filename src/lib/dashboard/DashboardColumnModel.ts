@@ -1,11 +1,12 @@
 import type { ViewContext } from "@/generated/prisma/enums";
 import { ViewSettings, type ViewColumn, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { LineLayout, type LayoutKey } from "@/lib/layout/LineLayout";
 
 /**
  * A column of the grouped dashboard table. "gutter" is the reserved row-grip column; the three stacked
  * columns ("people", "milestoneUpdate", "dueFlags") each render several view settings keys in one cell.
  */
-export type DashboardColumnKey = "gutter" | "project" | "people" | "status" | "milestoneUpdate" | "dueFlags";
+export type DashboardColumnKey = "gutter" | "project" | "people" | "status" | "milestoneUpdate" | "dueFlags" | "milestoneOwner";
 
 /** A stacked column and the view settings keys it renders, in stacking order. */
 export type StackKey = "people" | "milestoneUpdate" | "dueFlags";
@@ -103,7 +104,12 @@ export class DashboardColumnModel {
     // 188 = 24px cell padding + the fixed date and flag grid (DueFlags.gridWidthPx(), 164px). The grid
     // never shrinks, so the minimum is the same.
     dueFlags: { header: "Due / Flags", width: 188, minWidth: 188, pinned: false, structural: false },
+    // Option A (spec, Oct 12, 2026): its own column right after Due, 136px with chips off and 120px with chips on.
+    milestoneOwner: { header: "Milestone owner", width: 136, minWidth: 120, pinned: false, structural: false },
   };
+
+  /** Milestone owner width with the status chips on (spec: the owner narrows, Next milestone gives up the rest). */
+  static readonly OWNER_WIDTH_CHIPS_ON = 120;
 
   /** Column spec with its default flex role (only Next milestone / Latest update). */
   static spec(key: DashboardColumnKey): DashboardColumn {
@@ -143,7 +149,7 @@ export class DashboardColumnModel {
    * keys are hidden. Inline keys (the Infor number) render inside the Project cell and take no column.
    * Keys the dashboard no longer offers never reach here (normalize drops them).
    */
-  static columns(settings: ViewSettingsValue): DashboardColumn[] {
+  static columns(settings: ViewSettingsValue, order: readonly LayoutKey[] = LineLayout.KEYS): DashboardColumn[] {
     const keys: DashboardColumnKey[] = ["gutter", "project"];
     for (const c of settings.columnOrder) {
       const stack = DashboardColumnModel.stackOf(c);
@@ -154,8 +160,17 @@ export class DashboardColumnModel {
       }
       if (c === "status" && ViewSettings.isColumnVisible(settings, c) && !keys.includes("status")) keys.push("status");
     }
+    // Milestone owner has no view settings key (always shown): it sits where the line's layout order puts it,
+    // by default right after Due / Flags.
+    const ownerAt = LineLayout.normalizeOrder(order).indexOf("milestoneOwner");
+    const before = LineLayout.normalizeOrder(order).slice(0, ownerAt).reverse().find((k) => keys.includes(k));
+    keys.splice(before ? keys.indexOf(before) + 1 : keys.length, 0, "milestoneOwner");
     const flexKey = DashboardColumnModel.FLEX_PREFERENCE.find((k) => keys.includes(k));
-    return keys.map((k) => ({ ...DashboardColumnModel.spec(k), flex: k === flexKey }));
+    return keys.map((k) => {
+      const spec = { ...DashboardColumnModel.spec(k), flex: k === flexKey };
+      if (k !== "milestoneOwner" || !ViewSettings.isColumnVisible(settings, "flags")) return spec;
+      return { ...spec, width: DashboardColumnModel.OWNER_WIDTH_CHIPS_ON };
+    });
   }
 
   /** Smallest table width that honors every column's width (the flex column at its minimum). */

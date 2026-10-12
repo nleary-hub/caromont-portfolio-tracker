@@ -36,11 +36,11 @@ async function snapshot(db: PGlite, skip: Record<string, string[]>): Promise<Rec
 }
 
 describe("batch migrations 0028 to 0032 on production-shaped data (PGlite)", () => {
-  it("come right after 0027_report_colors, in order; only 0033_ai_writing_assistant comes after them", () => {
+  it("come right after 0027_report_colors, in order; only 0033_ai_writing_assistant and 0034_review_and_status_chips come after them", () => {
     const f = folders();
     const at = f.indexOf("0027_report_colors");
     expect(f.slice(at, at + 6)).toEqual(["0027_report_colors", ...BATCH]);
-    expect(f.slice(at + 6)).toEqual(["0033_ai_writing_assistant"]);
+    expect(f.slice(at + 6)).toEqual(["0033_ai_writing_assistant", "0034_review_and_status_chips"]);
   });
 
   it("apply cleanly on existing data; every existing row is unchanged and the new columns read their defaults", async () => {

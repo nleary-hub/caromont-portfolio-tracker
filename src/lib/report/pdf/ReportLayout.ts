@@ -9,6 +9,7 @@ import { Requester } from "@/lib/domain/Requester";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { PeopleLabel } from "@/lib/domain/PeopleLabel";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
+import { MilestoneOwner } from "@/lib/domain/MilestoneOwner";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type AreaGroup, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
@@ -342,6 +343,8 @@ export type RowCell =
       owner?: { text: string; x: number; line: number };
     }
   | { kind: "due"; x: number; w: number; text: string; overdue: boolean; muted: boolean }
+  /** Milestone owner column (Option A): up to two lines at 7.5/9 pt; "Unassigned" italic amber; "–" muted. */
+  | { kind: "milestoneOwner"; x: number; w: number; lines: string[]; tone: "owner" | "unassigned" | "none" }
   | { kind: "flags"; x: number; w: number; flags: PlacedFlag[] };
 
 export interface RowLayout {
@@ -444,6 +447,10 @@ export interface HeaderModel {
   grid: { columns: GridColumn[]; rows: GridRow[]; width: number };
   /** Page 1 legend chips beside "Flags:" (they explain the row flags). */
   legend: Record<FlagKind, FlagBox>;
+  /** Status chips shown (report view setting). Off: no Flags column, no page 1 legend, no flags in any key. */
+  chips: boolean;
+  /** Changed legend says "edited since the last report or review" (settings with the chips key, migration 0034). */
+  reviewCopy: boolean;
   /** Width of the meta block left of the grid on page 1. */
   metaWidth: number;
   /** Page 1 meta: key/value pairs, font size (9 pt, or 8 pt when the grid leaves little room) and key column width. */
@@ -575,7 +582,38 @@ export class ReportLayout {
     nextMilestone: { label: "NEXT MILESTONE \u00b7 OWNER", sub: (s) => (PdfReportLayout.showsNote(s) ? "Note below" : null) },
     due: { label: "DUE", sub: () => null },
     flags: { label: "FLAGS", sub: () => null },
+    milestoneOwner: { label: "MILESTONE OWNER", sub: () => null },
   };
+
+  /** Header label: with the Milestone owner column the milestone header is plain "NEXT MILESTONE". */
+  static columnLabel(key: LayoutColumn["key"], settings: ViewSettingsValue): string {
+    if (key === "nextMilestone" && PdfReportLayout.hasOwnerColumn(settings)) return "NEXT MILESTONE";
+    return ReportLayout.COLUMN_LABELS[key].label;
+  }
+
+  /** Milestone owner type (spec: 7.5 pt on a 9 pt line, #15171C; Unassigned italic #855500). */
+  static readonly MS_OWNER = { size: 7.5, lh: 9, weight: 500, maxLines: 2 } as const;
+
+  /**
+   * The Milestone owner cell's lines: physician names as "Dr. A. Lastname"; other names on up to two lines, else
+   * "A. Lastname", else cut with "…". The dash and "Unassigned" are one line.
+   */
+  static milestoneOwnerLines(m: Measurer, row: ReportRow, inner: number): { lines: string[]; tone: "owner" | "unassigned" | "none" } {
+    const cell = MilestoneOwner.cell(row);
+    if (cell.kind !== "owner") return { lines: [MilestoneOwner.text(cell)], tone: cell.kind };
+    const o = ReportLayout.MS_OWNER;
+    const full = MilestoneOwner.short(cell.name);
+    const wrap = (t: string) => TextMeasure.wrap(m, t, inner, o.size, o.weight);
+    let lines = wrap(full);
+    if (lines.length > o.maxLines) lines = wrap(MilestoneOwner.initialed(full));
+    if (lines.length > o.maxLines) {
+      lines = lines.slice(0, o.maxLines);
+      let last = lines[o.maxLines - 1];
+      while (last.length > 1 && m.width(`${last}\u2026`, o.size, o.weight) > inner) last = last.slice(0, -1);
+      lines[o.maxLines - 1] = `${last.trimEnd()}\u2026`;
+    }
+    return { lines, tone: "owner" };
+  }
 
   static readonly STATUS_MEANINGS: Record<ProjectStatus, string> = {
     NotStarted: "Work has not begun.",
@@ -593,12 +631,14 @@ export class ReportLayout {
    * the old block, so it shows only for snapshots frozen with one (`completedBlock`).
    */
   static key(m: Measurer, settings: ViewSettingsValue, listed: readonly ProjectStatus[] = [], completedBlock = true): KeyModel {
+    // Status chips off (report setting): no flag explanations at all, so the key is a status key.
+    const chips = ViewSettings.isColumnVisible(settings, "flags") || !PdfReportLayout.hasOwnerColumn(settings);
     return {
-      title: "Status and flag key",
+      title: chips ? "Status and flag key" : "Status key",
       statuses: ProjectStatusInfo.all()
         .filter((s) => ViewSettings.isStatusVisible(settings, s) || listed.includes(s))
         .map((s) => ({ pill: ReportLayout.statusPill(m, s), meaning: ReportLayout.STATUS_MEANINGS[s] })),
-      flags: [
+      flags: !chips ? [] : [
         { flag: ReportLayout.flag(m, "changed"), meaning: "Something about the project changed since the last report." },
         { flag: ReportLayout.flag(m, "overdue"), meaning: "The due date has passed and the project is not complete." },
         { flag: ReportLayout.flag(m, "stale"), meaning: `No update in ${AppConfig.STALE_AFTER_DAYS} or more days before the report date.` },
@@ -718,8 +758,9 @@ export class ReportLayout {
    * Page 1 legend text beside each flag chip. Stale is built from AppConfig.STALE_AFTER_DAYS (read at
    * call time), so the flag, legend and key page always agree on the threshold.
    */
-  static legendText(kind: FlagKind): string {
-    if (kind === "changed") return "differs from last report";
+  static legendText(kind: FlagKind, review = false): string {
+    // Reports with the chips setting (migration 0034) know "Mark as reviewed"; frozen classic reports keep their text.
+    if (kind === "changed") return review ? "edited since the last report or review" : "differs from last report";
     if (kind === "overdue") return "due date has passed";
     return `no update in ${AppConfig.STALE_AFTER_DAYS}+ days`;
   }
@@ -827,7 +868,7 @@ export class ReportLayout {
           const text = allDone ? MilestoneProgress.ALL_DONE_TEXT : row.nextMilestone?.trim();
           // Blank (allowed for Not started, On hold, Complete, Cancelled) renders as nothing.
           const { lines, progress, owner } = text
-            ? ReportLayout.milestoneLines(m, text, MilestoneProgress.progressLabel(row.milestoneProgress), inner, allDone ? null : row.nextMilestoneOwner)
+            ? ReportLayout.milestoneLines(m, text, MilestoneProgress.progressLabel(row.milestoneProgress), inner, allDone || PdfReportLayout.hasOwnerColumn(settings) ? null : row.nextMilestoneOwner)
             : { lines: [], progress: null, owner: undefined };
           lineOneH = Math.max(lineOneH, Math.max(1, lines.length) * g.TABLE_LH);
           // `owner` only when the row has one, so rows without an owner lay out exactly as before.
@@ -837,6 +878,13 @@ export class ReportLayout {
         case "due": {
           const text = row.dueDate ? ReportFormat.shortDate(row.dueDate, reportDate) : "\u2013";
           cells.push({ kind: "due", x: col.x, w: inner, text, overdue: row.overdue, muted: !row.dueDate });
+          break;
+        }
+        case "milestoneOwner": {
+          const { lines, tone } = ReportLayout.milestoneOwnerLines(m, row, inner);
+          // Two owner lines take more of line 1, so the note (line 2) starts below them.
+          lineOneH = Math.max(lineOneH, lines.length * ReportLayout.MS_OWNER.lh + 1);
+          cells.push({ kind: "milestoneOwner", x: col.x, w: inner, lines, tone });
           break;
         }
         case "flags": {
@@ -1149,7 +1197,7 @@ export class ReportLayout {
 
     const cols = ReportLayout.columns(settings).map((c) => ({
       ...c,
-      label: ReportLayout.COLUMN_LABELS[c.key].label,
+      label: ReportLayout.columnLabel(c.key, settings),
       sub: ReportLayout.COLUMN_LABELS[c.key].sub(settings),
     }));
 
@@ -1186,6 +1234,8 @@ export class ReportLayout {
     const badge: HeaderModel["badge"] = input.exampleData ? "EXAMPLE DATA" : null;
     const totalsGrid = TotalsGridPlacement.normalize(input.totalsGrid);
     const legend = { changed: ReportLayout.flag(m, "changed"), overdue: ReportLayout.flag(m, "overdue"), stale: ReportLayout.flag(m, "stale") };
+    // Settings saved before the chips setting existed (no key) always showed the legend; keep them exactly.
+    const chips = !PdfReportLayout.hasOwnerColumn(settings) || ViewSettings.isColumnVisible(settings, "flags");
     const sl = input.serviceLine ?? null;
     const overline = sl ? ReportLayout.overline(m, sl.name, badge) : null;
     const runningTitle = sl ? ServiceLine.runningTitle(sl) : PdfReportLayout.TITLE;
@@ -1225,9 +1275,11 @@ export class ReportLayout {
       departments: departmentsDetail,
       totalsGrid,
       band,
-      keyLine: usesBand && input.showKeyPage === false ? ReportLayout.keyLine(m, statuses, legend) : null,
+      keyLine: usesBand && input.showKeyPage === false ? ReportLayout.keyLine(m, statuses, legend, ReportGeometry.CONTENT_W, chips ? FlagSlots.ORDER : [], PdfReportLayout.hasOwnerColumn(settings)) : null,
       grid: { columns, rows: [...areaRows, totalRow], width: gridWidth },
       legend,
+      chips,
+      reviewCopy: PdfReportLayout.hasOwnerColumn(settings),
       metaWidth,
       meta,
       strip,
@@ -1371,7 +1423,7 @@ export class ReportLayout {
    * count row when it does not fit beside Projects, Departments when filtered) and legend beside the grid.
    * Hidden: band, rule, key line. Last page: band and rule. No draft line (drafts carry no watermark).
    */
-  static firstHeaderHeight(input: ReportDocInput, header: Pick<HeaderModel, "titleBarHeight" | "meta" | "band" | "keyLine" | "totalsGrid">): number {
+  static firstHeaderHeight(input: ReportDocInput, header: Pick<HeaderModel, "titleBarHeight" | "meta" | "band" | "keyLine" | "totalsGrid"> & Partial<Pick<HeaderModel, "chips">>): number {
     const g = ReportGeometry;
     if (header.band) {
       const base = header.band.height + g.BAND.ruleW;
@@ -1379,7 +1431,7 @@ export class ReportLayout {
       return base + g.BAND.gapAfter;
     }
     const rows = header.meta.rows.length;
-    const meta = rows * g.META_ROW_H + (rows - 1) * g.META_GAP + 6 + 3 * g.LEGEND_LINE_H;
+    const meta = rows * g.META_ROW_H + (rows - 1) * g.META_GAP + 6 + (header.chips === false ? 0 : 3 * g.LEGEND_LINE_H);
     const grid = ReportLayout.gridHeight(ReportLayout.gridAreas(input.rows, input.departments, input.lineDepartments).length + 1);
     return header.titleBarHeight + g.HEADER_BODY_PAD + Math.max(meta, grid) + g.HEADER_BODY_PAD;
   }
@@ -1495,9 +1547,8 @@ export class ReportLayout {
    * The status labels are never dropped: if it still does not fit with every explanation cut, it wraps
    * (an item that would cross `maxW` starts the next row at x 0).
    */
-  static keyLine(m: Measurer, statuses: readonly ProjectStatus[], legend: Record<FlagKind, FlagBox>, maxW: number = ReportGeometry.CONTENT_W): KeyLineModel {
+  static keyLine(m: Measurer, statuses: readonly ProjectStatus[], legend: Record<FlagKind, FlagBox>, maxW: number = ReportGeometry.CONTENT_W, flags: readonly FlagKind[] = FlagSlots.ORDER, review = false): KeyLineModel {
     const k = ReportGeometry.KEYLINE;
-    const flags = FlagSlots.ORDER;
     type Placed = "x" | "row" | "textX";
     type Piece = (Omit<Extract<KeyLineItem, { kind: "status" }>, Placed> | Omit<Extract<KeyLineItem, { kind: "flag" }>, Placed>) & { textOffset: number };
     const build = (keepTexts: number, wrap: boolean): KeyLineModel => {
@@ -1508,7 +1559,7 @@ export class ReportLayout {
       }
       flags.forEach((kind, i) => {
         const flag = legend[kind];
-        const text = i < keepTexts ? ReportLayout.legendText(kind) : null;
+        const text = i < keepTexts ? ReportLayout.legendText(kind, review) : null;
         pieces.push({ kind: "flag", flag, text, w: flag.width + (text ? k.textGap + m.width(text, k.size, 400) : 0), textOffset: flag.width + k.textGap });
       });
       let x = 0;
@@ -1550,7 +1601,7 @@ export class ReportLayout {
     y += 24;
     y += 16 + key.statuses.length * 16;
     y += 8;
-    y += 16 + key.flags.length * 16;
+    if (key.flags.length) y += 16 + key.flags.length * 16;
     y += 8;
     y += 16 + key.details.length * 15;
     y += 10;

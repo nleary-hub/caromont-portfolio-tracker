@@ -36,9 +36,11 @@ export class ViewSettingsService {
     db: PrismaClient = Db.client,
   ): Promise<ViewSettingsValue> {
     if (!ViewSettings.isContext(context)) throw new Error(`Unknown view context: ${String(context)}`);
-    const value = ViewSettings.normalize(context, next);
+    const input = ViewSettings.normalize(context, next);
     return db.$transaction(async (tx) => {
       const old = await ViewSettingsService.get(context, tx);
+      // A value without the chips setting (an older client) keeps the stored one rather than turning chips on.
+      const value: ViewSettingsValue = { ...input, showStatusChips: input.showStatusChips ?? old.showStatusChips ?? false };
       if (ViewSettings.equals(old, value)) return old;
       const now = new Date();
       await tx.viewSettings.upsert({

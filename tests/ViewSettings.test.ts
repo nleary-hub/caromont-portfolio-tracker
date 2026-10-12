@@ -46,7 +46,8 @@ describe("ViewSettings.normalize", () => {
   it("treats a missing hiddenStatuses as the default and an empty one as show all", () => {
     expect(ViewSettings.normalize("dashboard", {}).hiddenStatuses).toEqual(["Complete", "Cancelled"]);
     expect(ViewSettings.normalize("dashboard", { hiddenStatuses: [] }).hiddenStatuses).toEqual([]);
-    expect(ViewSettings.normalize("dashboard", null)).toEqual(ViewSettings.defaults("dashboard"));
+    // A value without the chips key (saved before migration 0034) keeps it absent (chips shown, as it was).
+    expect(ViewSettings.normalize("dashboard", null)).toEqual({ ...ViewSettings.defaults("dashboard"), showStatusChips: undefined });
   });
 
   it("rejects a wrong shape", () => {
@@ -69,7 +70,7 @@ describe("ViewSettings edits", () => {
   });
 
   it("reorders columns and keeps visibleColumns in that order", () => {
-    const moved = ViewSettings.withColumnMoved("dashboard", d, "flags", 1);
+    const moved = ViewSettings.withColumnMoved("dashboard", ViewSettings.withStatusChips("dashboard", d, true), "flags", 1);
     expect(moved.columnOrder.slice(0, 3)).toEqual(["project", "flags", "owner"]);
     const hidden = ViewSettings.withColumnHidden("dashboard", moved, "owner", true);
     expect(ViewSettings.visibleColumns(hidden).slice(0, 3)).toEqual(["project", "flags", "physicianChampion"]);
@@ -96,7 +97,7 @@ describe("migration 0002 seed rows", () => {
       // It also lists "serviceArea" second, which the dashboard no longer offers; normalize drops it quietly.
       const kept = d.columnOrder.filter((k) => !ADDED_AFTER_0002.includes(k)).map((k) => (c === "dashboard" && k === "latestUpdate" ? "note" : k));
       const seeded = c === "dashboard" ? [kept[0], "serviceArea", ...kept.slice(1)] : kept;
-      expect(ViewSettings.normalize(c, { columnOrder: seeded, hiddenColumns: [], hiddenStatuses: d.hiddenStatuses })).toEqual(d);
+      expect(ViewSettings.normalize(c, { columnOrder: seeded, hiddenColumns: [], hiddenStatuses: d.hiddenStatuses, showStatusChips: false })).toEqual(d);
       const order = seeded.map((k) => `'${k}'`).join(", ");
       const statuses = d.hiddenStatuses.map((s) => `'${s}'`).join(", ");
       expect(sql).toContain(`('${c}',\n     ARRAY[${order}],\n     ARRAY[]::TEXT[],\n     ARRAY[${statuses}]::"ProjectStatus"[]`);

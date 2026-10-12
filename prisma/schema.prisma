@@ -118,6 +118,10 @@ model Project {
   /// DEPRECATED (unused since view settings replaced the "closed projects drop off after one report"
   /// rule). Kept so existing data is not destroyed; nothing reads or writes it.
   closedReportedAt          DateTime?
+  /// "Mark as reviewed" (migration 0034): when and by whom. Clears Changed until the next public update after
+  /// reviewedAt. Not an update itself: never sets Changed, never resets Stale. Audited in ProjectHistory ("reviewed").
+  reviewedAt                DateTime?
+  reviewedBy                String?
 
   history           ProjectHistory[]
   priorInforNumbers ProjectPriorInforNumber[]
@@ -260,6 +264,8 @@ model ViewSettings {
   /// Hidden ViewColumn keys. Locked columns (project, status) are never stored here.
   hiddenColumns  String[]
   hiddenStatuses ProjectStatus[]
+  /// Show the Changed / Overdue / Stale chips (migration 0034). Default off.
+  showStatusChips Boolean        @default(false)
   updatedAt      DateTime        @updatedAt
   updatedBy      String
 

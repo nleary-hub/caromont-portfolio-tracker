@@ -25,6 +25,12 @@ export interface ViewSettingsValue {
   hiddenColumns: ViewColumn[];
   /** Hidden statuses, in canonical status order. Projects with these statuses are invisible in the context and excluded from all counts (see VisibilityPolicy). */
   hiddenStatuses: ProjectStatus[];
+  /**
+   * Show the Changed / Overdue / Stale status chips (migration 0034, "Show status chips", default off). Display only:
+   * the flag math and history never change. Absent = shown, which is how every value saved before the setting
+   * existed (frozen report snapshots in particular) was rendered, so stored reports keep their chips.
+   */
+  showStatusChips?: boolean;
 }
 
 export type ViewSettingsByContext = Record<ViewContext, ViewSettingsValue>;
@@ -105,6 +111,7 @@ export class ViewSettings {
     columnOrder: z.array(z.string()).optional(),
     hiddenColumns: z.array(z.string()).optional(),
     hiddenStatuses: z.array(z.string()).optional(),
+    showStatusChips: z.boolean().optional(),
   });
 
   static isContext(value: unknown): value is ViewContext {
@@ -138,7 +145,19 @@ export class ViewSettings {
       columnOrder: [...ViewSettings.DEFAULT_ORDER[context]],
       hiddenColumns: [],
       hiddenStatuses: [...ViewSettings.DEFAULT_HIDDEN_STATUSES],
+      showStatusChips: false,
     };
+  }
+
+  /** Whether the status chips (Changed, Overdue, Stale) show. Absent = shown (values saved before the setting). */
+  static chipsShown(value: Pick<ViewSettingsValue, "showStatusChips">): boolean {
+    return value.showStatusChips !== false;
+  }
+
+  /** Turn the chips on or off. Turning them on also un-hides the Flags column, so the switch is the only control. */
+  static withStatusChips(context: ViewContext, value: ViewSettingsValue, shown: boolean): ViewSettingsValue {
+    const hiddenColumns = shown ? value.hiddenColumns.filter((c) => c !== "flags") : value.hiddenColumns;
+    return ViewSettings.normalize(context, { ...value, hiddenColumns, showStatusChips: shown });
   }
 
   static isDefaultHiddenStatus(status: ProjectStatus): boolean {
@@ -172,17 +191,21 @@ export class ViewSettings {
     );
     const hiddenStatuses = ProjectStatusInfo.all().filter((s) => statusSet.has(s));
 
-    return { columnOrder: order, hiddenColumns, hiddenStatuses };
+    return parsed.showStatusChips === undefined
+      ? { columnOrder: order, hiddenColumns, hiddenStatuses }
+      : { columnOrder: order, hiddenColumns, hiddenStatuses, showStatusChips: parsed.showStatusChips };
   }
 
   static equals(a: ViewSettingsValue, b: ViewSettingsValue): boolean {
     const same = (x: readonly string[], y: readonly string[]) => x.length === y.length && x.every((v, i) => v === y[i]);
     return (
-      same(a.columnOrder, b.columnOrder) && same(a.hiddenColumns, b.hiddenColumns) && same(a.hiddenStatuses, b.hiddenStatuses)
+      same(a.columnOrder, b.columnOrder) && same(a.hiddenColumns, b.hiddenColumns) && same(a.hiddenStatuses, b.hiddenStatuses) &&
+      ViewSettings.chipsShown(a) === ViewSettings.chipsShown(b)
     );
   }
 
   static isColumnVisible(value: ViewSettingsValue, column: ViewColumn): boolean {
+    if (column === "flags" && !ViewSettings.chipsShown(value)) return false;
     return ViewSettings.isLocked(column) || !value.hiddenColumns.includes(column);
   }
 

@@ -151,7 +151,9 @@ export class SampleReportData {
    */
   static docInput(overrides: Partial<ReportDocInput> = {}): ReportDocInput {
     const rows = SampleReportData.rows();
-    const viewSettings = overrides.viewSettings ?? ViewSettings.defaults("report");
+    // Classic settings (no chips key: flags column, legend and inline owner, as every report before migration 0034).
+    // Pass viewSettings with showStatusChips to see the Milestone owner column and the chips switch.
+    const viewSettings = overrides.viewSettings ?? ViewSettings.normalize("report", null);
     return {
       rows,
       header: {
