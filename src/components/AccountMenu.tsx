@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore } from "react";
+import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
 import { HeartbeatCopy } from "@/lib/dashboard/HeartbeatCopy";
 
 const REDUCED = "(prefers-reduced-motion: reduce)";
@@ -28,16 +28,22 @@ export function AccountMenu({
   heartbeat,
   onHeartbeatChange,
   saveFailed = false,
+  avatar,
 }: {
   name: string;
   heartbeat: boolean;
   onHeartbeatChange: (on: boolean) => void;
   /** The last save failed: the switch keeps the choice for this page and an inline error says it was not saved. */
   saveFailed?: boolean;
+  /** Narrow top bar (below 1100px): this avatar is the trigger instead of the name (the name stays its accessible label). */
+  avatar?: ReactNode;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const buttonRef = useRef<HTMLButtonElement>(null);
+  const avatarRef = useRef<HTMLButtonElement>(null);
+  // Escape returns focus to whichever trigger is showing at this width.
+  const trigger = () => (avatarRef.current && avatarRef.current.offsetParent !== null ? avatarRef.current : buttonRef.current);
   const switchRef = useRef<HTMLButtonElement>(null);
   const panelId = useId();
   const switchId = useId();
@@ -62,17 +68,32 @@ export function AccountMenu({
         if (e.key === "Escape" && open) {
           e.preventDefault();
           setOpen(false);
-          buttonRef.current?.focus();
+          trigger()?.focus();
         }
       }}
     >
+      {avatar && (
+        <button
+          ref={avatarRef}
+          type="button"
+          aria-label={name}
+          title={name}
+          aria-expanded={open}
+          aria-controls={open ? panelId : undefined}
+          onClick={() => setOpen((v) => !v)}
+          className="acct-trigger hidden rounded-full max-[1100px]:block"
+          data-testid="account-menu-avatar"
+        >
+          {avatar}
+        </button>
+      )}
       <button
         ref={buttonRef}
         type="button"
         aria-expanded={open}
         aria-controls={open ? panelId : undefined}
         onClick={() => setOpen((v) => !v)}
-        className="acct-trigger block text-left type-label font-bold text-fg"
+        className={`acct-trigger block text-left type-label font-bold text-fg${avatar ? " max-[1100px]:hidden" : ""}`}
         data-testid="account-menu-button"
       >
         {name}

@@ -63,7 +63,20 @@ export function DashboardTopBar({
   const searchRef = useRef<HTMLInputElement>(null);
   const iconRef = useRef<HTMLButtonElement>(null);
   const usable = TopBarFit.usable({ chipDate: Boolean(latestReport), viewIcon: Boolean(viewPicker) }, serviceLine);
-  const contentKey = [serviceLine.name, serviceLine.shortName, latestReport?.reportDate ?? "", viewKey, Boolean(adminMenu), Boolean(aiActions)].join("|");
+  // The AI buttons load on demand (Quick capture arrives after the first fit), so their width is part of the key and
+  // the bar refits when they show up. No fit step changes their width, so this can't loop.
+  const aiRef = useRef<HTMLDivElement>(null);
+  const [aiWidth, setAiWidth] = useState(0);
+  useLayoutEffect(() => {
+    const el = aiRef.current;
+    if (!el) return;
+    const read = () => setAiWidth(Math.round(el.getBoundingClientRect().width));
+    read();
+    const ro = new ResizeObserver(read);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [aiActions]);
+  const contentKey = [serviceLine.name, serviceLine.shortName, latestReport?.reportDate ?? "", viewKey, Boolean(adminMenu), Boolean(aiActions), aiWidth].join("|");
   const fit = useTopBarFit(rowRef, usable, contentKey);
   const has = (s: Parameters<typeof TopBarFit.has>[1]) => TopBarFit.has(fit.level, s);
   const collapsed = has("searchIcon");
@@ -124,7 +137,7 @@ export function DashboardTopBar({
           <SearchGlyph />
         </button>
       ) : (
-        <label className="flex h-8 w-80 min-w-40 shrink items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 text-muted type-table">
+        <label className="flex h-8 w-80 min-w-28 shrink items-center gap-2 rounded-control border border-line bg-input pr-2.5 pl-3 text-muted type-table">
           <SearchGlyph />
           <SearchInput inputRef={searchRef} query={query} onQuery={onQuery} />
           <kbd className="rounded border border-line px-1 type-caption">/</kbd>
@@ -148,7 +161,11 @@ export function DashboardTopBar({
       >
         Generate PDF now
       </a>
-      {aiActions && <div className="flex shrink-0 items-center gap-2">{aiActions}</div>}
+      {aiActions && (
+        <div ref={aiRef} className="flex shrink-0 items-center gap-2">
+          {aiActions}
+        </div>
+      )}
       {adminMenu && (
         // 12px left of the user block (header gap is 16px).
         <div className="-mr-1 shrink-0">{adminMenu}</div>

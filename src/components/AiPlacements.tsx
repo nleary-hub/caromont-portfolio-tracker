@@ -177,31 +177,30 @@ export function AiQuickCapture({ note, dictationNote, defaultOpen = false, recor
 }
 
 /** Dashboard top row, right column: Pre-meeting brief (max 8 lines in the card; Open full opens the drawer). */
-export function AiBriefCard({ note, focusOptions, initial, capped = false }: { note: string | null; focusOptions: readonly string[]; initial?: AiBriefState; /** Top row with status cards: the card is held to their height and scrolls inside. */ capped?: boolean }) {
+/** Dashboard row under the status cards: one compact line (heading, Focus, Make brief); the brief shows below it. */
+export function AiBriefCard({ note, focusOptions, initial }: { note: string | null; focusOptions: readonly string[]; initial?: AiBriefState }) {
   const [full, setFull] = useState<{ state: AiBriefState; focus: string } | null>(null);
-  const card = (
-    <section aria-labelledby="ai-brief-card-title" className={`flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3${capped ? " absolute inset-0 overflow-hidden" : ""}`} data-testid="ai-brief-card">
-      <h2 id="ai-brief-card-title" className="flex shrink-0 items-center gap-1.5 type-table-strong text-fg">
-        <Sparkle />
-        {C.BRIEF_CARD_TITLE}
-      </h2>
-      <div className={capped ? "-mr-2 min-h-0 flex-1 overflow-y-auto pr-2" : "contents"} data-testid="ai-brief-card-scroll">
-        <AiBriefPanel disabledNote={note} focusOptions={focusOptions} compact onOpenFull={(state, focus) => setFull({ state, focus })} {...(initial ? { initial } : {})} />
-      </div>
+  return (
+    <section aria-labelledby="ai-brief-card-title" className="rounded-card border border-line bg-card px-4 py-2" data-testid="ai-brief-card">
+      <AiBriefPanel
+        disabledNote={note}
+        focusOptions={focusOptions}
+        compact
+        heading={
+          <h2 id="ai-brief-card-title" className="flex shrink-0 items-center gap-1.5 type-table-strong text-fg">
+            <Sparkle />
+            {C.BRIEF_CARD_TITLE}
+          </h2>
+        }
+        onOpenFull={(state, focus) => setFull({ state, focus })}
+        {...(initial ? { initial } : {})}
+      />
       {full && (
         <AiDrawer title={C.BRIEF_CARD_TITLE} onClose={() => setFull(null)} testId="ai-drawer-brief">
           <AiBriefPanel disabledNote={note} initial={full.state} initialFocus={full.focus} />
         </AiDrawer>
       )}
     </section>
-  );
-  // Absolutely placed in a relative cell, so the card never adds height to the top row: the status cards set it.
-  return capped ? (
-    <div className="relative min-w-0" data-testid="ai-brief-cell">
-      {card}
-    </div>
-  ) : (
-    card
   );
 }
 
