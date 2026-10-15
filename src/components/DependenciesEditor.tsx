@@ -24,6 +24,8 @@ export function DependenciesEditor({ projectId, actions, onCount }: { projectId:
   const [view, setView] = useState<DependencyView | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // The error came from an add (loop, self, duplicate): the picker shows the error border until its input changes.
+  const [addError, setAddError] = useState(false);
 
   useEffect(() => {
     let live = true;
@@ -43,13 +45,17 @@ export function DependenciesEditor({ projectId, actions, onCount }: { projectId:
     if (view) onCount?.(view.blockedBy.length);
   }, [view, onCount]);
 
-  const run = async (p: Promise<DependencyActionResult>) => {
+  const run = async (p: Promise<DependencyActionResult>, isAdd = false) => {
     setBusy(true);
     setError(null);
+    setAddError(false);
     try {
       const r = await p;
       if (r.ok) setView(r.view);
-      else setError(r.error);
+      else {
+        setError(r.error);
+        setAddError(isAdd);
+      }
     } catch {
       setError(DependencyCopy.LOAD_ERROR);
     } finally {
@@ -89,9 +95,24 @@ export function DependenciesEditor({ projectId, actions, onCount }: { projectId:
           ))}
         </ul>
       )}
-      {view && <ProjectPicker id={`dep-${projectId}`} options={view.options} disabled={busy} onPick={(p) => run(actions.add(projectId, p.id))} />}
+      {view && (
+        <ProjectPicker
+          id={`dep-${projectId}`}
+          options={view.options}
+          disabled={busy}
+          invalid={Boolean(error) && addError}
+          errorId={`dep-${projectId}-error`}
+          onType={() => {
+            if (addError) {
+              setError(null);
+              setAddError(false);
+            }
+          }}
+          onPick={(p) => run(actions.add(projectId, p.id), true)}
+        />
+      )}
       {error && (
-        <p role="alert" className="text-danger type-table" data-testid="dependencies-error">
+        <p id={`dep-${projectId}-error`} role="alert" className="text-danger type-table" data-testid="dependencies-error">
           {error}
         </p>
       )}
@@ -100,7 +121,25 @@ export function DependenciesEditor({ projectId, actions, onCount }: { projectId:
 }
 
 /** Searchable single-pick list of projects (ARIA 1.2 combobox), cleared after each pick. */
-function ProjectPicker({ id, options, disabled, onPick }: { id: string; options: readonly DependencyProjectDto[]; disabled?: boolean; onPick: (p: DependencyProjectDto) => void }) {
+function ProjectPicker({
+  id,
+  options,
+  disabled,
+  invalid,
+  errorId,
+  onType,
+  onPick,
+}: {
+  id: string;
+  options: readonly DependencyProjectDto[];
+  disabled?: boolean;
+  /** An add was rejected: red error border (drawer [data-invalid] style), aria-invalid and aria-describedby the error. */
+  invalid?: boolean;
+  errorId?: string;
+  /** The input text changed (clears the add error). */
+  onType?: () => void;
+  onPick: (p: DependencyProjectDto) => void;
+}) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState("");
   const [highlight, setHighlight] = useState(-1);
@@ -160,11 +199,13 @@ function ProjectPicker({ id, options, disabled, onPick }: { id: string; options:
   };
 
   return (
-    <div className={FieldControlStyle.WRAP}>
+    <div className={FieldControlStyle.WRAP} data-invalid={invalid || undefined}>
       <input
         ref={inputRef}
         id={id}
         type="text"
+        aria-invalid={invalid ? true : undefined}
+        aria-describedby={invalid ? errorId : undefined}
         role="combobox"
         aria-label={DependencyCopy.ADD_PLACEHOLDER}
         aria-expanded={open}
@@ -179,6 +220,7 @@ function ProjectPicker({ id, options, disabled, onPick }: { id: string; options:
         placeholder={open ? DependencyCopy.SEARCH_PLACEHOLDER : DependencyCopy.ADD_PLACEHOLDER}
         onChange={(e) => {
           setQuery(e.target.value);
+          onType?.();
           setOpen(true);
           setHighlight(0);
         }}

@@ -81,4 +81,19 @@ describe("0037_project_dependencies (PGlite, example data)", () => {
     expect(await fingerprint(db)).toBe(fp);
     await db.close();
   });
+
+  it("adding and removing an edge leaves the Project row (updatedAt, flags) and ProjectHistory unchanged; no triggers", async () => {
+    const db = await before();
+    await db.exec(sql());
+    const snap = async () => (await db.query<{ x: string }>(`select md5(coalesce(string_agg(t, '|' order by t), '')) as x from (
+      select md5(row(p.*)::text) as t from "Project" p union all select md5(row(h.*)::text) from "ProjectHistory" h) q`)).rows[0].x;
+    const fp = await snap();
+    const line = (await db.query<{ id: string }>(`select "serviceLineId" as id from "Project" where id = '${P(1)}'`)).rows[0].id;
+    await db.query(`insert into project_dependencies (id, "serviceLineId", "projectId", "blockedById", "createdBy") values (gen_random_uuid(), $1, $2, $3, 'admin@example.org')`, [line, P(1), P(2)]);
+    expect(await snap()).toBe(fp);
+    await db.exec(`delete from project_dependencies`);
+    expect(await snap()).toBe(fp);
+    expect((await db.query(`select 1 from pg_trigger where tgrelid = 'project_dependencies'::regclass and not tgisinternal`)).rows).toHaveLength(0);
+    await db.close();
+  });
 });

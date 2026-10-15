@@ -9,7 +9,7 @@ export class DependencyCopy {
   static readonly NO_MATCH = "No matching projects";
   static readonly NO_OPTIONS = "No other projects to add";
   static readonly LOADING = "Loading…";
-  static readonly LOAD_ERROR = "Could not load dependencies.";
+  static readonly LOAD_ERROR = "Couldn't load dependencies. Try again.";
 
   static remove(name: string): string {
     return `Remove ${name}`;

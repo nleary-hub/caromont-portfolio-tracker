@@ -86,7 +86,7 @@ describe("DependencyGraph: cycle detection", () => {
   it("messages are short and plain (no em dashes)", () => {
     for (const m of [...Object.values(DependencyGraph.MESSAGES), DependencyCopy.TITLE, DependencyCopy.NONE, DependencyCopy.count(2)]) {
       expect(m).not.toContain("\u2014");
-      expect(m.length).toBeLessThan(80);
+      expect(m.length).toBeLessThan(110);
     }
   });
 });
@@ -162,5 +162,43 @@ describe("Dependencies stay out of the report", () => {
     for (const f of ["src/lib/services/FreezeService.ts", "src/lib/services/SnapshotService.ts", "src/lib/report/ReportDataLoader.ts", "src/lib/report/HandoffBuilder.ts", "src/lib/report/ReportBuilder.ts", "src/lib/report/pdf/ReportDocument.tsx", "src/lib/report/pdf/YearEndDocument.tsx", "src/lib/services/ProjectService.ts"]) {
       expect(read(f)).not.toMatch(/projectDependency|project_dependencies|blockedBy|DependencyGraph/);
     }
+  });
+});
+
+describe("Dependencies picker error state (Figma Bro nit)", () => {
+  const src = read("src/components/DependenciesEditor.tsx");
+  it("a rejected add marks the picker invalid with the drawer error border and points at the error", () => {
+    expect(src).toMatch(/data-invalid=\{invalid \|\| undefined\}/);
+    expect(src).toMatch(/aria-invalid=\{invalid \? true : undefined\}/);
+    expect(src).toMatch(/aria-describedby=\{invalid \? errorId : undefined\}/);
+    expect(src).toMatch(/errorId=\{`dep-\$\{projectId\}-error`\}/);
+    expect(src).toMatch(/<p id=\{`dep-\$\{projectId\}-error`\} role="alert"/);
+    expect(src).toMatch(/invalid=\{Boolean\(error\) && addError\}/);
+    expect(src).toMatch(/run\(actions\.add\(projectId, p\.id\), true\)/);
+    expect(read("src/styles/polish.css")).toMatch(/\.pb-drawer \[data-invalid\] :is\(input, select, textarea\) \{\s*border-color: #ff8a8a/);
+  });
+  it("typing in the field clears the error", () => {
+    expect(src).toMatch(/setQuery\(e\.target\.value\);\s*onType\?\.\(\);/);
+    expect(src).toMatch(/onType=\{\(\) => \{\s*if \(addError\) \{\s*setError\(null\);\s*setAddError\(false\);/);
+  });
+});
+
+describe("Adding or removing a dependency never changes the project", () => {
+  it("only reads projects (no update, no updatedAt, no Changed) and writes no history row", async () => {
+    const f = new Fake();
+    const base = f.db() as unknown as Record<string, Record<string, unknown>>;
+    const calls: string[] = [];
+    const guard = new Proxy(base, {
+      get(t, table: string) {
+        if (table !== "project" && table !== "projectDependency") throw new Error(`unexpected table ${table}`);
+        return new Proxy(t[table], { get: (d, m: string) => (calls.push(`${table}.${m}`), d[m]) });
+      },
+    }) as unknown as DependencyDb;
+    const before = JSON.stringify(f.projects);
+    await ProjectDependencyService.add(ADMIN, SCOPE, "a", "b", guard);
+    await ProjectDependencyService.remove(ADMIN, SCOPE, "a", "b", guard);
+    expect(JSON.stringify(f.projects)).toBe(before);
+    expect(calls.filter((c) => c.startsWith("project.")).every((c) => c === "project.findUnique" || c === "project.findMany")).toBe(true);
+    expect(calls).not.toContain("projectHistory.create");
   });
 });

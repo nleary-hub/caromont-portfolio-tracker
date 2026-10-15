@@ -17,7 +17,7 @@ export class DependencyGraph {
   static readonly MESSAGES: Record<DependencyProblem, string> = {
     self: "A project can't block itself.",
     duplicate: "Already blocked by this project.",
-    cycle: "That would make a loop. These projects already depend on each other.",
+    cycle: "That would make a loop. This project already blocks that one, directly or through other projects.",
   };
 
   /** The problem with adding `projectId` blocked by `blockedById`, or null when it is allowed. */
