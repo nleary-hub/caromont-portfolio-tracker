@@ -143,7 +143,7 @@ export function DashboardTopBar({
         href={OnDemandPdfLink.href(pdfDepartments)}
         download
         title={OnDemandPdfLink.TOOLTIP}
-        className="tap-44 flex h-8 shrink-0 items-center rounded-control btn-primary bg-accent-strong px-3.5 whitespace-nowrap text-white type-table-strong"
+        className="tap-44 flex h-8 shrink-0 items-center rounded-control border border-line bg-transparent px-3.5 whitespace-nowrap text-fg type-table-strong hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
         data-testid="generate-pdf"
       >
         Generate PDF now
