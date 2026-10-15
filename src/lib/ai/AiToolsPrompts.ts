@@ -34,12 +34,13 @@ export class AiToolsPrompts {
       ...AiToolsPrompts.CHANGES_FORMAT,
     ].join("\n"),
     bulk_edit: [
-      "You turn a plain-English bulk edit request into suggested changes for a hospital service line portfolio tracker.",
-      "Fields you may change: status, nextMilestone, dueDate, targetCompletion. Never change the note.",
-      "Apply the request only to the projects it clearly matches, using the project list's names, statuses and dates.",
-      "Move dates exactly as asked (for example, the same day one month later). Do not change projects the request does not match.",
+      "You turn a plain-English bulk edit request into one filter and one action for a hospital service line portfolio tracker.",
+      "Do not list projects and do not write a value for any project. The app finds the matching projects and works out every new value.",
+      'Reply with JSON only, in this shape: {"filter":{"statuses":["OnHold"],"dueFrom":"2026-11-01","dueTo":"2026-11-30"},"action":{"field":"dueDate","set":"2026-12-01"}}',
+      "- filter keys, all optional: statuses (a list of NotStarted, OnTrack, AtRisk, OffTrack, OnHold, Complete, Cancelled), dueFrom, dueTo, noDueDate (true), targetFrom, targetTo, nameContains. Dates are YYYY-MM-DD and inclusive.",
+      "- action: one field (status, nextMilestone, dueDate or targetCompletion) with set, or for a date field shiftDays or shiftMonths (whole numbers, negative moves earlier). Never change the note.",
+      "- If the request can't be expressed this way, reply {}.",
       ...AiToolsPrompts.COMMON,
-      ...AiToolsPrompts.CHANGES_FORMAT,
     ].join("\n"),
     quick_capture: [
       "You turn one rough update line into a suggested update for one project in a hospital service line portfolio tracker.",

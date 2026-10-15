@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { AiBulkEdit, type AiBulkSummary } from "@/lib/ai/AiBulkEdit";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags, type AiToolFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
@@ -72,10 +73,10 @@ export interface ProjectRowForTools {
 }
 
 /** Saves one applied line through the normal project save (ProjectService.update: validation, history, Changed). */
-export type AiToolSave = (projectId: string, patch: Record<string, string | null>) => Promise<void>;
+export type AiToolSave = (projectId: string, patch: Record<string, string | null>, meta: { comment: string | null }) => Promise<void>;
 
 export type AiToolFailure = { ok: false; kind: "off" | "feature_off" | "denied" | "empty" | "rate" | "timeout" | "provider" | "parse"; message: string };
-export type AiToolProposeResult = { ok: true; proposalId: string; feature: AiToolFeature; changes: AiToolChange[] } | AiToolFailure;
+export type AiToolProposeResult = { ok: true; proposalId: string; feature: AiToolFeature; changes: AiToolChange[]; bulk?: AiBulkSummary } | AiToolFailure;
 export type AiToolLineResult = { ok: true } | { ok: false; message: string };
 
 const RATE_EVENTS = ["suggested", "failed", "proposed"];
@@ -102,6 +103,14 @@ const CONTEXT_ONLY: Partial<Record<AiToolFeature, readonly AiToolField[]>> = {
  */
 export class AiToolsService {
   private static readonly inFlight = new Set<string>();
+
+  /** ProjectHistory.comment on every save applied from a bulk edit (the bulk tag; existing column, no migration). */
+  static readonly BULK_HISTORY_COMMENT = "ai:bulk_edit";
+
+  /** The history tag an applied line carries (null = a plain edit). */
+  static historyComment(feature: AiToolFeature): string | null {
+    return feature === "bulk_edit" ? AiToolsService.BULK_HISTORY_COMMENT : null;
+  }
 
   static fieldsOf(feature: AiToolFeature): readonly AiToolField[] {
     return FIELDS[feature] ?? [];
@@ -209,6 +218,18 @@ export class AiToolsService {
       build: (input) => AiToolsPrompts.build(args.feature, input, AiToolsModel.context(projects, [...fields, ...(CONTEXT_ONLY[args.feature] ?? [])])),
     });
     if (!r.ok) return r;
+    if (args.feature === "bulk_edit") {
+      // The AI gives a filter and an action only; the matching rows and values are computed here.
+      const plan = AiBulkEdit.parse(r.text);
+      if (!plan || !fields.includes(plan.action.field)) {
+        await r.log("failed");
+        return { ok: false, kind: "parse", message: AiToolsCopy.PARSE_FAILED };
+      }
+      const { changes, summary } = AiBulkEdit.run(plan, projects);
+      const kept = JSON.stringify(plan);
+      await r.log("proposed", { outputLength: changes.length, suggestedText: AiPhiGuard.check(kept).ok ? kept : null });
+      return { ok: true, proposalId: r.proposalId, feature: args.feature, changes, bulk: summary };
+    }
     const parsed = AiToolsModel.parseChanges(r.text, projects, fields);
     // Quick capture is about one project: lines for any other project are dropped.
     const changes = parsed && args.feature === "quick_capture" ? AiToolsModel.oneProject(parsed) : parsed;
@@ -245,7 +266,7 @@ export class AiToolsService {
     const value = AiToolsModel.clean(field, args.value as unknown);
     if (value === null) return { ok: false, message: AiToolsCopy.VALUE_INVALID };
     try {
-      await args.save(args.projectId, AiToolsModel.patch(field, value));
+      await args.save(args.projectId, AiToolsModel.patch(field, value), { comment: AiToolsService.historyComment(open.feature) });
     } catch (e) {
       console.error("AI tools: apply failed", (e as Error)?.name);
       return { ok: false, message: AiToolsCopy.APPLY_FAILED };

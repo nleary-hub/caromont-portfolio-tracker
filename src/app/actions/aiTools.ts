@@ -45,8 +45,8 @@ export async function applyAiToolLine(proposalId: string, line: number, projectI
       projectId,
       field,
       value,
-      save: async (id, patch) => {
-        await ProjectService.update(id, patch as Partial<ProjectInput>, { changedBy: c.viewer.email, comment: null }, Db.client, c.scope);
+      save: async (id, patch, meta) => {
+        await ProjectService.update(id, patch as Partial<ProjectInput>, { changedBy: c.viewer.email, comment: meta.comment }, Db.client, c.scope);
       },
     });
     if (r.ok) revalidatePath("/");

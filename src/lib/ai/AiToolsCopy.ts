@@ -61,8 +61,11 @@ export class AiToolsCopy {
 
   // Step 5: Plain-English bulk edit.
   static readonly BULK_TITLE = "Plain-English bulk edit";
-  static readonly BULK_HELP = "Describe a change for many projects at once. The AI lists each project it would change, with before and after. It can change status, next milestone and dates, never the update note.";
+  static readonly BULK_HELP = "Describe a change for many projects at once. The AI turns it into a filter and one change, and the app lists each matching project with before and after. It can change status, next milestone and dates, never the Latest update.";
   static readonly BULK_LABEL = "What should change?";
+  static readonly BULK_FILTER_LABEL = "Filter";
+  static readonly BULK_ACTION_LABEL = "Change";
+  static readonly BULK_COUNT_LABEL = "Projects";
   static readonly BULK_PLACEHOLDER = "For example: Move every On hold project due in November to December 1.";
 
   // Step 6: Quick capture and dictation.
@@ -143,6 +146,15 @@ export class AiToolsCopy {
 
   static fieldLabel(field: string): string {
     return AiToolsCopy.FIELD_LABELS[field] ?? field;
+  }
+
+  static bulkMatched(n: number): string {
+    return n === 1 ? "1 project matches the filter." : `${n} projects match the filter.`;
+  }
+
+  static bulkChanged(n: number): string {
+    if (n === 0) return "None will become Changed.";
+    return n === 1 ? "1 will become Changed when its line is applied." : `${n} will become Changed when their lines are applied.`;
   }
 
   static applied(n: number): string {

@@ -6,6 +6,7 @@ import { AiDictationButton } from "@/components/AiDictationButton";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import type { AiToolFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
+import type { AiBulkSummary } from "@/lib/ai/AiBulkEdit";
 import type { AiToolChange } from "@/lib/ai/AiToolsModel";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import type { AiToolProposeResult } from "@/lib/services/AiToolsService";
@@ -84,13 +85,33 @@ export function AiToolsPanel({
         )}
       </div>
       {state.kind === "error" && <AiAlert tone="danger" testId={`ai-tool-${feature}-error`}>{state.message}</AiAlert>}
-      {state.kind === "review" && <AiChangeReview key={state.proposal.proposalId} proposalId={state.proposal.proposalId} changes={state.proposal.changes} />}
+      {state.kind === "review" && <AiChangeReview key={state.proposal.proposalId} proposalId={state.proposal.proposalId} changes={state.proposal.changes} bulk={state.proposal.bulk} />}
     </div>
   );
 }
 
 /** The review list shared by every change-suggesting tool. */
-export function AiChangeReview({ proposalId, changes, initialLines }: { proposalId: string; changes: AiToolChange[]; initialLines?: Record<number, LineState> }) {
+/** Step 5: the bulk plan above the lines: the filter in plain words, the match count and the Changed count. */
+export function AiBulkPreview({ bulk }: { bulk: AiBulkSummary }) {
+  return (
+    <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1 rounded-card border border-line bg-card/60 px-3 py-2 type-table" data-testid="ai-bulk-preview">
+      <dt className="text-muted type-label">{C.BULK_FILTER_LABEL}</dt>
+      <dd className="text-fg" data-testid="ai-bulk-filter">
+        {bulk.filterText}
+      </dd>
+      <dt className="text-muted type-label">{C.BULK_ACTION_LABEL}</dt>
+      <dd className="text-fg" data-testid="ai-bulk-action">
+        {bulk.actionText}
+      </dd>
+      <dt className="text-muted type-label">{C.BULK_COUNT_LABEL}</dt>
+      <dd className="text-fg" data-testid="ai-bulk-counts">
+        {C.bulkMatched(bulk.matched)} {C.bulkChanged(bulk.changed)}
+      </dd>
+    </dl>
+  );
+}
+
+export function AiChangeReview({ proposalId, changes, initialLines, bulk }: { proposalId: string; changes: AiToolChange[]; initialLines?: Record<number, LineState>; bulk?: AiBulkSummary }) {
   const [lines, setLines] = useState<Record<number, LineState>>(() => initialLines ?? Object.fromEntries(changes.map((c) => [c.line, { status: "open", value: c.after }])));
   const [busy, start] = useTransition();
   const set = (line: number, patch: Partial<LineState>) => setLines((l) => ({ ...l, [line]: { ...l[line], ...patch } }));
@@ -98,9 +119,12 @@ export function AiChangeReview({ proposalId, changes, initialLines }: { proposal
 
   if (!changes.length) {
     return (
-      <p role="status" className="text-muted type-table" data-testid="ai-tool-no-changes">
-        {C.NO_CHANGES}
-      </p>
+      <div className="flex flex-col gap-2">
+        {bulk && <AiBulkPreview bulk={bulk} />}
+        <p role="status" className="text-muted type-table" data-testid="ai-tool-no-changes">
+          {C.NO_CHANGES}
+        </p>
+      </div>
     );
   }
   return (
@@ -112,6 +136,7 @@ export function AiChangeReview({ proposalId, changes, initialLines }: { proposal
         <span className="rounded-pill bg-(--status-not-started-dark-bg) px-2 py-px text-(--status-not-started-dark-fg) type-label">{C.AI_LABEL}</span>
       </div>
       <p className="text-muted type-caption">{C.REVIEW_HELP}</p>
+      {bulk && <AiBulkPreview bulk={bulk} />}
       <div className="overflow-x-auto rounded-card border border-line">
         <table className="w-full type-table">
           <thead className="bg-card text-left text-muted type-label">
