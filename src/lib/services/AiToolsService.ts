@@ -7,7 +7,7 @@ import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiProviderClient, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiProviders } from "@/lib/ai/AiProviders";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
-import { AiToolsModel, type AiToolChange, type AiToolField, type AiToolProject } from "@/lib/ai/AiToolsModel";
+import { AiToolsModel, type AiProjectDraft, type AiToolChange, type AiToolField, type AiToolProject } from "@/lib/ai/AiToolsModel";
 import { AiToolsPrompts } from "@/lib/ai/AiToolsPrompts";
 import { AiTranscriptionClient, type AiTranscribeFetch } from "@/lib/ai/AiTranscriptionClient";
 import { AppConfig } from "@/lib/config/AppConfig";
@@ -298,5 +298,37 @@ export class AiToolsService {
       return { ok: false, message: AiToolsCopy.DICTATION_FAILED };
     }
     return { ok: true, text: r.text.slice(0, AiToolsService.INPUT_MAX) };
+  }
+
+  /** Step 7: a pasted request becomes a draft project to review. Saves nothing. */
+  static async proposeDraft(args: { db: AiToolsDb; viewer: Viewer | null; input: unknown; env?: Env; fetchImpl?: FetchLike; now?: () => Date }): Promise<{ ok: true; proposalId: string; draft: AiProjectDraft } | AiToolFailure> {
+    const r = await AiToolsService.call({ ...args, feature: "request_to_project", input: typeof args.input === "string" ? args.input : "", build: (input) => AiToolsPrompts.build("request_to_project", input, "") });
+    if (!r.ok) return r;
+    const draft = AiToolsModel.parseDraft(r.text);
+    if (!draft) {
+      await r.log("failed");
+      return { ok: false, kind: "parse", message: AiToolsCopy.PARSE_FAILED };
+    }
+    const kept = JSON.stringify(draft);
+    await r.log("proposed", { outputLength: kept.length, suggestedText: AiPhiGuard.check(kept).ok ? kept : null });
+    return { ok: true, proposalId: r.proposalId, draft };
+  }
+
+  /** Step 7: Create project from the (possibly edited) draft, through the normal create. One "applied" row, once. */
+  static async applyDraft(args: { db: AiToolsDb; viewer: Viewer | null; proposalId: unknown; draft: unknown; create: (input: Record<string, string | null>) => Promise<string>; env?: Env; now?: Date }): Promise<AiToolLineResult> {
+    const open = await AiToolsService.openLine(args.db, args.viewer, args.proposalId, 0, args.env ?? process.env, true);
+    if (!open.ok) return open;
+    if (open.feature !== "request_to_project") return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+    const draft = AiToolsModel.cleanDraft(args.draft);
+    if (!draft) return { ok: false, message: AiToolsCopy.DRAFT_INVALID };
+    let id: string;
+    try {
+      id = await args.create(AiToolsModel.draftInput(draft));
+    } catch (e) {
+      console.error("AI tools: create failed", (e as Error)?.name);
+      return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+    }
+    await AiToolsService.decision(args.db, open.row, "applied", 0, id, null, args.now);
+    return { ok: true };
   }
 }

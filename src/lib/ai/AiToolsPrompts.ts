@@ -57,6 +57,16 @@ export class AiToolsPrompts {
       ...AiToolsPrompts.COMMON,
       ...AiToolsPrompts.CHANGES_FORMAT,
     ].join("\n"),
+    request_to_project: [
+      "You turn a pasted project request into a draft project record for a hospital service line portfolio tracker.",
+      'Reply with JSON only, in this shape: {"project":{"name":"","description":"","nextMilestone":"","dueDate":"","targetCompletion":"","note":""}}',
+      "- name: a short project name, 80 characters or fewer.",
+      "- description: what the project is, 200 characters or fewer.",
+      "- nextMilestone: the first action, 10 words or fewer. dueDate and targetCompletion only when the request states them, else empty.",
+      "- note: a one or two sentence summary of the request.",
+      "- Never fill in an owner, physician, requester or department.",
+      ...AiToolsPrompts.COMMON,
+    ].join("\n"),
   };
 
   static build(feature: AiToolFeature, input: string, context: string): AiPrompt {

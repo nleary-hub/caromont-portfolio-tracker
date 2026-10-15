@@ -14,6 +14,7 @@ export class AiToolsCopy {
     quick_capture: "Quick capture",
     dictation: "Dictation (speech to text)",
     next_step: "Next-step suggestion",
+    request_to_project: "Request to draft project",
   };
 
   // Shared review list.
@@ -88,6 +89,28 @@ export class AiToolsCopy {
   static readonly NEXT_INSTRUCTION = "Suggest the next milestone for this project.";
   static readonly PICK_PROJECT = "Choose a project first.";
   static readonly NO_PROJECTS = "No open projects in this service line.";
+
+  // Step 7: Request to draft project.
+  static readonly REQUEST_TITLE = "Request to draft project";
+  static readonly REQUEST_HELP = "Paste a project request. The AI drafts a new project for you to check. Owner, physician, requester and department stay blank for you to fill in.";
+  static readonly REQUEST_LABEL = "Project request";
+  static readonly REQUEST_PLACEHOLDER = "For example: Example Clinic asks for a second ultrasound room by June 30. Needs a vendor quote first.";
+  static readonly REQUEST_PROPOSE = "Draft project";
+  static readonly DRAFT_TITLE = "Review draft project";
+  static readonly DRAFT_HELP = "Edit anything before you create it. It's created as Not started, with no owner or department.";
+  static readonly DRAFT_CREATE = "Create project";
+  static readonly DRAFT_DISCARD = "Discard";
+  static readonly DRAFT_CREATED = "Project created. Open it on the dashboard to assign an owner and department.";
+  static readonly DRAFT_DISCARDED = "Draft discarded. Nothing was created.";
+  static readonly DRAFT_INVALID = "Check the draft: a name is required, and dates must be real dates.";
+  static readonly DRAFT_LABELS: Readonly<Record<string, string>> = {
+    name: "Name",
+    description: "Description",
+    nextMilestone: "Next milestone",
+    dueDate: "Due date",
+    targetCompletion: "Target completion",
+    note: "Latest update",
+  };
 
   static fieldLabel(field: string): string {
     return AiToolsCopy.FIELD_LABELS[field] ?? field;

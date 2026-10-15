@@ -28,6 +28,16 @@ export interface AiToolChange {
   reason: string;
 }
 
+/** Step 7: a draft new project from a pasted request. Owner, physician, requester and department stay blank. */
+export interface AiProjectDraft {
+  name: string;
+  description: string;
+  nextMilestone: string;
+  dueDate: string;
+  targetCompletion: string;
+  note: string;
+}
+
 /** Pure rules of the AI tools (unit tested): context building, reply parsing and value checks. */
 export class AiToolsModel {
   static readonly ALL_FIELDS: readonly AiToolField[] = ["status", "nextMilestone", "dueDate", "targetCompletion", "note"];
@@ -140,6 +150,32 @@ export class AiToolsModel {
   static oneProject(changes: readonly AiToolChange[]): AiToolChange[] {
     const first = changes[0]?.projectId;
     return changes.filter((c) => c.projectId === first).map((c, i) => ({ ...c, line: i }));
+  }
+
+  static readonly DRAFT_NAME_MAX = 200;
+
+  /** Checks a draft (the AI's or the edited one). null when the name is missing or any value is invalid. */
+  static cleanDraft(raw: unknown): AiProjectDraft | null {
+    if (!raw || typeof raw !== "object") return null;
+    const o = raw as Record<string, unknown>;
+    const str = (k: string) => (typeof o[k] === "string" ? (o[k] as string).trim() : o[k] === undefined || o[k] === null ? "" : null);
+    const d = { name: str("name"), description: str("description"), nextMilestone: str("nextMilestone"), dueDate: str("dueDate"), targetCompletion: str("targetCompletion"), note: str("note") };
+    if (Object.values(d).some((v) => v === null)) return null;
+    const v = d as AiProjectDraft;
+    if (!v.name || v.name.length > AiToolsModel.DRAFT_NAME_MAX || v.description.length > AppConfig.DESCRIPTION_MAX_LENGTH) return null;
+    if (v.nextMilestone.length > AiToolsModel.NEXT_MILESTONE_MAX || v.note.length > AppConfig.NOTE_MAX_LENGTH) return null;
+    if ((v.dueDate && !AiToolsModel.validDate(v.dueDate)) || (v.targetCompletion && !AiToolsModel.validDate(v.targetCompletion))) return null;
+    return v;
+  }
+
+  static parseDraft(text: string): AiProjectDraft | null {
+    const body = AiToolsModel.json(text) as { project?: unknown } | null;
+    return body ? AiToolsModel.cleanDraft(body.project) : null;
+  }
+
+  /** The new project as the normal create receives it: Not started, nothing assigned. */
+  static draftInput(d: AiProjectDraft): Record<string, string | null> {
+    return { name: d.name, description: d.description || null, status: "NotStarted", nextMilestone: d.nextMilestone || null, dueDate: d.dueDate || null, targetCompletion: d.targetCompletion || null, note: d.note || null };
   }
 
   /** The patch the normal project save receives for one applied line. */

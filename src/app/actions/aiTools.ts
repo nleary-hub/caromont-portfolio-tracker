@@ -78,3 +78,35 @@ export async function transcribeAiDictation(form: FormData): Promise<{ ok: true;
     return { ok: false, message: AiToolsCopy.DICTATION_FAILED };
   }
 }
+
+/** Step 7: Request to draft project. Saves nothing. */
+export async function proposeAiProjectDraft(input: string) {
+  try {
+    const c = await context();
+    if (!c) return { ok: false as const, kind: "denied" as const, message: AiCopy.NOT_AUTHORIZED };
+    return await AiToolsService.proposeDraft({ db: c.db, viewer: c.viewer, input });
+  } catch (e) {
+    console.error("AI tools failed: draft", (e as Error)?.name);
+    return { ok: false as const, kind: "provider" as const, message: AiToolsCopy.PROVIDER_ERROR };
+  }
+}
+
+/** Step 7: Create project from the reviewed draft, through ProjectService.create (validation and the created history row). */
+export async function createAiProjectDraft(proposalId: string, draft: unknown): Promise<AiToolLineResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    const r = await AiToolsService.applyDraft({
+      db: c.db,
+      viewer: c.viewer,
+      proposalId,
+      draft,
+      create: async (input) => (await ProjectService.create(input as unknown as ProjectInput, { changedBy: c.viewer.email, comment: null }, Db.client, c.scope)).id,
+    });
+    if (r.ok) revalidatePath("/");
+    return r;
+  } catch (e) {
+    console.error("AI tools failed: create", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+  }
+}

@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
+import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
@@ -78,6 +79,13 @@ export default async function AiToolsPage() {
           {C.NEXT_TITLE}
         </h2>
         <AiNextStepPanel projects={projects} disabledNote={notes.next_step ?? null} />
+      </section>
+
+      <section className={section} aria-labelledby="ai-tool-request-heading" id="request-to-project">
+        <h2 id="ai-tool-request-heading" className="type-heading">
+          {C.REQUEST_TITLE}
+        </h2>
+        <AiDraftProjectPanel disabledNote={notes.request_to_project ?? null} />
       </section>
     </main>
   );
