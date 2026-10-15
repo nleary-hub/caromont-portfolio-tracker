@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import type { CompletedRow, MissingChampion, ReportHeader, ReportRow } from "@/lib/domain/types";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
@@ -13,6 +13,16 @@ const actor = { changedBy: "nick.leary@example.org" };
 const base = { serviceArea: "Cath", owner: "Owner A", status: "OnTrack", nextMilestone: "M1" };
 const period1 = { periodStart: "2026-09-23", periodEnd: "2026-10-07", generatedBy: "nick", now: new Date("2026-10-07T10:00:00Z") };
 const period2 = { periodStart: "2026-10-07", periodEnd: "2026-10-21", generatedBy: "nick", now: new Date("2026-10-21T10:00:00Z") };
+
+// Fixed clock: projects and history rows are created inside period1 (before its freeze), regardless of the real date.
+const FIXTURE_CLOCK = new Date("2026-10-01T14:00:00Z");
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(FIXTURE_CLOCK);
+});
+afterEach(() => {
+  vi.useRealTimers();
+});
 
 class Sum {
   static counts(h: ReportHeader): number {
@@ -107,6 +117,8 @@ describe("SnapshotService.create", () => {
       hiddenStatuses: [],
       hiddenColumns: ["note"],
       columnOrder: ["project", "status", "owner"],
+      // ViewSettingsService.update always stores the chips setting (absent input keeps the stored value, default off).
+      showStatusChips: false,
     });
     await ViewSettingsService.update("report", showClosed, actor, db);
 
