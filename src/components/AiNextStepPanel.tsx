@@ -15,6 +15,7 @@ export function AiNextStepPanel({ projects, disabledNote, initial, initialProjec
   const [projectId, setProjectId] = useState(initialProject);
   const [state, setState] = useState<AiToolsState>(initial ?? { kind: "idle" });
   const [pending, start] = useTransition();
+  const [busy, setBusy] = useState(false);
   const off = disabledNote !== null;
   if (inline)
     return (
@@ -23,19 +24,23 @@ export function AiNextStepPanel({ projects, disabledNote, initial, initialProjec
         <button
           type="button"
           className={AI_GHOST}
-          disabled={!off && (pending || !projectId)}
+          disabled={!off && (busy || !projectId)}
           {...pausedProps(disabledNote, "ai-next-step-off")}
           data-testid="ai-tool-next_step-propose"
-          onClick={() =>
-            !off &&
-            start(async () => {
+          onClick={async () => {
+            if (off) return;
+            // Plain busy state: the result row renders as soon as the reply lands (no lingering transition).
+            setBusy(true);
+            try {
               const r = await proposeAiToolChanges("next_step", C.NEXT_INSTRUCTION, projectId);
               setState(r.ok ? { kind: "review", proposal: r } : { kind: "error", message: r.message });
-            })
-          }
+            } finally {
+              setBusy(false);
+            }
+          }}
         >
           <Sparkle />
-          {pending ? C.PROPOSING : C.NEXT_INLINE}
+          {busy ? C.PROPOSING : C.NEXT_INLINE}
         </button>
         </div>
         <AiOffNote id="ai-next-step-off" note={disabledNote} testId="ai-tool-next_step-off" />

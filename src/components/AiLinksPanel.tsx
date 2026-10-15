@@ -27,6 +27,7 @@ export function AiLinksPanel({ disabledNote, saved, initial, focus = "", inline 
   const [lines, setLines] = useState<Record<number, LineStatus>>({});
   const [removed, setRemoved] = useState<Set<string>>(new Set());
   const [pending, start] = useTransition();
+  const [finding, setFinding] = useState(false);
   const off = disabledNote !== null;
   const set = (line: number, s: LineStatus) => setLines((l) => ({ ...l, [line]: s }));
   return (
@@ -37,19 +38,22 @@ export function AiLinksPanel({ disabledNote, saved, initial, focus = "", inline 
         <button
           type="button"
           className={inline ? AI_GHOST : TOOL_PRIMARY}
-          disabled={!off && pending}
+          disabled={!off && (pending || finding)}
           {...pausedProps(disabledNote, "ai-links-off")}
           data-testid="ai-tool-related_links-propose"
-          onClick={() =>
-            !off &&
-            start(async () => {
+          onClick={async () => {
+            if (off) return;
+            setFinding(true);
+            try {
               const r = await proposeAiRelatedLinks(focus);
               setLines({});
               setState(r.ok ? { kind: "review", proposalId: r.proposalId, links: r.links } : { kind: "error", message: r.message });
-            })
-          }
+            } finally {
+              setFinding(false);
+            }
+          }}
         >
-          {pending ? C.PROPOSING : inline ? C.LINKS_FIND : C.LINKS_PROPOSE}
+          {finding ? C.PROPOSING : inline ? C.LINKS_FIND : C.LINKS_PROPOSE}
         </button>
       </div>
       {state.kind === "error" && <AiAlert tone="danger" testId="ai-tool-links-error">{state.message}</AiAlert>}
