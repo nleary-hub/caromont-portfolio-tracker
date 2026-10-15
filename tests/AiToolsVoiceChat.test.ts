@@ -178,35 +178,63 @@ describe("step 10: privacy and usage", () => {
     expect(voice).not.toMatch(/audio|FormData|Blob/i);
   });
 
-  it("one row per session: written at start, filled at End with minutes and cost, never transcript or audio", async () => {
+  it("start writes a session_started row (no length or cost); End inserts one session_ended row with the same id", async () => {
     const db = await voiceSetup();
     const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
     if (!r.ok) throw new Error(r.message);
-    // An abandoned session still leaves this record.
     expect(db.usage).toHaveLength(1);
-    expect(db.usage[0]).toMatchObject({ feature: "voice_chat", event: "session_started", model: "gpt-live-1", suggestedText: null });
+    expect(db.usage[0]).toMatchObject({ feature: "voice_chat", event: "session_started", suggestionId: r.sessionId, model: "gpt-live-1", suggestedText: null });
     expect((db.usage[0] as { usageSeconds?: number | null }).usageSeconds ?? null).toBeNull();
     const e = await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 150_000) });
     expect(e).toEqual({ ok: true, seconds: 150 });
-    expect(db.usage).toHaveLength(1);
-    expect(db.usage[0]).toMatchObject({ event: "session_started", usageSeconds: 150, costUsd: 0.15, suggestedText: null });
-    // Idempotent: a second End changes nothing.
-    expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 999_000) })).toEqual({ ok: true, seconds: 150 });
-    expect(db.usage).toHaveLength(1);
-    expect(db.usage[0]).toMatchObject({ usageSeconds: 150, costUsd: 0.15 });
-    expect(db.writes.filter((w) => w === "aiUsageLog.updateMany")).toHaveLength(1);
+    expect(db.usage).toHaveLength(2);
+    // Append-only: the started row is untouched, the ended row carries the numbers.
+    expect((db.usage[0] as { usageSeconds?: number | null }).usageSeconds ?? null).toBeNull();
+    expect(db.usage[1]).toMatchObject({ event: "session_ended", suggestionId: r.sessionId, usageSeconds: 150, costUsd: 0.15, suggestedText: null });
+    expect(db.writes.every((w) => w === "aiUsageLog.create")).toBe(true);
     for (const u of db.usage) expect(Object.keys(u).some((k) => /audio|transcript/i.test(k))).toBe(false);
   });
 
-  it("End only touches the caller's own row and caps at 15 minutes server side", async () => {
+  it("a duplicate End is ignored: no second ended row, the stored length is returned", async () => {
+    const db = await voiceSetup();
+    const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
+    if (!r.ok) throw new Error(r.message);
+    await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 150_000) });
+    expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 600_000) })).toEqual({ ok: true, seconds: 150 });
+    expect(db.usage.filter((u) => u.event === "session_ended")).toHaveLength(1);
+    // A racing insert refused by the unique index is reported as the stored row, not an error.
+    const raced = await voiceSetup();
+    const s2 = await AiVoiceChatService.start({ db: raced, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
+    if (!s2.ok) throw new Error(s2.message);
+    const create = raced.aiUsageLog.create;
+    raced.aiUsageLog.create = async (args) => {
+      await create({ data: { ...args.data, id: "40000000-0000-4000-8000-000000000001", usageSeconds: 42 } });
+      throw new Error("unique violation");
+    };
+    expect(await AiVoiceChatService.end({ db: raced, viewer: ADMIN, sessionId: s2.sessionId, now: () => new Date(T0.getTime() + 60_000) })).toEqual({ ok: true, seconds: 42 });
+  });
+
+  it("only the caller ends their own started session; the length is capped at 900 seconds", async () => {
     const db = await voiceSetup();
     const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
     if (!r.ok) throw new Error(r.message);
     const other = { email: "other.admin@example.org", isAdmin: true };
     expect(await AiVoiceChatService.end({ db, viewer: other, sessionId: r.sessionId })).toEqual({ ok: false, message: AiToolsCopy.VOICE_SESSION_GONE });
-    expect((db.usage[0] as { usageSeconds?: number | null }).usageSeconds ?? null).toBeNull();
+    expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: "40000000-0000-4000-8000-0000000000ff" })).toEqual({ ok: false, message: AiToolsCopy.VOICE_SESSION_GONE });
+    expect(db.usage.filter((u) => u.event === "session_ended")).toHaveLength(0);
     expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 3 * 3600_000) })).toEqual({ ok: true, seconds: 900 });
-    expect(db.usage[0]).toMatchObject({ usageSeconds: 900, costUsd: 0.9 });
+    expect(db.usage.at(-1)).toMatchObject({ event: "session_ended", usageSeconds: 900, costUsd: 0.9 });
+  });
+
+  it("totals pair started and ended rows; a start with no end is abandoned", async () => {
+    const db = await voiceSetup();
+    const a = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
+    const b = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
+    if (!a.ok || !b.ok) throw new Error("start");
+    await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: a.sessionId, now: () => new Date(T0.getTime() + 120_000) });
+    const pairs = AiVoiceChatService.pair(db.usage as never);
+    expect(pairs.find((p) => p.sessionId === a.sessionId)).toMatchObject({ seconds: 120, costUsd: 0.12, abandoned: false });
+    expect(pairs.find((p) => p.sessionId === b.sessionId)).toMatchObject({ seconds: null, costUsd: null, abandoned: true });
   });
 
   it("caps the billed length and leaves cost empty without a per-minute price", async () => {
@@ -218,7 +246,7 @@ describe("step 10: privacy and usage", () => {
     const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
     if (!r.ok) throw new Error(r.message);
     await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 60_000) });
-    expect(db.usage[0]).toMatchObject({ event: "session_started", usageSeconds: 60, costUsd: null });
+    expect(db.usage.at(-1)).toMatchObject({ event: "session_ended", usageSeconds: 60, costUsd: null });
   });
 
   it("a failed mint logs failed and returns the plain error", async () => {
@@ -229,40 +257,30 @@ describe("step 10: privacy and usage", () => {
 });
 
 describe("step 10: migration and copy", () => {
-  it("0048 is add-only and seeds voice_chat ON (PGlite)", async () => {
+  it("0048 is add-only, does not touch the append-only trigger function, and refuses a second ended row (PGlite)", async () => {
     const dir = path.resolve(__dirname, "../prisma/migrations");
     const sql = readFileSync(path.join(dir, "0048_ai_voice_chat", "migration.sql"), "utf8");
-    // No data statements outside the guard function (whose body names TG_OP = 'UPDATE').
-    const fn = /CREATE OR REPLACE FUNCTION ai_usage_log_retention_guard\(\)[\s\S]*?\$\$ LANGUAGE plpgsql;/;
-    expect(sql.replace(fn, "").split("\n").filter((l) => !l.startsWith("--")).join("\n")).not.toMatch(/\bDROP (TABLE|COLUMN)\b|\bDELETE\b|\bUPDATE\b/i);
-    // The 0035 retention branch is carried over unchanged.
-    const branch = (t: string) => /IF TG_OP = 'UPDATE'\s+AND OLD."createdAt"[\s\S]*?END IF;/.exec(t)?.[0];
-    const old0035 = readFileSync(path.join(dir, "0035_ai_assistant_hardening", "migration.sql"), "utf8");
-    expect(branch(sql)).toBe(branch(old0035));
+    const code = sql.split("\n").filter((l) => !l.startsWith("--")).join("\n");
+    expect(code).not.toMatch(/\bDROP (TABLE|COLUMN)\b|\bDELETE\b|\bUPDATE\b/i);
+    expect(code).not.toMatch(/\bFUNCTION\b|\bTRIGGER\b|ai_usage_log_retention_guard|ai_usage_log_append_only/i);
     const db = await PGlite.create();
-    for (const f of readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) await db.exec(readFileSync(path.join(dir, f, "migration.sql"), "utf8"));
+    const all = readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
+    const fnSrc = async () => (await db.query<{ src: string }>(`SELECT pg_get_functiondef('ai_usage_log_retention_guard'::regproc) AS src`)).rows[0].src;
+    for (const f of all.filter((f) => f < "0048")) await db.exec(readFileSync(path.join(dir, f, "migration.sql"), "utf8"));
+    const before = await fnSrc();
+    for (const f of all.filter((f) => f >= "0048")) await db.exec(readFileSync(path.join(dir, f, "migration.sql"), "utf8"));
+    expect(await fnSrc()).toBe(before);
     expect((await db.query(`SELECT "enabled" FROM "ai_feature_settings" WHERE "feature" = 'voice_chat'`)).rows).toEqual([{ enabled: true }]);
-    const row = (id: string, feature = "voice_chat", event = "session_started") =>
-      db.exec(`INSERT INTO "ai_usage_log" ("id", "suggestionId", "userEmail", "feature", "event", "inputLength") VALUES ('${id}', '00000000-0000-4000-8000-0000000000aa', 'a@example.org', '${feature}', '${event}', 2)`);
-    const S1 = "00000000-0000-4000-8000-000000000001";
-    await row(S1);
-    // End chat: fill once.
-    await db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 90, "costUsd" = 0.09 WHERE "id" = '${S1}' AND "usageSeconds" IS NULL`);
-    expect((await db.query(`SELECT "usageSeconds", "costUsd"::text AS c FROM "ai_usage_log" WHERE "id" = '${S1}'`)).rows).toEqual([{ usageSeconds: 90, c: "0.090000" }]);
-    // A second fill, any other column, a non-session row, over the cap and DELETE are all refused.
-    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5 WHERE "id" = '${S1}'`)).rejects.toThrow();
-    const S2 = "00000000-0000-4000-8000-000000000002";
-    await row(S2);
-    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5, "suggestedText" = 'x' WHERE "id" = '${S2}'`)).rejects.toThrow();
-    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 901 WHERE "id" = '${S2}'`)).rejects.toThrow();
-    const P = "00000000-0000-4000-8000-000000000003";
-    await row(P, "voice_chat", "proposed");
-    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5 WHERE "id" = '${P}'`)).rejects.toThrow();
-    const Q = "00000000-0000-4000-8000-000000000004";
-    await row(Q, "quick_capture", "proposed");
-    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5 WHERE "id" = '${Q}'`)).rejects.toThrow();
-    await expect(db.exec(`DELETE FROM "ai_usage_log" WHERE "id" = '${S1}'`)).rejects.toThrow();
-    await expect(row("00000000-0000-4000-8000-000000000005", "voice_chat", "session_ended")).rejects.toThrow();
+    const S = "00000000-0000-4000-8000-0000000000aa";
+    const ins = (id: string, event: string, secs: string) =>
+      db.exec(`INSERT INTO "ai_usage_log" ("id", "suggestionId", "userEmail", "feature", "event", "inputLength", "usageSeconds", "costUsd") VALUES ('${id}', '${S}', 'a@example.org', 'voice_chat', '${event}', 0, ${secs}, ${secs === "NULL" ? "NULL" : "0.09"})`);
+    await ins("00000000-0000-4000-8000-000000000001", "session_started", "NULL");
+    await ins("00000000-0000-4000-8000-000000000002", "session_ended", "90");
+    await expect(ins("00000000-0000-4000-8000-000000000003", "session_ended", "30")).rejects.toThrow();
+    await expect(ins("00000000-0000-4000-8000-000000000004", "session_ended", "901")).rejects.toThrow();
+    // Still strictly append-only.
+    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5 WHERE "id" = '00000000-0000-4000-8000-000000000001'`)).rejects.toThrow();
+    await expect(db.exec(`DELETE FROM "ai_usage_log" WHERE "id" = '00000000-0000-4000-8000-000000000001'`)).rejects.toThrow();
   });
 
   it("new copy has no em dashes", () => {

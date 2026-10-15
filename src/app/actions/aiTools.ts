@@ -7,7 +7,7 @@ import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
-import { AiVoiceChatService, type AiVoiceDb } from "@/lib/services/AiVoiceChatService";
+import { AiVoiceChatService } from "@/lib/services/AiVoiceChatService";
 import { AiToolsService, type AiToolLineResult, type AiToolProposeResult, type AiToolsDb } from "@/lib/services/AiToolsService";
 import { ProjectService } from "@/lib/services/ProjectService";
 import type { ProjectInput } from "@/lib/validation/ProjectValidator";
@@ -190,7 +190,7 @@ export async function endAiVoiceChat(sessionId: string) {
   try {
     const c = await context();
     if (!c) return { ok: false as const, message: AiCopy.NOT_AUTHORIZED };
-    return await AiVoiceChatService.end({ db: c.db as AiVoiceDb, viewer: c.viewer, sessionId });
+    return await AiVoiceChatService.end({ db: c.db, viewer: c.viewer, sessionId });
   } catch (e) {
     console.error("AI tools failed: voice end", (e as Error)?.name);
     return { ok: false as const, message: AiToolsCopy.VOICE_SESSION_GONE };
