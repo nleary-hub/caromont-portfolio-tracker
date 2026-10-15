@@ -20,6 +20,13 @@ export type AiVoiceProposeResult = { ok: true; proposalId: string; feature: "voi
 export type AiVoiceEndResult = { ok: true; seconds: number } | { ok: false; message: string };
 
 const FEATURE = "voice_chat";
+
+/** AiToolsDb plus the one update voice chat makes (0048 allows only filling usageSeconds and costUsd once). */
+export type AiVoiceDb = AiToolsDb & {
+  aiUsageLog: AiToolsDb["aiUsageLog"] & {
+    updateMany(args: { where: { id: string; userEmail: string; feature: string; event: string; usageSeconds: null }; data: { usageSeconds: number; costUsd: number | null } }): Promise<{ count: number }>;
+  };
+};
 const UUID = /^[0-9a-f-]{36}$/i;
 
 /**
@@ -27,8 +34,8 @@ const UUID = /^[0-9a-f-]{36}$/i;
  * editor role). The server mints a short-lived realtime client secret with the API key; the browser talks to the
  * model directly with that secret, so audio never passes through or is stored by this app.
  *
- * ai_usage_log rows (no audio, no transcript): session_started, then session_ended with usageSeconds and costUsd,
- * plus the normal proposed / applied / rejected rows when the model suggests edits. Suggested edits are only listed
+ * ai_usage_log rows (no audio, no transcript): ONE session_started row written at start (so an abandoned session
+ * still leaves a record), updated once at End chat with usageSeconds and costUsd (0048 allows only that update), plus the normal proposed / applied / rejected rows when the model suggests edits. Suggested edits are only listed
  * for review; applying a line goes through AiToolsService.applyLine and ProjectService.update like every text tool.
  */
 export class AiVoiceChatService {
@@ -84,7 +91,7 @@ export class AiVoiceChatService {
     if (!(await AiModelService.featureOn(db, FEATURE, env))) return { ok: false, message: AiToolsCopy.FEATURE_OFF };
     const session = await AiVoiceChatService.session(db, viewer, args.sessionId);
     if (!session) return { ok: false, message: AiToolsCopy.VOICE_SESSION_GONE };
-    if (await db.aiUsageLog.findFirst({ where: { suggestionId: session.suggestionId, userEmail: viewer.email, event: "session_ended" } })) return { ok: false, message: AiToolsCopy.VOICE_SESSION_GONE };
+    if (session.usageSeconds !== null && session.usageSeconds !== undefined) return { ok: false, message: AiToolsCopy.VOICE_SESSION_GONE };
     const projects = await AiToolsService.projects(db, args.scope);
     const changes = AiVoiceChat.parseToolArgs(args.toolArgs, projects);
     const proposalId = randomUUID();
@@ -112,23 +119,28 @@ export class AiVoiceChatService {
   }
 
   /**
-   * Ends a session: one session_ended row with the length (server clock, capped) and the cost from the admin-entered
-   * price of the model. Ending twice is a no-op.
+   * Ends a session: fills usageSeconds (server clock from the start row, capped at 15 minutes) and costUsd (the
+   * admin-entered per-minute price) on the caller's own session_started row. Idempotent: the update only matches a
+   * row that has no usageSeconds yet, so a second End changes nothing.
    */
-  static async end(args: { db: AiToolsDb; viewer: Viewer | null; sessionId: unknown; now?: () => Date }): Promise<AiVoiceEndResult> {
+  static async end(args: { db: AiVoiceDb; viewer: Viewer | null; sessionId: unknown; now?: () => Date }): Promise<AiVoiceEndResult> {
     const { db, viewer } = args;
     const now = args.now ?? (() => new Date());
     if (!viewer?.isAdmin) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
     const session = await AiVoiceChatService.session(db, viewer, args.sessionId);
     if (!session) return { ok: false, message: AiToolsCopy.VOICE_SESSION_GONE };
-    const done = await db.aiUsageLog.findFirst({ where: { suggestionId: session.suggestionId, userEmail: viewer.email, event: "session_ended" } });
-    if (done) return { ok: true, seconds: done.usageSeconds ?? 0 };
-    const at = now();
-    const seconds = AiVoiceChat.seconds(session.createdAt, at);
+    if (session.usageSeconds !== null && session.usageSeconds !== undefined) return { ok: true, seconds: session.usageSeconds };
+    const seconds = AiVoiceChat.seconds(session.createdAt, now());
     const price = await AiVoiceChatService.price(db, session.model ?? "");
-    await db.aiUsageLog.create({
-      data: { id: randomUUID(), suggestionId: session.suggestionId, userEmail: viewer.email, projectId: null, feature: FEATURE, event: "session_ended", provider: session.provider, model: session.model, inputLength: 0, outputLength: null, numberCheckPassed: null, suggestedText: null, usageSeconds: seconds, costUsd: AiVoiceChat.cost(seconds, price?.priceUnit, price?.inputPrice), createdAt: at },
+    const r = await db.aiUsageLog.updateMany({
+      where: { id: session.id, userEmail: viewer.email, feature: FEATURE, event: "session_started", usageSeconds: null },
+      data: { usageSeconds: seconds, costUsd: AiVoiceChat.cost(seconds, price?.priceUnit, price?.inputPrice) },
     });
+    if (r.count === 0) {
+      // Ended in parallel: report what is stored.
+      const again = await AiVoiceChatService.session(db, viewer, args.sessionId);
+      return { ok: true, seconds: again?.usageSeconds ?? seconds };
+    }
     return { ok: true, seconds };
   }
 

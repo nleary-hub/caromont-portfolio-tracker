@@ -29,6 +29,13 @@ export class FakeToolsDb extends FakeAiDb {
     },
     count: async (args: { where: { userEmail: string; event: { in: string[] }; createdAt: { gte: Date } } }) =>
       this.usage.filter((u) => u.userEmail === args.where.userEmail && args.where.event.in.includes(u.event) && u.createdAt >= args.where.createdAt.gte).length,
+    /** Step 10: matches every where key exactly (null matches null or missing), like Prisma updateMany. */
+    updateMany: async (args: { where: Record<string, unknown>; data: Record<string, unknown> }) => {
+      this.writes.push("aiUsageLog.updateMany");
+      const rows = (this.usage as AiToolUsageRow[]).filter((u) => Object.entries(args.where).every(([k, v]) => ((u as unknown as Record<string, unknown>)[k] ?? null) === v));
+      for (const r of rows) Object.assign(r, args.data);
+      return { count: rows.length };
+    },
   };
 
   override project = {

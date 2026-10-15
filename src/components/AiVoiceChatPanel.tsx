@@ -21,9 +21,9 @@ export type AiVoiceReview = { proposalId: string; changes: AiToolChange[] };
  * list as the text tools (apply or reject each line). Audio goes from the browser to the provider only, never to this
  * app, and is never recorded. Paused (model off) keeps the button greyed and focusable with the note.
  */
-export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialReviews = [] }: { disabledNote: string | null; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[] }) {
+export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialReviews = [], initialError = null }: { disabledNote: string | null; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[]; initialError?: string | null }) {
   const [phase, setPhase] = useState<AiVoicePhaseState>(initialPhase);
-  const [error, setError] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(initialError);
   const [reviews, setReviews] = useState<AiVoiceReview[]>(initialReviews);
   const conn = useRef<AiRealtimeConnection | null>(null);
   const session = useRef<string | null>(null);
@@ -97,22 +97,19 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
             {phase === "connecting" ? C.VOICE_CONNECTING : C.VOICE_START}
           </button>
         )}
-        {live && (
-          <span role="status" aria-live="polite" className="flex items-center gap-2 type-table-strong text-fg" data-testid="ai-voice-phase">
-            <span aria-hidden="true" className={`size-2 rounded-full ${phase === "listening" ? "animate-pulse bg-accent" : "bg-(--status-on-track-dark-fg)"}`} />
-            {phase === "listening" ? C.VOICE_LISTENING : C.VOICE_SPEAKING}
-          </span>
-        )}
+        {/* Always mounted so screen readers announce Listening, Answering and the end of the chat. */}
+        <span role="status" aria-live="polite" className="flex items-center gap-2 type-table-strong text-fg" data-testid="ai-voice-phase">
+          {live && <span aria-hidden="true" className={`size-2 rounded-full ${phase === "listening" ? "animate-pulse bg-accent" : "bg-(--status-on-track-dark-fg)"}`} />}
+          {phase === "listening" ? C.VOICE_LISTENING : phase === "speaking" ? C.VOICE_SPEAKING : ""}
+        </span>
       </div>
+      {/* Errors (no microphone, could not start, dropped) sit right under the Start button. */}
+      {error && <AiAlert tone="danger" testId="ai-voice-error">{error}</AiAlert>}
       <p className="text-muted type-caption">{C.VOICE_CHAT_HELP}</p>
       <p className="text-muted type-caption" data-testid="ai-voice-privacy">{C.VOICE_PRIVACY}</p>
       <AiOffNote id="ai-voice-off" note={disabledNote} testId="ai-tool-voice_chat-off" />
-      {error && <AiAlert tone="danger" testId="ai-voice-error">{error}</AiAlert>}
       {reviews.map((r) => (
-        <section key={r.proposalId} aria-label={C.VOICE_SUGGESTED} className="flex flex-col gap-2" data-testid="ai-voice-review">
-          <h3 className="type-table-strong text-fg">{C.VOICE_SUGGESTED}</h3>
-          <AiChangeReview proposalId={r.proposalId} changes={r.changes} />
-        </section>
+        <AiChangeReview key={r.proposalId} proposalId={r.proposalId} changes={r.changes} />
       ))}
     </div>
   );

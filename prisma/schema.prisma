@@ -847,7 +847,7 @@ model AiUsageLog {
   unverifiedCount   Int?
   /// AI tools (0041): which line of a multi-line proposal an applied or rejected row is about
   lineIndex         Int?
-  /// Voice chat (0048): session length in whole seconds, on session_ended rows only. Never audio or a transcript.
+  /// Voice chat (0048): session length in whole seconds, filled once at End chat on the session_started row. Never audio or a transcript.
   usageSeconds      Int?
   /// Voice chat (0048): cost from the admin-entered per-minute price at the time; null when there is no such price
   costUsd           Decimal? @db.Decimal(12, 6)

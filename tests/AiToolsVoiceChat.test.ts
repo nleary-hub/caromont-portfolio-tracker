@@ -178,18 +178,35 @@ describe("step 10: privacy and usage", () => {
     expect(voice).not.toMatch(/audio|FormData|Blob/i);
   });
 
-  it("logs minutes and cost from the admin price, never transcript or audio", async () => {
+  it("one row per session: written at start, filled at End with minutes and cost, never transcript or audio", async () => {
     const db = await voiceSetup();
     const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
     if (!r.ok) throw new Error(r.message);
-    expect(db.usage.at(-1)).toMatchObject({ feature: "voice_chat", event: "session_started", model: "gpt-live-1", suggestedText: null });
+    // An abandoned session still leaves this record.
+    expect(db.usage).toHaveLength(1);
+    expect(db.usage[0]).toMatchObject({ feature: "voice_chat", event: "session_started", model: "gpt-live-1", suggestedText: null });
+    expect((db.usage[0] as { usageSeconds?: number | null }).usageSeconds ?? null).toBeNull();
     const e = await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 150_000) });
     expect(e).toEqual({ ok: true, seconds: 150 });
-    expect(db.usage.at(-1)).toMatchObject({ event: "session_ended", usageSeconds: 150, costUsd: 0.15, suggestedText: null });
-    // Ending twice logs once.
-    await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 999_000) });
-    expect(db.usage.filter((u) => u.event === "session_ended")).toHaveLength(1);
+    expect(db.usage).toHaveLength(1);
+    expect(db.usage[0]).toMatchObject({ event: "session_started", usageSeconds: 150, costUsd: 0.15, suggestedText: null });
+    // Idempotent: a second End changes nothing.
+    expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 999_000) })).toEqual({ ok: true, seconds: 150 });
+    expect(db.usage).toHaveLength(1);
+    expect(db.usage[0]).toMatchObject({ usageSeconds: 150, costUsd: 0.15 });
+    expect(db.writes.filter((w) => w === "aiUsageLog.updateMany")).toHaveLength(1);
     for (const u of db.usage) expect(Object.keys(u).some((k) => /audio|transcript/i.test(k))).toBe(false);
+  });
+
+  it("End only touches the caller's own row and caps at 15 minutes server side", async () => {
+    const db = await voiceSetup();
+    const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
+    if (!r.ok) throw new Error(r.message);
+    const other = { email: "other.admin@example.org", isAdmin: true };
+    expect(await AiVoiceChatService.end({ db, viewer: other, sessionId: r.sessionId })).toEqual({ ok: false, message: AiToolsCopy.VOICE_SESSION_GONE });
+    expect((db.usage[0] as { usageSeconds?: number | null }).usageSeconds ?? null).toBeNull();
+    expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 3 * 3600_000) })).toEqual({ ok: true, seconds: 900 });
+    expect(db.usage[0]).toMatchObject({ usageSeconds: 900, costUsd: 0.9 });
   });
 
   it("caps the billed length and leaves cost empty without a per-minute price", async () => {
@@ -201,7 +218,7 @@ describe("step 10: privacy and usage", () => {
     const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
     if (!r.ok) throw new Error(r.message);
     await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 60_000) });
-    expect(db.usage.at(-1)).toMatchObject({ usageSeconds: 60, costUsd: null });
+    expect(db.usage[0]).toMatchObject({ event: "session_started", usageSeconds: 60, costUsd: null });
   });
 
   it("a failed mint logs failed and returns the plain error", async () => {
@@ -215,11 +232,37 @@ describe("step 10: migration and copy", () => {
   it("0048 is add-only and seeds voice_chat ON (PGlite)", async () => {
     const dir = path.resolve(__dirname, "../prisma/migrations");
     const sql = readFileSync(path.join(dir, "0048_ai_voice_chat", "migration.sql"), "utf8");
-    expect(sql.split("\n").filter((l) => !l.startsWith("--")).join("\n")).not.toMatch(/\bDROP (TABLE|COLUMN)\b|\bDELETE\b|\bUPDATE\b/i);
+    // No data statements outside the guard function (whose body names TG_OP = 'UPDATE').
+    const fn = /CREATE OR REPLACE FUNCTION ai_usage_log_retention_guard\(\)[\s\S]*?\$\$ LANGUAGE plpgsql;/;
+    expect(sql.replace(fn, "").split("\n").filter((l) => !l.startsWith("--")).join("\n")).not.toMatch(/\bDROP (TABLE|COLUMN)\b|\bDELETE\b|\bUPDATE\b/i);
+    // The 0035 retention branch is carried over unchanged.
+    const branch = (t: string) => /IF TG_OP = 'UPDATE'\s+AND OLD."createdAt"[\s\S]*?END IF;/.exec(t)?.[0];
+    const old0035 = readFileSync(path.join(dir, "0035_ai_assistant_hardening", "migration.sql"), "utf8");
+    expect(branch(sql)).toBe(branch(old0035));
     const db = await PGlite.create();
     for (const f of readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) await db.exec(readFileSync(path.join(dir, f, "migration.sql"), "utf8"));
     expect((await db.query(`SELECT "enabled" FROM "ai_feature_settings" WHERE "feature" = 'voice_chat'`)).rows).toEqual([{ enabled: true }]);
-    await db.exec(`INSERT INTO "ai_usage_log" ("id", "suggestionId", "userEmail", "feature", "event", "inputLength", "usageSeconds", "costUsd") VALUES ('00000000-0000-4000-8000-000000000001', '00000000-0000-4000-8000-000000000002', 'a@example.org', 'voice_chat', 'session_ended', 0, 90, 0.09)`);
+    const row = (id: string, feature = "voice_chat", event = "session_started") =>
+      db.exec(`INSERT INTO "ai_usage_log" ("id", "suggestionId", "userEmail", "feature", "event", "inputLength") VALUES ('${id}', '00000000-0000-4000-8000-0000000000aa', 'a@example.org', '${feature}', '${event}', 2)`);
+    const S1 = "00000000-0000-4000-8000-000000000001";
+    await row(S1);
+    // End chat: fill once.
+    await db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 90, "costUsd" = 0.09 WHERE "id" = '${S1}' AND "usageSeconds" IS NULL`);
+    expect((await db.query(`SELECT "usageSeconds", "costUsd"::text AS c FROM "ai_usage_log" WHERE "id" = '${S1}'`)).rows).toEqual([{ usageSeconds: 90, c: "0.090000" }]);
+    // A second fill, any other column, a non-session row, over the cap and DELETE are all refused.
+    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5 WHERE "id" = '${S1}'`)).rejects.toThrow();
+    const S2 = "00000000-0000-4000-8000-000000000002";
+    await row(S2);
+    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5, "suggestedText" = 'x' WHERE "id" = '${S2}'`)).rejects.toThrow();
+    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 901 WHERE "id" = '${S2}'`)).rejects.toThrow();
+    const P = "00000000-0000-4000-8000-000000000003";
+    await row(P, "voice_chat", "proposed");
+    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5 WHERE "id" = '${P}'`)).rejects.toThrow();
+    const Q = "00000000-0000-4000-8000-000000000004";
+    await row(Q, "quick_capture", "proposed");
+    await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5 WHERE "id" = '${Q}'`)).rejects.toThrow();
+    await expect(db.exec(`DELETE FROM "ai_usage_log" WHERE "id" = '${S1}'`)).rejects.toThrow();
+    await expect(row("00000000-0000-4000-8000-000000000005", "voice_chat", "session_ended")).rejects.toThrow();
   });
 
   it("new copy has no em dashes", () => {
@@ -228,5 +271,42 @@ describe("step 10: migration and copy", () => {
     for (const f of ["src/lib/ai/AiVoiceChat.ts", "src/lib/ai/AiRealtimeClient.ts", "src/lib/ai/AiRealtimeBrowser.ts", "src/lib/services/AiVoiceChatService.ts", "src/components/AiVoiceChatPanel.tsx", "prisma/migrations/0048_ai_voice_chat/migration.sql"]) {
       expect(readFileSync(path.resolve(__dirname, "..", f), "utf8"), f).not.toContain("\u2014");
     }
+  });
+});
+
+describe("step 10: design fixes", () => {
+  it("an invalid review line pauses Apply (aria-disabled, focusable, described by the error) and clicking does nothing", async () => {
+    const src = readFileSync(path.resolve(__dirname, "../src/components/AiToolsPanel.tsx"), "utf8");
+    expect(src).toMatch(/l\.error \? \{ "aria-disabled": true as const, "aria-describedby": errorId\(c\.line\) \}/);
+    expect(src).toMatch(/onClick=\{\(\) =>\s*\/\/[^\n]*\n\s*!l\.error &&/);
+    const { AiChangeReview } = await import("@/components/AiToolsPanel");
+    const changes = [{ line: 0, projectId: A, projectName: "Example Clinic refresh", field: "dueDate" as const, before: "2026-11-01", after: "2026-13-40", reason: "" }];
+    const html = renderToStaticMarkup(createElement(AiChangeReview, { proposalId: "p1", changes, initialLines: { 0: { status: "open", value: "2026-13-40", error: AiToolsCopy.VALUE_INVALID } } }));
+    expect(html).toMatch(/aria-disabled="true" aria-describedby="p1-line-0-error" data-testid="ai-tool-apply-0"/);
+    expect(html).toContain('id="p1-line-0-error"');
+    expect(html).not.toMatch(/disabled=""[^>]*data-testid="ai-tool-apply-0"/);
+  });
+
+  it("no outer heading over the review; the phase is always in a polite status region", () => {
+    const review = renderToStaticMarkup(createElement(AiVoiceChatPanel, { disabledNote: null, initialPhase: "listening", initialReviews: [{ proposalId: "p2", changes: [{ line: 0, projectId: A, projectName: "Example Clinic refresh", field: "status", before: "OnTrack", after: "AtRisk", reason: "" }] }] }));
+    expect(review.match(/<h3/g)).toHaveLength(1);
+    expect(review).toContain(AiToolsCopy.REVIEW_TITLE);
+    expect(review).toMatch(/role="status" aria-live="polite"[^>]*data-testid="ai-voice-phase"[^>]*>.*Listening/);
+    const idle = renderToStaticMarkup(createElement(AiVoiceChatPanel, { disabledNote: null }));
+    expect(idle).toMatch(/role="status" aria-live="polite"[^>]*data-testid="ai-voice-phase"/);
+    expect(idle).not.toContain(AiToolsCopy.VOICE_LISTENING);
+  });
+
+  it("no microphone: Start is back to normal and the red alert sits right under it", () => {
+    const html = renderToStaticMarkup(createElement(AiVoiceChatPanel, { disabledNote: null, initialError: AiToolsCopy.VOICE_NO_MIC }));
+    expect(html).toContain(AiToolsCopy.VOICE_START);
+    expect(html).not.toContain('aria-disabled="true"');
+    const btn = html.indexOf('data-testid="ai-voice-start"');
+    const err = html.indexOf('data-testid="ai-voice-error"');
+    const help = html.indexOf(AiToolsCopy.VOICE_CHAT_HELP.replace(/'/g, "&#x27;"));
+    expect(btn).toBeGreaterThan(-1);
+    expect(err).toBeGreaterThan(btn);
+    expect(help).toBeGreaterThan(err);
+    expect(html).toContain(AiToolsCopy.VOICE_NO_MIC.replace(/'/g, "&#x27;"));
   });
 });

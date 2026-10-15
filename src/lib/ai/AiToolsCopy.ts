@@ -166,19 +166,18 @@ export class AiToolsCopy {
 
   // Step 10: Voice chat.
   static readonly VOICE_CHAT_TITLE = "Voice chat";
-  static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. Any change it suggests is listed below for you to review.";
+  static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. Any change the AI suggests is listed below. Nothing is saved until you apply it.";
   static readonly VOICE_START = "Start voice chat";
   static readonly VOICE_STOP = "End chat";
   static readonly VOICE_CONNECTING = "Connecting\u2026";
   static readonly VOICE_LISTENING = "Listening";
   static readonly VOICE_SPEAKING = "Answering";
   static readonly VOICE_PRIVACY = "Audio goes straight to the AI provider and is never saved here. Only minutes and cost are logged.";
-  static readonly VOICE_NO_MIC = "The microphone is not available. Check the browser's permission for this site.";
-  static readonly VOICE_START_FAILED = "Voice chat could not start. Try again in a moment.";
+  static readonly VOICE_NO_MIC = "The microphone isn't available. Check this site's microphone permission in your browser.";
+  static readonly VOICE_START_FAILED = "Voice chat couldn't start. Try again in a moment.";
   static readonly VOICE_DROPPED = "The connection dropped. Start again to keep talking.";
-  static readonly VOICE_TIME_UP = "The chat reached its 15 minute limit. Start again to keep talking.";
+  static readonly VOICE_TIME_UP = "The chat reached its 15-minute limit. Start again to keep talking.";
   static readonly VOICE_SESSION_GONE = "This voice chat has ended. Start a new one.";
-  static readonly VOICE_SUGGESTED = "Suggested changes from the chat";
   static readonly VOICE_MODEL_LABEL = "Voice chat model";
   static readonly VOICE_MODEL_HELP = "Voice chat needs a realtime speech model, such as gpt-live-1. Only models that are on are listed.";
 
