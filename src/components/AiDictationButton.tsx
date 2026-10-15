@@ -58,10 +58,10 @@ export function AiDictationButton({ onText, disabledNote }: { onText: (text: str
   return (
     <div className="flex flex-col gap-1" data-testid="ai-dictation">
       <div className="flex items-center gap-3">
-        <button type="button" className={GHOST} disabled={off || state === "sending"} aria-pressed={state === "recording"} onClick={() => (state === "recording" ? rec.current?.stop() : start())} data-testid="ai-dictation-button">
+        <button type="button" className={GHOST} disabled={off || state === "sending"} aria-pressed={state === "recording"} aria-describedby="ai-dictation-note" onClick={() => (state === "recording" ? rec.current?.stop() : start())} data-testid="ai-dictation-button">
           {state === "recording" ? C.DICTATE_STOP : state === "sending" ? C.TRANSCRIBING : C.DICTATE}
         </button>
-        <span className="text-muted type-caption" data-testid="ai-dictation-note">
+        <span id="ai-dictation-note" className="text-muted type-caption" data-testid="ai-dictation-note">
           {off ? disabledNote : C.DICTATION_HELP}
         </span>
       </div>

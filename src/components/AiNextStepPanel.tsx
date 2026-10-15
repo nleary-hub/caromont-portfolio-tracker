@@ -1,5 +1,6 @@
 "use client";
 
+import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { useState, useTransition } from "react";
 import { proposeAiToolChanges } from "@/app/actions/aiTools";
 import { AiAlert } from "@/components/AiNoteAssistant";
@@ -8,7 +9,6 @@ import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
-const PRIMARY = `h-8 whitespace-nowrap rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${FOCUS}`;
 
 /** Step 7: pick one project and get one suggested next milestone (and due date) to apply or reject. */
 export function AiNextStepPanel({ projects, disabledNote, initial, initialProject = "" }: { projects: { id: string; name: string }[]; disabledNote: string | null; initial?: AiToolsState; initialProject?: string }) {
@@ -32,10 +32,12 @@ export function AiNextStepPanel({ projects, disabledNote, initial, initialProjec
         </select>
         <button
           type="button"
-          className={PRIMARY}
-          disabled={off || pending || !projectId}
+          className={TOOL_PRIMARY}
+          disabled={!off && (pending || !projectId)}
+          {...pausedProps(disabledNote, "ai-next-step-off")}
           data-testid="ai-tool-next_step-propose"
           onClick={() =>
+            !off &&
             start(async () => {
               const r = await proposeAiToolChanges("next_step", C.NEXT_INSTRUCTION, projectId);
               setState(r.ok ? { kind: "review", proposal: r } : { kind: "error", message: r.message });
@@ -44,11 +46,11 @@ export function AiNextStepPanel({ projects, disabledNote, initial, initialProjec
         >
           {pending ? C.PROPOSING : C.NEXT_PROPOSE}
         </button>
-        {off && <span className="text-muted type-caption">{disabledNote}</span>}
       </div>
       <p id="ai-next-step-help" className="text-muted type-caption">
         {C.NEXT_HELP}
       </p>
+      <AiOffNote id="ai-next-step-off" note={disabledNote} testId="ai-tool-next_step-off" />
       {state.kind === "error" && <AiAlert tone="danger" testId="ai-tool-next_step-error">{state.message}</AiAlert>}
       {state.kind === "review" && <AiChangeReview key={state.proposal.proposalId} proposalId={state.proposal.proposalId} changes={state.proposal.changes} />}
     </div>

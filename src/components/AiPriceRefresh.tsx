@@ -1,5 +1,6 @@
 "use client";
 
+import { TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 import { applyAiPriceRefresh, reviewAiPriceRefresh } from "@/app/actions/aiPrices";
 import { AiAlert } from "@/components/AiNoteAssistant";
@@ -10,7 +11,6 @@ import type { AiPriceReview, AiPriceSet } from "@/lib/services/AiPriceRefreshSer
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const SECONDARY = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 /** The settings primary button (same classes as AiSettingsForm Save). */
-const PRIMARY = `h-8 whitespace-nowrap rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${FOCUS}`;
 
 const show = (p: AiPriceSet | null) => (p ? C.priceSummary(p.unit, p.input, p.output) : "");
 
@@ -109,7 +109,9 @@ export function AiPriceRefresh({ dbReady, initial, children }: { dbReady: boolea
                 {review.rows.map((r) => (
                   <tr key={r.id} className="border-t border-line" data-testid={`ai-price-review-row-${r.id}`} data-changed={r.changed || undefined}>
                     <td className="px-3 py-2 type-table-strong">
-                      {r.id}
+                      <span className="whitespace-nowrap" data-testid="ai-price-review-model">
+                        {r.id}
+                      </span>
                       {r.listedByOpenAi === false && (
                         <span className="mt-1 block w-fit whitespace-nowrap rounded-pill bg-(--status-at-risk-dark-bg) px-2 py-px text-(--status-at-risk-dark-fg) type-label" data-testid="ai-price-review-not-listed">
                           {C.PRICE_REVIEW_NOT_LISTED}
@@ -147,7 +149,7 @@ export function AiPriceRefresh({ dbReady, initial, children }: { dbReady: boolea
             <button type="button" className={SECONDARY} onClick={cancel} data-testid="ai-price-review-cancel">
               {C.CANCEL}
             </button>
-            <button ref={confirmRef} type="button" className={PRIMARY} onClick={confirm} disabled={changes.length === 0} data-testid="ai-price-review-confirm">
+            <button ref={confirmRef} type="button" className={TOOL_PRIMARY} onClick={confirm} disabled={changes.length === 0} data-testid="ai-price-review-confirm">
               {C.PRICE_REVIEW_CONFIRM}
             </button>
           </div>

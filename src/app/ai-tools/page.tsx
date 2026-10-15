@@ -44,6 +44,8 @@ export default async function AiToolsPage() {
       // Tables not migrated yet (Vercel previews skip migrations): every tool shows disabled.
     }
   }
+  /** Feature toggle OFF: the card is hidden. Feature ON but model off: the card stays, paused with the note (3b-2). */
+  const shown = (feature: string) => notes[feature] !== C.FEATURE_OFF_NOTE;
   const section = "flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4 backdrop-blur-[20px]";
   return (
     <main className="pb-page mx-auto flex max-w-[1040px] flex-col gap-6 px-6 py-6">
@@ -58,54 +60,68 @@ export default async function AiToolsPage() {
       </div>
       <p className="text-muted type-caption">{C.PAGE_INTRO}</p>
 
+      {shown("meeting_notes") && (
       <section className={section} aria-labelledby="ai-tool-meeting-heading" id="meeting-notes">
         <h2 id="ai-tool-meeting-heading" className="type-heading">
           {C.MEETING_TITLE}
         </h2>
         <AiToolsPanel feature="meeting_notes" label={C.MEETING_LABEL} help={C.MEETING_HELP} placeholder={C.MEETING_PLACEHOLDER} disabledNote={notes.meeting_notes ?? null} rows={8} />
       </section>
+      )}
 
+      {shown("bulk_edit") && (
       <section className={section} aria-labelledby="ai-tool-bulk-heading" id="bulk-edit">
         <h2 id="ai-tool-bulk-heading" className="type-heading">
           {C.BULK_TITLE}
         </h2>
         <AiToolsPanel feature="bulk_edit" label={C.BULK_LABEL} help={C.BULK_HELP} placeholder={C.BULK_PLACEHOLDER} disabledNote={notes.bulk_edit ?? null} rows={3} />
       </section>
+      )}
 
+      {shown("quick_capture") && (
       <section className={section} aria-labelledby="ai-tool-capture-heading" id="quick-capture">
         <h2 id="ai-tool-capture-heading" className="type-heading">
           {C.CAPTURE_TITLE}
         </h2>
-        <AiToolsPanel feature="quick_capture" label={C.CAPTURE_LABEL} help={C.CAPTURE_HELP} placeholder={C.CAPTURE_PLACEHOLDER} disabledNote={notes.quick_capture ?? null} rows={2} dictation={{ disabledNote: dictationNote }} />
+        <AiToolsPanel feature="quick_capture" label={C.CAPTURE_LABEL} help={C.CAPTURE_HELP} placeholder={C.CAPTURE_PLACEHOLDER} disabledNote={notes.quick_capture ?? null} rows={2} dictation={dictationNote === C.FEATURE_OFF_NOTE ? undefined : { disabledNote: dictationNote }} />
       </section>
+      )}
 
+      {shown("next_step") && (
       <section className={section} aria-labelledby="ai-tool-next-heading" id="next-step">
         <h2 id="ai-tool-next-heading" className="type-heading">
           {C.NEXT_TITLE}
         </h2>
         <AiNextStepPanel projects={projects} disabledNote={notes.next_step ?? null} />
       </section>
+      )}
 
+      {shown("request_to_project") && (
       <section className={section} aria-labelledby="ai-tool-request-heading" id="request-to-project">
         <h2 id="ai-tool-request-heading" className="type-heading">
           {C.REQUEST_TITLE}
         </h2>
         <AiDraftProjectPanel disabledNote={notes.request_to_project ?? null} />
       </section>
+      )}
 
+      {shown("meeting_brief") && (
       <section className={section} aria-labelledby="ai-tool-brief-heading" id="meeting-brief">
         <h2 id="ai-tool-brief-heading" className="type-heading">
           {C.BRIEF_TITLE}
         </h2>
         <AiBriefPanel disabledNote={notes.meeting_brief ?? null} />
       </section>
+      )}
 
+      {shown("related_links") && (
       <section className={section} aria-labelledby="ai-tool-links-heading" id="related-links">
         <h2 id="ai-tool-links-heading" className="type-heading">
           {C.LINKS_TITLE}
         </h2>
         <AiLinksPanel disabledNote={notes.related_links ?? null} saved={links} />
       </section>
+      )}
     </main>
   );
 }

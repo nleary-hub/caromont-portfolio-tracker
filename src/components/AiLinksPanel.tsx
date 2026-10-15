@@ -1,5 +1,6 @@
 "use client";
 
+import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { confirmAiRelatedLink, proposeAiRelatedLinks, rejectAiToolLine, removeRelatedLink } from "@/app/actions/aiTools";
@@ -9,7 +10,6 @@ import type { AiLinkSuggestion } from "@/lib/ai/AiToolsModel";
 import type { AiRelatedLinkView } from "@/lib/services/AiToolsService";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-const PRIMARY = `h-8 whitespace-nowrap rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${FOCUS}`;
 const GHOST = `h-7 whitespace-nowrap rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 
 export type AiLinksState = { kind: "idle" } | { kind: "error"; message: string } | { kind: "review"; proposalId: string; links: AiLinkSuggestion[] };
@@ -32,13 +32,16 @@ export function AiLinksPanel({ disabledNote, saved, initial }: { disabledNote: s
   return (
     <div className="flex flex-col gap-3" data-testid="ai-tool-related_links">
       <p className="text-muted type-caption">{C.LINKS_HELP}</p>
+      <AiOffNote id="ai-links-off" note={disabledNote} testId="ai-tool-related_links-off" />
       <div className="flex items-center gap-3">
         <button
           type="button"
-          className={PRIMARY}
-          disabled={off || pending}
+          className={TOOL_PRIMARY}
+          disabled={!off && pending}
+          {...pausedProps(disabledNote, "ai-links-off")}
           data-testid="ai-tool-related_links-propose"
           onClick={() =>
+            !off &&
             start(async () => {
               const r = await proposeAiRelatedLinks("");
               setLines({});
@@ -48,7 +51,6 @@ export function AiLinksPanel({ disabledNote, saved, initial }: { disabledNote: s
         >
           {pending ? C.PROPOSING : C.LINKS_PROPOSE}
         </button>
-        {off && <span className="text-muted type-caption">{disabledNote}</span>}
       </div>
       {state.kind === "error" && <AiAlert tone="danger" testId="ai-tool-links-error">{state.message}</AiAlert>}
       {state.kind === "review" &&

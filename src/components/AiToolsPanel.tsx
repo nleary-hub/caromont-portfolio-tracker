@@ -2,6 +2,7 @@
 
 import { useId, useState, useTransition } from "react";
 import { applyAiToolLine, proposeAiToolChanges, rejectAiToolLine } from "@/app/actions/aiTools";
+import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { AiDictationButton } from "@/components/AiDictationButton";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import type { AiToolFeature } from "@/lib/ai/AiFeatureFlags";
@@ -13,13 +14,12 @@ import type { AiToolProposeResult } from "@/lib/services/AiToolsService";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger ${FOCUS}`;
-const AREA = `min-h-24 w-full rounded-control border border-line bg-input px-2.5 py-2 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
-const PRIMARY = `h-8 whitespace-nowrap rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${FOCUS}`;
+const AREA = `min-h-24 w-full rounded-control border border-line bg-input px-2.5 py-2 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger ${FOCUS}`;
 const GHOST = `h-7 whitespace-nowrap rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 
 export type AiToolsState = { kind: "idle" } | { kind: "error"; message: string } | { kind: "review"; proposal: Extract<AiToolProposeResult, { ok: true }> };
-/** A value as people read it: status labels ("On hold"), blank as "(blank)". */
-const show = (field: string, v: string) => (!v ? C.EMPTY_VALUE : field === "status" && ProjectStatusInfo.isValid(v) ? ProjectStatusInfo.label(v) : v);
+/** A value as people read it: status labels ("On hold"), blank as a muted en dash. */
+const show = (field: string, v: string) => (!v ? <span className="text-muted" data-testid="ai-tool-empty">{C.EMPTY_VALUE}</span> : field === "status" && ProjectStatusInfo.isValid(v) ? ProjectStatusInfo.label(v) : v);
 
 type LineState = { status: "open" | "applied" | "rejected"; value: string; error?: string };
 
@@ -73,16 +73,12 @@ export function AiToolsPanel({
       <p id={`${id}-help`} className="text-muted type-caption">
         {help}
       </p>
+      <AiOffNote id={`${id}-off`} note={disabledNote} testId={`ai-tool-${feature}-off`} />
       {dictation && !off && <AiDictationButton disabledNote={dictation.disabledNote} onText={(t) => setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t))} />}
       <div className="flex items-center gap-3">
-        <button type="button" className={PRIMARY} onClick={propose} disabled={off || pending || !text.trim()} data-testid={`ai-tool-${feature}-propose`}>
+        <button type="button" className={TOOL_PRIMARY} onClick={() => !off && propose()} disabled={!off && (pending || !text.trim())} {...pausedProps(disabledNote, `${id}-off`)} data-testid={`ai-tool-${feature}-propose`}>
           {pending ? C.PROPOSING : C.PROPOSE}
         </button>
-        {off && (
-          <span className="text-muted type-caption" data-testid={`ai-tool-${feature}-off`}>
-            {disabledNote}
-          </span>
-        )}
       </div>
       {state.kind === "error" && <AiAlert tone="danger" testId={`ai-tool-${feature}-error`}>{state.message}</AiAlert>}
       {state.kind === "review" && <AiChangeReview key={state.proposal.proposalId} proposalId={state.proposal.proposalId} changes={state.proposal.changes} bulk={state.proposal.bulk} />}
@@ -116,6 +112,10 @@ export function AiChangeReview({ proposalId, changes, initialLines, bulk }: { pr
   const [busy, start] = useTransition();
   const set = (line: number, patch: Partial<LineState>) => setLines((l) => ({ ...l, [line]: { ...l[line], ...patch } }));
   const applied = Object.values(lines).filter((l) => l.status === "applied").length;
+  // Design review r2: an edit control with a line error gets the red border, aria-invalid and aria-describedby.
+  const errorId = (line: number) => `${proposalId}-line-${line}-error`;
+  const invalid = (line: number, l: LineState) => (l.error ? { "aria-invalid": true as const, "aria-describedby": errorId(line) } : {});
+  const label = (c: AiToolChange) => `${C.HEADERS[3]}, ${c.projectName}, ${C.fieldLabel(c.field)}`;
 
   if (!changes.length) {
     return (
@@ -163,7 +163,7 @@ export function AiChangeReview({ proposalId, changes, initialLines, bulk }: { pr
                   <td className="min-w-[12rem] px-3 py-2">
                     {open ? (
                       c.field === "status" ? (
-                        <select aria-label={`${C.HEADERS[3]}, ${c.projectName}, ${C.fieldLabel(c.field)}`} className={INPUT} value={l.value} onChange={(e) => set(c.line, { value: e.target.value })}>
+                        <select aria-label={label(c)} className={INPUT} value={l.value} onChange={(e) => set(c.line, { value: e.target.value, error: undefined })} {...invalid(c.line, l)}>
                           {ProjectStatusInfo.all().map((s) => (
                             <option key={s} value={s}>
                               {ProjectStatusInfo.label(s)}
@@ -171,15 +171,15 @@ export function AiChangeReview({ proposalId, changes, initialLines, bulk }: { pr
                           ))}
                         </select>
                       ) : c.field === "note" ? (
-                        <textarea aria-label={`${C.HEADERS[3]}, ${c.projectName}, ${C.fieldLabel(c.field)}`} className={`${INPUT} h-auto min-h-16 py-1`} value={l.value} onChange={(e) => set(c.line, { value: e.target.value })} />
+                        <textarea aria-label={label(c)} className={`${INPUT} h-auto min-h-16 py-1`} value={l.value} onChange={(e) => set(c.line, { value: e.target.value, error: undefined })} {...invalid(c.line, l)} data-testid={`ai-tool-edit-${c.line}`} />
                       ) : (
-                        <input aria-label={`${C.HEADERS[3]}, ${c.projectName}, ${C.fieldLabel(c.field)}`} className={INPUT} value={l.value} onChange={(e) => set(c.line, { value: e.target.value })} aria-invalid={l.error ? true : undefined} />
+                        <input aria-label={label(c)} className={INPUT} value={l.value} onChange={(e) => set(c.line, { value: e.target.value, error: undefined })} {...invalid(c.line, l)} data-testid={`ai-tool-edit-${c.line}`} />
                       )
                     ) : (
                       <span className={l.status === "rejected" ? "text-muted line-through" : "text-fg"}>{show(c.field, l.value)}</span>
                     )}
                     {l.error && (
-                      <span role="alert" className="mt-1 block text-danger type-caption">
+                      <span role="alert" id={errorId(c.line)} className="mt-1 block text-danger type-caption" data-testid={`ai-tool-error-${c.line}`}>
                         {l.error}
                       </span>
                     )}

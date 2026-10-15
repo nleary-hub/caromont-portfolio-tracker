@@ -120,7 +120,7 @@ describe("step 4: meeting notes to updates", () => {
   it("panel: disabled with the note when off; review list shows labels and per-line buttons", () => {
     const off = renderToStaticMarkup(createElement(AiToolsPanel, { feature: "meeting_notes", label: "L", help: "H", placeholder: "P", disabledNote: AiToolsCopy.MODEL_OFF_NOTE }));
     expect(off).toContain(AiToolsCopy.MODEL_OFF_NOTE);
-    expect(off).toMatch(/disabled=""[^>]*data-testid="ai-tool-meeting_notes-propose"/);
+    expect(off).toMatch(/aria-disabled="true" aria-describedby="[^"]*-off"[^>]*data-testid="ai-tool-meeting_notes-propose"/);
     const html = renderToStaticMarkup(createElement(AiChangeReview, { proposalId: "p", changes: [{ line: 0, projectId: A, projectName: "Example Clinic refresh", field: "status", before: "OnTrack", after: "OnHold", reason: "r" }] }));
     expect(html).toContain("On track");
     expect(html).toContain('data-testid="ai-tool-apply-0"');

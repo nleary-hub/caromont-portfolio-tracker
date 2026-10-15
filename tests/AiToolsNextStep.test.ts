@@ -29,7 +29,7 @@ describe("step 7: next-step suggestion", () => {
     expect(AiModelService.featureViews([], { AI_FEATURE_NEXT_STEP: "off" }).find((f) => f.feature === "next_step")).toMatchObject({ killedByEnv: true, label: "Next-step suggestion" });
     const html = renderToStaticMarkup(createElement(AiNextStepPanel, { projects: [{ id: A, name: "Example Clinic refresh" }], disabledNote: AiToolsCopy.FEATURE_OFF_NOTE }));
     expect(html).toContain(AiToolsCopy.FEATURE_OFF_NOTE);
-    expect(html).toMatch(/disabled=""[^>]*data-testid="ai-tool-next_step-propose"/);
+    expect(html).toMatch(/aria-disabled="true" aria-describedby="[^"]*-off"[^>]*data-testid="ai-tool-next_step-propose"/);
     expect(readFileSync("prisma/migrations/0044_ai_tools_next_step/migration.sql", "utf8")).toContain("'next_step', true");
   });
 });

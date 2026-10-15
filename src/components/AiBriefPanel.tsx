@@ -1,5 +1,6 @@
 "use client";
 
+import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { makeAiMeetingBrief } from "@/app/actions/aiTools";
@@ -9,7 +10,6 @@ import type { AiBrief, AiBriefItem } from "@/lib/ai/AiToolsModel";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
-const PRIMARY = `h-8 whitespace-nowrap rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${FOCUS}`;
 
 export type AiBriefState = { kind: "idle" } | { kind: "error"; message: string } | { kind: "brief"; brief: AiBrief };
 
@@ -28,10 +28,12 @@ export function AiBriefPanel({ disabledNote, initial }: { disabledNote: string |
         <input id="ai-brief-focus" className={`${INPUT} max-w-[24rem]`} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder={C.BRIEF_PLACEHOLDER} disabled={off} aria-describedby="ai-brief-help" />
         <button
           type="button"
-          className={PRIMARY}
-          disabled={off || pending}
+          className={TOOL_PRIMARY}
+          disabled={!off && pending}
+          {...pausedProps(disabledNote, "ai-brief-off")}
           data-testid="ai-tool-meeting_brief-propose"
           onClick={() =>
+            !off &&
             start(async () => {
               const r = await makeAiMeetingBrief(focus);
               setState(r.ok ? { kind: "brief", brief: r.brief } : { kind: "error", message: r.message });
@@ -40,11 +42,11 @@ export function AiBriefPanel({ disabledNote, initial }: { disabledNote: string |
         >
           {pending ? C.PROPOSING : C.BRIEF_PROPOSE}
         </button>
-        {off && <span className="text-muted type-caption">{disabledNote}</span>}
       </div>
       <p id="ai-brief-help" className="text-muted type-caption">
         {C.BRIEF_HELP}
       </p>
+      <AiOffNote id="ai-brief-off" note={disabledNote} testId="ai-tool-meeting_brief-off" />
       {state.kind === "error" && <AiAlert tone="danger" testId="ai-tool-brief-error">{state.message}</AiAlert>}
       {state.kind === "brief" && (
         <article aria-label={C.BRIEF_TITLE} className="flex flex-col gap-3 rounded-card border border-line bg-input/60 p-3" data-testid="ai-tool-brief">

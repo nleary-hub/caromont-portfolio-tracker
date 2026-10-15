@@ -1,5 +1,6 @@
 "use client";
 
+import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { useState, useTransition } from "react";
 import { createAiProjectDraft, proposeAiProjectDraft, rejectAiToolLine } from "@/app/actions/aiTools";
 import { AiAlert } from "@/components/AiNoteAssistant";
@@ -9,7 +10,6 @@ import type { AiProjectDraft } from "@/lib/ai/AiToolsModel";
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 const AREA = `min-h-20 w-full rounded-control border border-line bg-input px-2.5 py-2 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
-const PRIMARY = `h-8 whitespace-nowrap rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${FOCUS}`;
 const SECONDARY = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 const KEYS: (keyof AiProjectDraft)[] = ["name", "description", "nextMilestone", "dueDate", "targetCompletion", "note"];
 
@@ -31,13 +31,16 @@ export function AiDraftProjectPanel({ disabledNote, initial, initialText = "" }:
       <p id="ai-request-help" className="text-muted type-caption">
         {C.REQUEST_HELP}
       </p>
+      <AiOffNote id="ai-request-off" note={disabledNote} testId="ai-tool-request_to_project-off" />
       <div className="flex items-center gap-3">
         <button
           type="button"
-          className={PRIMARY}
-          disabled={off || pending || !text.trim()}
+          className={TOOL_PRIMARY}
+          disabled={!off && (pending || !text.trim())}
+          {...pausedProps(disabledNote, "ai-request-off")}
           data-testid="ai-tool-request_to_project-propose"
           onClick={() =>
+            !off &&
             start(async () => {
               const r = await proposeAiProjectDraft(text);
               setState(r.ok ? { kind: "review", proposalId: r.proposalId, draft: r.draft } : { kind: "error", message: r.message });
@@ -46,7 +49,6 @@ export function AiDraftProjectPanel({ disabledNote, initial, initialText = "" }:
         >
           {pending ? C.PROPOSING : C.REQUEST_PROPOSE}
         </button>
-        {off && <span className="text-muted type-caption">{disabledNote}</span>}
       </div>
       {state.kind === "error" && <AiAlert tone="danger" testId="ai-tool-request-error">{state.message}</AiAlert>}
       {state.kind === "done" && (
@@ -92,7 +94,7 @@ export function AiDraftProjectPanel({ disabledNote, initial, initialText = "" }:
             </button>
             <button
               type="button"
-              className={PRIMARY}
+              className={TOOL_PRIMARY}
               disabled={pending || !state.draft.name.trim()}
               data-testid="ai-tool-draft-create"
               onClick={() =>
