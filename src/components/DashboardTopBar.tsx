@@ -36,6 +36,7 @@ export function DashboardTopBar({
   closedQuery,
   pdfDepartments,
   adminMenu,
+  aiActions,
   account,
 }: {
   serviceLine: ServiceLineValue;
@@ -52,6 +53,8 @@ export function DashboardTopBar({
   closedQuery: string;
   pdfDepartments: Parameters<typeof OnDemandPdfLink.href>[0];
   adminMenu?: ReactNode;
+  /** AI header buttons (Voice chat), right side before the admin menu. Absent when the feature is off: no gap. */
+  aiActions?: ReactNode;
   account: ReactNode;
 }) {
   const rowRef = useRef<HTMLDivElement>(null);
@@ -60,7 +63,7 @@ export function DashboardTopBar({
   const searchRef = useRef<HTMLInputElement>(null);
   const iconRef = useRef<HTMLButtonElement>(null);
   const usable = TopBarFit.usable({ chipDate: Boolean(latestReport), viewIcon: Boolean(viewPicker) }, serviceLine);
-  const contentKey = [serviceLine.name, serviceLine.shortName, latestReport?.reportDate ?? "", viewKey, Boolean(adminMenu)].join("|");
+  const contentKey = [serviceLine.name, serviceLine.shortName, latestReport?.reportDate ?? "", viewKey, Boolean(adminMenu), Boolean(aiActions)].join("|");
   const fit = useTopBarFit(rowRef, usable, contentKey);
   const has = (s: Parameters<typeof TopBarFit.has>[1]) => TopBarFit.has(fit.level, s);
   const collapsed = has("searchIcon");
@@ -145,6 +148,7 @@ export function DashboardTopBar({
       >
         Generate PDF now
       </a>
+      {aiActions && <div className="flex shrink-0 items-center gap-2">{aiActions}</div>}
       {adminMenu && (
         // 12px left of the user block (header gap is 16px).
         <div className="-mr-1 shrink-0">{adminMenu}</div>

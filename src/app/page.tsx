@@ -12,7 +12,8 @@ import type { AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
 import type { AiInput } from "@/lib/ai/AiInput";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
-import { AiModelService } from "@/lib/services/AiModelService";
+import { AiModelService, type AiModelDb } from "@/lib/services/AiModelService";
+import { AiPlacementData } from "@/lib/services/AiToolsReadiness";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import type { AiOutcome } from "@/lib/services/AiWritingService";
 import { setDashboardHeartbeat } from "@/app/actions/preferences";
@@ -245,6 +246,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const aiPaused = aiOn ? AiWritingModel.paused({ aiOn, modelOn: await AiSettingsService.modelOn(Db.client as unknown as AiSettingsDb, await AiModelService.enabledIds(Db.client)) }) : false;
   // Revise with AI: the admin toggle (ai_feature_settings, on by default) and the env kill switch.
   const reviseOn = aiOn ? await AiModelService.featureOn(Db.client, "revise_note") : false;
+  // In-context AI buttons (placement spec): absent = feature off (not rendered); a note = model off (greyed).
+  const aiPlacements = aiOn ? await AiPlacementData.load(Db.client as unknown as AiModelDb & AiSettingsDb).catch(() => undefined) : undefined;
 
   return (
     <ProjectDashboard
@@ -377,6 +380,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           }
         : {})}
       historyAction={loadProjectHistory}
+      {...(aiPlacements ? { aiPlacements } : {})}
       signOutAction={signOutAction}
     />
   );
