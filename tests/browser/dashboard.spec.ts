@@ -81,7 +81,8 @@ test("keyboard focus is visible on drawer input, select and textarea, including 
   };
   expect((await checkFocus(".pb-drawer input")).border).toBe("rgb(76, 141, 255)");
   expect((await checkFocus(".pb-drawer select")).border).toBe("rgb(76, 141, 255)");
-  await page.locator(".pb-drawer").getByRole("button", { name: "Edit", exact: true }).click();
+  // The drawer opens straight into the edit form (no Edit click).
+  await expect(page.locator(".pb-drawer").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
   await checkFocus(".pb-drawer textarea");
   await page.locator(".pb-drawer #pf-name").fill("");
   await expect(page.locator(".pb-drawer").getByRole("button", { name: "Save", exact: true })).toHaveAttribute("aria-disabled", "true");
