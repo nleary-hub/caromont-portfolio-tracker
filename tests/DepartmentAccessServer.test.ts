@@ -107,7 +107,13 @@ class Page {
   }
 }
 
+// Fixed clock: the fixture projects are created before the freeze run (FREEZE_RUN) and the draft NOW,
+// so the completed project counts as completed in that period regardless of the real date.
+const FIXTURE_CLOCK = new Date("2026-09-26T14:00:00Z");
+
 beforeEach(async () => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(FIXTURE_CLOCK);
   for (const [k, v] of Object.entries(ENV)) vi.stubEnv(k, v);
   vi.spyOn(console, "info").mockImplementation(() => {});
   vi.spyOn(console, "warn").mockImplementation(() => {});
