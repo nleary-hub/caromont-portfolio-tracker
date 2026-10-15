@@ -166,7 +166,7 @@ export class AiToolsCopy {
 
   // Step 10: Voice chat.
   static readonly VOICE_CHAT_TITLE = "Voice chat";
-  static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. Any change it suggests is listed below for you to review. Audio is never saved.";
+  static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. Any change it suggests is listed below for you to review.";
   static readonly VOICE_START = "Start voice chat";
   static readonly VOICE_STOP = "End chat";
   static readonly VOICE_CONNECTING = "Connecting\u2026";
