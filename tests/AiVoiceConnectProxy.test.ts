@@ -130,7 +130,7 @@ describe("failed and ice_failed logging", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const { db, sessionId } = await started({ status: 201, body: "" });
     const f = AiVoiceErrors.ice("failed");
-    expect(f).toEqual({ code: "ice_failed", message: "Voice couldn't connect. Your network may be blocking live audio.", type: "failed" });
+    expect(f).toEqual({ code: "ice_failed", message: "Voice couldn't connect. Your network may be blocking live audio. Try a different network.", type: "failed" });
     expect(AiToolsCopy.VOICE_ICE_FAILED).not.toMatch(/\u2014/);
     await AiVoiceChatService.reportClientFailure(db, ADMIN, { sessionId, code: f.code, type: f.type });
     expect(log).toHaveBeenCalledWith("AI tools: voice connect failed", expect.objectContaining({ code: "ice_failed", sessionId, type: "failed" }));

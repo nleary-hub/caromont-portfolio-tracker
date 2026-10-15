@@ -199,7 +199,7 @@ export class AiToolsCopy {
   static readonly VOICE_TOKEN_FAILED = "OpenAI didn't open a voice session. Try again in a moment. If it keeps happening, an admin can check the API key in AI settings.";
   static readonly VOICE_MIC_DENIED = "Microphone access is blocked for this site. Allow it in your browser, then try again.";
   static readonly VOICE_CONNECT_FAILED = "The voice connection couldn't be set up. Check your network, then try again.";
-  static readonly VOICE_ICE_FAILED = "Voice couldn't connect. Your network may be blocking live audio.";
+  static readonly VOICE_ICE_FAILED = "Voice couldn't connect. Your network may be blocking live audio. Try a different network.";
   static readonly VOICE_DROPPED = "The connection dropped. Start again to keep talking.";
   static readonly VOICE_TIME_UP = "The chat reached its 15-minute limit. Start again to keep talking.";
   static readonly VOICE_SESSION_GONE = "This voice chat has ended. Start a new one.";
