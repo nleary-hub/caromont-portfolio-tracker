@@ -1,4 +1,12 @@
-import type { AiRealtimeTicket } from "./AiRealtimeClient";
+import { AiRealtimeClient, type AiRealtimeErrorInfo, type AiRealtimeTicket } from "./AiRealtimeClient";
+
+/** The WebRTC handshake failed. Carries OpenAI's status and scrubbed error so the panel can report it for the log. */
+export class AiRealtimeConnectError extends Error {
+  constructor(readonly info: AiRealtimeErrorInfo & { modelUnavailable: boolean }) {
+    super("realtime connect failed");
+    this.name = "AiRealtimeConnectError";
+  }
+}
 
 export type AiVoicePhase = "listening" | "speaking";
 
@@ -67,14 +75,22 @@ export class AiRealtimeBrowser {
     };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    const res = await fetch(`${ticket.callsUrl}?model=${encodeURIComponent(ticket.model)}`, {
-      method: "POST",
-      body: offer.sdp,
-      headers: { authorization: `Bearer ${ticket.clientSecret}`, "content-type": "application/sdp" },
-    });
+    // GA shape: the model and session come from the client secret, so the URL carries no model parameter.
+    let res: Response;
+    try {
+      res = await fetch(ticket.callsUrl, {
+        method: "POST",
+        body: offer.sdp,
+        headers: { authorization: `Bearer ${ticket.clientSecret}`, "content-type": "application/sdp" },
+      });
+    } catch (e) {
+      close();
+      throw new AiRealtimeConnectError({ type: (e as Error)?.name ?? "network", message: AiRealtimeClient.scrub(String((e as Error)?.message ?? ""), [ticket.clientSecret]), modelUnavailable: false });
+    }
     if (!res.ok) {
       close();
-      throw new Error("realtime connect failed");
+      const info = AiRealtimeClient.safeError(res.status, await res.text().catch(() => ""), [ticket.clientSecret]);
+      throw new AiRealtimeConnectError({ ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) });
     }
     await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });
     h.onPhase("listening");

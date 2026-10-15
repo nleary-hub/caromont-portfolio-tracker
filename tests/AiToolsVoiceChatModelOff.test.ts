@@ -29,7 +29,7 @@ vi.mock("react/jsx-dev-runtime", async (orig) => {
   }) as Dev;
   return { ...real, jsxDEV };
 });
-vi.mock("@/app/actions/aiTools", () => ({ proposeAiToolChanges: vi.fn(), applyAiToolLine: vi.fn(), rejectAiToolLine: vi.fn(), transcribeAiDictation: vi.fn(), startAiVoiceChat: vi.fn(), proposeAiVoiceEdits: vi.fn(), endAiVoiceChat: vi.fn() }));
+vi.mock("@/app/actions/aiTools", () => ({ proposeAiToolChanges: vi.fn(), applyAiToolLine: vi.fn(), rejectAiToolLine: vi.fn(), transcribeAiDictation: vi.fn(), startAiVoiceChat: vi.fn(), proposeAiVoiceEdits: vi.fn(), endAiVoiceChat: vi.fn(), reportAiVoiceFailure: vi.fn() }));
 
 afterEach(() => vi.unstubAllGlobals());
 

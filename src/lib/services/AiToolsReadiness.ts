@@ -2,6 +2,8 @@ import type { AiToggleFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiModelService, type AiModelDb } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
+import type { AiToolsDb } from "@/lib/services/AiToolsService";
+import { AiVoiceChatService } from "@/lib/services/AiVoiceChatService";
 
 type Env = Record<string, string | undefined>;
 
@@ -35,11 +37,8 @@ export class AiToolsReadiness {
    * or the chosen model turned off greys it with the shared model-off note.
    */
   static async voiceChatNote(db: AiModelDb & AiSettingsDb, env: Env = process.env): Promise<string | null> {
-    if (!(await AiModelService.featureOn(db, "voice_chat", env))) return AiToolsCopy.FEATURE_OFF_NOTE;
-    const row = await AiSettingsService.row(db).catch(() => null);
-    if (!row?.enabled) return AiToolsCopy.AI_OFF_NOTE;
-    const model = await AiModelService.featureModel(db, "voice_chat");
-    return model && (await AiModelService.enabledIds(db, "realtime")).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
+    // The same check start runs (AiVoiceChatService.readiness), so the page and the action always agree.
+    return (await AiVoiceChatService.readiness(db as unknown as AiToolsDb, env))?.note ?? null;
   }
 }
 
