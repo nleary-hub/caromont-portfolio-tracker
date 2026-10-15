@@ -7,7 +7,7 @@ export type AiReviewFeature = "revise_note";
  * The AI tools (steps 4 to 9) on the AI tools page. Each proposes, a person confirms each line, nothing auto-applies.
  * Kept apart from AiReviewFeature so the edit-form review layer never accepts a tool feature (and the reverse).
  */
-export type AiToolFeature = "meeting_notes" | "bulk_edit" | "quick_capture" | "next_step" | "request_to_project";
+export type AiToolFeature = "meeting_notes" | "bulk_edit" | "quick_capture" | "next_step" | "request_to_project" | "meeting_brief";
 
 /** Input features: they turn speech into text for a person to read before anything is suggested (step 6). */
 export type AiInputFeature = "dictation";
@@ -29,13 +29,14 @@ export class AiFeatureFlags {
     dictation: "AI_FEATURE_DICTATION",
     next_step: "AI_FEATURE_NEXT_STEP",
     request_to_project: "AI_FEATURE_REQUEST_TO_PROJECT",
+    meeting_brief: "AI_FEATURE_MEETING_BRIEF",
   };
 
   /** Review-layer features (the edit form). */
   static readonly FEATURES: readonly AiReviewFeature[] = ["revise_note"];
 
   /** AI tools page features, in step order. */
-  static readonly TOOL_FEATURES: readonly AiToolFeature[] = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "request_to_project"];
+  static readonly TOOL_FEATURES: readonly AiToolFeature[] = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "request_to_project", "meeting_brief"];
 
   /** Everything with a toggle on the settings page, in display order. */
   static readonly ALL: readonly AiToggleFeature[] = [...AiFeatureFlags.FEATURES, ...AiFeatureFlags.TOOL_FEATURES, "dictation"];

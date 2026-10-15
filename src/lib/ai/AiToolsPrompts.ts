@@ -67,6 +67,14 @@ export class AiToolsPrompts {
       "- Never fill in an owner, physician, requester or department.",
       ...AiToolsPrompts.COMMON,
     ].join("\n"),
+    meeting_brief: [
+      "You write a short pre-meeting brief for a hospital service line portfolio meeting from the project list.",
+      'Reply with JSON only, in this shape: {"moved":[{"ref":"P1","text":""}],"stuck":[{"ref":"P2","text":""}],"ask":[{"ref":"P2","text":""}]}',
+      "- moved: projects whose Latest update shows recent progress. stuck: projects At risk, Off track, On hold or overdue. ask: one question to ask in the meeting per stuck project.",
+      "- Each text is one sentence, 25 words or fewer. At most 8 items per list. ref is required for every item.",
+      "- If the user names a focus (a department, a person or a topic), use only the projects that match it.",
+      ...AiToolsPrompts.COMMON,
+    ].join("\n"),
   };
 
   static build(feature: AiToolFeature, input: string, context: string): AiPrompt {

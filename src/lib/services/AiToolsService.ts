@@ -7,7 +7,7 @@ import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiProviderClient, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiProviders } from "@/lib/ai/AiProviders";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
-import { AiToolsModel, type AiProjectDraft, type AiToolChange, type AiToolField, type AiToolProject } from "@/lib/ai/AiToolsModel";
+import { AiToolsModel, type AiBrief, type AiProjectDraft, type AiToolChange, type AiToolField, type AiToolProject } from "@/lib/ai/AiToolsModel";
 import { AiToolsPrompts } from "@/lib/ai/AiToolsPrompts";
 import { AiTranscriptionClient, type AiTranscribeFetch } from "@/lib/ai/AiTranscriptionClient";
 import { AppConfig } from "@/lib/config/AppConfig";
@@ -330,5 +330,21 @@ export class AiToolsService {
     }
     await AiToolsService.decision(args.db, open.row, "applied", 0, id, null, args.now);
     return { ok: true };
+  }
+
+  /** Step 8: the pre-meeting brief. Read-only: nothing to apply, nothing saved but one usage row (lengths only). */
+  static async proposeBrief(args: { db: AiToolsDb; viewer: Viewer | null; scope: ServiceLineScope; input: unknown; env?: Env; fetchImpl?: FetchLike; now?: () => Date }): Promise<{ ok: true; brief: AiBrief } | AiToolFailure> {
+    if (!args.viewer?.isAdmin) return { ok: false, kind: "denied", message: AiCopy.NOT_AUTHORIZED };
+    const projects = await AiToolsService.projects(args.db, args.scope);
+    const focus = typeof args.input === "string" && args.input.trim() ? args.input : AiToolsCopy.BRIEF_DEFAULT;
+    const r = await AiToolsService.call({ ...args, feature: "meeting_brief", input: focus, build: (input) => AiToolsPrompts.build("meeting_brief", input, AiToolsModel.context(projects, AiToolsModel.ALL_FIELDS)) });
+    if (!r.ok) return r;
+    const brief = AiToolsModel.parseBrief(r.text, projects);
+    if (!brief) {
+      await r.log("failed");
+      return { ok: false, kind: "parse", message: AiToolsCopy.PARSE_FAILED };
+    }
+    await r.log("proposed", { outputLength: brief.moved.length + brief.stuck.length + brief.ask.length });
+    return { ok: true, brief };
   }
 }

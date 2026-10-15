@@ -110,3 +110,15 @@ export async function createAiProjectDraft(proposalId: string, draft: unknown): 
     return { ok: false, message: AiToolsCopy.APPLY_FAILED };
   }
 }
+
+/** Step 8: the pre-meeting brief. Shown in the app only; never emailed or saved. */
+export async function makeAiMeetingBrief(focus: string) {
+  try {
+    const c = await context();
+    if (!c) return { ok: false as const, kind: "denied" as const, message: AiCopy.NOT_AUTHORIZED };
+    return await AiToolsService.proposeBrief({ ...c, input: focus });
+  } catch (e) {
+    console.error("AI tools failed: brief", (e as Error)?.name);
+    return { ok: false as const, kind: "provider" as const, message: AiToolsCopy.PROVIDER_ERROR };
+  }
+}

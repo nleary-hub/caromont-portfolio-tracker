@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
+import { AiBriefPanel } from "@/components/AiBriefPanel";
 import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
@@ -86,6 +87,13 @@ export default async function AiToolsPage() {
           {C.REQUEST_TITLE}
         </h2>
         <AiDraftProjectPanel disabledNote={notes.request_to_project ?? null} />
+      </section>
+
+      <section className={section} aria-labelledby="ai-tool-brief-heading" id="meeting-brief">
+        <h2 id="ai-tool-brief-heading" className="type-heading">
+          {C.BRIEF_TITLE}
+        </h2>
+        <AiBriefPanel disabledNote={notes.meeting_brief ?? null} />
       </section>
     </main>
   );

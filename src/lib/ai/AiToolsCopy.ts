@@ -15,6 +15,7 @@ export class AiToolsCopy {
     dictation: "Dictation (speech to text)",
     next_step: "Next-step suggestion",
     request_to_project: "Request to draft project",
+    meeting_brief: "Pre-meeting brief",
   };
 
   // Shared review list.
@@ -111,6 +112,19 @@ export class AiToolsCopy {
     targetCompletion: "Target completion",
     note: "Latest update",
   };
+
+  // Step 8: Pre-meeting brief.
+  static readonly BRIEF_TITLE = "Pre-meeting brief";
+  static readonly BRIEF_HELP = "One click makes a one-page brief from the projects in this line: what moved, what's stuck and what to ask. It's shown here only. It isn't saved, emailed or added to any report.";
+  static readonly BRIEF_LABEL = "Focus (optional)";
+  static readonly BRIEF_PLACEHOLDER = "For example: Imaging, or projects owned by Sample Owner";
+  static readonly BRIEF_PROPOSE = "Make brief";
+  static readonly BRIEF_DEFAULT = "All projects in this line.";
+  static readonly BRIEF_MOVED = "What moved";
+  static readonly BRIEF_STUCK = "What's stuck";
+  static readonly BRIEF_ASK = "What to ask";
+  static readonly BRIEF_EMPTY = "Nothing to list.";
+  static readonly BRIEF_NOTE = "AI-written from each project's status and Latest update. Check the linked projects before the meeting.";
 
   static fieldLabel(field: string): string {
     return AiToolsCopy.FIELD_LABELS[field] ?? field;

@@ -38,6 +38,19 @@ export interface AiProjectDraft {
   note: string;
 }
 
+/** Step 8: one line of the pre-meeting brief, linked to its project. */
+export interface AiBriefItem {
+  projectId: string;
+  projectName: string;
+  text: string;
+}
+
+export interface AiBrief {
+  moved: AiBriefItem[];
+  stuck: AiBriefItem[];
+  ask: AiBriefItem[];
+}
+
 /** Pure rules of the AI tools (unit tested): context building, reply parsing and value checks. */
 export class AiToolsModel {
   static readonly ALL_FIELDS: readonly AiToolField[] = ["status", "nextMilestone", "dueDate", "targetCompletion", "note"];
@@ -176,6 +189,26 @@ export class AiToolsModel {
   /** The new project as the normal create receives it: Not started, nothing assigned. */
   static draftInput(d: AiProjectDraft): Record<string, string | null> {
     return { name: d.name, description: d.description || null, status: "NotStarted", nextMilestone: d.nextMilestone || null, dueDate: d.dueDate || null, targetCompletion: d.targetCompletion || null, note: d.note || null };
+  }
+
+  static readonly BRIEF_ITEMS_MAX = 8;
+  static readonly BRIEF_TEXT_MAX = 300;
+
+  /** Step 8: reads the brief. Items with an unknown ref or no text are dropped. null = unreadable. */
+  static parseBrief(text: string, projects: readonly AiToolProject[]): AiBrief | null {
+    const body = AiToolsModel.json(text) as Record<string, unknown> | null;
+    if (!body) return null;
+    const list = (k: string): AiBriefItem[] =>
+      (Array.isArray(body[k]) ? (body[k] as Record<string, unknown>[]) : [])
+        .map((i) => {
+          const m = i && typeof i.ref === "string" ? /^P(\d+)$/i.exec(i.ref.trim()) : null;
+          const p = m ? projects[Number(m[1]) - 1] : undefined;
+          const t = i && typeof i.text === "string" ? i.text.trim().slice(0, AiToolsModel.BRIEF_TEXT_MAX) : "";
+          return p && t ? { projectId: p.id, projectName: p.name, text: t } : null;
+        })
+        .filter((x): x is AiBriefItem => x !== null)
+        .slice(0, AiToolsModel.BRIEF_ITEMS_MAX);
+    return { moved: list("moved"), stuck: list("stuck"), ask: list("ask") };
   }
 
   /** The patch the normal project save receives for one applied line. */
