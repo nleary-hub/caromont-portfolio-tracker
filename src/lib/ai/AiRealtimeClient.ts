@@ -19,7 +19,15 @@ export interface AiRealtimeSessionConfig {
   voice: string;
 }
 
-export type AiRealtimeMintResult = { ok: true; ticket: AiRealtimeTicket } | { ok: false; kind: "provider" | "http" | "network" | "timeout" | "parse" };
+/** OpenAI's error details, safe to log: no key or secret ever appears (see AiRealtimeClient.safeError). */
+export interface AiRealtimeErrorInfo {
+  status?: number;
+  type?: string;
+  code?: string;
+  message?: string;
+}
+
+export type AiRealtimeMintResult = { ok: true; ticket: AiRealtimeTicket } | ({ ok: false; kind: "provider" | "http" | "network" | "timeout" | "parse"; modelUnavailable?: boolean } & AiRealtimeErrorInfo);
 
 /**
  * Step 10 adapter for the realtime (speech to speech) API. The only place that knows the provider's request shape, so a
@@ -45,6 +53,31 @@ export class AiRealtimeClient {
     });
   }
 
+  /** Strips anything that looks like a key or secret, and caps the length, so the text is safe for a log line. */
+  static scrub(text: string, secrets: readonly string[] = []): string {
+    let t = text;
+    for (const s of secrets) if (s) t = t.split(s).join("[hidden]");
+    return t.replace(/\b(sk|ek|rk)[-_][A-Za-z0-9_-]{6,}/g, "[hidden]").replace(/Bearer\s+\S+/gi, "Bearer [hidden]").slice(0, 300);
+  }
+
+  /** OpenAI's { error: { type, code, message } } body, scrubbed. Any shape is accepted; missing parts stay undefined. */
+  static safeError(status: number, body: string, secrets: readonly string[] = []): AiRealtimeErrorInfo {
+    let e: { type?: unknown; code?: unknown; message?: unknown } = {};
+    try {
+      e = (JSON.parse(body) as { error?: typeof e })?.error ?? {};
+    } catch {
+      e = { message: body };
+    }
+    const str = (v: unknown) => (typeof v === "string" && v ? AiRealtimeClient.scrub(v, secrets) : undefined);
+    return { status, type: str(e.type), code: str(e.code), message: str(e.message) };
+  }
+
+  /** The key can't use this model: OpenAI says model_not_found, or 404, or names the model in a 400/403. */
+  static modelUnavailable(e: AiRealtimeErrorInfo): boolean {
+    const text = `${e.code ?? ""} ${e.type ?? ""} ${e.message ?? ""}`.toLowerCase();
+    return e.status === 404 || /model_not_found|does not exist|not have access to (the )?model|invalid model|unsupported model|model .*not (found|available|supported)/.test(text);
+  }
+
   static async mint(config: Pick<AiRuntimeConfig, "provider" | "apiKey">, session: AiRealtimeSessionConfig, fetchImpl: AiRealtimeFetch = fetch as unknown as AiRealtimeFetch): Promise<AiRealtimeMintResult> {
     if (config.provider !== "openai") return { ok: false, kind: "provider" };
     try {
@@ -54,7 +87,10 @@ export class AiRealtimeClient {
         body: AiRealtimeClient.body(session),
         signal: AbortSignal.timeout(AiRealtimeClient.TIMEOUT_MS),
       });
-      if (!res.ok) return { ok: false, kind: "http" };
+      if (!res.ok) {
+        const info = AiRealtimeClient.safeError(res.status, await res.text().catch(() => ""), [config.apiKey]);
+        return { ok: false, kind: "http", ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) };
+      }
       const j = JSON.parse(await res.text()) as { value?: unknown; expires_at?: unknown; client_secret?: { value?: unknown; expires_at?: unknown } };
       // Older beta shape nested it under client_secret; accept both.
       const value = typeof j.value === "string" ? j.value : typeof j.client_secret?.value === "string" ? j.client_secret.value : "";
