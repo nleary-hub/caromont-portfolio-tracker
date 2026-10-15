@@ -699,8 +699,11 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
 function Row({ row, y }: { row: RowLayout; y: number }) {
   const S = G.SIZE;
   const top = y + G.ROW_PAD;
+  const statusCell = row.cells.find((c) => c.kind === "status");
+  const bg = ReportColorScheme.rowBackground({ status: statusCell?.kind === "status" ? statusCell.pill.status : null });
   return (
     <View style={{ position: "absolute", left: 0, top, width: G.CONTENT_W, height: row.height - G.ROW_PAD }}>
+      {bg && <View style={{ position: "absolute", left: 0, top: 0, width: G.CONTENT_W, height: row.height - G.ROW_PAD, backgroundColor: bg }} />}
       {row.cells.map((c) => (
         <Cell key={c.kind} cell={c} row={row} />
       ))}
