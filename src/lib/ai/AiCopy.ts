@@ -171,7 +171,7 @@ export class AiCopy {
   // PHI_HELPER, APPLIED_NOT_SAVED, UNDO, UNDONE, ACCEPT_BLOCKED, LEGEND_WORDS, LEGEND_NUMBERS, numberWarning,
   // RATE_LIMITED, PROVIDER_ERROR, TIMEOUT, OUT_OF_REPLY_LENGTH, UNAVAILABLE and MODEL_NOT_ALLOWED.
   static readonly REVISE_BUTTON = "Revise with AI";
-  static readonly REVISE_TOOLTIP = "Describe a change to this update. You review it before anything changes. Nothing changes until you save the project.";
+  static readonly REVISE_TOOLTIP = "Describe a change to this update. You'll review the suggestion first, and nothing changes until you save the project.";
   static readonly INSTRUCTION_LABEL = "What should change?";
   static readonly INSTRUCTION_PLACEHOLDER = "For example: shorten it and say go-live moved to March";
   static readonly PROPOSE = "Propose change";
@@ -183,7 +183,7 @@ export class AiCopy {
   static readonly REJECTED = "Suggestion rejected. Your note is unchanged.";
   static readonly INSTRUCTION_EMPTY = "Describe the change first.";
   static readonly AUDIO_UNSUPPORTED = "Dictation isn't available yet. Type the change instead.";
-  static readonly FEATURE_OFF = "This AI feature is turned off. Your note is unchanged.";
+  static readonly FEATURE_OFF = "Revise with AI is turned off. Your note is unchanged.";
   static readonly APPLY_FAILED = "Couldn't apply the suggestion. Your note is unchanged. Try again.";
   /** The app's generic denials (same wording as the other project actions). */
   static readonly PROJECT_GONE = "This project was deleted or no longer exists.";

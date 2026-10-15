@@ -99,17 +99,17 @@ export function AiReviewPanel({ value, actions, onApply }: { value: string; acti
   if (!open) {
     return (
       <div className="flex flex-col gap-1" data-testid="ai-review">
+        {status && (
+          <p role="status" className="text-muted type-caption" data-testid="ai-review-status">
+            {status}
+          </p>
+        )}
         <div>
           <button type="button" className={BTN} title={C.REVISE_TOOLTIP} onClick={() => (setOpen(true), setStatus(null))} data-testid="ai-review-open">
             <Sparkle />
             {C.REVISE_BUTTON}
           </button>
         </div>
-        {status && (
-          <p role="status" className="text-muted type-caption" data-testid="ai-review-status">
-            {status}
-          </p>
-        )}
       </div>
     );
   }
@@ -151,8 +151,8 @@ export function AiReviewPanel({ value, actions, onApply }: { value: string; acti
               </p>
             </div>
             <div className="flex min-w-0 flex-col gap-1">
-              <span className="text-muted type-label">{edited === null ? C.REVIEW_TITLE : C.REFERENCE_LABEL}</span>
-              <div className="whitespace-pre-wrap break-words rounded-control border border-accent/40 bg-input px-2.5 py-2 text-fg type-table" data-testid="ai-review-after">
+              <span className="text-muted type-label">{C.REFERENCE_LABEL}</span>
+              <div className="whitespace-pre-wrap break-words rounded-control border border-line bg-input px-2.5 py-2 text-fg type-table" data-testid="ai-review-after">
                 <MarkedText segments={segments} />
               </div>
             </div>

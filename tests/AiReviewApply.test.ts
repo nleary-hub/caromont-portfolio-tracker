@@ -205,6 +205,15 @@ describe("review rules and panel", () => {
     expect(AiCopy.PANEL_NOTE).toBe("Nothing changes until you save the project.");
   });
 
+  it("design and copy follow-up: reference label reused, neutral border before Edit, status above the button, final copy", () => {
+    const src = readFileSync(path.resolve(__dirname, "../src/components/AiReviewPanel.tsx"), "utf8");
+    expect(src).toContain("{C.REFERENCE_LABEL}");
+    expect(src).not.toContain("border-accent/40");
+    expect(src.indexOf('data-testid="ai-review-status"')).toBeLessThan(src.indexOf('data-testid="ai-review-open"'));
+    expect(AiCopy.REVISE_TOOLTIP).toBe("Describe a change to this update. You'll review the suggestion first, and nothing changes until you save the project.");
+    expect(AiCopy.FEATURE_OFF).toBe("Revise with AI is turned off. Your note is unchanged.");
+  });
+
   it("retention covers the new rows (30 days, same job)", () => {
     expect(AiRetentionService.DAYS).toBe(30);
   });
