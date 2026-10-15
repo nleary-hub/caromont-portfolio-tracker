@@ -142,7 +142,7 @@ describe("AiPriceRefreshService.apply", () => {
     const change = { id: "gpt-6-luna", current: { unit: "per_1m_tokens", input: "0.15", output: "0.6" }, proposed: { unit: "per_1m_tokens", input: "0.1", output: "0.5" } };
     expect(await AiPriceRefreshService.apply(asDb(d), ADMIN, [change], {}, NOW)).toEqual({ ok: true, message: "Prices saved for 1 model." });
     expect(d.models[0]).toMatchObject({ inputPrice: 0.1, outputPrice: 0.5, priceSource: "refreshed", pricesUpdatedAt: NOW, pricesUpdatedBy: ADMIN.email });
-    expect(d.settingsHistory).toEqual([expect.objectContaining({ field: "aiPriceRefresh", action: "prices_refreshed", oldValue: "gpt-6-luna: $0.15 in, $0.6 out per 1M tokens", newValue: "gpt-6-luna: $0.1 in, $0.5 out per 1M tokens", changedBy: ADMIN.email, changedAt: NOW })]);
+    expect(d.settingsHistory).toEqual([expect.objectContaining({ field: "aiPriceRefresh", action: "prices_refreshed", oldValue: "gpt-6-luna: $0.15 in, $0.60 out per 1M tokens", newValue: "gpt-6-luna: $0.10 in, $0.50 out per 1M tokens", changedBy: ADMIN.email, changedAt: NOW })]);
     expect(AiModelService.views(d.models, null)[0]).toMatchObject({ priceSource: "refreshed", pricesUpdatedAt: NOW.toISOString() });
   });
 
@@ -191,6 +191,7 @@ describe("the in-app AI can only open the review, never apply", () => {
 });
 
 vi.mock("@/app/actions/aiPrices", () => ({ reviewAiPriceRefresh: vi.fn(), applyAiPriceRefresh: vi.fn() }));
+vi.mock("@/app/actions/aiAdmin", () => ({ addAiModel: vi.fn(), setAiFeatureEnabled: vi.fn(), setAiModelEnabled: vi.fn(), setAiModelPrices: vi.fn() }));
 
 describe("review UI", () => {
   const render = async (initial: unknown) => {
@@ -206,7 +207,7 @@ describe("review UI", () => {
     const parsed = OpenAiPricingParser.parse(FIXTURE);
     if (!parsed.ok) throw new Error("fixture");
     const html = await render({ kind: "review", review: AiPriceRefreshService.compare(d.models, parsed.prices, null) });
-    expect(html).toContain('data-testid="ai-price-review-new">$0.1 in, $0.5 out per 1M tokens<');
+    expect(html).toContain('data-testid="ai-price-review-new">$0.10 in, $0.50 out per 1M tokens<');
     expect(html).toContain(`data-testid="ai-price-review-cancel">${AiCopy.CANCEL}<`);
     expect(html).toContain(`data-testid="ai-price-review-confirm">${AiCopy.PRICE_REVIEW_CONFIRM}<`);
     const err = await render({ kind: "error", message: AiCopy.PRICE_REFRESH_FETCH_FAILED });
@@ -231,4 +232,67 @@ describe("0040_ai_price_refresh (PGlite)", () => {
     await db.exec(readFileSync(path.join(dir, "0040_ai_price_refresh", "migration.sql"), "utf8"));
     expect((await db.query(`SELECT count(*)::int AS n FROM "ai_settings_history" WHERE "field" = 'aiPriceRefresh'`)).rows).toEqual([{ n: 2 }]);
   }, 60_000);
+});
+
+describe("Writing Bot copy (step 3c)", () => {
+  it("money has at least two decimals and a missing output price is dropped", () => {
+    expect(AiCopy.priceSummary("per_1m_tokens", "0.1", "0.5")).toBe("$0.10 in, $0.50 out per 1M tokens");
+    expect(AiCopy.priceSummary("per_1m_tokens", "0.1", "")).toBe("$0.10 in per 1M tokens");
+    expect(AiCopy.priceSummary("per_1m_tokens", "0.125", "5")).toBe("$0.125 in, $5.00 out per 1M tokens");
+    expect(AiCopy.priceSummary("per_minute", "0.05", "")).toBe("$0.05 per minute");
+    expect(AiCopy.priceSummary(null, "", "")).toBe(AiCopy.PRICE_UNIT_NONE);
+  });
+
+  it("error copy and the refresh log line", () => {
+    expect(AiCopy.PRICE_REFRESH_FORMAT_CHANGED).toBe("OpenAI's pricing page changed format, so this app couldn't read it. Nothing was changed. Enter prices by hand.");
+    expect(AiCopy.PRICE_REFRESH_STALE).toBe("Prices changed since you opened this review. Nothing was saved. Refresh again.");
+    expect(AiCopy.historyChange("aiPriceRefresh", "prices_refreshed", null, null)).toBe("Saved from OpenAI's pricing page.");
+    expect(AiCopy.historyChange("aiPriceRefresh", "prices_refreshed", null, "")).toBe("Saved from OpenAI's pricing page.");
+    expect(AiCopy.historyChange("aiPriceRefresh", "prices_refreshed", null, "gpt-6-luna: $0.10 in")).toBe("Saved from OpenAI's pricing page. gpt-6-luna: $0.10 in");
+    expect(AiCopy.MODELS_INTRO).toContain("Enter prices by hand, or refresh them from OpenAI's pricing page.");
+  });
+});
+
+describe("review lock and focus UI", () => {
+  const render = async (initial: unknown) => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { AiPriceRefresh } = await import("@/components/AiPriceRefresh");
+    const { AiModelsPanel } = await import("@/components/AiModelsPanel");
+    const models = [{ id: "gpt-live-1", provider: "openai", enabled: true, inUse: false, priceUnit: "per_minute", inputPrice: "0.0500", outputPrice: "", pricesUpdatedAt: null, priceSource: null }];
+    return renderToStaticMarkup(createElement(AiPriceRefresh, { dbReady: true, initial: initial as never }, createElement(AiModelsPanel, { models: models as never, dbReady: true })));
+  };
+  const lockedBits = (html: string) => ({
+    save: /aria-disabled="true"[^>]*data-testid="ai-model-save-gpt-live-1"/.test(html),
+    input: /readOnly=""[^>]*aria-disabled="true"[^>]*data-testid="ai-model-input-price-gpt-live-1"|aria-disabled="true"[^>]*readOnly=""[^>]*data-testid="ai-model-input-price-gpt-live-1"/i.test(html),
+    table: html.includes('data-locked="true"'),
+  });
+
+  it("locks the model table (inputs and Save prices) while the review is open, and unlocks otherwise", async () => {
+    const d = new FakePriceDb();
+    d.add("gpt-live-1", "per_minute", 0.06, null);
+    const parsed = OpenAiPricingParser.parse(FIXTURE);
+    if (!parsed.ok) throw new Error("fixture");
+    const open = await render({ kind: "review", review: AiPriceRefreshService.compare(d.models, parsed.prices, null) });
+    expect(lockedBits(open)).toEqual({ save: true, input: true, table: true });
+    expect(open).toMatch(/<select[^>]*aria-disabled="true"/);
+    for (const s of [{ kind: "idle" }, { kind: "saved", message: "Prices saved for 1 model." }, { kind: "error", message: AiCopy.PRICE_REFRESH_FETCH_FAILED }]) {
+      const html = await render(s);
+      expect(html).not.toContain('aria-disabled="true"');
+      expect(html).not.toContain("data-locked");
+    }
+  });
+
+  it("loading label shows once inside a polite live region; saved line is focusable; tag never wraps", async () => {
+    const loading = await render({ kind: "loading" });
+    expect(loading).toContain(`aria-live="polite" class="col-start-1 row-start-1" data-testid="ai-price-refresh-label">${AiCopy.REFRESHING_PRICES.replace("'", "&#x27;")}<`);
+    expect(loading).not.toContain("ai-price-refresh-loading");
+    expect(loading).toContain('id="ai-price-refresh-help" class="whitespace-nowrap');
+    expect(loading.match(/aria-live=/g)).toHaveLength(1);
+    const saved = await render({ kind: "saved", message: "Prices saved for 1 model." });
+    expect(saved).toMatch(/tabindex="-1" role="status"[^>]*data-testid="ai-price-refresh-saved">Prices saved/i);
+    const src = readFileSync(path.join(ROOT, "src/components/AiPriceRefresh.tsx"), "utf8");
+    expect(src).toMatch(/block w-fit whitespace-nowrap[^"]*" data-testid="ai-price-review-not-listed"/);
+    expect(src).toContain("refreshRef.current?.focus()");
+  });
 });

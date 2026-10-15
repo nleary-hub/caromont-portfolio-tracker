@@ -88,8 +88,13 @@ export default async function AiSettingsPage() {
           {AiCopy.MODELS_TITLE}
         </h2>
         <p className="text-muted type-caption">{AiCopy.MODELS_INTRO}</p>
-        {AiFeatureFlags.isPriceRefreshOn() && <AiPriceRefresh dbReady={dbReady && models.length > 0} />}
-        <AiModelsPanel models={models} dbReady={dbReady} />
+        {AiFeatureFlags.isPriceRefreshOn() ? (
+          <AiPriceRefresh dbReady={dbReady && models.length > 0}>
+            <AiModelsPanel models={models} dbReady={dbReady} />
+          </AiPriceRefresh>
+        ) : (
+          <AiModelsPanel models={models} dbReady={dbReady} />
+        )}
       </section>
 
       <section className={section} aria-labelledby="ai-features-heading">

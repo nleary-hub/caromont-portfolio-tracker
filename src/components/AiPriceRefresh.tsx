@@ -1,8 +1,9 @@
 "use client";
 
-import { useEffect, useRef, useState, useTransition } from "react";
+import { type ReactNode, useEffect, useRef, useState, useTransition } from "react";
 import { applyAiPriceRefresh, reviewAiPriceRefresh } from "@/app/actions/aiPrices";
 import { AiAlert } from "@/components/AiNoteAssistant";
+import { PriceReviewLock } from "@/components/AiPriceReviewLock";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
 import type { AiPriceReview, AiPriceSet } from "@/lib/services/AiPriceRefreshService";
 
@@ -17,18 +18,32 @@ export type AiPriceRefreshState = { kind: "idle" } | { kind: "loading" } | { kin
 
 /**
  * Admin > AI settings: "Refresh prices" and the old-vs-new review (step 3c). Nothing is saved until Confirm.
+ * `children` is the model table; it is locked (aria-disabled, edits and saves do nothing) while the review is open.
  * `initial` exists for tests and screenshots only.
  */
-export function AiPriceRefresh({ dbReady, initial }: { dbReady: boolean; initial?: AiPriceRefreshState }) {
+export function AiPriceRefresh({ dbReady, initial, children }: { dbReady: boolean; initial?: AiPriceRefreshState; children?: ReactNode }) {
   const [state, setState] = useState<AiPriceRefreshState>(initial ?? { kind: "idle" });
   const [, start] = useTransition();
   const confirmRef = useRef<HTMLButtonElement>(null);
+  const refreshRef = useRef<HTMLButtonElement>(null);
+  const savedRef = useRef<HTMLParagraphElement>(null);
+  const backToRefresh = useRef(false);
   const review = state.kind === "review" ? state.review : null;
   const changes = review ? review.rows.filter((r) => r.changed && r.proposed) : [];
 
   useEffect(() => {
     if (state.kind === "review") confirmRef.current?.focus();
+    else if (state.kind === "saved") savedRef.current?.focus();
+    else if (state.kind === "idle" && backToRefresh.current) {
+      backToRefresh.current = false;
+      refreshRef.current?.focus();
+    }
   }, [state.kind]);
+
+  const cancel = () => {
+    backToRefresh.current = true;
+    setState({ kind: "idle" });
+  };
 
   const refresh = () => {
     setState({ kind: "loading" });
@@ -46,26 +61,30 @@ export function AiPriceRefresh({ dbReady, initial }: { dbReady: boolean; initial
 
   return (
     <div className="flex flex-col gap-2" data-testid="ai-price-refresh">
-      <div className="flex items-center gap-3">
-        <button type="button" className={SECONDARY} onClick={refresh} disabled={!dbReady || state.kind === "loading" || state.kind === "review"} aria-describedby="ai-price-refresh-help" data-testid="ai-price-refresh-button">
-          {state.kind === "loading" ? C.REFRESHING_PRICES : C.REFRESH_PRICES}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+        <button ref={refreshRef} type="button" className={`${SECONDARY} inline-grid shrink-0`} onClick={refresh} disabled={!dbReady || state.kind === "loading" || state.kind === "review"} aria-describedby="ai-price-refresh-help" data-testid="ai-price-refresh-button">
+          {/* Both labels share one grid cell, so the button keeps one width while loading. */}
+          <span aria-hidden className="invisible col-start-1 row-start-1">
+            {C.REFRESHING_PRICES}
+          </span>
+          <span aria-hidden className="invisible col-start-1 row-start-1">
+            {C.REFRESH_PRICES}
+          </span>
+          <span aria-live="polite" className="col-start-1 row-start-1" data-testid="ai-price-refresh-label">
+            {state.kind === "loading" ? C.REFRESHING_PRICES : C.REFRESH_PRICES}
+          </span>
         </button>
-        <p id="ai-price-refresh-help" className="text-muted type-caption">
+        <p id="ai-price-refresh-help" className="whitespace-nowrap text-muted type-caption">
           {C.REFRESH_PRICES_HELP}
         </p>
       </div>
-      {state.kind === "loading" && (
-        <p role="status" aria-live="polite" className="text-muted type-table" data-testid="ai-price-refresh-loading">
-          {C.REFRESHING_PRICES}
-        </p>
-      )}
       {state.kind === "error" && (
         <AiAlert tone="danger" testId="ai-price-refresh-error">
           {state.message}
         </AiAlert>
       )}
       {state.kind === "saved" && (
-        <p role="status" className="text-(--status-on-track-dark-fg) type-table" data-testid="ai-price-refresh-saved">
+        <p ref={savedRef} tabIndex={-1} role="status" className={`text-(--status-on-track-dark-fg) type-table ${FOCUS}`} data-testid="ai-price-refresh-saved">
           {state.message}
         </p>
       )}
@@ -92,7 +111,7 @@ export function AiPriceRefresh({ dbReady, initial }: { dbReady: boolean; initial
                     <td className="px-3 py-2 type-table-strong">
                       {r.id}
                       {r.listedByOpenAi === false && (
-                        <span className="ml-2 rounded-pill bg-(--status-at-risk-dark-bg) px-2 py-px text-(--status-at-risk-dark-fg) type-label" data-testid="ai-price-review-not-listed">
+                        <span className="mt-1 block w-fit whitespace-nowrap rounded-pill bg-(--status-at-risk-dark-bg) px-2 py-px text-(--status-at-risk-dark-fg) type-label" data-testid="ai-price-review-not-listed">
                           {C.PRICE_REVIEW_NOT_LISTED}
                         </span>
                       )}
@@ -125,7 +144,7 @@ export function AiPriceRefresh({ dbReady, initial }: { dbReady: boolean; initial
             {C.PRICE_REVIEW_SOURCE} {review.source}
           </p>
           <div className="flex items-center justify-end gap-2">
-            <button type="button" className={SECONDARY} onClick={() => setState({ kind: "idle" })} data-testid="ai-price-review-cancel">
+            <button type="button" className={SECONDARY} onClick={cancel} data-testid="ai-price-review-cancel">
               {C.CANCEL}
             </button>
             <button ref={confirmRef} type="button" className={PRIMARY} onClick={confirm} disabled={changes.length === 0} data-testid="ai-price-review-confirm">
@@ -134,6 +153,7 @@ export function AiPriceRefresh({ dbReady, initial }: { dbReady: boolean; initial
           </div>
         </div>
       )}
+      {children !== undefined && <PriceReviewLock.Provider value={state.kind === "review"}>{children}</PriceReviewLock.Provider>}
     </div>
   );
 }

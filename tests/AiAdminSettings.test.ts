@@ -241,7 +241,7 @@ describe("step 3b copy", () => {
   it("Writing Bot wording (exact)", () => {
     expect(AiCopy.MODEL_CHOSEN_OFF).toBe("Chosen, but off");
     expect(AiCopy.MODEL_NOT_ALLOWED).toBe("That model is turned off. An admin can choose one that's on in AI settings.");
-    expect(AiCopy.MODELS_INTRO).toBe("OpenAI models admins can choose. New models start off. Prices are entered by hand and are for reference only.");
+    expect(AiCopy.MODELS_INTRO).toBe("OpenAI models admins can choose. New models start off. Enter prices by hand, or refresh them from OpenAI's pricing page. Prices are for reference only.");
     expect(AiCopy.FEATURE_ON_HELP).toBe("On for everyone.");
     expect(AiCopy.FEATURE_OFF_HELP).toBe("Off for everyone. The button is hidden.");
     expect(AiCopy.featureKilled("AI_FEATURE_REVISE_NOTE")).toBe("Turned off on the server by AI_FEATURE_REVISE_NOTE. This toggle has no effect until that setting is removed.");

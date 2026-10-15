@@ -28,7 +28,7 @@ export class AiCopy {
 
   // ---- Admin > AI settings: Models and Features (step 3b) -----------------------------------------------------------
   static readonly MODELS_TITLE = "Models";
-  static readonly MODELS_INTRO = "OpenAI models admins can choose. New models start off. Prices are entered by hand and are for reference only.";
+  static readonly MODELS_INTRO = "OpenAI models admins can choose. New models start off. Enter prices by hand, or refresh them from OpenAI's pricing page. Prices are for reference only.";
   static readonly MODELS_HEADERS = ["Model", "On", "Price unit", "Input price", "Output price", ""] as const;
   static readonly MODELS_EMPTY = "No models yet.";
   static readonly MODEL_IN_USE = "In use";
@@ -69,9 +69,9 @@ export class AiCopy {
   static readonly PRICE_REVIEW_CONFIRM = "Confirm and save";
   static readonly PRICE_REVIEW_SOURCE = "Source:";
   static readonly PRICE_REFRESH_FETCH_FAILED = "Couldn't read OpenAI's pricing page. Nothing was changed. Try again later, or enter prices by hand.";
-  static readonly PRICE_REFRESH_FORMAT_CHANGED = "OpenAI's pricing page has a format this app can't read, so no prices were read. Nothing was changed. Enter prices by hand.";
+  static readonly PRICE_REFRESH_FORMAT_CHANGED = "OpenAI's pricing page changed format, so this app couldn't read it. Nothing was changed. Enter prices by hand.";
   static readonly PRICE_REFRESH_NO_MATCH = "None of your models are on OpenAI's pricing page. Nothing was changed.";
-  static readonly PRICE_REFRESH_STALE = "Prices changed since this review. Nothing was saved. Refresh again.";
+  static readonly PRICE_REFRESH_STALE = "Prices changed since you opened this review. Nothing was saved. Refresh again.";
   static readonly PRICE_REFRESH_OFF = "Refresh prices is turned off.";
   static readonly PRICE_SOURCE_MANUAL = "entered by hand";
   static readonly PRICE_SOURCE_REFRESHED = "from OpenAI's pricing page";
@@ -91,10 +91,16 @@ export class AiCopy {
     return `Prices updated ${when}, ${source === "refreshed" ? AiCopy.PRICE_SOURCE_REFRESHED : AiCopy.PRICE_SOURCE_MANUAL}`;
   }
 
-  /** One price in the review and the change log: "$0.1 in, $0.5 out per 1M tokens", "$0.05 per minute", "No price". */
+  /** Money with at least two decimals: "0.1" -> "$0.10", "0.125" -> "$0.125", "5" -> "$5.00". */
+  static money(v: string): string {
+    const [whole, frac = ""] = v.trim().split(".");
+    return `$${whole || "0"}.${frac.padEnd(2, "0")}`;
+  }
+
+  /** One price in the review and the change log: "$0.10 in, $0.50 out per 1M tokens", "$0.10 in per 1M tokens", "$0.05 per minute", "No price". */
   static priceSummary(unit: string | null, input: string, output: string): string {
-    if (unit === "per_minute") return `$${input} per minute`;
-    if (unit === "per_1m_tokens") return `$${input} in, ${output === "" ? "no" : `$${output}`} out per 1M tokens`;
+    if (unit === "per_minute") return `${AiCopy.money(input)} per minute`;
+    if (unit === "per_1m_tokens") return output === "" ? `${AiCopy.money(input)} in per 1M tokens` : `${AiCopy.money(input)} in, ${AiCopy.money(output)} out per 1M tokens`;
     return AiCopy.PRICE_UNIT_NONE;
   }
   static readonly DISABLE_CONFIRM_YES = "Turn off anyway";
@@ -218,7 +224,7 @@ export class AiCopy {
     if (action === "model_added") return `${newValue ?? ""} added (off)`;
     if (action === "model_enabled") return `${newValue ?? ""} turned on`;
     if (action === "model_disabled") return `${newValue ?? ""} turned off`;
-    if (action === "prices_refreshed") return `Saved from OpenAI's pricing page. ${newValue ?? ""}`;
+    if (action === "prices_refreshed") return newValue ? `Saved from OpenAI's pricing page. ${newValue}` : "Saved from OpenAI's pricing page.";
     if (action === "price_refresh_failed") return `Refresh failed, nothing changed (${newValue === "fetch_failed" ? "page couldn't be read" : newValue === "no_match" ? "no models matched" : "format changed"})`;
     if (action === "feature_on") return `${AiCopy.featureLabel(newValue ?? "")} turned on`;
     if (action === "feature_off") return `${AiCopy.featureLabel(newValue ?? "")} turned off`;

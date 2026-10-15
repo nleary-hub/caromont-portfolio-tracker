@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useTransition } from "react";
+import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
 import { addAiModel, setAiFeatureEnabled, setAiModelEnabled, setAiModelPrices } from "@/app/actions/aiAdmin";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
@@ -8,8 +9,10 @@ import type { AiAdminResult, AiFeatureView, AiModelView } from "@/lib/services/A
 
 /** The same 2px focus outline used across the AI settings page since #50. */
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
-const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger ${FOCUS}`;
-const GHOST = `h-7 whitespace-nowrap rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
+const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-invalid:border-danger ${FOCUS}`;
+/** Price inputs: fixed width so 4 decimals (0.0500) always fit. */
+const PRICE_INPUT = `${INPUT.replace("w-full min-w-0 ", "")} w-[7.5rem] min-w-[7.5rem] tabular-nums`;
+const GHOST = `h-7 whitespace-nowrap rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:border-line ${FOCUS}`;
 /** Secondary: no glow (only the settings Save, the primary button, glows). */
 const SECONDARY = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 
@@ -17,9 +20,9 @@ const SECONDARY = `h-8 whitespace-nowrap rounded-control border border-line px-3
 const PRICE_DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "America/New_York" });
 
 /** On/off switch (.acct-switch carries the 2px focus-visible outline). */
-export function AiToggle({ checked, onChange, labelledBy, describedBy, disabled, testId }: { checked: boolean; onChange: (v: boolean) => void; labelledBy: string; describedBy?: string; disabled?: boolean; testId: string }) {
+export function AiToggle({ checked, onChange, labelledBy, describedBy, disabled, locked, testId }: { checked: boolean; onChange: (v: boolean) => void; labelledBy: string; describedBy?: string; disabled?: boolean; locked?: boolean; testId: string }) {
   return (
-    <button type="button" role="switch" aria-checked={checked} aria-labelledby={labelledBy} aria-describedby={describedBy} onClick={() => onChange(!checked)} disabled={disabled} className="acct-switch mt-0.5 disabled:cursor-not-allowed disabled:opacity-50" data-testid={testId}>
+    <button type="button" role="switch" aria-checked={checked} aria-labelledby={labelledBy} aria-describedby={describedBy} aria-disabled={locked || undefined} onClick={() => !locked && onChange(!checked)} disabled={disabled} className="acct-switch mt-0.5 disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50" data-testid={testId}>
       <span aria-hidden className="acct-thumb" />
     </button>
   );
@@ -33,6 +36,7 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
   const [pending, startToggle] = useTransition();
   const [confirm, setConfirm] = useState<{ id: string; message: string } | null>(null);
   const [rowError, setRowError] = useState<{ id: string; message: string } | null>(null);
+  const locked = usePriceReviewLock();
 
   const toggle = (id: string, enabled: boolean, confirmed: boolean) =>
     startToggle(async () => {
@@ -46,7 +50,7 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
 
   return (
     <div className="flex flex-col gap-3" data-testid="ai-models">
-      <div className="overflow-x-auto rounded-card border border-line">
+      <div className="overflow-x-auto rounded-card border border-line" data-locked={locked || undefined} data-testid="ai-models-table">
         <table className="w-full type-table">
           <thead className="bg-card text-left text-muted type-label">
             <tr>
@@ -66,7 +70,7 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
               </tr>
             )}
             {models.map((m) => (
-              <ModelRow key={m.id} m={m} dbReady={dbReady} pending={pending} onToggle={(v) => toggle(m.id, v, false)} confirm={confirm?.id === m.id ? confirm.message : null} error={rowError?.id === m.id ? rowError.message : null} onConfirm={() => toggle(m.id, false, true)} onCancel={() => setConfirm(null)} />
+              <ModelRow key={m.id} m={m} locked={locked} dbReady={dbReady} pending={pending} onToggle={(v) => toggle(m.id, v, false)} confirm={confirm?.id === m.id ? confirm.message : null} error={rowError?.id === m.id ? rowError.message : null} onConfirm={() => toggle(m.id, false, true)} onCancel={() => setConfirm(null)} />
             ))}
           </tbody>
         </table>
@@ -113,7 +117,7 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
   );
 }
 
-function ModelRow({ m, dbReady, pending, onToggle, confirm, error, onConfirm, onCancel }: { m: AiModelView; dbReady: boolean; pending: boolean; onToggle: (v: boolean) => void; confirm: string | null; error: string | null; onConfirm: () => void; onCancel: () => void }) {
+function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onConfirm, onCancel }: { m: AiModelView; locked: boolean; dbReady: boolean; pending: boolean; onToggle: (v: boolean) => void; confirm: string | null; error: string | null; onConfirm: () => void; onCancel: () => void }) {
   const [unit, setUnit] = useState(m.priceUnit ?? "");
   const [input, setInput] = useState(m.inputPrice);
   const [output, setOutput] = useState(m.outputPrice);
@@ -123,6 +127,11 @@ function ModelRow({ m, dbReady, pending, onToggle, confirm, error, onConfirm, on
   const nameId = `ai-model-${slug}-name`;
   const priceErrorId = `ai-model-${slug}-price-error`;
   const bad = saved && !saved.ok ? (saved.field ?? null) : null;
+  /** While the price-refresh review is open: aria-disabled, and edits and saves do nothing (step 3c). */
+  const lock = locked ? { "aria-disabled": true as const } : {};
+  const edit = (set: (v: string) => void) => (e: { target: { value: string } }) => {
+    if (!locked) set(e.target.value);
+  };
   const invalid = (f: "input" | "output" | "unit") => (bad === f ? { "aria-invalid": true as const, "aria-describedby": priceErrorId } : {});
   return (
     <>
@@ -146,23 +155,23 @@ function ModelRow({ m, dbReady, pending, onToggle, confirm, error, onConfirm, on
           </span>
         </td>
         <td className="px-3 py-2">
-          <AiToggle checked={m.enabled} onChange={onToggle} labelledBy={nameId} disabled={!dbReady || pending} testId={`ai-model-toggle-${m.id}`} />
+          <AiToggle checked={m.enabled} onChange={onToggle} labelledBy={nameId} disabled={!dbReady || pending} locked={locked} testId={`ai-model-toggle-${m.id}`} />
         </td>
         <td className="px-3 py-2">
-          <select aria-label={`${C.MODELS_HEADERS[2]}, ${m.id}`} className={`${INPUT} min-w-[8.5rem]`} value={unit} onChange={(e) => setUnit(e.target.value)} disabled={!dbReady} {...invalid("unit")}>
+          <select aria-label={`${C.MODELS_HEADERS[2]}, ${m.id}`} className={`${INPUT} min-w-[8.5rem]`} value={unit} onChange={edit(setUnit)} disabled={!dbReady} {...lock} {...invalid("unit")}>
             <option value="">{C.PRICE_UNIT_NONE}</option>
             <option value="per_1m_tokens">{C.PRICE_UNIT_PER_1M_TOKENS}</option>
             <option value="per_minute">{C.PRICE_UNIT_PER_MINUTE}</option>
           </select>
         </td>
         <td className="px-3 py-2">
-          <input aria-label={`${C.MODELS_HEADERS[3]}, ${m.id}`} className={`${INPUT} max-w-28`} value={input} onChange={(e) => setInput(e.target.value)} inputMode="decimal" placeholder="0.00" disabled={!dbReady} {...invalid("input")} data-testid={`ai-model-input-price-${m.id}`} />
+          <input aria-label={`${C.MODELS_HEADERS[3]}, ${m.id}`} className={`${PRICE_INPUT}`} value={input} onChange={edit(setInput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.00" disabled={!dbReady} {...invalid("input")} data-testid={`ai-model-input-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
-          <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${INPUT} max-w-28`} value={output} onChange={(e) => setOutput(e.target.value)} inputMode="decimal" placeholder="0.00" disabled={!dbReady || unit === "per_minute"} {...invalid("output")} data-testid={`ai-model-output-price-${m.id}`} />
+          <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${PRICE_INPUT}`} value={output} onChange={edit(setOutput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.00" disabled={!dbReady || unit === "per_minute"} {...invalid("output")} data-testid={`ai-model-output-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
-          <button type="button" className={GHOST} disabled={!dbReady || saving} onClick={() => startSave(async () => setSaved(await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output)))}>
+          <button type="button" className={GHOST} disabled={!dbReady || saving} {...lock} data-testid={`ai-model-save-${m.id}`} onClick={() => !locked && startSave(async () => setSaved(await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output)))}>
             {C.PRICE_SAVE}
           </button>
         </td>
