@@ -2,11 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
+import { AiFeaturesPanel, AiModelsPanel } from "@/components/AiModelsPanel";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
+import { AiModelService, type AiFeatureView, type AiModelDb, type AiModelView } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb, type AiSettingsHistoryRow, type AiSettingsView } from "@/lib/services/AiSettingsService";
 
 /** AI Draft/Fit/Test connection server actions run on this page; the provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
@@ -31,12 +33,20 @@ export default async function AiSettingsPage() {
   if (!viewer?.isAdmin) notFound();
   let view: AiSettingsView = AiSettingsService.view(null);
   let history: AiSettingsHistoryRow[] = [];
+  let models: AiModelView[] = [];
+  let features: AiFeatureView[] = AiModelService.featureViews([]);
   let dbReady = Db.isConfigured();
   if (dbReady) {
     try {
       const db = Db.client as unknown as AiSettingsDb;
-      view = AiSettingsService.view(await AiSettingsService.row(db));
+      const mdb = Db.client as unknown as AiModelDb;
+      const row = await AiSettingsService.row(db);
+      view = AiSettingsService.view(row);
       history = await AiSettingsService.history(db);
+      models = AiModelService.views(await AiModelService.list(mdb), row);
+      features = AiModelService.featureViews(await mdb.aiFeatureSetting.findMany());
+      // The saved model must be one an admin turned on, or the assistant isn't ready (the call would be refused).
+      if (view.model && !models.some((m) => m.inUse && m.enabled)) view = { ...view, ready: false, modelOff: true };
     } catch {
       // Tables not migrated yet (Vercel previews skip migrations): show the defaults, saving is disabled.
       dbReady = false;
@@ -68,7 +78,23 @@ export default async function AiSettingsPage() {
         <h2 id="ai-settings-heading" className="type-heading">
           {AiCopy.SWITCH_LABEL}
         </h2>
-        <AiSettingsForm view={view} keySavedLine={keySavedLine} dbReady={dbReady} />
+        <AiSettingsForm view={view} keySavedLine={keySavedLine} dbReady={dbReady} modelOptions={models.filter((m) => m.enabled).map((m) => m.id)} />
+      </section>
+
+      <section className={section} aria-labelledby="ai-models-heading">
+        <h2 id="ai-models-heading" className="type-heading">
+          {AiCopy.MODELS_TITLE}
+        </h2>
+        <p className="text-muted type-caption">{AiCopy.MODELS_INTRO}</p>
+        <AiModelsPanel models={models} dbReady={dbReady} />
+      </section>
+
+      <section className={section} aria-labelledby="ai-features-heading">
+        <h2 id="ai-features-heading" className="type-heading">
+          {AiCopy.FEATURES_TITLE}
+        </h2>
+        <p className="text-muted type-caption">{AiCopy.FEATURES_INTRO}</p>
+        <AiFeaturesPanel features={features} dbReady={dbReady} />
       </section>
 
       <section className="flex flex-col gap-2" aria-labelledby="ai-history-heading">

@@ -31,11 +31,15 @@ export class AiProviders {
     }
   }
 
-  /** The only model the writing assistant may use (Nick, Oct 14, 2026). Checked on save and again before every call. */
+  /**
+   * The 0039 seed (the #53 allowlist). Since step 3b the allowlist is the enabled rows of ai_models, chosen by admins on
+   * Admin > AI settings; this list is the fallback only when that table can't be read (previews skip migrations).
+   */
   static readonly ALLOWED_MODELS: readonly string[] = ["gpt-6-luna"];
 
-  static modelAllowed(model: unknown): boolean {
-    return typeof model === "string" && AiProviders.ALLOWED_MODELS.includes(model.trim());
+  /** Exact match against the enabled models. Checked on save and again before every call. */
+  static modelAllowed(model: unknown, allowed: readonly string[] = AiProviders.ALLOWED_MODELS): boolean {
+    return typeof model === "string" && allowed.includes(model.trim());
   }
 
   static parse(v: unknown): AiProviderId | null {

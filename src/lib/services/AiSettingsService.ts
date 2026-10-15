@@ -43,6 +43,8 @@ export interface AiSettingsView extends AiSettingsFields {
   encryption: { ready: boolean; problem: AiKeyProblem | null };
   /** Provider fields complete and a readable key: the switch can turn the buttons on. */
   ready: boolean;
+  /** The saved model is not turned on under Models (set by the page; step 3b). */
+  modelOff?: boolean;
   updatedAt: string | null;
   updatedBy: string | null;
 }
@@ -64,6 +66,8 @@ export interface AiSettingsInput {
   fields: AiSettingsFields;
   /** A new key to store (replaces any saved key). Empty or absent = keep the saved key. */
   newKey?: string | null;
+  /** The enabled models (ai_models) the model must be one of; absent = the 0039 seed. Set by the server action. */
+  allowedModels?: readonly string[];
 }
 
 export type AiSettingsSaveResult = { ok: true } | { ok: false; error: string; fieldErrors?: Partial<Record<keyof AiSettingsFields | "apiKey", string>> };
@@ -143,8 +147,9 @@ export class AiSettingsService {
     const errors: Partial<Record<keyof AiSettingsFields | "apiKey", string>> = {};
     const newKey = (input.newKey ?? "").trim();
     if (f.model.trim().length > AiProviders.MODEL_MAX) errors.model = AiCopy.MODEL_TOO_LONG;
-    // Allowlist: any model string other than the approved one is refused, on or off.
-    else if (f.model.trim() && !AiProviders.modelAllowed(f.model)) errors.model = AiCopy.MODEL_NOT_ALLOWED;
+    // Allowlist: any model an admin hasn't turned on under Models is refused, on or off.
+    // Turning AI off always works: an unchanged saved model is not re-checked when the switch is off.
+    else if (f.model.trim() && (f.enabled || f.model.trim() !== (current?.model ?? "").trim()) && !AiProviders.modelAllowed(f.model, input.allowedModels)) errors.model = AiCopy.MODEL_NOT_ALLOWED;
     if (f.provider === "openai_compatible" && f.baseUrl.trim() && !AiProviders.httpsUrl(f.baseUrl)) errors.baseUrl = AiCopy.INVALID_URL;
     if (f.provider === "azure_openai" && f.azureEndpoint.trim() && !AiProviders.httpsUrl(f.azureEndpoint)) errors.azureEndpoint = AiCopy.INVALID_URL;
     if (newKey) {

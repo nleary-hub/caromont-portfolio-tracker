@@ -888,3 +888,31 @@ model ProjectDependency {
   @@index([serviceLineId])
   @@map("project_dependencies")
 }
+
+/// OpenAI models admins can pick on Admin > AI settings (0039). New rows start disabled; rows are never deleted.
+model AiModel {
+  id          String   @id
+  /// "openai" (DB check constraint)
+  provider    String   @default("openai")
+  enabled     Boolean  @default(false)
+  /// "per_1m_tokens" | "per_minute" (DB check constraint)
+  priceUnit   String?
+  inputPrice  Decimal? @db.Decimal(12, 4)
+  outputPrice Decimal? @db.Decimal(12, 4)
+  addedAt     DateTime @default(now())
+  addedBy     String
+  updatedAt   DateTime @default(now())
+  updatedBy   String
+
+  @@map("ai_models")
+}
+
+/// One on/off row per AI feature (0039). Missing row = on; the env kill switch still wins.
+model AiFeatureSetting {
+  feature   String   @id
+  enabled   Boolean  @default(true)
+  updatedAt DateTime @default(now())
+  updatedBy String
+
+  @@map("ai_feature_settings")
+}

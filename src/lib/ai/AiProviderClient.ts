@@ -10,6 +10,8 @@ export interface AiRuntimeConfig {
   azureEndpoint: string | null;
   azureDeployment: string | null;
   apiKey: string;
+  /** Enabled models (ai_models) at call time; absent = the 0039 seed. */
+  allowedModels?: readonly string[];
 }
 
 export type AiCallResult =
@@ -40,7 +42,7 @@ export class AiProviderClient {
   static async complete(config: AiRuntimeConfig, prompt: AiPrompt, fetchImpl: FetchLike = fetch as unknown as FetchLike, timeoutMs = AiProviderClient.TIMEOUT_MS): Promise<AiCallResult> {
     const started = Date.now();
     // Allowlist, enforced at call time too: a stored or injected model outside the list never reaches the provider.
-    if (!AiProviders.modelAllowed(config.model)) return { ok: false, kind: "model_not_allowed", message: AiCopy.MODEL_NOT_ALLOWED, ms: 0 };
+    if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "model_not_allowed", message: AiCopy.MODEL_NOT_ALLOWED, ms: 0 };
     const req = AiProviderClient.request(config, prompt);
     const ms = () => Date.now() - started;
     let res: Awaited<ReturnType<FetchLike>>;

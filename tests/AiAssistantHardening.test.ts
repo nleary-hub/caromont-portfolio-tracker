@@ -33,15 +33,15 @@ class SpyFetch {
 
 const config = (model: string): AiRuntimeConfig => ({ provider: "openai", model, baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY });
 
-describe("model allowlist (gpt-6-luna only)", () => {
-  it("allows exactly gpt-6-luna", () => {
+describe("model allowlist (fallback seed gpt-6-luna; admins choose the rest in step 3b)", () => {
+  it("the fallback allows exactly gpt-6-luna", () => {
     expect(AiProviders.ALLOWED_MODELS).toEqual(["gpt-6-luna"]);
     expect(AiProviders.modelAllowed("gpt-6-luna")).toBe(true);
     for (const m of ["gpt-4o-mini", "GPT-6-LUNA", "gpt-6-luna-preview", "claude-3-5-haiku-latest", "", null]) expect(AiProviders.modelAllowed(m)).toBe(false);
   });
 
   it("copy is plain English without em dashes", () => {
-    expect(AiCopy.MODEL_NOT_ALLOWED).toContain("gpt-6-luna");
+    expect(AiCopy.MODEL_NOT_ALLOWED).not.toContain("gpt-6-luna");
     expect(AiCopy.MODEL_NOT_ALLOWED + AiCopy.MODEL_HELP).not.toMatch(/\u2014/);
   });
 
@@ -246,18 +246,19 @@ describe("model field styles (Figma review)", () => {
     expect(html).not.toContain("aria-invalid=");
   });
 
-  it("error: red alert box (role=alert), red border, 2px focus outline, announced via aria-describedby and aria-invalid", async () => {
+  it("error: red alert box (role=alert), red border, 2px focus outline, announced via aria-describedby (picker button, step 3b)", async () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { createElement } = await import("react");
     const { ModelField } = await import("@/components/AiSettingsForm");
     const html = renderToStaticMarkup(createElement(ModelField, { value: "some-other-model", error: AiCopy.MODEL_NOT_ALLOWED }));
     expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('role="combobox"');
     expect(html).toContain('aria-describedby="ai-model-error"');
+    expect(html).toContain("aria-invalid:border-danger");
     expect(html).toContain('id="ai-model-error"');
     expect(html).toMatch(/role="alert" class="[^"]*bg-\(--status-off-track-dark-bg\) text-danger/);
-    expect(html).toContain("aria-invalid:border-danger");
     expect(html).toContain("focus-visible:outline-2");
-    expect(html).toContain("That model isn&#x27;t allowed. Enter gpt-6-luna.");
+    expect(html).toContain("That model is turned off. An admin can choose one that&#x27;s on in AI settings.");
     expect(html).not.toContain("ai-model-help");
   });
 });
