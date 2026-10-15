@@ -142,6 +142,16 @@ export class AiSettingsService {
     }
   }
 
+  /** The saved model is on under Models (the allowlist). Any error reading the row = treated as on (no note). */
+  static async modelOn(db: AiSettingsDb, allowed: readonly string[]): Promise<boolean> {
+    try {
+      const row = await AiSettingsService.row(db);
+      return AiProviders.modelAllowed(row?.model ?? "", allowed);
+    } catch {
+      return true;
+    }
+  }
+
   static validate(input: AiSettingsInput, current: AiSettingsRow | null, env: Env = process.env): AiSettingsSaveResult {
     const f = input.fields;
     const errors: Partial<Record<keyof AiSettingsFields | "apiKey", string>> = {};

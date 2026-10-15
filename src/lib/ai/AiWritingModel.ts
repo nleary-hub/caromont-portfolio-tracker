@@ -22,6 +22,14 @@ export class AiWritingModel {
     return input.aiOn && input.canEdit;
   }
 
+  /**
+   * Draft and Fit show but are paused (aria-disabled, with the model-off note): the assistant is on, but the model it
+   * uses is turned off under Models. The server still refuses the call with MODEL_NOT_ALLOWED.
+   */
+  static paused(input: { aiOn: boolean; modelOn: boolean }): boolean {
+    return input.aiOn && !input.modelOn;
+  }
+
   /** One-click Accept: the numbers check passed, the text passed the PHI check, and it fits the limit. */
   static canAccept(s: AiSuggestion): boolean {
     return s.numbers.ok && s.phiOk && s.text.length > 0 && s.text.length <= s.limit;

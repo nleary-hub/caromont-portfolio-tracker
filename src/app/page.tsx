@@ -11,6 +11,7 @@ import { applyAiChange, proposeAiChange, rejectAiChange, undoAiChange } from "@/
 import type { AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
 import type { AiInput } from "@/lib/ai/AiInput";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
+import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import type { AiOutcome } from "@/lib/services/AiWritingService";
@@ -240,6 +241,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { rows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
   // Off by default: no settings row, the switch off, an incomplete setup or no tables yet all mean no AI buttons.
   const aiOn = Boolean(admin) && Db.isConfigured() ? await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb) : false;
+  // Draft and Fit paused: AI on, but its model is turned off under Models (the server refuses with MODEL_NOT_ALLOWED).
+  const aiPaused = aiOn ? AiWritingModel.paused({ aiOn, modelOn: await AiSettingsService.modelOn(Db.client as unknown as AiSettingsDb, await AiModelService.enabledIds(Db.client)) }) : false;
   // Revise with AI: the admin toggle (ai_feature_settings, on by default) and the env kill switch.
   const reviseOn = aiOn ? await AiModelService.featureOn(Db.client, "revise_note") : false;
 
@@ -316,6 +319,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
               ...(aiOn
                 ? {
                     aiWriting: {
+                      paused: aiPaused,
                       suggestAction: async (projectId: string | null, feature: AiFeature, text: string) => {
                         "use server";
                         return suggestNote(projectId, feature, text);

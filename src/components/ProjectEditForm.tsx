@@ -71,6 +71,8 @@ export interface ProjectEditFormProps {
   onDiscard: () => void;
   /** Writing assistant for the update note: passed only when AI is on and configured and the viewer can edit. */
   ai?: AiNoteActions;
+  /** With ai: the model is turned off under Models, so Draft and Fit show paused with the model-off note. */
+  aiPaused?: boolean;
   /** Revise with AI (review-then-apply layer): passed only when AI is on, its kill switch is on and the viewer can edit. */
   aiReview?: AiReviewActions;
 }
@@ -105,6 +107,7 @@ export function ProjectEditForm({
   onKeepEditing,
   onDiscard,
   ai,
+  aiPaused = false,
   aiReview,
 }: ProjectEditFormProps) {
   const isNew = mode === "new";
@@ -431,6 +434,7 @@ export function ProjectEditForm({
               value={values.note}
               noteMax={ProjectFormModel.maxLength("note")}
               actions={ai}
+              paused={aiPaused}
               onUse={(text) => {
                 setAiUndo((u) => ({ before: u?.state === "applied" ? u.before : values.note, state: "applied" }));
                 set("note", text);

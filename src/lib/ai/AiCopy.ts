@@ -197,6 +197,8 @@ export class AiCopy {
   static readonly DRAFT_TOOLTIP = "Turn the notes in this field into a clean update of 2,000 characters or fewer. Nothing changes until you save the project.";
   static readonly FIT_TOOLTIP = "Shorten this update to 200 characters or fewer, the length the dashboard and report show. Nothing changes until you save the project.";
   static readonly PHI_HELPER = "Don't include patient information.";
+  /** Under Draft and Fit when the writing assistant is on but its model is turned off under Models (step 3b-2). */
+  static readonly MODEL_OFF_NOTE = "Draft and Fit are paused because the AI model is turned off. An admin can turn one on in AI settings.";
   static readonly WORKING = "Writing…";
   static readonly EMPTY_INPUT = "Type some notes first.";
   static readonly PANEL_TITLE_DRAFT = "Suggested update";
