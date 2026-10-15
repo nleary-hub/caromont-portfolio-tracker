@@ -21,6 +21,7 @@ import { MilestonesEditor } from "./MilestonesEditor";
 import { AiNoteAssistant, AiUndoLine, type AiNoteActions } from "./AiNoteAssistant";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
+import { DependencyCopy } from "@/lib/projects/DependencyCopy";
 
 /**
  * Resolves to the saved project's id, or a message plus per-field errors from ProjectValidator. `milestones`
@@ -49,6 +50,8 @@ export interface ProjectEditFormProps {
   today: string;
   /** Edit: the stored start date is still the import default (shows the "Default" tag until changed). */
   startDateIsDefault?: boolean;
+  /** Dependencies section body (saves on pick). Null or omitted for a new project. */
+  dependencies?: ReactNode;
   /** The People editor (saves on pick). Null for a new project. */
   people: ReactNode;
   /** Delete project with its confirmation. Null for a new project. */
@@ -87,6 +90,7 @@ export function ProjectEditForm({
   checkerName,
   today,
   startDateIsDefault,
+  dependencies,
   people,
   adminDelete,
   onSubmit,
@@ -466,6 +470,12 @@ export function ProjectEditForm({
         {people && (
           <Section title="People" caption="Saves as you pick">
             {people}
+          </Section>
+        )}
+
+        {dependencies && (
+          <Section title={DependencyCopy.TITLE} caption={DependencyCopy.CAPTION}>
+            {dependencies}
           </Section>
         )}
 

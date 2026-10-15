@@ -4,6 +4,7 @@ import { ServiceLine } from "../../src/lib/domain/ServiceLine";
 import { ViewSettings } from "../../src/lib/domain/ViewSettings";
 import { ProjectFormModel } from "../../src/lib/projects/ProjectFormModel";
 import type { DashboardRow } from "../../src/lib/dashboard/DashboardViewModel";
+import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
 const rows: DashboardRow[] = ["Zulu", "Alpha", "Bravo"].map((name, i) => ({
@@ -15,6 +16,13 @@ const rows: DashboardRow[] = ["Zulu", "Alpha", "Bravo"].map((name, i) => ({
   changed: false, overdue: false, updatedOn: "2026-10-03", stale: false,
 }));
 const noop = async () => null;
+// Fictional dependencies: Zulu is blocked by Bravo, and Alpha is blocked by Zulu (so Zulu blocked by Alpha is a loop).
+let edges: DependencyEdge[] = [{ projectId: "fictional-0", blockedById: "fictional-2" }, { projectId: "fictional-1", blockedById: "fictional-0" }];
+const depView = (id: string) => {
+  const listed = new Set(edges.filter(e => e.projectId === id).map(e => e.blockedById));
+  const all = rows.map(r => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name));
+  return { ok: true as const, view: { blockedBy: all.filter(r => listed.has(r.id)), options: all.filter(r => r.id !== id && !listed.has(r.id)) } };
+};
 const counts = { NotStarted: 0, OnTrack: 3, AtRisk: 0, OffTrack: 0, OnHold: 0, Complete: 0, Cancelled: 0 };
 const admin: AdminDashboardProps = {
   viewSettings: { dashboard: ViewSettings.defaults("dashboard"), report: ViewSettings.defaults("report") },
@@ -29,6 +37,19 @@ const admin: AdminDashboardProps = {
   saveProjectFormAction: async () => ({ ok: true, id: "fictional-0" }),
   createProjectAction: async () => ({ ok: true, id: "fictional-new" }),
   saveColumnLayoutAction: noop, saveRowOrderAction: noop, resetRowOrderAction: noop,
+  dependencyActions: {
+    load: async id => depView(id),
+    add: async (id, by) => {
+      const problem = DependencyGraph.check(edges, id, by);
+      if (problem) return { ok: false, error: DependencyGraph.MESSAGES[problem] };
+      edges.push({ projectId: id, blockedById: by });
+      return depView(id);
+    },
+    remove: async (id, by) => {
+      edges = edges.filter(e => !(e.projectId === id && e.blockedById === by));
+      return depView(id);
+    },
+  },
 };
 createRoot(document.getElementById("root")!).render(
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}

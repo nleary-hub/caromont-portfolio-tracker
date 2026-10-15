@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { loadProjectHistory } from "@/app/actions/history";
+import { addProjectDependency, loadProjectDependencies, removeProjectDependency } from "@/app/actions/dependencies";
 import { recordSuggestionOutcome, suggestNote } from "@/app/actions/ai";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
@@ -324,6 +325,20 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 "use server";
                 const r = await deleteProject(projectId);
                 return r.ok ? null : r.error;
+              },
+              dependencyActions: {
+                load: async (projectId: string) => {
+                  "use server";
+                  return loadProjectDependencies(projectId);
+                },
+                add: async (projectId: string, blockedById: string) => {
+                  "use server";
+                  return addProjectDependency(projectId, blockedById);
+                },
+                remove: async (projectId: string, blockedById: string) => {
+                  "use server";
+                  return removeProjectDependency(projectId, blockedById);
+                },
               },
             },
           }

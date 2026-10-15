@@ -126,6 +126,9 @@ model Project {
   history           ProjectHistory[]
   priorInforNumbers ProjectPriorInforNumber[]
   milestones        ProjectMilestone[]
+  /// Dependencies (migration 0037): projects this one is blocked by, and projects it blocks. Never in the report.
+  blockedBy         ProjectDependency[]       @relation("DependencyProject")
+  blocks            ProjectDependency[]       @relation("DependencyBlocker")
   serviceLine       ServiceLine               @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
   department        Department?               @relation(fields: [departmentId], references: [id], onDelete: Restrict)
 
@@ -469,6 +472,7 @@ model ServiceLine {
   reportOptionsLog ReportOptionsHistory[]
   templates        MilestoneTemplate[]
   milestoneOwners  MilestoneOwnerName[]
+  dependencies     ProjectDependency[]
   templateLog      MilestoneTemplateHistory[]
   history          ServiceLineHistory[]
   activeFor        ServiceLineUserState[]
@@ -862,4 +866,24 @@ model MilestoneOwnerName {
 
   @@unique([serviceLineId, nameKey])
   @@map("milestone_owner_names")
+}
+
+/// Project dependencies (migration 0037): projectId is blocked by blockedById, both projects of the same line. Written
+/// only by ProjectDependencyService, which rejects self, duplicate and cycle-making edges (the DB blocks self and
+/// duplicates too). Not read by the report, the PDF or handoff.json.
+model ProjectDependency {
+  id            String      @id @default(uuid()) @db.Uuid
+  serviceLineId String      @db.Uuid
+  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  projectId     String      @db.Uuid
+  project       Project     @relation("DependencyProject", fields: [projectId], references: [id], onDelete: Restrict)
+  blockedById   String      @db.Uuid
+  blockedBy     Project     @relation("DependencyBlocker", fields: [blockedById], references: [id], onDelete: Restrict)
+  createdAt     DateTime    @default(now())
+  createdBy     String
+
+  @@unique([projectId, blockedById])
+  @@index([blockedById])
+  @@index([serviceLineId])
+  @@map("project_dependencies")
 }
