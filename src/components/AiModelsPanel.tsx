@@ -13,6 +13,9 @@ const GHOST = `h-7 whitespace-nowrap rounded-control border border-line px-3 tex
 /** Secondary: no glow (only the settings Save, the primary button, glows). */
 const SECONDARY = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 
+/** "Prices updated" date under each model name (step 3c), in ET like the rest of the page. */
+const PRICE_DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "America/New_York" });
+
 /** On/off switch (.acct-switch carries the 2px focus-visible outline). */
 export function AiToggle({ checked, onChange, labelledBy, describedBy, disabled, testId }: { checked: boolean; onChange: (v: boolean) => void; labelledBy: string; describedBy?: string; disabled?: boolean; testId: string }) {
   return (
@@ -138,6 +141,9 @@ function ModelRow({ m, dbReady, pending, onToggle, confirm, error, onConfirm, on
                 {C.MODEL_CHOSEN_OFF}
               </span>
             ))}
+          <span className="block text-muted type-caption" data-testid={`ai-model-price-updated-${m.id}`}>
+            {m.pricesUpdatedAt ? C.priceUpdated(PRICE_DATE.format(new Date(m.pricesUpdatedAt)), m.priceSource) : C.PRICE_NEVER_UPDATED}
+          </span>
         </td>
         <td className="px-3 py-2">
           <AiToggle checked={m.enabled} onChange={onToggle} labelledBy={nameId} disabled={!dbReady || pending} testId={`ai-model-toggle-${m.id}`} />

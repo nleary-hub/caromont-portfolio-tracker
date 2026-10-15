@@ -903,6 +903,10 @@ model AiModel {
   addedBy     String
   updatedAt   DateTime @default(now())
   updatedBy   String
+  /// When the prices were last saved, by whom, and how: "manual" | "refreshed" (DB check constraint). Step 3c.
+  pricesUpdatedAt DateTime?
+  pricesUpdatedBy String?
+  priceSource     String?
 
   @@map("ai_models")
 }

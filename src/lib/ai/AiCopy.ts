@@ -51,6 +51,52 @@ export class AiCopy {
   static readonly PRICES_SAVED = "Prices saved.";
   static readonly PRICE_INVALID = "Enter a price like 0.15, or leave it blank";
   static readonly PRICE_UNIT_REQUIRED = "Choose a price unit";
+
+  // ---- Refresh prices (step 3c) ----------------------------------------------------------------------------------
+  static readonly REFRESH_PRICES = "Refresh prices";
+  static readonly REFRESHING_PRICES = "Reading OpenAI's pricing page…";
+  static readonly REFRESH_PRICES_HELP = "Reads OpenAI's published pricing page and shows the changes for your models. Nothing is saved until you confirm.";
+  static readonly PRICE_REVIEW_TITLE = "Review price changes";
+  static readonly PRICE_REVIEW_INTRO = "Prices from OpenAI's pricing page for the models in your list. Prices are for reference only. Nothing is saved until you confirm.";
+  static readonly PRICE_REVIEW_HEADERS = ["Model", "Current price", "New price", "Status"] as const;
+  static readonly PRICE_REVIEW_CHANGED = "Changed";
+  static readonly PRICE_REVIEW_SAME = "No change";
+  static readonly PRICE_REVIEW_NOT_FOUND = "Not on the pricing page. Keeps the current price.";
+  static readonly PRICE_REVIEW_NOT_LISTED = "No longer listed by OpenAI";
+  static readonly PRICE_REVIEW_NEWLY_LISTED = "Listed by OpenAI but not in your list:";
+  static readonly PRICE_REVIEW_LIST_UNCHECKED = "OpenAI's model list couldn't be checked, so listing changes aren't shown.";
+  static readonly PRICE_REVIEW_NO_CHANGES = "Prices already match OpenAI's pricing page. Nothing to save.";
+  static readonly PRICE_REVIEW_CONFIRM = "Confirm and save";
+  static readonly PRICE_REVIEW_SOURCE = "Source:";
+  static readonly PRICE_REFRESH_FETCH_FAILED = "Couldn't read OpenAI's pricing page. Nothing was changed. Try again later, or enter prices by hand.";
+  static readonly PRICE_REFRESH_FORMAT_CHANGED = "OpenAI's pricing page has a format this app can't read, so no prices were read. Nothing was changed. Enter prices by hand.";
+  static readonly PRICE_REFRESH_NO_MATCH = "None of your models are on OpenAI's pricing page. Nothing was changed.";
+  static readonly PRICE_REFRESH_STALE = "Prices changed since this review. Nothing was saved. Refresh again.";
+  static readonly PRICE_REFRESH_OFF = "Refresh prices is turned off.";
+  static readonly PRICE_SOURCE_MANUAL = "entered by hand";
+  static readonly PRICE_SOURCE_REFRESHED = "from OpenAI's pricing page";
+  static readonly PRICE_NEVER_UPDATED = "Prices not updated yet";
+  static readonly PRICE_REFRESH_FIELD = "Price refresh";
+
+  static priceRefreshError(reason: string): string {
+    return reason === "fetch_failed" ? AiCopy.PRICE_REFRESH_FETCH_FAILED : reason === "no_match" ? AiCopy.PRICE_REFRESH_NO_MATCH : AiCopy.PRICE_REFRESH_FORMAT_CHANGED;
+  }
+
+  static pricesRefreshed(n: number): string {
+    return n === 1 ? "Prices saved for 1 model." : `Prices saved for ${n} models.`;
+  }
+
+  /** Under each model name: "Prices updated Oct 15, 2026, from OpenAI's pricing page". */
+  static priceUpdated(when: string, source: string | null | undefined): string {
+    return `Prices updated ${when}, ${source === "refreshed" ? AiCopy.PRICE_SOURCE_REFRESHED : AiCopy.PRICE_SOURCE_MANUAL}`;
+  }
+
+  /** One price in the review and the change log: "$0.1 in, $0.5 out per 1M tokens", "$0.05 per minute", "No price". */
+  static priceSummary(unit: string | null, input: string, output: string): string {
+    if (unit === "per_minute") return `$${input} per minute`;
+    if (unit === "per_1m_tokens") return `$${input} in, ${output === "" ? "no" : `$${output}`} out per 1M tokens`;
+    return AiCopy.PRICE_UNIT_NONE;
+  }
   static readonly DISABLE_CONFIRM_YES = "Turn off anyway";
   static readonly DISABLE_CONFIRM_NO = "Keep on";
   static readonly FEATURES_TITLE = "Features";
@@ -155,6 +201,8 @@ export class AiCopy {
         return AiCopy.MODELS_TITLE;
       case "aiFeature":
         return AiCopy.FEATURES_TITLE;
+      case "aiPriceRefresh":
+        return AiCopy.PRICE_REFRESH_FIELD;
       case "apiKey":
         return AiCopy.KEY_LABEL;
       default:
@@ -170,6 +218,8 @@ export class AiCopy {
     if (action === "model_added") return `${newValue ?? ""} added (off)`;
     if (action === "model_enabled") return `${newValue ?? ""} turned on`;
     if (action === "model_disabled") return `${newValue ?? ""} turned off`;
+    if (action === "prices_refreshed") return `Saved from OpenAI's pricing page. ${newValue ?? ""}`;
+    if (action === "price_refresh_failed") return `Refresh failed, nothing changed (${newValue === "fetch_failed" ? "page couldn't be read" : newValue === "no_match" ? "no models matched" : "format changed"})`;
     if (action === "feature_on") return `${AiCopy.featureLabel(newValue ?? "")} turned on`;
     if (action === "feature_off") return `${AiCopy.featureLabel(newValue ?? "")} turned off`;
     const show = (v: string | null) => (v === null || v === "" ? "(none)" : field === "enabled" ? (v === "true" ? "On" : "Off") : field === "provider" ? AiCopy.providerName(v) : v);

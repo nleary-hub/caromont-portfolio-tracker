@@ -24,6 +24,10 @@ export interface AiModelRow {
   addedBy: string;
   updatedAt: Date;
   updatedBy: string;
+  /** Step 3c (0040): when prices were last saved, by whom, and how. Absent before 0040 runs. */
+  pricesUpdatedAt?: Date | null;
+  pricesUpdatedBy?: string | null;
+  priceSource?: string | null;
 }
 
 export interface AiFeatureRow {
@@ -42,6 +46,9 @@ export interface AiModelView {
   outputPrice: string;
   /** Selected in AI settings: every enabled feature calls this model. */
   inUse: boolean;
+  /** Step 3c: ISO time the prices were last saved, and how ("manual" or "refreshed"). */
+  pricesUpdatedAt?: string | null;
+  priceSource?: "manual" | "refreshed" | null;
 }
 
 export interface AiFeatureView {
@@ -147,6 +154,8 @@ export class AiModelService {
       inputPrice: AiModelService.priceText(r.inputPrice),
       outputPrice: AiModelService.priceText(r.outputPrice),
       inUse: r.id === selected,
+      pricesUpdatedAt: r.pricesUpdatedAt ? new Date(r.pricesUpdatedAt).toISOString() : null,
+      priceSource: r.priceSource === "manual" || r.priceSource === "refreshed" ? r.priceSource : null,
     }));
   }
 
@@ -260,7 +269,7 @@ export class AiModelService {
       const before = fmt(row.priceUnit, row.inputPrice, row.outputPrice);
       const after = fmt(next.priceUnit, next.inputPrice, next.outputPrice);
       if (before === after) return { ok: true };
-      await tx.aiModel.update({ where: { id }, data: { ...next, updatedAt: now, updatedBy: admin.email } });
+      await tx.aiModel.update({ where: { id }, data: { ...next, priceSource: "manual", pricesUpdatedAt: now, pricesUpdatedBy: admin.email, updatedAt: now, updatedBy: admin.email } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", "price_changed", `${id}: ${before}`, `${id}: ${after}`, admin, now)] });
       return { ok: true, message: AiCopy.PRICES_SAVED };
     });
