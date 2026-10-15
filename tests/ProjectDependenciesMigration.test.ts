@@ -34,9 +34,10 @@ async function fingerprint(db: PGlite): Promise<string> {
 }
 
 describe("0037_project_dependencies (PGlite, example data)", () => {
-  it("is the newest migration, right after 0036_owner_name_lists", () => {
-    expect(folders().at(-1)).toBe(M);
-    expect(folders().at(-2)).toBe("0036_owner_name_lists");
+  it("comes right after 0036_owner_name_lists; only 0038_ai_review_apply comes after it", () => {
+    expect(folders().at(-2)).toBe(M);
+    expect(folders().at(-3)).toBe("0036_owner_name_lists");
+    expect(folders().at(-1)).toBe("0038_ai_review_apply");
   });
 
   it("is add-only: only CREATE TABLE / CREATE INDEX, no DROP, ALTER, UPDATE, DELETE or report tables", () => {

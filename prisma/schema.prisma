@@ -832,9 +832,10 @@ model AiUsageLog {
   userEmail         String
   /// null: a suggestion made in the New project form (no project yet)
   projectId         String?  @db.Uuid
-  /// "draft_from_bullets" | "fit_for_report"
+  /// "draft_from_bullets" | "fit_for_report" | "test_connection" | "revise_note" (0038, review-then-apply layer)
   feature           String
-  /// "suggested" | "accepted" | "edited" | "accepted_with_override" | "discarded" | "blocked_phi" | "failed"
+  /// "suggested" | "accepted" | "edited" | "accepted_with_override" | "discarded" | "blocked_phi" | "failed" | "test_succeeded" | "test_failed",
+  /// plus "proposed" | "applied" | "rejected" | "undone" (0038, review-then-apply layer)
   event             String
   provider          String?
   model             String?

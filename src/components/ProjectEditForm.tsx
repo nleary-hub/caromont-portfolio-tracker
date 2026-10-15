@@ -19,6 +19,7 @@ import type { FieldErrors } from "@/lib/validation/ProjectValidator";
 import { StartDate } from "@/lib/projects/StartDate";
 import { MilestonesEditor } from "./MilestonesEditor";
 import { AiNoteAssistant, AiUndoLine, type AiNoteActions } from "./AiNoteAssistant";
+import { AiReviewPanel, type AiReviewActions } from "./AiReviewPanel";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
 import { DependencyCopy } from "@/lib/projects/DependencyCopy";
@@ -70,6 +71,8 @@ export interface ProjectEditFormProps {
   onDiscard: () => void;
   /** Writing assistant for the update note: passed only when AI is on and configured and the viewer can edit. */
   ai?: AiNoteActions;
+  /** Revise with AI (review-then-apply layer): passed only when AI is on, its kill switch is on and the viewer can edit. */
+  aiReview?: AiReviewActions;
 }
 
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
@@ -102,6 +105,7 @@ export function ProjectEditForm({
   onKeepEditing,
   onDiscard,
   ai,
+  aiReview,
 }: ProjectEditFormProps) {
   const isNew = mode === "new";
   // Snapshot at open: a People autosave refreshes the page data but must not reset the form.
@@ -114,7 +118,8 @@ export function ProjectEditForm({
   const [saving, setSaving] = useState(false);
   // Undo after Accept / "Use this text": the note as it was before the assistant touched it in this edit (the first
   // use wins, so Undo after two accepts still restores the user's own text). Cleared once the project is saved.
-  const [aiUndo, setAiUndo] = useState<{ before: string; state: "applied" | "undone" } | null>(null);
+  // proposalId: set when the last apply came from Revise with AI, so Undo also records "undone" in the usage log.
+  const [aiUndo, setAiUndo] = useState<{ before: string; state: "applied" | "undone"; proposalId?: string } | null>(null);
   const showAi = Boolean(ai) && AiWritingModel.showsButtons({ aiOn: Boolean(ai), canEdit: true, mode });
   const bodyRef = useRef<HTMLDivElement>(null);
 
@@ -410,12 +415,13 @@ export function ProjectEditForm({
               }}
             />
           </Field>
-          {showAi && aiUndo && (
+          {(showAi || Boolean(aiReview)) && aiUndo && (
             <AiUndoLine
               state={aiUndo.state}
               onUndo={() => {
                 // Only the note goes back; every other field keeps its edits. The restored text is the user's own.
                 set("note", aiUndo.before);
+                if (aiUndo.proposalId && aiReview) void aiReview.undo(aiUndo.proposalId).catch(() => null);
                 setAiUndo({ before: aiUndo.before, state: "undone" });
               }}
             />
@@ -430,6 +436,17 @@ export function ProjectEditForm({
                 set("note", text);
               }}
               onRun={() => setAiUndo((u) => (u?.state === "undone" ? null : u))}
+            />
+          )}
+          {aiReview && (
+            <AiReviewPanel
+              value={values.note}
+              actions={aiReview}
+              onApply={(text, proposalId) => {
+                // Apply fills the draft only. Undo restores the note as it was before the first AI change in this edit.
+                setAiUndo((u) => ({ before: u?.state === "applied" ? u.before : values.note, state: "applied", proposalId }));
+                set("note", text);
+              }}
             />
           )}
           <Field

@@ -166,6 +166,29 @@ export class AiCopy {
   /** Edit mode: label over the read-only marked suggestion shown above the edit box. */
   static readonly REFERENCE_LABEL = "Suggestion, for reference";
 
+  // ---- Review-then-apply layer (Revise with AI) ------------------------------------------------------------------
+  // Reused unchanged from the writing assistant above: PANEL_ORIGINAL, PANEL_NOTE, REFERENCE_LABEL, EDIT, WORKING,
+  // PHI_HELPER, APPLIED_NOT_SAVED, UNDO, UNDONE, ACCEPT_BLOCKED, LEGEND_WORDS, LEGEND_NUMBERS, numberWarning,
+  // RATE_LIMITED, PROVIDER_ERROR, TIMEOUT, OUT_OF_REPLY_LENGTH, UNAVAILABLE and MODEL_NOT_ALLOWED.
+  static readonly REVISE_BUTTON = "Revise with AI";
+  static readonly REVISE_TOOLTIP = "Describe a change to this update. You review it before anything changes. Nothing changes until you save the project.";
+  static readonly INSTRUCTION_LABEL = "What should change?";
+  static readonly INSTRUCTION_PLACEHOLDER = "For example: shorten it and say go-live moved to March";
+  static readonly PROPOSE = "Propose change";
+  static readonly REVIEW_TITLE = "Proposed change";
+  static readonly YOUR_EDIT = "Your edit";
+  static readonly APPLY = "Apply";
+  static readonly REJECT = "Reject";
+  static readonly CANCEL = "Cancel";
+  static readonly REJECTED = "Suggestion rejected. Your note is unchanged.";
+  static readonly INSTRUCTION_EMPTY = "Describe the change first.";
+  static readonly AUDIO_UNSUPPORTED = "Dictation isn't available yet. Type the change instead.";
+  static readonly FEATURE_OFF = "This AI feature is turned off. Your note is unchanged.";
+  static readonly APPLY_FAILED = "Couldn't apply the suggestion. Your note is unchanged. Try again.";
+  /** The app's generic denials (same wording as the other project actions). */
+  static readonly PROJECT_GONE = "This project was deleted or no longer exists.";
+  static readonly NOT_AUTHORIZED = "Not authorized.";
+
   /** Screen-reader label of each marked value (new word or missing number/date). */
   static notInText(value: string): string {
     return `${value}, not in your text`;
