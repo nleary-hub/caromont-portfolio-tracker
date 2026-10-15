@@ -72,7 +72,7 @@ describe("placement 1: list toolbar AI menu", () => {
     const h = html(createElement(AiToolbarMenu, { notes: { bulk_edit: null }, selected: rows, visible: rows, defaultTool: "bulk_edit" }));
     expect(h).toContain("w-[480px]");
     expect(h).toContain('data-testid="ai-drawer-bulk_edit"');
-    expect(h).toContain("Working on 3 selected projects");
+    expect(h).toContain("Working on 3 selected projects: ");
   });
 });
 
@@ -107,7 +107,7 @@ describe("placement 3: Quick capture and dictation", () => {
   it("feature off: header gets no Quick capture (aiActions undefined)", () => {
     const src = readFileSync("src/components/ProjectDashboard.tsx", "utf8");
     expect(src).toContain(`{aiPlacements && "quick_capture" in aiPlacements && <AiQuickCapture`);
-    expect(readFileSync("src/components/DashboardTopBar.tsx", "utf8")).toContain("{aiActions && <div");
+    expect(readFileSync("src/components/DashboardTopBar.tsx", "utf8")).toMatch(/\{aiActions && \(\s*<div/);
   });
   it("ready: Quick capture with the Q shortcut in its tooltip", () => {
     const h = html(createElement(AiQuickCapture, { note: null }));
@@ -161,8 +161,9 @@ describe("placement 4: Pre-meeting brief", () => {
     const src = readFileSync("src/components/ProjectDashboard.tsx", "utf8");
     expect(src).toMatch(/aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard/);
     expect(src).toMatch(/"meeting_brief" in aiPlacements \? \{ headerAction: <AiBriefButton/);
-    // No brief = the plain tiles section, no extra grid column.
-    expect(src).toContain('"meeting_brief" in aiPlacements ? "grid grid-cols-[minmax(0,1fr)_380px] items-start gap-2" : "contents"');
+    // The tiles are always their own full-width row; the brief is a separate row under them.
+    expect(src).not.toContain("grid-cols-[minmax(0,1fr)_380px]");
+    expect(src).toContain("{!emptyLine && tileTemplate && (");
   });
 });
 

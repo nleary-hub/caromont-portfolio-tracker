@@ -177,15 +177,24 @@ export function AiQuickCapture({ note, dictationNote, defaultOpen = false, recor
 }
 
 /** Dashboard top row, right column: Pre-meeting brief (max 8 lines in the card; Open full opens the drawer). */
+/** Dashboard row under the status cards: one compact line (heading, Focus, Make brief); the brief shows below it. */
 export function AiBriefCard({ note, focusOptions, initial }: { note: string | null; focusOptions: readonly string[]; initial?: AiBriefState }) {
   const [full, setFull] = useState<{ state: AiBriefState; focus: string } | null>(null);
   return (
-    <section aria-labelledby="ai-brief-card-title" className="flex flex-col gap-2 rounded-card border border-line bg-card px-4 py-3" data-testid="ai-brief-card">
-      <h2 id="ai-brief-card-title" className="flex items-center gap-1.5 type-table-strong text-fg">
-        <Sparkle />
-        {C.BRIEF_CARD_TITLE}
-      </h2>
-      <AiBriefPanel disabledNote={note} focusOptions={focusOptions} compact onOpenFull={(state, focus) => setFull({ state, focus })} {...(initial ? { initial } : {})} />
+    <section aria-labelledby="ai-brief-card-title" className="rounded-card border border-line bg-card px-4 py-2" data-testid="ai-brief-card">
+      <AiBriefPanel
+        disabledNote={note}
+        focusOptions={focusOptions}
+        compact
+        heading={
+          <h2 id="ai-brief-card-title" className="flex shrink-0 items-center gap-1.5 type-table-strong text-fg">
+            <Sparkle />
+            {C.BRIEF_CARD_TITLE}
+          </h2>
+        }
+        onOpenFull={(state, focus) => setFull({ state, focus })}
+        {...(initial ? { initial } : {})}
+      />
       {full && (
         <AiDrawer title={C.BRIEF_CARD_TITLE} onClose={() => setFull(null)} testId="ai-drawer-brief">
           <AiBriefPanel disabledNote={note} initial={full.state} initialFocus={full.focus} />

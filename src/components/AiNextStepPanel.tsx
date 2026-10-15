@@ -45,7 +45,7 @@ export function AiNextStepPanel({ projects, disabledNote, initial, initialProjec
         </div>
         <AiOffNote id="ai-next-step-off" note={disabledNote} testId="ai-tool-next_step-off" />
         {state.kind === "error" && <AiAlert tone="danger" testId="ai-tool-next_step-error">{state.message}</AiAlert>}
-        {state.kind === "review" && <AiChangeReview key={state.proposal.proposalId} proposalId={state.proposal.proposalId} changes={state.proposal.changes} />}
+        {state.kind === "review" && <AiChangeReview key={state.proposal.proposalId} proposalId={state.proposal.proposalId} changes={state.proposal.changes} single />}
       </div>
     );
   return (

@@ -180,10 +180,10 @@ export class AiToolsCopy {
   static readonly AI_MENU_BULK = (n: number) => `Bulk edit selected (${n})`;
   static readonly AI_MENU_MEETING = "Meeting notes to updates";
   static readonly AI_MENU_SELECT_FIRST = "Select one or more rows first.";
-  static readonly AI_MENU_SELECT_HINT = "Ctrl or Cmd click rows to select them.";
+  static readonly AI_MENU_SELECT_HINT = "Ctrl-click or Cmd-click rows to select them.";
   static readonly CAPTURE_BUTTON = "Quick capture";
   static readonly CAPTURE_SHORTCUT = "Shortcut: Q";
-  static readonly selectionLine = (n: number, names: string) => `Working on ${n} selected ${n === 1 ? "project" : "projects"}: ${names}`;
+  static readonly selectionLine = (n: number, names: string) => `Working on ${n} selected ${n === 1 ? "project" : "projects"}: ${names}.`;
   static readonly visibleLine = (n: number) => `Working on the ${n} ${n === 1 ? "project" : "projects"} in view.`;
   static readonly scopePrefix = (names: string) => `Only change these projects: ${names}.`;
   static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. Any change the AI suggests is listed below. Nothing is saved until you apply it.";

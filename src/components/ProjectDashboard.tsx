@@ -605,6 +605,11 @@ export function ProjectDashboard({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
+  const avatar = (
+    <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">
+      {Initials.of(userName, userEmail)}
+    </div>
+  );
   return (
     <div className="pb-page relative min-h-screen">
       <DashboardAmbient />
@@ -642,11 +647,10 @@ export function ProjectDashboard({
         }
         account={
             <form action={signOutAction} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-muted">
-              <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">
-                {Initials.of(userName, userEmail)}
-              </div>
-              <div className="flex flex-col type-caption">
-                <AccountMenu name={userName ?? userEmail} heartbeat={heartbeat} onHeartbeatChange={changeHeartbeat} saveFailed={heartbeatSaveFailed} />
+              {/* Below 1100px the name drops and the avatar itself opens the account menu; Sign out stays beside it. */}
+              <div className="max-[1100px]:hidden">{avatar}</div>
+              <div className="flex flex-col type-caption max-[1100px]:flex-row max-[1100px]:items-center max-[1100px]:gap-2">
+                <AccountMenu name={userName ?? userEmail} heartbeat={heartbeat} onHeartbeatChange={changeHeartbeat} saveFailed={heartbeatSaveFailed} avatar={avatar} />
                 <button type="submit" className="text-left hover:text-fg">
                   Sign out
                 </button>
@@ -665,10 +669,8 @@ export function ProjectDashboard({
         {emptyLine && <EmptyLineState line={line!} admin={Boolean(admin)} onNew={openNew} />}
 
         {/* A line with no projects shows only the banner; tiles, toolbar and table appear with the first project. */}
-        {/* Top row: the status tiles, and the Pre-meeting brief card in the right column when that feature is on. */}
-        {!emptyLine && (tileTemplate || (aiPlacements && "meeting_brief" in aiPlacements)) && (
-          <div className={aiPlacements && "meeting_brief" in aiPlacements ? "grid grid-cols-[minmax(0,1fr)_380px] items-start gap-2" : "contents"}>
-            {tileTemplate && (
+        {/* Top row: the status tiles at full width. The Pre-meeting brief, when that feature is on, gets its own row below. */}
+        {!emptyLine && tileTemplate && (
           <section className="pb-summary relative grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
             {tiles.map((t) =>
               t === "completedFy" ? (
@@ -684,10 +686,8 @@ export function ProjectDashboard({
             {/* Heartbeat switch Off: no line, head, trail or washes are rendered and no animation runs. */}
             {heartbeat && <SummaryHeartbeat tilesKey={tiles.join(",")} />}
           </section>
-            )}
-            {aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard note={aiPlacements.meeting_brief ?? null} focusOptions={[...new Set([...(line?.departments ?? []).map((d) => d.name), ...rows.map((r) => r.name)])]} />}
-          </div>
         )}
+        {!emptyLine && aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard note={aiPlacements.meeting_brief ?? null} focusOptions={[...new Set([...(line?.departments ?? []).map((d) => d.name), ...rows.map((r) => r.name)])]} />}
 
         {!emptyLine && (
         <section className="flex flex-col gap-1.5" aria-label="Filters">

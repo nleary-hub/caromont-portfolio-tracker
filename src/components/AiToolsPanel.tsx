@@ -127,7 +127,8 @@ export function AiBulkPreview({ bulk }: { bulk: AiBulkSummary }) {
   );
 }
 
-export function AiChangeReview({ proposalId, changes, initialLines, bulk }: { proposalId: string; changes: AiToolChange[]; initialLines?: Record<number, LineState>; bulk?: AiBulkSummary }) {
+/** single: drawer (one project) layout. No Project column, the reason sits under the Field, Apply/Reject sit under the value and Suggested takes the rest. */
+export function AiChangeReview({ proposalId, changes, initialLines, bulk, single = false }: { proposalId: string; changes: AiToolChange[]; initialLines?: Record<number, LineState>; bulk?: AiBulkSummary; single?: boolean }) {
   const [lines, setLines] = useState<Record<number, LineState>>(() => initialLines ?? Object.fromEntries(changes.map((c) => [c.line, { status: "open", value: c.after }])));
   const [busy, start] = useTransition();
   const set = (line: number, patch: Partial<LineState>) => setLines((l) => ({ ...l, [line]: { ...l[line], ...patch } }));
@@ -161,51 +162,20 @@ export function AiChangeReview({ proposalId, changes, initialLines, bulk }: { pr
         <table className="w-full type-table">
           <thead className="bg-card text-left text-muted type-label">
             <tr>
-              {C.HEADERS.map((h, i) => (
-                <th key={i} className="px-3 py-2 font-medium">
-                  {h}
-                </th>
-              ))}
+              {C.HEADERS.map((h, i) =>
+                single && (i === 0 || i === 4) ? null : (
+                  <th key={i} className={`px-3 py-2 font-medium${single && i === 3 ? " w-full" : ""}`}>
+                    {h}
+                  </th>
+                ),
+              )}
             </tr>
           </thead>
           <tbody>
             {changes.map((c) => {
               const l = lines[c.line];
               const open = l.status === "open";
-              return (
-                <tr key={c.line} className="border-t border-line align-top" data-testid={`ai-tool-line-${c.line}`} data-status={l.status}>
-                  <td className="px-3 py-2">
-                    <span className="type-table-strong text-fg">{c.projectName}</span>
-                    {c.reason && <span className="block text-muted type-caption">{c.reason}</span>}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">{C.fieldLabel(c.field)}</td>
-                  <td className="px-3 py-2 text-muted">{show(c.field, c.before)}</td>
-                  <td className="min-w-[12rem] px-3 py-2">
-                    {open ? (
-                      c.field === "status" ? (
-                        <select aria-label={label(c)} className={INPUT} value={l.value} onChange={(e) => set(c.line, { value: e.target.value, error: undefined })} {...invalid(c.line, l)}>
-                          {ProjectStatusInfo.all().map((s) => (
-                            <option key={s} value={s}>
-                              {ProjectStatusInfo.label(s)}
-                            </option>
-                          ))}
-                        </select>
-                      ) : c.field === "note" ? (
-                        <textarea aria-label={label(c)} className={`${INPUT} h-auto min-h-16 py-1`} value={l.value} onChange={(e) => set(c.line, { value: e.target.value, error: undefined })} {...invalid(c.line, l)} data-testid={`ai-tool-edit-${c.line}`} />
-                      ) : (
-                        <input aria-label={label(c)} className={INPUT} value={l.value} onChange={(e) => set(c.line, { value: e.target.value, error: undefined })} {...invalid(c.line, l)} data-testid={`ai-tool-edit-${c.line}`} />
-                      )
-                    ) : (
-                      <span className={l.status === "rejected" ? "text-muted line-through" : "text-fg"}>{show(c.field, l.value)}</span>
-                    )}
-                    {l.error && (
-                      <span role="alert" id={errorId(c.line)} className="mt-1 block text-danger type-caption" data-testid={`ai-tool-error-${c.line}`}>
-                        {l.error}
-                      </span>
-                    )}
-                  </td>
-                  <td className="px-3 py-2 whitespace-nowrap">
-                    {open ? (
+              const actions = open ? (
                       <div className="flex gap-2">
                         <button
                           type="button"
@@ -241,8 +211,54 @@ export function AiChangeReview({ proposalId, changes, initialLines, bulk }: { pr
                       </div>
                     ) : (
                       <span className={l.status === "applied" ? "text-(--status-on-track-dark-fg) type-table-strong" : "text-muted"}>{l.status === "applied" ? C.APPLIED : C.REJECTED}</span>
+                    );
+              return (
+                <tr key={c.line} className="border-t border-line align-top" data-testid={`ai-tool-line-${c.line}`} data-status={l.status}>
+                  {single ? (
+                    <td className="w-[38%] px-3 py-2" data-testid={`ai-tool-field-${c.line}`}>
+                      <span className="whitespace-nowrap type-table-strong text-fg">{C.fieldLabel(c.field)}</span>
+                      {c.reason && (
+                        <span className="block text-muted type-caption" data-testid={`ai-tool-reason-${c.line}`}>
+                          {c.reason}
+                        </span>
+                      )}
+                    </td>
+                  ) : (
+                    <>
+                      <td className="px-3 py-2">
+                        <span className="type-table-strong text-fg">{c.projectName}</span>
+                        {c.reason && <span className="block text-muted type-caption">{c.reason}</span>}
+                      </td>
+                      <td className="px-3 py-2 whitespace-nowrap">{C.fieldLabel(c.field)}</td>
+                    </>
+                  )}
+                  <td className="px-3 py-2 text-muted">{show(c.field, c.before)}</td>
+                  <td className={`${single ? "w-full min-w-0" : "min-w-[12rem]"} px-3 py-2`}>
+                    {open ? (
+                      c.field === "status" ? (
+                        <select aria-label={label(c)} className={INPUT} value={l.value} onChange={(e) => set(c.line, { value: e.target.value, error: undefined })} {...invalid(c.line, l)}>
+                          {ProjectStatusInfo.all().map((s) => (
+                            <option key={s} value={s}>
+                              {ProjectStatusInfo.label(s)}
+                            </option>
+                          ))}
+                        </select>
+                      ) : c.field === "note" ? (
+                        <textarea aria-label={label(c)} className={`${INPUT} h-auto min-h-16 py-1`} value={l.value} onChange={(e) => set(c.line, { value: e.target.value, error: undefined })} {...invalid(c.line, l)} data-testid={`ai-tool-edit-${c.line}`} />
+                      ) : (
+                        <input aria-label={label(c)} className={INPUT} value={l.value} onChange={(e) => set(c.line, { value: e.target.value, error: undefined })} {...invalid(c.line, l)} data-testid={`ai-tool-edit-${c.line}`} />
+                      )
+                    ) : (
+                      <span className={l.status === "rejected" ? "text-muted line-through" : "text-fg"}>{show(c.field, l.value)}</span>
                     )}
+                    {l.error && (
+                      <span role="alert" id={errorId(c.line)} className="mt-1 block text-danger type-caption" data-testid={`ai-tool-error-${c.line}`}>
+                        {l.error}
+                      </span>
+                    )}
+                    {single && <div className="mt-2 whitespace-nowrap">{actions}</div>}
                   </td>
+                  {!single && <td className="px-3 py-2 whitespace-nowrap">{actions}</td>}
                 </tr>
               );
             })}
