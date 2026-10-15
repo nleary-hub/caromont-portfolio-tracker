@@ -57,6 +57,12 @@ const FIELDS: Partial<Record<AiToolFeature, readonly AiToolField[]>> = {
   // Step 5 (decision D3): no note, owner, physician or department changes in bulk.
   bulk_edit: ["status", "nextMilestone", "dueDate", "targetCompletion"],
   quick_capture: ["status", "nextMilestone", "dueDate", "note"],
+  next_step: ["nextMilestone", "dueDate"],
+};
+
+/** Extra read-only fields a tool sees (it can't change them). */
+const CONTEXT_ONLY: Partial<Record<AiToolFeature, readonly AiToolField[]>> = {
+  next_step: ["status", "note"],
 };
 
 /**
@@ -162,6 +168,8 @@ export class AiToolsService {
     now?: () => Date;
   }): Promise<AiToolProposeResult> {
     const fields = AiToolsService.fieldsOf(args.feature);
+    // Next-step suggestion is always about one chosen project.
+    if (args.feature === "next_step" && !args.projectId) return { ok: false, kind: "empty", message: AiToolsCopy.PICK_PROJECT };
     if (!args.viewer?.isAdmin || !fields.length) return { ok: false, kind: "denied", message: AiCopy.NOT_AUTHORIZED };
     if (args.projectId !== undefined && args.projectId !== null && !/^[0-9a-f-]{36}$/i.test(args.projectId)) return { ok: false, kind: "denied", message: AiCopy.PROJECT_GONE };
     const projects = await AiToolsService.projects(args.db, args.scope, args.projectId ?? undefined);
@@ -169,7 +177,7 @@ export class AiToolsService {
     const r = await AiToolsService.call({
       ...args,
       input: typeof args.input === "string" ? args.input : "",
-      build: (input) => AiToolsPrompts.build(args.feature, input, AiToolsModel.context(projects, fields)),
+      build: (input) => AiToolsPrompts.build(args.feature, input, AiToolsModel.context(projects, [...fields, ...(CONTEXT_ONLY[args.feature] ?? [])])),
     });
     if (!r.ok) return r;
     const parsed = AiToolsModel.parseChanges(r.text, projects, fields);

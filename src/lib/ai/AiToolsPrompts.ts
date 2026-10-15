@@ -49,6 +49,14 @@ export class AiToolsPrompts {
       ...AiToolsPrompts.COMMON,
       ...AiToolsPrompts.CHANGES_FORMAT,
     ].join("\n"),
+    next_step: [
+      "You suggest the single next action for one project in a hospital service line portfolio tracker, from its Latest update and status.",
+      "Fields you may change: nextMilestone (a short action, 10 words or fewer) and dueDate.",
+      "Only suggest a dueDate when the update gives a reason for one; otherwise leave dueDate out.",
+      "If the next milestone already says the right thing, reply with no changes.",
+      ...AiToolsPrompts.COMMON,
+      ...AiToolsPrompts.CHANGES_FORMAT,
+    ].join("\n"),
   };
 
   static build(feature: AiToolFeature, input: string, context: string): AiPrompt {

@@ -13,6 +13,7 @@ export class AiToolsCopy {
     bulk_edit: "Plain-English bulk edit",
     quick_capture: "Quick capture",
     dictation: "Dictation (speech to text)",
+    next_step: "Next-step suggestion",
   };
 
   // Shared review list.
@@ -77,6 +78,16 @@ export class AiToolsCopy {
   static readonly DICTATION_MODEL_LABEL = "Dictation model";
   static readonly DICTATION_MODEL_NONE = "Choose a model";
   static readonly DICTATION_MODEL_HELP = "Dictation needs a speech-to-text model, such as a gpt-transcribe model. Only models that are on are listed.";
+
+  // Step 7: Next-step suggestion.
+  static readonly NEXT_TITLE = "Next-step suggestion";
+  static readonly NEXT_HELP = "Pick a project. The AI reads its Latest update and suggests one next milestone, and a due date when the update supports one.";
+  static readonly NEXT_PROJECT_LABEL = "Project";
+  static readonly NEXT_PROJECT_NONE = "Choose a project";
+  static readonly NEXT_PROPOSE = "Suggest next step";
+  static readonly NEXT_INSTRUCTION = "Suggest the next milestone for this project.";
+  static readonly PICK_PROJECT = "Choose a project first.";
+  static readonly NO_PROJECTS = "No open projects in this service line.";
 
   static fieldLabel(field: string): string {
     return AiToolsCopy.FIELD_LABELS[field] ?? field;

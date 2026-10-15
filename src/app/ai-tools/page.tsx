@@ -2,7 +2,9 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
+import { AiNextStepPanel } from "@/components/AiNextStepPanel";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -10,6 +12,7 @@ import { Db } from "@/lib/db/Db";
 import type { AiModelDb } from "@/lib/services/AiModelService";
 import type { AiSettingsDb } from "@/lib/services/AiSettingsService";
 import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
+import { AiToolsService, type AiToolsDb } from "@/lib/services/AiToolsService";
 
 /** The provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
 export const maxDuration = 90;
@@ -25,10 +28,12 @@ export default async function AiToolsPage() {
   if (!viewer?.isAdmin) notFound();
   let notes: Record<string, string | null> = Object.fromEntries(AiFeatureFlags.TOOL_FEATURES.map((f) => [f, C.AI_OFF_NOTE]));
   let dictationNote: string | null = C.AI_OFF_NOTE;
+  let projects: { id: string; name: string }[] = [];
   if (Db.isConfigured()) {
     try {
       notes = await AiToolsReadiness.notes(Db.client as unknown as AiModelDb & AiSettingsDb, AiFeatureFlags.TOOL_FEATURES);
       dictationNote = await AiToolsReadiness.dictationNote(Db.client as unknown as AiModelDb & AiSettingsDb);
+      projects = (await AiToolsService.projects(Db.client as unknown as AiToolsDb, await ServiceLineAccess.activeFor(viewer))).map((p) => ({ id: p.id, name: p.name }));
     } catch {
       // Tables not migrated yet (Vercel previews skip migrations): every tool shows disabled.
     }
@@ -66,6 +71,13 @@ export default async function AiToolsPage() {
           {C.CAPTURE_TITLE}
         </h2>
         <AiToolsPanel feature="quick_capture" label={C.CAPTURE_LABEL} help={C.CAPTURE_HELP} placeholder={C.CAPTURE_PLACEHOLDER} disabledNote={notes.quick_capture ?? null} rows={2} dictation={{ disabledNote: dictationNote }} />
+      </section>
+
+      <section className={section} aria-labelledby="ai-tool-next-heading" id="next-step">
+        <h2 id="ai-tool-next-heading" className="type-heading">
+          {C.NEXT_TITLE}
+        </h2>
+        <AiNextStepPanel projects={projects} disabledNote={notes.next_step ?? null} />
       </section>
     </main>
   );
