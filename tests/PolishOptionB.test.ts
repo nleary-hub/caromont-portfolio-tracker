@@ -23,9 +23,11 @@ describe("UI polish Option B", () => {
     expect(contrast(strong!, "#FFFFFF")).toBeGreaterThanOrEqual(4.5);
     // The lighter accent stays for accent text.
     expect(tokens).toMatch(/--dark-accent:\s*#4C8DFF;/);
-    for (const f of ["src/components/DashboardTopBar.tsx", "src/components/ProjectEditForm.tsx", "src/components/ProjectDashboard.tsx"]) {
+    for (const f of ["src/components/ProjectEditForm.tsx", "src/components/ProjectDashboard.tsx"]) {
       expect(read(f)).toMatch(/btn-primary bg-accent-strong/);
     }
+    // Figma Bro, Oct 15: Generate PDF now moved to the outlined secondary style (class only).
+    expect(read("src/components/DashboardTopBar.tsx")).toMatch(/rounded-control border border-line bg-transparent px-3\.5 whitespace-nowrap text-fg/);
   });
 
   it("preserves muted text contrast after compositing the dim over text and surface", () => {
