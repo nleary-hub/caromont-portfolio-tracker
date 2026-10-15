@@ -15,6 +15,18 @@ export class AiFeatureFlags {
 
   static readonly FEATURES: readonly AiReviewFeature[] = ["revise_note"];
 
+  /**
+   * Kill switch for Admin > AI settings "Refresh prices" (step 3c). On unless set to off, false, 0 or no, like the
+   * flags above. Off hides the button and the server refuses both the review and the apply.
+   */
+  static readonly PRICE_REFRESH_FLAG = "AI_FEATURE_PRICE_REFRESH";
+
+  static isPriceRefreshOn(env: Env = process.env): boolean {
+    const raw = env[AiFeatureFlags.PRICE_REFRESH_FLAG];
+    if (raw === undefined) return true;
+    return !["off", "false", "0", "no"].includes(raw.trim().toLowerCase());
+  }
+
   static parseFeature(v: unknown): AiReviewFeature | null {
     return AiFeatureFlags.FEATURES.includes(v as AiReviewFeature) ? (v as AiReviewFeature) : null;
   }

@@ -3,9 +3,11 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AiFeaturesPanel, AiModelsPanel } from "@/components/AiModelsPanel";
+import { AiPriceRefresh } from "@/components/AiPriceRefresh";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { AiCopy } from "@/lib/ai/AiCopy";
+import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { AiModelService, type AiFeatureView, type AiModelDb, type AiModelView } from "@/lib/services/AiModelService";
@@ -86,7 +88,13 @@ export default async function AiSettingsPage() {
           {AiCopy.MODELS_TITLE}
         </h2>
         <p className="text-muted type-caption">{AiCopy.MODELS_INTRO}</p>
-        <AiModelsPanel models={models} dbReady={dbReady} />
+        {AiFeatureFlags.isPriceRefreshOn() ? (
+          <AiPriceRefresh dbReady={dbReady && models.length > 0}>
+            <AiModelsPanel models={models} dbReady={dbReady} />
+          </AiPriceRefresh>
+        ) : (
+          <AiModelsPanel models={models} dbReady={dbReady} />
+        )}
       </section>
 
       <section className={section} aria-labelledby="ai-features-heading">
