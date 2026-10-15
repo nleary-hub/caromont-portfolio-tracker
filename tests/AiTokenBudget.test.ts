@@ -20,7 +20,7 @@ const ENV = { AI_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
 const SCOPE = ServiceLine.defaultScope();
 const PROJECT = "10000000-0000-4000-8000-000000000006";
 const OPENAI: AiRuntimeConfig = { provider: "openai", model: "gpt-6-luna", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY };
-const ANTHROPIC: AiRuntimeConfig = { ...OPENAI, provider: "anthropic", model: "claude-3-5-haiku-latest" };
+const ANTHROPIC: AiRuntimeConfig = { ...OPENAI, provider: "anthropic", model: "gpt-6-luna" };
 const AZURE: AiRuntimeConfig = { ...OPENAI, provider: "azure_openai", azureEndpoint: "https://res.openai.azure.com", azureDeployment: "notes" };
 const COMPAT: AiRuntimeConfig = { ...OPENAI, provider: "openai_compatible", baseUrl: "https://llm.example.org/v1" };
 

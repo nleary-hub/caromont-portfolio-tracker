@@ -7,13 +7,17 @@ import { AiNumberCheck } from "@/lib/ai/AiNumberCheck";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiPrompts, type AiFeature } from "@/lib/ai/AiPrompts";
 import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai/AiProviderClient";
+import { AiProviders } from "@/lib/ai/AiProviders";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 
 type Env = Record<string, string | undefined>;
 
-export type AiUsageEvent = "suggested" | "accepted" | "edited" | "accepted_with_override" | "discarded" | "blocked_phi" | "failed";
+export type AiUsageEvent = "suggested" | "accepted" | "edited" | "accepted_with_override" | "discarded" | "blocked_phi" | "failed" | "test_succeeded" | "test_failed";
+
+/** ai_usage_log.feature of a Test connection row (Admin > AI settings), next to draft_from_bullets and fit_for_report. */
+export const AI_TEST_FEATURE = "test_connection";
 
 export interface AiUsageRow {
   id: string;
@@ -104,6 +108,8 @@ export class AiWritingService {
     const row = await AiSettingsService.row(db).catch(() => null);
     const config = row?.enabled ? AiSettingsService.runtime(row, env) : null;
     if (!config) return { ok: false, kind: "off", message: AiCopy.UNAVAILABLE };
+    // Allowlist at call time: a saved model outside the list (for example from before the allowlist) is never called.
+    if (!AiProviders.modelAllowed(config.model)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
 
     const suggestionId = randomUUID();
     const base = { suggestionId, userEmail: viewer.email, projectId, feature, provider: config.provider, model: config.model, inputLength: text.length };
@@ -188,12 +194,47 @@ export class AiWritingService {
     return true;
   }
 
-  /** Test connection on Admin > AI settings: a tiny prompt with the saved settings. Never returns the key. */
-  static async testConnection(config: AiRuntimeConfig, fetchImpl?: FetchLike): Promise<{ ok: true; ms: number } | { ok: false; message: string }> {
-    const r = await AiProviderClient.complete(config, { system: "Reply with the single word OK.", user: "Connection test.", maxTokens: AiPrompts.TEST_MAX_TOKENS }, fetchImpl);
+  /**
+   * Test connection on Admin > AI settings: a tiny prompt with the saved settings. Never returns the key. When `log` is
+   * given, one ai_usage_log row records the call with metadata only (feature test_connection, test_succeeded or
+   * test_failed, who, when, provider, model, lengths): never the key, the prompt or the reply.
+   */
+  static async testConnection(
+    config: AiRuntimeConfig,
+    fetchImpl?: FetchLike,
+    log?: { db: Pick<AiWritingDb, "aiUsageLog">; viewer: Pick<Viewer, "email">; now?: () => Date },
+  ): Promise<{ ok: true; ms: number } | { ok: false; message: string }> {
+    const prompt = { system: "Reply with the single word OK.", user: "Connection test.", maxTokens: AiPrompts.TEST_MAX_TOKENS };
+    const r = await AiProviderClient.complete(config, prompt, fetchImpl);
     // A 200 with no text still proves the endpoint, model and key work. Running out of tokens is reported plainly instead,
     // because Draft and Fit would hit the same limit.
-    if (r.ok || r.kind === "empty") return { ok: true, ms: r.ms };
+    const ok = r.ok || r.kind === "empty";
+    if (log) {
+      try {
+        await log.db.aiUsageLog.create({
+          data: {
+            id: randomUUID(),
+            suggestionId: randomUUID(),
+            userEmail: log.viewer.email,
+            projectId: null,
+            feature: AI_TEST_FEATURE,
+            event: ok ? "test_succeeded" : "test_failed",
+            provider: config.provider,
+            model: config.model,
+            inputLength: prompt.user.length,
+            outputLength: r.ok ? r.text.length : null,
+            numberCheckPassed: null,
+            suggestedText: null,
+            unverifiedCount: null,
+            createdAt: (log.now ?? (() => new Date()))(),
+          },
+        });
+      } catch (e) {
+        // Logging must not change the result the admin sees; the error name only (no content).
+        console.error("AI test connection: usage log failed", (e as Error)?.name);
+      }
+    }
+    if (ok) return { ok: true, ms: r.ms };
     const message = r.kind === "timeout" ? `Timed out after ${AiProviderClient.TIMEOUT_MS / 1000} s` : r.message;
     return { ok: false, message: AiProviderClient.scrub(message, config.apiKey) };
   }

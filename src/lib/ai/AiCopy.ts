@@ -17,7 +17,9 @@ export class AiCopy {
   static readonly PROVIDER_LABEL = "Provider";
   static readonly PROVIDER_PLACEHOLDER = "Select a provider";
   static readonly MODEL_LABEL = "Model name";
-  static readonly MODEL_HELP = "As the provider names it, for example gpt-4o-mini or claude-3-5-haiku-latest.";
+  static readonly MODEL_HELP = "Only gpt-6-luna is allowed.";
+  /** Save or call with any model other than the allowed one. */
+  static readonly MODEL_NOT_ALLOWED = "That model isn't allowed. Enter gpt-6-luna, the only model approved for the writing assistant.";
   static readonly BASE_URL_LABEL = "Base URL";
   static readonly BASE_URL_HELP = "The provider's OpenAI-compatible API address, starting with https://. For example https://api.example.com/v1.";
   static readonly AZURE_ENDPOINT_LABEL = "Azure endpoint";
