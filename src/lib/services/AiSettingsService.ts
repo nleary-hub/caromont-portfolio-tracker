@@ -113,6 +113,15 @@ export class AiSettingsService {
     };
   }
 
+  /**
+   * The saved provider and key with `model` in place of the saved model (test connection with the admin's pick, and the
+   * models-list request, which needs no model). Null when anything else is missing or the key can't be read. Server only.
+   */
+  static runtimeFor(row: AiSettingsRow | null, model: string, env: Env = process.env): AiRuntimeConfig | null {
+    if (!row || !model.trim()) return null;
+    return AiSettingsService.runtime({ ...row, model: model.trim() }, env);
+  }
+
   /** The decrypted config for a provider call, or null when anything is missing or the key can't be read. Server only. */
   static runtime(row: AiSettingsRow | null, env: Env = process.env): AiRuntimeConfig | null {
     if (!row?.apiKeyCiphertext) return null;

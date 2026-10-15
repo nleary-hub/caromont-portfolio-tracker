@@ -1,4 +1,6 @@
 import { createRoot } from "react-dom/client";
+import { AiSettingsForm } from "../../src/components/AiSettingsForm";
+import { AiFeaturesPanel } from "../../src/components/AiModelsPanel";
 import { ProjectDashboard, type AdminDashboardProps } from "../../src/components/ProjectDashboard";
 import { ServiceLine } from "../../src/lib/domain/ServiceLine";
 import { ViewSettings } from "../../src/lib/domain/ViewSettings";
@@ -51,7 +53,18 @@ const admin: AdminDashboardProps = {
     },
   },
 };
-createRoot(document.getElementById("root")!).render(
+// ?ai=list or ?ai=failed: Admin > AI settings pickers with a fictional OpenAI model list, or the list-failed fallback.
+const aiMode = new URLSearchParams(window.location.search).get("ai");
+const aiList = aiMode === "failed" ? { ok: false as const, error: "fictional failure" } : { ok: true as const, models: [
+  { id: "gpt-example-mini", kind: "chat" as const }, { id: "gpt-example-pro", kind: "chat" as const }, { id: "gpt-example-nano", kind: "chat" as const },
+  { id: "gpt-example-realtime", kind: "realtime" as const }, { id: "gpt-example-realtime-mini", kind: "realtime" as const }, { id: "gpt-example-transcribe", kind: "transcription" as const }] };
+const aiView = { baseUrl: "", azureEndpoint: "", azureDeployment: "", encryption: { ready: true, problem: null }, modelOff: false, enabled: true, ready: true, provider: "openai" as const, model: "gpt-example-mini", key: { set: true, readable: true, last4: "WXYZ", setAt: null, setBy: null } };
+createRoot(document.getElementById("root")!).render(aiMode ? (
+  <main className="pb-page mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-6">
+    <section className="relative z-20 flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiSettingsForm view={aiView as never} keySavedLine={null} dbReady modelOptions={["gpt-example-mini"]} initialList={aiList} /></section>
+    <section className="flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiFeaturesPanel dbReady features={[{ feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE_CHAT", ownModel: true, model: null } as never]} modelOptions={{ realtime: ["gpt-example-realtime"] }} initialList={aiList} /></section>
+  </main>
+) : (
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}
     today="2026-10-04" userEmail="fictional@example.org" userName="Fictional Reviewer"
     latestReport={null} loadError={null} serviceLine={ServiceLine.SEED} admin={admin}
@@ -62,4 +75,4 @@ createRoot(document.getElementById("root")!).render(
       return { title: "History (1)", previously: null, notes: [], steps: [], entries: [{ key: `history-${id}`, meta: "Fictional author",
         text: `History for ${id}`, hollow: false }] };
     }} />
-);
+));

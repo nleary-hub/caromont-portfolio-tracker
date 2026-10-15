@@ -195,7 +195,7 @@ export class AiToolsCopy {
   static readonly VOICE_PRIVACY = "Audio goes straight to the AI provider and is never saved here. Only minutes and cost are logged.";
   static readonly VOICE_NO_MIC = "The microphone isn't available. Check this site's microphone permission in your browser.";
   static readonly VOICE_START_FAILED = "Voice chat couldn't start. Try again in a moment.";
-  static readonly VOICE_MODEL_UNAVAILABLE = "The voice chat model isn't available for the saved API key. An admin can choose another one in AI settings.";
+  static readonly VOICE_MODEL_UNAVAILABLE = "The selected voice model doesn't support live voice. An admin can choose a realtime model in AI settings.";
   static readonly VOICE_TOKEN_FAILED = "OpenAI didn't open a voice session. Try again in a moment. If it keeps happening, an admin can check the API key in AI settings.";
   static readonly VOICE_MIC_DENIED = "Microphone access is blocked for this site. Allow it in your browser, then try again.";
   static readonly VOICE_CONNECT_FAILED = "The voice connection couldn't be set up. Check your network, then try again.";
@@ -204,7 +204,7 @@ export class AiToolsCopy {
   static readonly VOICE_TIME_UP = "The chat reached its 15-minute limit. Start again to keep talking.";
   static readonly VOICE_SESSION_GONE = "This voice chat has ended. Start a new one.";
   static readonly VOICE_MODEL_LABEL = "Voice chat model";
-  static readonly VOICE_MODEL_HELP = "Voice chat needs a realtime speech model, such as gpt-live-1. Only realtime models that are on are listed.";
+  static readonly VOICE_MODEL_HELP = "Voice chat needs a realtime speech model. Show OpenAI models lists the realtime models for the saved API key. A model must be on under Models to be used.";
 
   /** Own-model features (step 6, step 10): the model picker's label and help on Admin > AI settings. */
   static modelLabel(feature: string): string {

@@ -235,6 +235,7 @@ describe("cron wiring", () => {
 
 // The form imports its Server Functions (session, DB); the field render needs none of them.
 vi.mock("@/app/actions/ai", () => ({ saveAiSettings: vi.fn(), clearAiKey: vi.fn(), testAiConnection: vi.fn() }));
+vi.mock("@/app/actions/aiAdmin", () => ({ listOpenAiModels: vi.fn() }));
 
 describe("model field styles (Figma review)", () => {
   it("help: grey hint under the field, named by aria-describedby", async () => {

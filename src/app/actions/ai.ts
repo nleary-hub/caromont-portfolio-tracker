@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiCopy } from "@/lib/ai/AiCopy";
+import { AiProviders } from "@/lib/ai/AiProviders";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { AiModelService } from "@/lib/services/AiModelService";
@@ -86,15 +87,22 @@ export async function clearAiKey(): Promise<{ ok: boolean; message: string }> {
   }
 }
 
-/** Test connection with the saved settings: success with the round-trip time, or the provider's error (no key). */
-export async function testAiConnection(): Promise<AiTestResult> {
+/**
+ * Test connection with the saved provider and key and the model the admin picked in the test section. No pick = a clear
+ * error, never a built-in default. The pick must be an enabled ai_models row, like every other call. The result never
+ * contains the key, and nothing is saved.
+ */
+export async function testAiConnection(model?: string): Promise<AiTestResult> {
   const viewer = await AiActions.admin();
   if (!viewer) return { ok: false, message: "Not authorized." };
+  const picked = typeof model === "string" ? model.trim() : "";
+  if (!picked) return { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${AiCopy.TEST_PICK_MODEL}` };
   try {
     const row = await AiSettingsService.row(Db.client as unknown as AiSettingsDb);
-    const saved = AiSettingsService.runtime(row);
-    const config = saved ? { ...saved, allowedModels: await AiModelService.enabledIds(Db.client, "chat") } : null;
-    if (!config) return { ok: false, message: AiCopy.TEST_NEEDS_SETTINGS };
+    const saved = AiSettingsService.runtimeFor(row, picked);
+    if (!saved) return { ok: false, message: AiCopy.TEST_NEEDS_SETTINGS };
+    const config = { ...saved, allowedModels: await AiModelService.enabledIds(Db.client, "chat") };
+    if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${AiCopy.MODEL_NOT_ALLOWED}` };
     const r = await AiWritingService.testConnection(config, undefined, { db: AiActions.db(), viewer });
     return r.ok ? { ok: true, message: AiCopy.testOk(config.provider, r.ms) } : { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${r.message}` };
   } catch (e) {

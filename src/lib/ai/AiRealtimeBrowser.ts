@@ -27,7 +27,7 @@ export interface AiRealtimeConnection {
  * Step 10, browser side of the realtime adapter (WebRTC). The microphone track goes to the provider and the answer
  * plays through an audio element; neither is recorded, buffered to a Blob or sent to this app's server. Only the
  * tool call text (the suggested changes) comes back here. The shape mirrors AiRealtimeClient and is not verified
- * live against gpt-live-1.
+ * live against a specific realtime model.
  */
 export class AiRealtimeBrowser {
   static supported(): boolean {

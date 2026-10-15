@@ -32,11 +32,11 @@ function realtime(ok = true) {
   return { f, calls };
 }
 
-/** Voice chat on, gpt-live-1 chosen and enabled with an example per-minute price. */
+/** Voice chat on, gpt-example-realtime chosen and enabled with an example per-minute price. */
 async function voiceSetup(opts: { price?: boolean } = {}) {
   const db = await toolsSetup();
-  db.models.push({ id: "gpt-live-1", enabled: true, ...(opts.price === false ? {} : { priceUnit: "per_minute", inputPrice: "0.0600" }) } as never);
-  db.featureRows = [{ feature: "voice_chat", enabled: true, updatedAt: T0, updatedBy: ADMIN.email, model: "gpt-live-1" } as never];
+  db.models.push({ id: "gpt-example-realtime", enabled: true, ...(opts.price === false ? {} : { priceUnit: "per_minute", inputPrice: "0.0600" }) } as never);
+  db.featureRows = [{ feature: "voice_chat", enabled: true, updatedAt: T0, updatedBy: ADMIN.email, model: "gpt-example-realtime" } as never];
   return db;
 }
 
@@ -50,14 +50,14 @@ describe("step 10: voice chat toggle and kill switch", () => {
     expect(AiFeatureFlags.parseToolFeature("voice_chat")).toBeNull();
     const v = AiModelService.featureViews([], {}).find((f) => f.feature === "voice_chat")!;
     expect(v).toMatchObject({ enabled: true, ownModel: true, model: "", label: "Voice chat", envName: "AI_FEATURE_VOICE_CHAT" });
-    const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: [v], dbReady: true, modelOptions: { realtime: ["gpt-live-1"] } }));
+    const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: [v], dbReady: true, modelOptions: { realtime: ["gpt-example-realtime"] } }));
     expect(html).toContain(AiToolsCopy.VOICE_MODEL_LABEL);
     expect(html).toContain(AiToolsCopy.VOICE_MODEL_HELP);
   });
 
   it("toggle off hides the tool (FEATURE_OFF_NOTE) and the server refuses to start", async () => {
     const db = await voiceSetup();
-    db.featureRows = [{ feature: "voice_chat", enabled: false, updatedAt: T0, updatedBy: ADMIN.email, model: "gpt-live-1" } as never];
+    db.featureRows = [{ feature: "voice_chat", enabled: false, updatedAt: T0, updatedBy: ADMIN.email, model: "gpt-example-realtime" } as never];
     expect(await AiToolsReadiness.voiceChatNote(db as never, ENV)).toBe(AiToolsCopy.FEATURE_OFF_NOTE);
     const rt = realtime();
     expect(await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: rt.f })).toEqual({ ok: false, code: "feature_off", message: AiToolsCopy.FEATURE_OFF });
@@ -76,7 +76,7 @@ describe("step 10: model setting", () => {
     db.featureRows = [{ feature: "voice_chat", enabled: true, updatedAt: T0, updatedBy: ADMIN.email, model: null } as never];
     expect(await AiToolsReadiness.voiceChatNote(db as never, ENV)).toBe(AiToolsCopy.MODEL_OFF_NOTE);
     const off = await voiceSetup();
-    off.models = off.models.map((m) => (m.id === "gpt-live-1" ? { ...m, enabled: false } : m));
+    off.models = off.models.map((m) => (m.id === "gpt-example-realtime" ? { ...m, enabled: false } : m));
     expect(await AiToolsReadiness.voiceChatNote(off as never, ENV)).toBe(AiToolsCopy.MODEL_OFF_NOTE);
     const rt = realtime();
     expect(await AiVoiceChatService.start({ db: off, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: rt.f })).toEqual({ ok: false, code: "model_off", message: AiToolsCopy.MODEL_OFF_NOTE });
@@ -94,7 +94,7 @@ describe("step 10: model setting", () => {
     const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: rt.f, now: () => T0 });
     if (!r.ok) throw new Error(r.message);
     expect(rt.calls[0].url).toBe(AiRealtimeClient.SECRETS_URL);
-    expect(JSON.parse(rt.calls[0].body).session.model).toBe("gpt-live-1");
+    expect(JSON.parse(rt.calls[0].body).session.model).toBe("gpt-example-realtime");
     expect(rt.calls[0].auth).toBe(`Bearer ${KEY}`);
     expect(JSON.stringify(r)).not.toContain(KEY);
     expect(r.ticket.clientSecret).toBe("ek_example_secret");
@@ -183,7 +183,7 @@ describe("step 10: privacy and usage", () => {
     const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
     if (!r.ok) throw new Error(r.message);
     expect(db.usage).toHaveLength(1);
-    expect(db.usage[0]).toMatchObject({ feature: "voice_chat", event: "session_started", suggestionId: r.sessionId, model: "gpt-live-1", suggestedText: null });
+    expect(db.usage[0]).toMatchObject({ feature: "voice_chat", event: "session_started", suggestionId: r.sessionId, model: "gpt-example-realtime", suggestedText: null });
     expect((db.usage[0] as { usageSeconds?: number | null }).usageSeconds ?? null).toBeNull();
     const e = await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 150_000) });
     expect(e).toEqual({ ok: true, seconds: 150 });

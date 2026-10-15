@@ -11,9 +11,9 @@ import { ADMIN, ENV, MEMBER, SCOPE, toolsSetup } from "./helpers/aiTools";
 const KEY_RE = /sk-proj-[A-Za-z0-9-]+/;
 const T0 = new Date("2026-10-15T18:44:00Z");
 
-async function setup(model: string | null = "gpt-live-1", modelOn = true) {
+async function setup(model: string | null = "gpt-example-realtime", modelOn = true) {
   const db = await toolsSetup();
-  db.models.push({ id: "gpt-live-1", enabled: modelOn } as never);
+  db.models.push({ id: "gpt-example-realtime", enabled: modelOn } as never);
   db.models.push({ id: "gpt-6-sol", enabled: true } as never);
   db.featureRows = [{ feature: "voice_chat", enabled: true, updatedAt: T0, updatedBy: ADMIN.email, model } as never];
   return db;
@@ -36,7 +36,7 @@ afterEach(() => {
 describe("model off: the greyed state, and the page and start agree", () => {
   it.each([
     ["no model chosen", null, true],
-    ["model turned off", "gpt-live-1", false],
+    ["model turned off", "gpt-example-realtime", false],
     ["model isn't realtime", "gpt-6-sol", true],
   ])("%s", async (_name, model, on) => {
     const db = await setup(model, on);
@@ -66,9 +66,9 @@ describe("client secret errors are specific and logged without secrets", () => {
   it("model not available on the key", async () => {
     const db = await setup();
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: openai(400, { type: "invalid_request_error", code: "model_not_found", message: "The model `gpt-live-1` does not exist or you do not have access to it." }).f });
+    const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: openai(400, { type: "invalid_request_error", code: "model_not_found", message: "The model `gpt-example-realtime` does not exist or you do not have access to it." }).f });
     expect(r).toEqual({ ok: false, code: "model_unavailable", message: AiToolsCopy.VOICE_MODEL_UNAVAILABLE });
-    expect(log).toHaveBeenCalledWith("AI tools: voice session failed", expect.objectContaining({ code: "model_unavailable", status: 400, type: "invalid_request_error", errorCode: "model_not_found", model: "gpt-live-1" }));
+    expect(log).toHaveBeenCalledWith("AI tools: voice session failed", expect.objectContaining({ code: "model_unavailable", status: 400, type: "invalid_request_error", errorCode: "model_not_found", model: "gpt-example-realtime" }));
     expect(db.usage.at(-1)?.event).toBe("failed");
   });
 
@@ -106,7 +106,7 @@ describe("browser failures: mic denied, no mic, connection failed, model unavail
     const urls: string[] = [];
     const respond = (status: number, body: string) => vi.stubGlobal("fetch", vi.fn(async (u: string) => (urls.push(u), { ok: status < 300, status, text: async () => body })));
     const mic = { getAudioTracks: () => [], getTracks: () => [] } as unknown as MediaStream;
-    const ticket = { clientSecret: "ek_example_secret", expiresAt: 0, callsUrl: AiRealtimeClient.PROXY_PATH, model: "gpt-live-1" };
+    const ticket = { clientSecret: "ek_example_secret", expiresAt: 0, callsUrl: AiRealtimeClient.PROXY_PATH, model: "gpt-example-realtime" };
     const h = { onPhase: vi.fn(), onToolCall: vi.fn(), onDropped: vi.fn(), onIceFailed: vi.fn() };
     const SID = "30000000-0000-4000-8000-000000000001";
 
