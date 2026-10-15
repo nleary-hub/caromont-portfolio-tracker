@@ -1,4 +1,4 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { Handoff } from "@/lib/report/HandoffBuilder";
@@ -43,7 +43,17 @@ class Setup {
   }
 }
 
-afterEach(() => vi.restoreAllMocks());
+// Fixed clock: fixture projects are created before FREEZE_TIME, so "Wrapped up" counts as completed in the
+// frozen period regardless of the real date. Only Date is faked; the explicit `now` options still drive the freezes.
+const FIXTURE_CLOCK = new Date("2026-09-28T14:00:00Z");
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(FIXTURE_CLOCK);
+});
+afterEach(() => {
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 
 describe("FreezeService schedule and idempotency", () => {
   it("cron before the first freeze time does nothing", async () => {
