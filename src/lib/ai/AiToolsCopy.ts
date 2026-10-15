@@ -86,7 +86,7 @@ export class AiToolsCopy {
   static readonly DICTATION_NO_MODEL = "No dictation model is chosen in AI settings.";
   static readonly DICTATION_MODEL_LABEL = "Dictation model";
   static readonly DICTATION_MODEL_NONE = "Choose a model";
-  static readonly DICTATION_MODEL_HELP = "Dictation needs a speech-to-text model, such as a gpt-transcribe model. Only models that are on are listed.";
+  static readonly DICTATION_MODEL_HELP = "Dictation needs a speech-to-text model, such as a gpt-transcribe model. Only transcription models that are on are listed.";
 
   // Step 7: Next-step suggestion.
   static readonly NEXT_TITLE = "Next-step suggestion";
@@ -199,7 +199,7 @@ export class AiToolsCopy {
   static readonly VOICE_TIME_UP = "The chat reached its 15-minute limit. Start again to keep talking.";
   static readonly VOICE_SESSION_GONE = "This voice chat has ended. Start a new one.";
   static readonly VOICE_MODEL_LABEL = "Voice chat model";
-  static readonly VOICE_MODEL_HELP = "Voice chat needs a realtime speech model, such as gpt-live-1. Only models that are on are listed.";
+  static readonly VOICE_MODEL_HELP = "Voice chat needs a realtime speech model, such as gpt-live-1. Only realtime models that are on are listed.";
 
   /** Own-model features (step 6, step 10): the model picker's label and help on Admin > AI settings. */
   static modelLabel(feature: string): string {

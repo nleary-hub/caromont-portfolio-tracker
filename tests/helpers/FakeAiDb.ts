@@ -14,6 +14,9 @@ export class FakeAiDb implements AiWritingDb {
   usage: AiUsageRow[] = [];
   projects: ProjectStub[] = [];
   writes: string[] = [];
+  /** ai_models: example rows; gpt-6-luna on, like the 0039 seed. There is no code fallback, so fakes carry the row. */
+  modelRows: { id: string; enabled: boolean; kind?: string | null }[] = [{ id: "gpt-6-luna", enabled: true }];
+  aiModel: { findMany: (args?: never) => Promise<unknown[]> } = { findMany: async () => this.modelRows };
 
   aiSettings = {
     findUnique: async () => (this.settings ? { ...this.settings } : null),

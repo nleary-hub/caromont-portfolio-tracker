@@ -180,6 +180,8 @@ interface Props {
   signOutAction: () => Promise<void>;
   /** Project detail > History for the signed-in viewer (everyone; the server applies the visibility rules). */
   historyAction?: HistoryLoader;
+  /** Dashboard header Voice chat (AiVoiceChatDrawer, built by the page): present only when AI and voice_chat are on. */
+  aiVoice?: ReactNode;
   /** AI tools where people work (placement spec). Absent key = that feature is off (not rendered). */
   aiPlacements?: AiPlacementNotes;
   /** A project link (/?project=<id>) the server checked: its detail opens on load. */
@@ -233,6 +235,7 @@ export function ProjectDashboard({
   layout: layoutProp,
   signOutAction,
   historyAction,
+  aiVoice,
   aiPlacements,
   initialProjectId,
   heartbeat: heartbeatProp = true,
@@ -629,7 +632,14 @@ export function ProjectDashboard({
         closedQuery={closedQuery}
         pdfDepartments={departments}
         adminMenu={admin && admin.menuItems.length > 0 ? <AdminMenuButton items={admin.menuItems} /> : undefined}
-        aiActions={aiPlacements && "quick_capture" in aiPlacements ? <AiQuickCapture note={aiPlacements.quick_capture ?? null} {...("dictation" in aiPlacements ? { dictationNote: aiPlacements.dictation ?? null } : {})} /> : undefined}
+        aiActions={
+          aiVoice || (aiPlacements && "quick_capture" in aiPlacements) ? (
+            <>
+              {aiVoice}
+              {aiPlacements && "quick_capture" in aiPlacements && <AiQuickCapture note={aiPlacements.quick_capture ?? null} {...("dictation" in aiPlacements ? { dictationNote: aiPlacements.dictation ?? null } : {})} />}
+            </>
+          ) : undefined
+        }
         account={
             <form action={signOutAction} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-muted">
               <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">

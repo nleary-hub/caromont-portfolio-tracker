@@ -42,7 +42,7 @@ async function setup() {
   const db = new FakeAiDb();
   db.projects.push({ id: PROJECT, serviceLineId: SCOPE.id, departmentId: null, archivedAt: null });
   db.projects.push({ id: OTHER_LINE, serviceLineId: "20000000-0000-4000-8000-000000000001", departmentId: null, archivedAt: null });
-  expect(await AiSettingsService.save(db, ADMIN, { fields: FIELDS, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV)).toEqual({ ok: true });
+  expect(await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: FIELDS, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV)).toEqual({ ok: true });
   db.writes = [];
   return db;
 }
@@ -226,7 +226,7 @@ describe("0038_ai_review_apply (PGlite)", () => {
   const sql = (f: string) => readFileSync(path.join(DIR, f, "migration.sql"), "utf8");
 
   it("is the newest migration, right after 0037_project_dependencies, and only widens the two CHECK lists", () => {
-    expect(folders().slice(folders().indexOf("0038_ai_review_apply") + 1)).toEqual(["0039_ai_models_features", "0040_ai_price_refresh", "0041_ai_tools_meeting_notes", "0042_ai_tools_bulk_edit", "0043_ai_tools_quick_capture", "0044_ai_tools_next_step", "0045_ai_tools_request_to_project", "0046_ai_tools_meeting_brief", "0047_ai_tools_related_links", "0048_ai_voice_chat"]);
+    expect(folders().slice(folders().indexOf("0038_ai_review_apply") + 1)).toEqual(["0039_ai_models_features", "0040_ai_price_refresh", "0041_ai_tools_meeting_notes", "0042_ai_tools_bulk_edit", "0043_ai_tools_quick_capture", "0044_ai_tools_next_step", "0045_ai_tools_request_to_project", "0046_ai_tools_meeting_brief", "0047_ai_tools_related_links", "0048_ai_voice_chat", "0049_ai_model_kind"]);
     expect(folders()[folders().indexOf("0038_ai_review_apply") - 1]).toBe("0037_project_dependencies");
     const code = sql("0038_ai_review_apply").split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
     expect(code).not.toMatch(/\bDROP TABLE\b|\bDROP COLUMN\b|\bDELETE\b|\bUPDATE\b|\bINSERT\b|\bTRUNCATE\b|report_|handoff|ProjectHistory/i);

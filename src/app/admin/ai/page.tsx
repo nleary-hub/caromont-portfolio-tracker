@@ -80,7 +80,7 @@ export default async function AiSettingsPage() {
         <h2 id="ai-settings-heading" className="type-heading">
           {AiCopy.SWITCH_LABEL}
         </h2>
-        <AiSettingsForm view={view} keySavedLine={keySavedLine} dbReady={dbReady} modelOptions={models.filter((m) => m.enabled).map((m) => m.id)} />
+        <AiSettingsForm view={view} keySavedLine={keySavedLine} dbReady={dbReady} modelOptions={AiModelService.optionsOf(models, "chat")} />
       </section>
 
       <section className={section} aria-labelledby="ai-models-heading">
@@ -102,7 +102,7 @@ export default async function AiSettingsPage() {
           {AiCopy.FEATURES_TITLE}
         </h2>
         <p className="text-muted type-caption">{AiCopy.FEATURES_INTRO}</p>
-        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={models.filter((m) => m.enabled).map((m) => m.id)} />
+        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} />
       </section>
 
       <section className="flex flex-col gap-2" aria-labelledby="ai-history-heading">

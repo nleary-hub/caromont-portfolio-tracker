@@ -54,12 +54,12 @@ describe("3b-2: Draft and Fit paused when the AI model is off", () => {
     }
   });
 
-  it("modelOn reads the saved model against the allowlist; read errors count as on", async () => {
+  it("modelOn reads the saved model against the allowlist; read errors count as off (no fallback)", async () => {
     expect(await AiSettingsService.modelOn(dbWithModel("gpt-example-mini"), ["gpt-example-mini"])).toBe(true);
     expect(await AiSettingsService.modelOn(dbWithModel("gpt-example-mini"), ["gpt-example-large"])).toBe(false);
     expect(await AiSettingsService.modelOn(dbWithModel(null), ["gpt-example-mini"])).toBe(false);
     const broken = { aiSettings: { findUnique: async () => Promise.reject(new Error("no table")) } } as unknown as AiSettingsDb;
-    expect(await AiSettingsService.modelOn(broken, [])).toBe(true);
+    expect(await AiSettingsService.modelOn(broken, [])).toBe(false);
   });
 
   it("server still refuses a call when the model is off (MODEL_NOT_ALLOWED)", async () => {

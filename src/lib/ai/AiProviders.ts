@@ -31,14 +31,8 @@ export class AiProviders {
     }
   }
 
-  /**
-   * The 0039 seed (the #53 allowlist). Since step 3b the allowlist is the enabled rows of ai_models, chosen by admins on
-   * Admin > AI settings; this list is the fallback only when that table can't be read (previews skip migrations).
-   */
-  static readonly ALLOWED_MODELS: readonly string[] = ["gpt-6-luna"];
-
-  /** Exact match against the enabled models. Checked on save and again before every call. */
-  static modelAllowed(model: unknown, allowed: readonly string[] = AiProviders.ALLOWED_MODELS): boolean {
+  /** Exact match against the models an admin turned on. Checked on save and again before every call. No built-in list. */
+  static modelAllowed(model: unknown, allowed: readonly string[]): boolean {
     return typeof model === "string" && allowed.includes(model.trim());
   }
 

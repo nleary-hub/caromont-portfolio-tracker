@@ -913,6 +913,8 @@ model AiModel {
   pricesUpdatedAt DateTime?
   pricesUpdatedBy String?
   priceSource     String?
+  /// "chat" | "transcription" | "realtime" (DB check constraint). Null = worked out from the id. 0049.
+  kind            String?
 
   @@map("ai_models")
 }

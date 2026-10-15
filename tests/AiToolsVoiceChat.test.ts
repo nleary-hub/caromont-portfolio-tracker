@@ -50,7 +50,7 @@ describe("step 10: voice chat toggle and kill switch", () => {
     expect(AiFeatureFlags.parseToolFeature("voice_chat")).toBeNull();
     const v = AiModelService.featureViews([], {}).find((f) => f.feature === "voice_chat")!;
     expect(v).toMatchObject({ enabled: true, ownModel: true, model: "", label: "Voice chat", envName: "AI_FEATURE_VOICE_CHAT" });
-    const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: [v], dbReady: true, modelOptions: ["gpt-live-1"] }));
+    const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: [v], dbReady: true, modelOptions: { realtime: ["gpt-live-1"] } }));
     expect(html).toContain(AiToolsCopy.VOICE_MODEL_LABEL);
     expect(html).toContain(AiToolsCopy.VOICE_MODEL_HELP);
   });

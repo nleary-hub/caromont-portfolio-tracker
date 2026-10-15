@@ -142,13 +142,13 @@ export class AiSettingsService {
     }
   }
 
-  /** The saved model is on under Models (the allowlist). Any error reading the row = treated as on (no note). */
+  /** The saved model is on under Models. Any error reading the row = off (the clean model-off state, no fallback). */
   static async modelOn(db: AiSettingsDb, allowed: readonly string[]): Promise<boolean> {
     try {
       const row = await AiSettingsService.row(db);
       return AiProviders.modelAllowed(row?.model ?? "", allowed);
     } catch {
-      return true;
+      return false;
     }
   }
 
@@ -159,7 +159,7 @@ export class AiSettingsService {
     if (f.model.trim().length > AiProviders.MODEL_MAX) errors.model = AiCopy.MODEL_TOO_LONG;
     // Allowlist: any model an admin hasn't turned on under Models is refused, on or off.
     // Turning AI off always works: an unchanged saved model is not re-checked when the switch is off.
-    else if (f.model.trim() && (f.enabled || f.model.trim() !== (current?.model ?? "").trim()) && !AiProviders.modelAllowed(f.model, input.allowedModels)) errors.model = AiCopy.MODEL_NOT_ALLOWED;
+    else if (f.model.trim() && (f.enabled || f.model.trim() !== (current?.model ?? "").trim()) && !AiProviders.modelAllowed(f.model, input.allowedModels ?? [])) errors.model = AiCopy.MODEL_NOT_ALLOWED;
     if (f.provider === "openai_compatible" && f.baseUrl.trim() && !AiProviders.httpsUrl(f.baseUrl)) errors.baseUrl = AiCopy.INVALID_URL;
     if (f.provider === "azure_openai" && f.azureEndpoint.trim() && !AiProviders.httpsUrl(f.azureEndpoint)) errors.azureEndpoint = AiCopy.INVALID_URL;
     if (newKey) {

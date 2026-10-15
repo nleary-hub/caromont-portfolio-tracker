@@ -12,7 +12,7 @@ type Env = Record<string, string | undefined>;
 export class AiToolsReadiness {
   static async notes(db: AiModelDb & AiSettingsDb, features: readonly AiToggleFeature[], env: Env = process.env): Promise<Record<string, string | null>> {
     const row = await AiSettingsService.row(db).catch(() => null);
-    const enabled = await AiModelService.enabledIds(db);
+    const enabled = await AiModelService.enabledIds(db, "chat");
     const model = (row?.model ?? "").trim();
     const base = !row?.enabled ? AiToolsCopy.AI_OFF_NOTE : !model || !enabled.includes(model) ? AiToolsCopy.MODEL_OFF_NOTE : null;
     const out: Record<string, string | null> = {};
@@ -27,7 +27,7 @@ export class AiToolsReadiness {
     if (!row?.enabled) return AiToolsCopy.AI_OFF_NOTE;
     const model = await AiModelService.featureModel(db, "dictation");
     if (!model) return AiToolsCopy.DICTATION_NO_MODEL;
-    return (await AiModelService.enabledIds(db)).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
+    return (await AiModelService.enabledIds(db, "transcription")).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
   }
 
   /**
@@ -39,7 +39,7 @@ export class AiToolsReadiness {
     const row = await AiSettingsService.row(db).catch(() => null);
     if (!row?.enabled) return AiToolsCopy.AI_OFF_NOTE;
     const model = await AiModelService.featureModel(db, "voice_chat");
-    return model && (await AiModelService.enabledIds(db)).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
+    return model && (await AiModelService.enabledIds(db, "realtime")).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
   }
 }
 

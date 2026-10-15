@@ -30,7 +30,7 @@ export async function toolsSetup() {
   db.toolProjects.push({ id: A, serviceLineId: SCOPE.id, name: "Example Clinic refresh", status: "OnTrack", nextMilestone: "Vendor quote", dueDate: new Date("2026-11-01T00:00:00Z"), targetCompletion: null, note: "Quote requested." });
   db.toolProjects.push({ id: B, serviceLineId: SCOPE.id, name: "Sample Lab move", status: "AtRisk", nextMilestone: null, dueDate: null, targetCompletion: null, note: null });
   db.toolProjects.push({ id: "20000000-0000-4000-8000-000000000001", serviceLineId: "20000000-0000-4000-8000-0000000000ff", name: "Other line project", status: "OnTrack", nextMilestone: null, dueDate: null, targetCompletion: null, note: null });
-  expect(await AiSettingsService.save(db, ADMIN, { fields: FIELDS, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV)).toEqual({ ok: true });
+  expect(await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: FIELDS, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV)).toEqual({ ok: true });
   db.writes = [];
   return db;
 }
