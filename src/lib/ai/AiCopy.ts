@@ -107,7 +107,7 @@ export class AiCopy {
   static readonly DISABLE_CONFIRM_YES = "Turn off anyway";
   static readonly DISABLE_CONFIRM_NO = "Keep on";
   static readonly FEATURES_TITLE = "Features";
-  static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone. Each one uses the model chosen above.";
+  static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone. Each one uses the model chosen above, except Dictation, which has its own model.";
   static readonly FEATURE_ON_HELP = "On for everyone.";
   static readonly FEATURE_OFF_HELP = "Off for everyone. The button is hidden.";
   static readonly FEATURE_REVISE_NOTE = "Revise with AI on the update note";
