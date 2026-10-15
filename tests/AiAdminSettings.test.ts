@@ -172,7 +172,7 @@ describe("adding models", () => {
     // Per minute: one price; the output price is ignored (its field is disabled).
     expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_minute", "0.006", "abc")).toMatchObject({ ok: true });
     expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_minute", "0.006", "")).toMatchObject({ ok: true });
-    expect(AiModelService.views(db.models, null)[0]).toMatchObject({ priceUnit: "per_minute", inputPrice: "0.006", outputPrice: "" });
+    expect(AiModelService.views(db.models, null)[0]).toMatchObject({ priceUnit: "per_minute", inputPrice: "0.0060", outputPrice: "" });
   });
 });
 
@@ -327,5 +327,15 @@ describe("Figma review fixes (v2)", () => {
     const form = SRC("src/components/AiSettingsForm.tsx");
     expect(form).toContain('const modelOffOn = enabled && Boolean(view.modelOff);');
     expect(form).toContain('modelOffOn ? "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)"');
+  });
+});
+
+describe("3c follow-up: prices always show 4 decimals", () => {
+  it("formats every stored price with 4 decimals", () => {
+    expect(AiModelService.inputText(0.1)).toBe("0.1000");
+    expect(AiModelService.inputText("0.5")).toBe("0.5000");
+    expect(AiModelService.inputText("0.05")).toBe("0.0500");
+    expect(AiModelService.inputText(12)).toBe("12.0000");
+    expect(AiModelService.inputText(null)).toBe("");
   });
 });

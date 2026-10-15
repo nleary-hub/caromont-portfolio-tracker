@@ -128,6 +128,15 @@ export class AiModelService {
     return Number.isFinite(n) ? String(n) : "";
   }
 
+  /** Decimals every price input on the settings page shows (3c follow-up): 0.1000 and 0.0500, never 0.1 next to 0.0500. */
+  static readonly INPUT_DECIMALS = 4;
+
+  /** A stored price as the settings page's price inputs show it: always 4 decimals, or "" for none. */
+  static inputText(p: Price): string {
+    const t = AiModelService.priceText(p);
+    return t ? Number(t).toFixed(AiModelService.INPUT_DECIMALS) : "";
+  }
+
   /** Enabled features that would lose their model if `modelId` were disabled (the warning list). */
   static affectedFeatures(modelId: string, settings: Pick<AiSettingsRow, "enabled" | "model"> | null, features: readonly AiFeatureView[]): string[] {
     if (!settings?.enabled || (settings.model ?? "").trim() !== modelId) return [];
@@ -151,8 +160,8 @@ export class AiModelService {
       id: r.id,
       enabled: r.enabled,
       priceUnit: AiModelService.parseUnit(r.priceUnit),
-      inputPrice: AiModelService.priceText(r.inputPrice),
-      outputPrice: AiModelService.priceText(r.outputPrice),
+      inputPrice: AiModelService.inputText(r.inputPrice),
+      outputPrice: AiModelService.inputText(r.outputPrice),
       inUse: r.id === selected,
       pricesUpdatedAt: r.pricesUpdatedAt ? new Date(r.pricesUpdatedAt).toISOString() : null,
       priceSource: r.priceSource === "manual" || r.priceSource === "refreshed" ? r.priceSource : null,

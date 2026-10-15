@@ -132,6 +132,10 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
   const edit = (set: (v: string) => void) => (e: { target: { value: string } }) => {
     if (!locked) set(e.target.value);
   };
+  /** On blur a valid price is shown with 4 decimals, like the saved ones (3c follow-up). Invalid text is left as typed. */
+  const tidy = (v: string, set: (v: string) => void) => () => {
+    if (!locked && /^\$?\d+(\.\d{1,4})?$/.test(v.trim())) set(Number(v.trim().replace(/^\$/, "")).toFixed(4));
+  };
   const invalid = (f: "input" | "output" | "unit") => (bad === f ? { "aria-invalid": true as const, "aria-describedby": priceErrorId } : {});
   return (
     <>
@@ -165,10 +169,10 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
           </select>
         </td>
         <td className="px-3 py-2">
-          <input aria-label={`${C.MODELS_HEADERS[3]}, ${m.id}`} className={`${PRICE_INPUT}`} value={input} onChange={edit(setInput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.00" disabled={!dbReady} {...invalid("input")} data-testid={`ai-model-input-price-${m.id}`} />
+          <input aria-label={`${C.MODELS_HEADERS[3]}, ${m.id}`} className={`${PRICE_INPUT}`} value={input} onChange={edit(setInput)} onBlur={tidy(input, setInput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.0000" disabled={!dbReady} {...invalid("input")} data-testid={`ai-model-input-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
-          <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${PRICE_INPUT}`} value={output} onChange={edit(setOutput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.00" disabled={!dbReady || unit === "per_minute"} {...invalid("output")} data-testid={`ai-model-output-price-${m.id}`} />
+          <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${PRICE_INPUT}`} value={output} onChange={edit(setOutput)} onBlur={tidy(output, setOutput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.0000" disabled={!dbReady || unit === "per_minute"} {...invalid("output")} data-testid={`ai-model-output-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
           <button type="button" className={GHOST} disabled={!dbReady || saving} {...lock} data-testid={`ai-model-save-${m.id}`} onClick={() => !locked && startSave(async () => setSaved(await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output)))}>
