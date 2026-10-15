@@ -166,7 +166,7 @@ export class AiToolsCopy {
 
   // Step 10: Voice chat.
   static readonly VOICE_CHAT_TITLE = "Voice chat";
-  static readonly NEXT_INLINE = "Suggest next step";
+  static readonly NEXT_INLINE = "Recommend next milestone";
   static readonly BRIEF_OPEN_FULL = "Open full";
   static readonly BRIEF_CARD_TITLE = "Pre-meeting brief";
   static readonly BRIEF_BUTTON = "Brief";

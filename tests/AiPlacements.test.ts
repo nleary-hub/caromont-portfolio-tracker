@@ -76,11 +76,12 @@ describe("placement 1: list toolbar AI menu", () => {
   });
 });
 
-describe("placement 2: Suggest next step and row shortcuts", () => {
+describe("placement 2: Recommend next milestone and row shortcuts", () => {
   const next = (note: string | null) => html(createElement(AiNextStepPanel, { inline: true, projects: [rows[0]], initialProject: "p1", disabledNote: note }));
-  it("ready: ghost Suggest next step, not greyed", () => {
+  it("ready: ghost Recommend next milestone, not greyed", () => {
     const h = next(null);
     expect(h).toContain(C.NEXT_INLINE);
+    expect(C.NEXT_INLINE).toBe("Recommend next milestone");
     expectReady(h, "ai-tool-next_step-propose");
   });
   it("model off: greyed, focusable, with the note", () => expectPaused(next(OFF), "ai-tool-next_step-propose", OFF));
@@ -90,7 +91,7 @@ describe("placement 2: Suggest next step and row shortcuts", () => {
   });
   const menu = (items: Parameters<typeof AiRowMenu>[0]["items"]) => html(createElement(AiRowMenu, { rowName: "Example Clinic refresh", items, onPick: () => {}, defaultOpen: true }));
   it("row ... menu: no shortcuts (features off) = no menu at all", () => expect(menu([])).toBe(""));
-  it("row ... menu lists Suggest next step and Draft with AI", () => {
+  it("row ... menu lists Recommend next milestone and Draft with AI", () => {
     const h = menu([{ key: "next_step", label: C.NEXT_INLINE, note: null }, { key: "draft", label: C.ROW_DRAFT, note: null }]);
     expect(h).toContain(C.NEXT_INLINE);
     expect(h).toContain("Draft with AI");

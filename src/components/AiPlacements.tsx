@@ -218,7 +218,7 @@ export function AiBriefButton({ note, projectName }: { note: string | null; proj
 export type AiRowShortcut = { key: "next_step" | "draft"; label: string; note: string | null };
 
 /**
- * The row's "..." overflow menu with the AI shortcuts (Suggest next step, Draft with AI). Each opens the edit drawer
+ * The row's "..." overflow menu with the AI shortcuts (Recommend next milestone, Draft with AI). Each opens the edit drawer
  * focused on that field. No shortcut available (features off) = no menu at all, so the row keeps its size.
  */
 export function AiRowMenu({ rowName, items, onPick, defaultOpen = false }: { rowName: string; items: readonly AiRowShortcut[]; onPick: (key: AiRowShortcut["key"]) => void; defaultOpen?: boolean }) {

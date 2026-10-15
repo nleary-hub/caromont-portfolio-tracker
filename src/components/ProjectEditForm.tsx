@@ -53,7 +53,7 @@ export interface ProjectEditFormProps {
   startDateIsDefault?: boolean;
   /** Dependencies section body (saves on pick). Null or omitted for a new project. */
   dependencies?: ReactNode;
-  /** AI placements: "Suggest next step" under the milestones (Next milestone). Absent when the feature is off. */
+  /** AI placements: "Recommend next milestone" under the milestones (Next milestone). Absent when the feature is off. */
   aiNextStep?: ReactNode;
   /** The People editor (saves on pick). Null for a new project. */
   people: ReactNode;
