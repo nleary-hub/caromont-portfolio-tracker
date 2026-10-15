@@ -48,7 +48,7 @@ describe("OpenAiPricingParser (fixture of the published page)", () => {
     const by = Object.fromEntries(r.prices.map((p) => [p.model, p]));
     expect(by["gpt-6-luna"]).toEqual({ model: "gpt-6-luna", unit: "per_1m_tokens", input: 0.1, output: 0.5 });
     expect(by["gpt-5.5"]).toEqual({ model: "gpt-5.5", unit: "per_1m_tokens", input: 5, output: 30 });
-    expect(by["gpt-live-1"]).toEqual({ model: "gpt-live-1", unit: "per_minute", input: 0.05, output: null });
+    expect(by["gpt-example-realtime"]).toEqual({ model: "gpt-example-realtime", unit: "per_minute", input: 0.05, output: null });
     // Batch pricing (half price) for the same model never overrides Standard.
     expect(r.prices.filter((p) => p.model === "gpt-6-luna")).toHaveLength(1);
   });
@@ -78,7 +78,7 @@ describe("AiPriceRefreshService.review", () => {
     const d = new FakePriceDb();
     d.add("gpt-6-luna", "per_1m_tokens", 0.15, 0.6);
     d.add("gpt-example-custom", "per_1m_tokens", 1, 2);
-    d.add("gpt-live-1", "per_minute", 0.05, null);
+    d.add("gpt-example-realtime", "per_minute", 0.05, null);
     return d;
   };
 
@@ -91,7 +91,7 @@ describe("AiPriceRefreshService.review", () => {
     const by = Object.fromEntries(r.review.rows.map((x) => [x.id, x]));
     expect(by["gpt-6-luna"]).toMatchObject({ changed: true, current: { unit: "per_1m_tokens", input: "0.15", output: "0.6" }, proposed: { unit: "per_1m_tokens", input: "0.1", output: "0.5" } });
     expect(by["gpt-example-custom"]).toMatchObject({ changed: false, proposed: null });
-    expect(by["gpt-live-1"]).toMatchObject({ changed: false, proposed: { unit: "per_minute", input: "0.05", output: "" } });
+    expect(by["gpt-example-realtime"]).toMatchObject({ changed: false, proposed: { unit: "per_minute", input: "0.05", output: "" } });
     expect(d.writes).toEqual([]);
     expect(d.models.find((m) => m.id === "gpt-6-luna")!.inputPrice).toBe(0.15);
   });
@@ -128,7 +128,7 @@ describe("AiPriceRefreshService.review", () => {
     const d = db();
     const parsed = OpenAiPricingParser.parse(FIXTURE);
     if (!parsed.ok) throw new Error("fixture");
-    const review = AiPriceRefreshService.compare(d.models, parsed.prices, new Set(["gpt-6-luna", "gpt-live-1", "gpt-6-sol"]));
+    const review = AiPriceRefreshService.compare(d.models, parsed.prices, new Set(["gpt-6-luna", "gpt-example-realtime", "gpt-6-sol"]));
     expect(review.rows.find((r) => r.id === "gpt-example-custom")!.listedByOpenAi).toBe(false);
     expect(review.newlyListed).toEqual(["gpt-6-sol"]);
     expect(AiPriceRefreshService.compare(d.models, parsed.prices, null).newlyListed).toBeNull();
@@ -259,18 +259,18 @@ describe("review lock and focus UI", () => {
     const { createElement } = await import("react");
     const { AiPriceRefresh } = await import("@/components/AiPriceRefresh");
     const { AiModelsPanel } = await import("@/components/AiModelsPanel");
-    const models = [{ id: "gpt-live-1", provider: "openai", enabled: true, inUse: false, priceUnit: "per_minute", inputPrice: "0.0500", outputPrice: "", pricesUpdatedAt: null, priceSource: null }];
+    const models = [{ id: "gpt-example-realtime", provider: "openai", enabled: true, inUse: false, priceUnit: "per_minute", inputPrice: "0.0500", outputPrice: "", pricesUpdatedAt: null, priceSource: null }];
     return renderToStaticMarkup(createElement(AiPriceRefresh, { dbReady: true, initial: initial as never }, createElement(AiModelsPanel, { models: models as never, dbReady: true })));
   };
   const lockedBits = (html: string) => ({
-    save: /aria-disabled="true"[^>]*data-testid="ai-model-save-gpt-live-1"/.test(html),
-    input: /readOnly=""[^>]*aria-disabled="true"[^>]*data-testid="ai-model-input-price-gpt-live-1"|aria-disabled="true"[^>]*readOnly=""[^>]*data-testid="ai-model-input-price-gpt-live-1"/i.test(html),
+    save: /aria-disabled="true"[^>]*data-testid="ai-model-save-gpt-example-realtime"/.test(html),
+    input: /readOnly=""[^>]*aria-disabled="true"[^>]*data-testid="ai-model-input-price-gpt-example-realtime"|aria-disabled="true"[^>]*readOnly=""[^>]*data-testid="ai-model-input-price-gpt-example-realtime"/i.test(html),
     table: html.includes('data-locked="true"'),
   });
 
   it("locks the model table (inputs and Save prices) while the review is open, and unlocks otherwise", async () => {
     const d = new FakePriceDb();
-    d.add("gpt-live-1", "per_minute", 0.06, null);
+    d.add("gpt-example-realtime", "per_minute", 0.06, null);
     const parsed = OpenAiPricingParser.parse(FIXTURE);
     if (!parsed.ok) throw new Error("fixture");
     const open = await render({ kind: "review", review: AiPriceRefreshService.compare(d.models, parsed.prices, null) });
@@ -285,7 +285,7 @@ describe("review lock and focus UI", () => {
 
   it("3c follow-up: locks the Add an OpenAI model field and button while the review is open", async () => {
     const d = new FakePriceDb();
-    d.add("gpt-live-1", "per_minute", 0.06, null);
+    d.add("gpt-example-realtime", "per_minute", 0.06, null);
     const parsed = OpenAiPricingParser.parse(FIXTURE);
     if (!parsed.ok) throw new Error("fixture");
     const open = await render({ kind: "review", review: AiPriceRefreshService.compare(d.models, parsed.prices, null) });

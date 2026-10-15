@@ -1,6 +1,6 @@
 import type { AiToggleFeature } from "@/lib/ai/AiFeatureFlags";
 
-/** What a model is for. Text features need chat, dictation needs transcription, voice chat needs realtime (live). */
+/** What a model is for. Text features need chat, dictation needs transcription, voice chat needs realtime. */
 export type AiModelKind = "chat" | "transcription" | "realtime";
 
 /** One entry from OpenAI's models list, with the kind worked out from its id (null = not usable here). */
@@ -20,14 +20,14 @@ export class AiModelKinds {
   }
 
   /**
-   * Kind from a model id, by name pattern (OpenAI's models list has no type field). Realtime and live first, then
-   * transcription, then text models. Embeddings, images, speech output, moderation and the like are null.
+   * Kind from a model id, by name pattern (OpenAI's models list has no type field). Transcription first, then realtime
+   * (only ids that say "realtime": a "live" name alone does not mean OpenAI accepts it in realtime mode), then text models. Embeddings, images, speech output, moderation and the like are null.
    */
   static classify(id: string): AiModelKind | null {
     const s = id.trim().toLowerCase();
     if (!s) return null;
-    if (/(^|[-_.])(realtime|live)([-_.:]|$)/.test(s)) return "realtime";
     if (/(transcribe|whisper|(^|[-_.])stt([-_.:]|$))/.test(s)) return "transcription";
+    if (/(^|[-_.])realtime([-_.:]|$)/.test(s)) return "realtime";
     if (/(embedding|dall-e|image|tts|moderation|search|audio|sora|davinci|babbage|codex-mini-latest)/.test(s)) return null;
     if (/^(gpt|chatgpt|o\d)/.test(s)) return "chat";
     return null;

@@ -106,7 +106,7 @@ export class AiPriceRefreshService {
   static async listedIds(db: Pick<AiModelDb, "aiSettings">, env: Env, doFetch: Fetcher): Promise<Set<string> | null> {
     try {
       const row = await AiSettingsService.row(db as never);
-      const config = row ? AiSettingsService.runtime({ ...row, model: row.model || "gpt-6-luna" }, env) : null;
+      const config = row ? AiSettingsService.runtimeFor(row, row.model || "list", env) : null;
       if (!config || config.provider !== "openai") return null;
       const res = await doFetch(AiModelService.MODELS_URL, { method: "GET", headers: { authorization: `Bearer ${config.apiKey}` }, signal: AbortSignal.timeout(AiPriceRefreshService.TIMEOUT_MS) });
       if (!res.ok) return null;

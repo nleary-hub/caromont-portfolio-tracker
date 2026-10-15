@@ -30,8 +30,8 @@ function provider(mint: { status: number; body: object }, call: { status: number
 
 async function started(call: { status: number; body: string } | Error) {
   const db = await toolsSetup();
-  db.models.push({ id: "gpt-live-1", enabled: true } as never);
-  db.featureRows = [{ feature: "voice_chat", enabled: true, updatedAt: T0, updatedBy: ADMIN.email, model: "gpt-live-1" } as never];
+  db.models.push({ id: "gpt-example-realtime", enabled: true } as never);
+  db.featureRows = [{ feature: "voice_chat", enabled: true, updatedAt: T0, updatedBy: ADMIN.email, model: "gpt-example-realtime" } as never];
   const p = provider({ status: 200, body: { value: SECRET, expires_at: 1_800_000_000 } }, call);
   const s = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: p.f, now: () => T0 });
   if (!s.ok) throw new Error("start failed");
@@ -146,7 +146,7 @@ describe("failed and ice_failed logging", () => {
     vi.stubGlobal("document", { createElement: () => ({}) });
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 201, text: async () => "v=0 answer" })));
     const mic = { getAudioTracks: () => [], getTracks: () => [] } as unknown as MediaStream;
-    const ticket = { clientSecret: SECRET, expiresAt: 0, callsUrl: AiRealtimeClient.PROXY_PATH, model: "gpt-live-1" };
+    const ticket = { clientSecret: SECRET, expiresAt: 0, callsUrl: AiRealtimeClient.PROXY_PATH, model: "gpt-example-realtime" };
     const h = { onPhase: vi.fn(), onToolCall: vi.fn(), onDropped: vi.fn(), onIceFailed: vi.fn() };
     await AiRealtimeBrowser.connect(ticket, mic, h, "s");
     pc.iceConnectionState = "disconnected";

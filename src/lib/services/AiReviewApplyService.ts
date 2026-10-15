@@ -35,7 +35,7 @@ const CLOSED = ["applied", "rejected"];
 
 /**
  * The shared review-then-apply layer: the AI proposes, the user reviews a preview, and only an explicit Apply changes
- * anything. Built on the writing assistant's pieces (AI settings, the gpt-6-luna allowlist, AiProviderClient, the
+ * anything. Built on the writing assistant's pieces (AI settings, the enabled ai_models allowlist, AiProviderClient, the
  * usage log and its 30-day retention, the rate limit). It never writes to Project, ProjectHistory, milestones,
  * snapshots, PDFs, report_artifacts or handoff.json: Apply only fills the edit form's draft, and the project changes
  * when the user saves the form through the normal save path (the same history row and Changed as a manual edit).

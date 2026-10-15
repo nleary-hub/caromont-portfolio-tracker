@@ -21,11 +21,17 @@ export class AiCopy {
   static readonly PROVIDER_PLACEHOLDER = "Select a provider";
   static readonly MODEL_LABEL = "Model name";
   /** Placeholder copy for Writing Bot to finalize (step 3b: admins choose the models). */
-  static readonly MODEL_HELP = "Choose one of the chat models turned on under Models below.";
+  static readonly MODEL_HELP = "Choose a chat model. Show OpenAI models lists the ones for the saved API key. A model must be on under Models below to be saved.";
   /** Save or call with a model that isn't turned on under Models. Placeholder for Writing Bot. */
   static readonly MODEL_NOT_ALLOWED = "That model is turned off. An admin can choose one that's on in AI settings.";
   static readonly MODEL_PICKER_EMPTY = "No models are on. Turn one on under Models.";
   static readonly MODEL_PICKER_PLACEHOLDER = "Choose a model";
+  static readonly MODEL_PICKER_OFF = "Off under Models";
+  static readonly MODEL_PICKER_USE = "Use this model";
+  static readonly MODEL_PICKER_MANUAL_LABEL = "Or type a model ID";
+  static readonly MODEL_PICKER_LIST_FAILED = "Couldn't load OpenAI's model list. Type a model ID instead. It must be on under Models to be used.";
+  static readonly TEST_MODEL_LABEL = "Model to test";
+  static readonly TEST_PICK_MODEL = "Pick a model to test first.";
 
   // ---- Admin > AI settings: Models and Features (step 3b) -----------------------------------------------------------
   static readonly MODELS_TITLE = "Models";
@@ -176,8 +182,8 @@ export class AiCopy {
   static readonly MODEL_TOO_LONG = "Use 100 characters or fewer";
   static readonly TEST = "Test connection";
   static readonly TESTING = "Testing…";
-  static readonly TEST_HELP = "Sends a short test prompt with the saved settings. Save first if you changed anything.";
-  static readonly TEST_NEEDS_SETTINGS = "Save a provider, model and API key first.";
+  static readonly TEST_HELP = "Sends a short test prompt with the saved provider and API key, using the model picked here.";
+  static readonly TEST_NEEDS_SETTINGS = "Save a provider and API key first.";
   static readonly TEST_FAILED_PREFIX = "Connection failed.";
   static readonly HISTORY_TITLE = "Change log";
   static readonly HISTORY_EMPTY = "No changes yet.";

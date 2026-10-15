@@ -349,7 +349,7 @@ describe("models from OpenAI's list, by type (feat/ai-placement-models)", () => 
     expect(AiModelKinds.classify("o4-example")).toBe("chat");
     expect(AiModelKinds.classify("gpt-transcribe")).toBe("transcription");
     expect(AiModelKinds.classify("whisper-1")).toBe("transcription");
-    expect(AiModelKinds.classify("gpt-live-1")).toBe("realtime");
+    expect(AiModelKinds.classify("gpt-example-realtime")).toBe("realtime");
     expect(AiModelKinds.classify("gpt-example-realtime-preview")).toBe("realtime");
     for (const id of ["text-embedding-example", "gpt-image-1", "tts-1", "dall-e-3", "omni-moderation-latest", ""]) expect(AiModelKinds.classify(id)).toBeNull();
     expect(AiModelKinds.of({ id: "gpt-example-mini", kind: "realtime" })).toBe("realtime");
@@ -360,9 +360,9 @@ describe("models from OpenAI's list, by type (feat/ai-placement-models)", () => 
 
   it("listOpenAi returns the classified list, read-only, and never the key", async () => {
     const db = await withKey();
-    const { f, calls } = modelsList(["gpt-6-luna", "gpt-transcribe", "gpt-live-1", "text-embedding-example"]);
+    const { f, calls } = modelsList(["gpt-6-luna", "gpt-transcribe", "gpt-example-realtime", "text-embedding-example"]);
     const r = await AiModelService.listOpenAi(db.m, ADMIN, ENV, f);
-    expect(r).toEqual({ ok: true, models: [{ id: "gpt-6-luna", kind: "chat" }, { id: "gpt-live-1", kind: "realtime" }, { id: "gpt-transcribe", kind: "transcription" }] });
+    expect(r).toEqual({ ok: true, models: [{ id: "gpt-6-luna", kind: "chat" }, { id: "gpt-example-realtime", kind: "realtime" }, { id: "gpt-transcribe", kind: "transcription" }] });
     expect(calls).toHaveLength(1);
     expect(JSON.stringify(r)).not.toContain(KEY);
     expect(db.models.map((m) => m.id)).toEqual(["gpt-6-luna"]);
@@ -381,13 +381,13 @@ describe("models from OpenAI's list, by type (feat/ai-placement-models)", () => 
   it("enabledIds and the feature model check filter by type", async () => {
     const db = new FakeAiAdminDb().seed();
     const now = new Date("2026-10-15T12:00:00Z");
-    for (const id of ["gpt-transcribe", "gpt-live-1"]) db.models.push({ ...db.models[0], id, enabled: true, addedAt: now, updatedAt: now });
+    for (const id of ["gpt-transcribe", "gpt-example-realtime"]) db.models.push({ ...db.models[0], id, enabled: true, addedAt: now, updatedAt: now });
     expect(await AiModelService.enabledIds(db, "chat")).toEqual(["gpt-6-luna"]);
     expect(await AiModelService.enabledIds(db, "transcription")).toEqual(["gpt-transcribe"]);
-    expect(await AiModelService.enabledIds(db, "realtime")).toEqual(["gpt-live-1"]);
+    expect(await AiModelService.enabledIds(db, "realtime")).toEqual(["gpt-example-realtime"]);
     expect(await AiModelService.setFeatureModel(db.m, ADMIN, "dictation", "gpt-6-luna")).toEqual({ ok: false, error: AiCopy.MODEL_WRONG_KIND });
     expect(await AiModelService.setFeatureModel(db.m, ADMIN, "voice_chat", "gpt-transcribe")).toEqual({ ok: false, error: AiCopy.MODEL_WRONG_KIND });
-    expect(await AiModelService.setFeatureModel(db.m, ADMIN, "voice_chat", "gpt-live-1")).toEqual({ ok: true });
+    expect(await AiModelService.setFeatureModel(db.m, ADMIN, "voice_chat", "gpt-example-realtime")).toEqual({ ok: true });
     const views = AiModelService.views(db.models, null);
     expect(AiModelService.optionsOf(views, "transcription")).toEqual(["gpt-transcribe"]);
   });

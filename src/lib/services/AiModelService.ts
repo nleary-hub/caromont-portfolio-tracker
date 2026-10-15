@@ -114,12 +114,21 @@ export class AiModelService {
 
   /** The ids an admin turned on, optionally only those of one kind. */
   static enabledOf(rows: readonly (Pick<AiModelRow, "id" | "enabled"> & { kind?: string | null })[], kind?: AiModelKind): string[] {
-    return rows.filter((r) => r.enabled && (!kind || AiModelKinds.of(r) === kind)).map((r) => r.id);
+    return rows.filter((r) => r.enabled && AiModelService.fits(AiModelKinds.of(r), kind)).map((r) => r.id);
+  }
+
+  /**
+   * A row fits a kind when it has that kind. For chat (the main model, writing assistant and test connection), any
+   * enabled row that isn't a transcription or realtime model fits, including manually added ids no pattern recognizes.
+   */
+  static fits(rowKind: AiModelKind | null, kind?: AiModelKind): boolean {
+    if (!kind) return true;
+    return kind === "chat" ? rowKind === "chat" || rowKind === null : rowKind === kind;
   }
 
   /** Enabled model views of one kind, for a picker. */
   static optionsOf(views: readonly AiModelView[], kind: AiModelKind): string[] {
-    return views.filter((v) => v.enabled && v.kind === kind).map((v) => v.id);
+    return views.filter((v) => v.enabled && AiModelService.fits(v.kind ?? null, kind)).map((v) => v.id);
   }
 
   /** OpenAI's /v1/models body to [{ id, kind }], sorted by id, chat/transcription/realtime only. */
@@ -267,7 +276,7 @@ export class AiModelService {
 
   private static async fetchList(db: Pick<AiModelDb, "aiSettings">, env: Env, fetchImpl: FetchLike | null): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
     const row = await AiSettingsService.row(db as never).catch(() => null);
-    const config = row ? AiSettingsService.runtime({ ...row, model: row.model || "list" }, env) : null;
+    const config = row ? AiSettingsService.runtimeFor(row, row.model || "list", env) : null;
     if (!config || config.provider !== "openai") return { ok: false, error: AiCopy.MODEL_CHECK_NEEDS_KEY };
     const doFetch = fetchImpl ?? (fetch as unknown as FetchLike);
     try {

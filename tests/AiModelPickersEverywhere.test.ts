@@ -1,0 +1,152 @@
+import { randomBytes } from "node:crypto";
+import { readdirSync, readFileSync, statSync } from "node:fs";
+import path from "node:path";
+import { createElement } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { describe, expect, it, vi } from "vitest";
+import { AiCopy } from "@/lib/ai/AiCopy";
+import { AiModelService } from "@/lib/services/AiModelService";
+import { AiPriceRefreshService } from "@/lib/services/AiPriceRefreshService";
+import { AiSettingsService } from "@/lib/services/AiSettingsService";
+import { FakeAiDb } from "./helpers/FakeAiDb";
+import { Factory } from "./helpers/factories";
+
+vi.mock("@/app/actions/ai", () => ({ saveAiSettings: vi.fn(), clearAiKey: vi.fn(), testAiConnection: vi.fn() }));
+vi.mock("@/app/actions/aiAdmin", () => ({ listOpenAiModels: vi.fn() }));
+
+/** Hotfix: every AI model picker (writing assistant, test connection) reads OpenAI's list. Example data only. */
+const ENV = { AI_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
+const KEY = "sk-proj-EXAMPLEKEY-abcdefghijklmnop-WXYZ";
+const ROOT = path.resolve(__dirname, "..");
+const SRC = (f: string) => readFileSync(path.join(ROOT, f), "utf8");
+const FIELDS = { enabled: false, provider: "openai" as const, model: "", baseUrl: "", azureEndpoint: "", azureDeployment: "" };
+const LIST = { ok: true as const, models: [{ id: "gpt-example-mini", kind: "chat" as const }, { id: "gpt-example-pro", kind: "chat" as const }, { id: "gpt-example-transcribe", kind: "transcription" as const }] };
+
+function walk(dir: string): string[] {
+  return readdirSync(dir).flatMap((n) => {
+    const p = path.join(dir, n);
+    return statSync(p).isDirectory() ? walk(p) : [p];
+  });
+}
+
+describe("no built-in model anywhere in the app", () => {
+  it("src has no gpt-6-luna fallback, default or copy", () => {
+    for (const f of walk(path.join(ROOT, "src")).filter((f) => !f.includes(`${path.sep}generated${path.sep}`))) expect(readFileSync(f, "utf8"), f).not.toContain("gpt-6-luna");
+  });
+
+  it("the price refresh lists OpenAI models with no saved model (no fallback model)", async () => {
+    const db = new FakeAiDb();
+    expect(await AiSettingsService.save(db, Factory.ADMIN, { allowedModels: [], fields: FIELDS, newKey: KEY }, ENV)).toEqual({ ok: true });
+    const calls: string[] = [];
+    const fetcher = async (url: string) => {
+      calls.push(url);
+      return { ok: true, status: 200, text: async () => JSON.stringify({ data: [{ id: "gpt-example-mini" }] }) };
+    };
+    const ids = await AiPriceRefreshService.listedIds(db as never, ENV, fetcher as never);
+    expect([...(ids ?? [])]).toEqual(["gpt-example-mini"]);
+    expect(calls).toEqual([AiModelService.MODELS_URL]);
+  });
+});
+
+describe("server validation: any enabled ai_models row", () => {
+  const rows = [
+    { id: "acme-chat-example", enabled: true, kind: null },
+    { id: "gpt-example-mini", enabled: true, kind: "chat" },
+    { id: "gpt-example-off", enabled: false, kind: "chat" },
+    { id: "gpt-example-transcribe", enabled: true, kind: "transcription" },
+    { id: "gpt-example-realtime", enabled: true, kind: null },
+    { id: "gpt-example-live", enabled: true, kind: "realtime" },
+  ];
+  it("chat accepts enabled chat rows and manually added ids; never off, transcription or realtime rows", async () => {
+    const db = { aiModel: { findMany: async () => rows } };
+    expect(await AiModelService.enabledIds(db, "chat")).toEqual(["acme-chat-example", "gpt-example-mini"]);
+  });
+
+  it("save accepts a manually added enabled model and refuses an off one; nothing is turned on", async () => {
+    const db = new FakeAiDb();
+    const allowed = await AiModelService.enabledIds({ aiModel: { findMany: async () => rows } }, "chat");
+    expect(await AiSettingsService.save(db, Factory.ADMIN, { allowedModels: allowed, fields: { ...FIELDS, enabled: true, model: "acme-chat-example" }, newKey: KEY }, ENV)).toEqual({ ok: true });
+    const off = await AiSettingsService.save(db, Factory.ADMIN, { allowedModels: allowed, fields: { ...FIELDS, enabled: true, model: "gpt-example-off" } }, ENV);
+    expect(off).toMatchObject({ ok: false, fieldErrors: { model: AiCopy.MODEL_NOT_ALLOWED } });
+    expect(rows.find((r) => r.id === "gpt-example-off")!.enabled).toBe(false);
+  });
+});
+
+describe("test connection uses the admin's pick", () => {
+  it("runtimeFor swaps in the picked model and needs one", async () => {
+    const db = new FakeAiDb();
+    await AiSettingsService.save(db, Factory.ADMIN, { allowedModels: [], fields: FIELDS, newKey: KEY }, ENV);
+    const row = await AiSettingsService.row(db);
+    expect(AiSettingsService.runtimeFor(row, "gpt-example-mini", ENV)).toMatchObject({ provider: "openai", model: "gpt-example-mini" });
+    expect(AiSettingsService.runtimeFor(row, "  ", ENV)).toBeNull();
+  });
+
+  it("the action errors clearly with no pick and checks the pick against enabled rows", () => {
+    const src = SRC("src/app/actions/ai.ts");
+    expect(src).toContain("export async function testAiConnection(model?: string)");
+    expect(src).toContain("if (!picked) return { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${AiCopy.TEST_PICK_MODEL}` };");
+    expect(src).toContain("AiSettingsService.runtimeFor(row, picked)");
+    expect(src).toContain('AiModelService.enabledIds(Db.client, "chat")');
+    expect(AiCopy.TEST_PICK_MODEL).toBe("Pick a model to test first.");
+  });
+});
+
+describe("pickers read OpenAI's list, with manual entry when it fails", () => {
+  it("writing assistant picker lists enabled and listed chat models, marks off ones, skips other kinds", async () => {
+    const { ModelField } = await import("@/components/AiSettingsForm");
+    const html = renderToStaticMarkup(createElement(ModelField, { value: "", options: ["gpt-example-mini"], list: LIST, onLoadList: () => {}, defaultOpen: true }));
+    expect(html).toContain("gpt-example-mini");
+    expect(html).toContain("gpt-example-pro");
+    expect(html).not.toContain("gpt-example-transcribe");
+    expect(html.match(new RegExp(AiCopy.MODEL_PICKER_OFF, "g"))).toHaveLength(1);
+    expect(html).toContain(AiCopy.MODEL_LIST_LOAD);
+    expect(html).toContain('name="model"');
+  });
+
+  it("list failure shows the manual-entry box", async () => {
+    const { ModelField } = await import("@/components/AiSettingsForm");
+    const html = renderToStaticMarkup(createElement(ModelField, { value: "", list: { ok: false, error: AiCopy.MODEL_CHECK_FAILED }, onLoadList: () => {} }));
+    expect(html).toContain('data-testid="ai-model-manual"');
+    expect(html).toContain('id="ai-model-manual-input"');
+    expect(html).toContain(AiCopy.MODEL_PICKER_MANUAL_LABEL);
+  });
+
+  it("the test connection section has its own picker, starting empty, and posts no form field", async () => {
+    const { AiSettingsForm } = await import("@/components/AiSettingsForm");
+    const view = { ...AiSettingsService.view(null), provider: "openai" as const, model: "gpt-example-mini", key: { set: true, readable: true, last4: "WXYZ", setAt: null, setBy: null } };
+    const html = renderToStaticMarkup(createElement(AiSettingsForm, { view: view as never, keySavedLine: null, dbReady: true, modelOptions: ["gpt-example-mini"], initialList: LIST }));
+    const test = html.slice(html.indexOf('data-testid="ai-test"'));
+    expect(test).toContain('data-testid="ai-test-model-picker"');
+    expect(test).toContain(AiCopy.TEST_MODEL_LABEL);
+    expect(test).toContain(AiCopy.MODEL_PICKER_PLACEHOLDER);
+    expect(test).not.toContain('name="model"');
+    expect(test).toContain('data-testid="ai-test-model-load-list"');
+  });
+});
+
+describe("voice chat picker: OpenAI's realtime list, no built-in voice model", () => {
+  it("a 'live' name alone is not realtime; live transcription is transcription", async () => {
+    const { AiModelKinds } = await import("@/lib/ai/AiModelKinds");
+    expect(AiModelKinds.classify("gpt-example-live-1")).not.toBe("realtime");
+    expect(AiModelKinds.classify("gpt-example-live-transcribe")).toBe("transcription");
+    expect(AiModelKinds.classify("gpt-example-realtime")).toBe("realtime");
+    expect(AiModelKinds.classify("gpt-example-realtime-mini")).toBe("realtime");
+  });
+
+  it("src names no voice model (no gpt-live-1 copy, default or allowlist)", () => {
+    for (const f of walk(path.join(ROOT, "src")).filter((f) => !f.includes(`${path.sep}generated${path.sep}`))) expect(readFileSync(f, "utf8"), f).not.toMatch(/gpt-live-1/);
+  });
+
+  it("the voice picker lists OpenAI's realtime models (off ones marked) and falls back to a typed ID", async () => {
+    const { AiFeaturesPanel } = await import("@/components/AiModelsPanel");
+    const v = { feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE", ownModel: true, model: null };
+    const list = { ok: true as const, models: [{ id: "gpt-example-realtime", kind: "realtime" as const }, { id: "gpt-example-realtime-mini", kind: "realtime" as const }, { id: "gpt-example-mini", kind: "chat" as const }] };
+    const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: [v as never], dbReady: true, modelOptions: { realtime: ["gpt-example-realtime"] }, initialList: list }));
+    expect(html).toContain('<option value="gpt-example-realtime">gpt-example-realtime</option>');
+    expect(html).toContain(`<option value="gpt-example-realtime-mini">gpt-example-realtime-mini (${AiCopy.MODEL_PICKER_OFF.toLowerCase()})</option>`);
+    expect(html).not.toContain('value="gpt-example-mini"');
+    const failed = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: [v as never], dbReady: true, initialList: { ok: false, error: AiCopy.MODEL_CHECK_FAILED } }));
+    expect(failed).toContain('id="ai-feature-voice_chat-manual-input"');
+    expect(failed).toContain(AiCopy.MODEL_PICKER_USE);
+  });
+});

@@ -196,11 +196,12 @@ describe("test connection redacts anything key-shaped", () => {
 });
 
 describe("settings page, alert box and undo line", () => {
-  it("encryption key missing: the key input is shown disabled; Test connection waits for saved provider, model and key", () => {
+  it("encryption key missing: the key input is shown disabled; Test connection waits for a saved provider and readable key, and tests the picked model", () => {
     const src = SRC("src/components/AiSettingsForm.tsx");
     expect(src).toContain("{(keyInput || keyBlocked) && (");
     expect(src).toContain("disabled={!dbReady || keyBlocked}");
-    expect(src).toContain("const canTest = dbReady && view.ready;");
+    expect(src).toContain("const canTest = dbReady && Boolean(view.provider) && view.key.set && view.key.readable;");
+    expect(src).toContain("testAiConnection(testModel)");
     expect(src).toContain("disabled={testing || !canTest}");
     expect(SRC("src/app/admin/ai/page.tsx")).toMatch(/<main className="pb-page /);
   });

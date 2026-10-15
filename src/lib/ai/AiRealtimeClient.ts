@@ -33,11 +33,11 @@ export type AiRealtimeCallResult = { ok: true; sdp: string } | ({ ok: false; kin
 
 /**
  * Step 10 adapter for the realtime (speech to speech) API. The only place that knows the provider's request shape, so a
- * change in the gpt-live-1 session format is a change here only.
+ * change in the realtime session format is a change here only.
  *
  * Assumed shape (OpenAI Realtime GA, WebRTC): POST /v1/realtime/client_secrets with { session: { type: "realtime",
  * model, instructions, tools, audio.output.voice } } returns { value, expires_at }. The browser then posts its SDP
- * offer to /v1/realtime/calls with that value as the bearer token. Not verified live against gpt-live-1.
+ * offer to /v1/realtime/calls with that value as the bearer token. Not verified live against a specific realtime model.
  *
  * The API key is only in this request's header. It is never returned, logged or sent to the browser.
  */
