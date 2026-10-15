@@ -98,11 +98,11 @@ describe("allowlist from ai_models", () => {
     for (const m of ["gpt-example-mini", "GPT-EXAMPLE-PRO", "gpt-example", "", null]) expect(AiProviders.modelAllowed(m, allowed)).toBe(false);
   });
 
-  it("falls back to the 0039 seed when the table can't be read, and the seed keeps prod unchanged", async () => {
+  it("no fallback: an unreadable or missing table allows no model (the clean model-off state)", async () => {
     const db = new FakeAiAdminDb();
     db.fail = true;
-    expect(await AiModelService.enabledIds(db)).toEqual(["gpt-6-luna"]);
-    expect(await AiModelService.enabledIds(new FakeAiDb())).toEqual(["gpt-6-luna"]);
+    expect(await AiModelService.enabledIds(db)).toEqual([]);
+    expect(await AiModelService.enabledIds(new FakeAiDb())).toEqual([]);
     expect(await AiModelService.enabledIds(new FakeAiAdminDb().seed())).toEqual(["gpt-6-luna"]);
   });
 

@@ -98,7 +98,7 @@ export class AiReviewApplyService {
     const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
     if (!saved) return { ok: false, kind: "off", message: AiCopy.UNAVAILABLE };
     // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
-    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db) };
+    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
     if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
 
     const user = viewer!.email;

@@ -55,6 +55,7 @@ import { StartDateDefaultTag } from "./StartDateDefaultTag";
 import { StartDate } from "@/lib/projects/StartDate";
 import { DashboardAmbient, DrawerSpotlight, SummaryHeartbeat } from "./DashboardAmbient";
 import { AccountMenu } from "./AccountMenu";
+import { AiVoiceChatDrawer } from "./AiVoiceChatDrawer";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
@@ -170,6 +171,8 @@ interface Props {
   signOutAction: () => Promise<void>;
   /** Project detail > History for the signed-in viewer (everyone; the server applies the visibility rules). */
   historyAction?: HistoryLoader;
+  /** Dashboard header Voice chat: present only when AI and the voice_chat feature are on. note = model-off note or null. */
+  aiVoice?: { note: string | null };
   /** A project link (/?project=<id>) the server checked: its detail opens on load. */
   initialProjectId?: string;
   /** Account menu > Dashboard heartbeat, as saved on the account (default On). */
@@ -221,6 +224,7 @@ export function ProjectDashboard({
   layout: layoutProp,
   signOutAction,
   historyAction,
+  aiVoice,
   initialProjectId,
   heartbeat: heartbeatProp = true,
   setHeartbeatAction,
@@ -590,6 +594,7 @@ export function ProjectDashboard({
         closedQuery={closedQuery}
         pdfDepartments={departments}
         adminMenu={admin && admin.menuItems.length > 0 ? <AdminMenuButton items={admin.menuItems} /> : undefined}
+        aiActions={aiVoice ? <AiVoiceChatDrawer disabledNote={aiVoice.note} /> : undefined}
         account={
             <form action={signOutAction} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-muted">
               <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">

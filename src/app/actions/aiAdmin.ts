@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { AiCopy } from "@/lib/ai/AiCopy";
+import type { AiListedModel } from "@/lib/ai/AiModelKinds";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { AiModelService, type AiAdminResult, type AiModelDb } from "@/lib/services/AiModelService";
@@ -27,8 +28,22 @@ async function run(name: string, fn: (db: AiModelDb, viewer: { email: string; is
   }
 }
 
-export async function addAiModel(id: string): Promise<AiAdminResult> {
-  return run("addAiModel", (db, v) => AiModelService.add(db, v, id));
+/** `manual`: typed after the model list failed to load; saved unchecked (still off) when OpenAI can't be reached. */
+export async function addAiModel(id: string, manual = false): Promise<AiAdminResult> {
+  return run("addAiModel", (db, v) => AiModelService.add(db, v, id, process.env, null, new Date(), { manual: manual === true }));
+}
+
+/** OpenAI's model list for the saved key, by kind. Read-only; the key is never returned. */
+export async function listOpenAiModels(): Promise<{ ok: true; models: AiListedModel[] } | { ok: false; error: string }> {
+  const viewer = await CurrentViewer.get();
+  if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
+  if (!Db.isConfigured()) return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
+  try {
+    return await AiModelService.listOpenAi(Db.client as unknown as AiModelDb, viewer);
+  } catch (e) {
+    console.error("Admin action failed: listOpenAiModels", (e as Error)?.name);
+    return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
+  }
 }
 
 export async function setAiModelEnabled(id: string, enabled: boolean, confirmed: boolean): Promise<AiAdminResult> {

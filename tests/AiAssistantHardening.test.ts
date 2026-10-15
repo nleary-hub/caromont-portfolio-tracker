@@ -33,11 +33,12 @@ class SpyFetch {
 
 const config = (model: string): AiRuntimeConfig => ({ provider: "openai", model, baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY });
 
-describe("model allowlist (fallback seed gpt-6-luna; admins choose the rest in step 3b)", () => {
-  it("the fallback allows exactly gpt-6-luna", () => {
-    expect(AiProviders.ALLOWED_MODELS).toEqual(["gpt-6-luna"]);
-    expect(AiProviders.modelAllowed("gpt-6-luna")).toBe(true);
-    for (const m of ["gpt-4o-mini", "GPT-6-LUNA", "gpt-6-luna-preview", "claude-3-5-haiku-latest", "", null]) expect(AiProviders.modelAllowed(m)).toBe(false);
+describe("allowed models = the ones an admin turned on (no built-in list)", () => {
+  it("matches exactly against the list it is given, and an empty list allows nothing", () => {
+    expect("ALLOWED_MODELS" in AiProviders).toBe(false);
+    expect(AiProviders.modelAllowed("gpt-6-luna", ["gpt-6-luna"])).toBe(true);
+    for (const m of ["gpt-4o-mini", "GPT-6-LUNA", "gpt-6-luna-preview", "claude-3-5-haiku-latest", "", null]) expect(AiProviders.modelAllowed(m, ["gpt-6-luna"])).toBe(false);
+    expect(AiProviders.modelAllowed("gpt-6-luna", [])).toBe(false);
   });
 
   it("copy is plain English without em dashes", () => {
