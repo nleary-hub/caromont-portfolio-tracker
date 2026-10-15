@@ -90,6 +90,17 @@ export class ReportColorScheme {
   /** Pt the band extends into each side margin (mockup HEADER_BAND_BLEED=6), and above the eyebrow. */
   static readonly BAND_BLEED = 6;
   static readonly BAND_TOP = 6;
+  /** Report table row background for a completed project (new PDFs only; stored PDFs are never re-rendered). */
+  static readonly completedRowBg = "#E6F4EA";
+
+  /**
+   * Row background for a report table row, or null for none. Conditions are checked in order, so a future
+   * second shade (for example an MFI flag) can be added here without touching the renderer.
+   */
+  static rowBackground(row: { status: string | null }): string | null {
+    if (row.status === "Complete") return ReportColorScheme.completedRowBg;
+    return null;
+  }
 
   static readonly PRESETS: Record<ReportColorPreset, { label: string; bar: BarPalette; band: BandPalette }> = {
     navy: {
