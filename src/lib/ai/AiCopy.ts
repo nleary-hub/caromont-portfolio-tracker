@@ -50,7 +50,7 @@ export class AiCopy {
   static readonly MODEL_LIST_LOADING = "Loading…";
   static readonly MODEL_LIST_HELP = "Models OpenAI lists for the saved API key. Adding one doesn't turn it on.";
   static readonly MODEL_LIST_EMPTY = "OpenAI listed no chat, transcription or realtime models for this key.";
-  static readonly MODEL_LIST_FAILED = "Couldn't load OpenAI's model list. You can still type a model ID below; it's saved without checking, starts off, and fails at call time if OpenAI doesn't have it.";
+  static readonly MODEL_LIST_FAILED = "Couldn't load OpenAI's model list. You can still type a model ID below. It's saved without checking and starts off. If OpenAI doesn't have that model, calls to it will fail.";
   static readonly MODEL_ADD_MANUAL_HELP = "The model list didn't load, so this ID is saved without checking. It starts off.";
   static readonly MODEL_LIST_ADDED = "Added";
   static readonly MODEL_KIND_LABEL = "Type";
