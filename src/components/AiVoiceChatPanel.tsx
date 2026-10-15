@@ -76,6 +76,11 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
       conn.current = await AiRealtimeBrowser.connect(r.ticket, mic, {
         onPhase: (p) => setPhase(p),
         onDropped: () => void stop(C.VOICE_DROPPED),
+        onIceFailed: (state) => {
+          const f = AiVoiceErrors.ice(state);
+          // Report first so the failed row exists before End runs (End then adds no session_ended row).
+          void reportAiVoiceFailure({ sessionId: r.sessionId, code: f.code, type: f.type }).finally(() => void stop(f.message));
+        },
         onToolCall: async (name, args) => {
           if (name !== AiVoiceChat.TOOL_NAME || !session.current) return "Unknown tool.";
           const p = await proposeAiVoiceEdits(session.current, args);
@@ -83,10 +88,11 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
           if (p.changes.length) setReviews((cur) => [{ proposalId: p.proposalId, changes: p.changes }, ...cur]);
           return p.changes.length ? `Listed ${p.changes.length} suggested change(s) on screen for review. Nothing is saved until the person applies them.` : C.NO_CHANGES;
         },
-      });
+      }, r.sessionId);
     } catch (e) {
       const c = AiVoiceErrors.connect(e);
-      void reportAiVoiceFailure({ sessionId: r.sessionId, code: c.code, status: c.status, type: c.type, message: c.detail });
+      // Awaited so the failed row exists before End runs.
+      await reportAiVoiceFailure({ sessionId: r.sessionId, code: c.code, status: c.status, type: c.type, message: c.detail });
       return stop(c.message);
     }
     timer.current = setTimeout(() => void stop(C.VOICE_TIME_UP), r.maxSeconds * 1000);

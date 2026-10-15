@@ -7,7 +7,7 @@ export interface AiRealtimeTicket {
   clientSecret: string;
   /** Unix seconds. */
   expiresAt: number;
-  /** Where the browser posts its WebRTC offer with the client secret. */
+  /** Where the browser posts its WebRTC offer with the client secret: this app's own route (AiRealtimeClient.PROXY_PATH), which forwards it. */
   callsUrl: string;
   model: string;
 }
@@ -29,6 +29,8 @@ export interface AiRealtimeErrorInfo {
 
 export type AiRealtimeMintResult = { ok: true; ticket: AiRealtimeTicket } | ({ ok: false; kind: "provider" | "http" | "network" | "timeout" | "parse"; modelUnavailable?: boolean } & AiRealtimeErrorInfo);
 
+export type AiRealtimeCallResult = { ok: true; sdp: string } | ({ ok: false; kind: "http" | "network" | "timeout" | "parse"; modelUnavailable?: boolean } & AiRealtimeErrorInfo);
+
 /**
  * Step 10 adapter for the realtime (speech to speech) API. The only place that knows the provider's request shape, so a
  * change in the gpt-live-1 session format is a change here only.
@@ -42,7 +44,11 @@ export type AiRealtimeMintResult = { ok: true; ticket: AiRealtimeTicket } | ({ o
 export class AiRealtimeClient {
   static readonly SECRETS_URL = "https://api.openai.com/v1/realtime/client_secrets";
   static readonly CALLS_URL = "https://api.openai.com/v1/realtime/calls";
+  /** This app's route the browser posts its offer to; the server forwards it to CALLS_URL with the client secret. */
+  static readonly PROXY_PATH = "/api/ai/voice/connect";
   static readonly TIMEOUT_MS = 15_000;
+  /** An SDP offer is a few KB; anything far bigger is refused before it is forwarded. */
+  static readonly SDP_MAX = 64_000;
   /** The client secret's own lifetime (seconds): long enough to connect, not to reuse later. */
   static readonly SECRET_TTL_S = 60;
 
@@ -96,9 +102,35 @@ export class AiRealtimeClient {
       const value = typeof j.value === "string" ? j.value : typeof j.client_secret?.value === "string" ? j.client_secret.value : "";
       const exp = typeof j.expires_at === "number" ? j.expires_at : typeof j.client_secret?.expires_at === "number" ? j.client_secret.expires_at : 0;
       if (!value || value === config.apiKey) return { ok: false, kind: "parse" };
-      return { ok: true, ticket: { clientSecret: value, expiresAt: exp, callsUrl: AiRealtimeClient.CALLS_URL, model: session.model } };
+      return { ok: true, ticket: { clientSecret: value, expiresAt: exp, callsUrl: AiRealtimeClient.PROXY_PATH, model: session.model } };
     } catch (e) {
       return { ok: false, kind: (e as Error)?.name === "TimeoutError" ? "timeout" : "network" };
+    }
+  }
+
+  /**
+   * Hotfix (after #65): forwards the browser's SDP offer to OpenAI's calls endpoint from the server, because the
+   * browser's direct fetch fails (CORS or a network block). Authenticates with the EPHEMERAL client secret only; the
+   * API key is never read here. Errors come back scrubbed of the secret.
+   */
+  static async call(clientSecret: string, sdp: string, fetchImpl: AiRealtimeFetch = fetch as unknown as AiRealtimeFetch): Promise<AiRealtimeCallResult> {
+    try {
+      const res = await fetchImpl(AiRealtimeClient.CALLS_URL, {
+        method: "POST",
+        headers: { authorization: `Bearer ${clientSecret}`, "content-type": "application/sdp" },
+        body: sdp,
+        signal: AbortSignal.timeout(AiRealtimeClient.TIMEOUT_MS),
+      });
+      const text = await res.text().catch(() => "");
+      if (!res.ok) {
+        const info = AiRealtimeClient.safeError(res.status, text, [clientSecret]);
+        return { ok: false, kind: "http", ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) };
+      }
+      if (!text.trim()) return { ok: false, kind: "parse", status: res.status, message: "empty SDP answer" };
+      return { ok: true, sdp: text };
+    } catch (e) {
+      const timeout = (e as Error)?.name === "TimeoutError";
+      return { ok: false, kind: timeout ? "timeout" : "network", type: (e as Error)?.name ?? undefined, message: AiRealtimeClient.scrub(String((e as Error)?.message ?? ""), [clientSecret]) || undefined };
     }
   }
 }

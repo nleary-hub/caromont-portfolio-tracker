@@ -99,40 +99,41 @@ describe("browser failures: mic denied, no mic, connection failed, model unavail
     expect(AiVoiceErrors.mic({ name: "NotFoundError" })).toEqual({ code: "no_mic", message: AiToolsCopy.VOICE_NO_MIC });
   });
 
-  it("connect: posts the SDP to /v1/realtime/calls with no model parameter, and maps errors", async () => {
+  it("connect: posts the SDP to this app's proxy route (not OpenAI), and maps errors", async () => {
     const pc = { ontrack: null, onconnectionstatechange: null, addTrack: vi.fn(), createDataChannel: () => ({ close: vi.fn(), onmessage: null }), createOffer: async () => ({ sdp: "v=0 example" }), setLocalDescription: async () => {}, setRemoteDescription: async () => {}, close: vi.fn() };
     vi.stubGlobal("RTCPeerConnection", vi.fn(() => pc));
     vi.stubGlobal("document", { createElement: () => ({}) });
     const urls: string[] = [];
     const respond = (status: number, body: string) => vi.stubGlobal("fetch", vi.fn(async (u: string) => (urls.push(u), { ok: status < 300, status, text: async () => body })));
     const mic = { getAudioTracks: () => [], getTracks: () => [] } as unknown as MediaStream;
-    const ticket = { clientSecret: "ek_example_secret", expiresAt: 0, callsUrl: AiRealtimeClient.CALLS_URL, model: "gpt-live-1" };
-    const h = { onPhase: vi.fn(), onToolCall: vi.fn(), onDropped: vi.fn() };
+    const ticket = { clientSecret: "ek_example_secret", expiresAt: 0, callsUrl: AiRealtimeClient.PROXY_PATH, model: "gpt-live-1" };
+    const h = { onPhase: vi.fn(), onToolCall: vi.fn(), onDropped: vi.fn(), onIceFailed: vi.fn() };
+    const SID = "30000000-0000-4000-8000-000000000001";
 
     respond(200, "v=0 answer");
-    await AiRealtimeBrowser.connect(ticket, mic, h);
-    expect(urls).toEqual(["https://api.openai.com/v1/realtime/calls"]);
+    await AiRealtimeBrowser.connect(ticket, mic, h, SID);
+    expect(urls).toEqual(["/api/ai/voice/connect"]);
 
     respond(400, JSON.stringify({ error: { type: "invalid_request_error", code: "model_not_found", message: "Model not found" } }));
-    const e1 = await AiRealtimeBrowser.connect(ticket, mic, h).catch((e) => e);
+    const e1 = await AiRealtimeBrowser.connect(ticket, mic, h, SID).catch((e) => e);
     expect(e1).toBeInstanceOf(AiRealtimeConnectError);
     expect(AiVoiceErrors.connect(e1)).toMatchObject({ code: "model_unavailable", message: AiToolsCopy.VOICE_MODEL_UNAVAILABLE, status: 400 });
 
     respond(500, JSON.stringify({ error: { type: "server_error", message: "Bearer ek_example_secret failed" } }));
-    const e2 = await AiRealtimeBrowser.connect(ticket, mic, h).catch((e) => e);
+    const e2 = await AiRealtimeBrowser.connect(ticket, mic, h, SID).catch((e) => e);
     const c2 = AiVoiceErrors.connect(e2);
     expect(c2).toMatchObject({ code: "connect_failed", message: AiToolsCopy.VOICE_CONNECT_FAILED, status: 500, type: "server_error" });
     expect(c2.detail).not.toContain("ek_example_secret");
 
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
-    expect(AiVoiceErrors.connect(await AiRealtimeBrowser.connect(ticket, mic, h).catch((e) => e))).toMatchObject({ code: "connect_failed", type: "TypeError" });
+    expect(AiVoiceErrors.connect(await AiRealtimeBrowser.connect(ticket, mic, h, SID).catch((e) => e))).toMatchObject({ code: "connect_failed", type: "TypeError" });
   });
 
-  it("the browser report reaches the log for admins only, scrubbed", () => {
+  it("the browser report reaches the log for admins only, scrubbed", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
-    expect(AiVoiceChatService.reportClientFailure(MEMBER, { code: "connect_failed" })).toEqual({ ok: false });
+    expect(await AiVoiceChatService.reportClientFailure(null, MEMBER, { code: "connect_failed" })).toEqual({ ok: false });
     expect(log).not.toHaveBeenCalled();
-    AiVoiceChatService.reportClientFailure(ADMIN, { code: "connect_failed", status: 400, type: "invalid_request_error", message: "bad sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" });
+    await AiVoiceChatService.reportClientFailure(null, ADMIN, { code: "connect_failed", status: 400, type: "invalid_request_error", message: "bad sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" });
     expect(log).toHaveBeenCalledWith("AI tools: voice connect failed (browser)", expect.objectContaining({ code: "connect_failed", status: 400, type: "invalid_request_error" }));
     expect(JSON.stringify(log.mock.calls)).not.toMatch(KEY_RE);
   });

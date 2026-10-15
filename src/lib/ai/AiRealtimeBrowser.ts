@@ -15,6 +15,8 @@ export interface AiRealtimeHandlers {
   /** The model asked to suggest changes; return the text sent back to it as the tool result. */
   onToolCall(name: string, args: string): Promise<string>;
   onDropped(): void;
+  /** ICE failed, or dropped before any media flowed: the network is likely blocking live audio. */
+  onIceFailed(state: string): void;
 }
 
 export interface AiRealtimeConnection {
@@ -32,7 +34,7 @@ export class AiRealtimeBrowser {
     return typeof window !== "undefined" && typeof RTCPeerConnection !== "undefined" && !!navigator.mediaDevices?.getUserMedia;
   }
 
-  static async connect(ticket: AiRealtimeTicket, mic: MediaStream, h: AiRealtimeHandlers): Promise<AiRealtimeConnection> {
+  static async connect(ticket: AiRealtimeTicket, mic: MediaStream, h: AiRealtimeHandlers, sessionId: string): Promise<AiRealtimeConnection> {
     const pc = new RTCPeerConnection();
     const audio = document.createElement("audio");
     audio.autoplay = true;
@@ -67,21 +69,33 @@ export class AiRealtimeBrowser {
         dc.send(JSON.stringify({ type: "response.create" }));
       }
     };
+    // media: ICE reached connected at least once, so audio could flow. A failure before that is ice_failed, after it a drop.
+    let media = false;
+    const drop = (state: string) => {
+      if (closed) return;
+      close();
+      if (media) h.onDropped();
+      else h.onIceFailed(state);
+    };
+    pc.oniceconnectionstatechange = () => {
+      const s = pc.iceConnectionState;
+      if (s === "connected" || s === "completed") media = true;
+      else if (s === "failed" || s === "disconnected") drop(s);
+    };
     pc.onconnectionstatechange = () => {
-      if (!closed && (pc.connectionState === "failed" || pc.connectionState === "disconnected")) {
-        close();
-        h.onDropped();
-      }
+      if (pc.connectionState === "connected") media = true;
+      else if (pc.connectionState === "failed" || pc.connectionState === "disconnected") drop(pc.connectionState);
     };
     const offer = await pc.createOffer();
     await pc.setLocalDescription(offer);
-    // GA shape: the model and session come from the client secret, so the URL carries no model parameter.
+    // Hotfix: the offer goes to this app's route, which forwards it to OpenAI with the same short-lived client secret
+    // (the browser's direct fetch to OpenAI failed in production). The API key is never in the browser.
     let res: Response;
     try {
       res = await fetch(ticket.callsUrl, {
         method: "POST",
-        body: offer.sdp,
-        headers: { authorization: `Bearer ${ticket.clientSecret}`, "content-type": "application/sdp" },
+        body: JSON.stringify({ sessionId, clientSecret: ticket.clientSecret, sdp: offer.sdp }),
+        headers: { "content-type": "application/json" },
       });
     } catch (e) {
       close();

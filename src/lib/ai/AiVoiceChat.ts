@@ -108,4 +108,9 @@ export class AiVoiceErrors {
     const unavailable = info.modelUnavailable === true;
     return { code: unavailable ? "model_unavailable" : "connect_failed", message: unavailable ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED, status: typeof info.status === "number" ? info.status : null, type: info.type ?? info.code ?? (e as Error)?.name ?? null, detail: info.message ?? null };
   }
+
+  /** ICE failed, or dropped before any media flowed: shown as the network message and logged as ice_failed. */
+  static ice(state: string): { code: "ice_failed"; message: string; type: string } {
+    return { code: "ice_failed", message: AiToolsCopy.VOICE_ICE_FAILED, type: state };
+  }
 }

@@ -18,9 +18,12 @@ type Env = Record<string, string | undefined>;
 /**
  * Why voice chat can't start. model_off: no model chosen or it's off or not realtime (the greyed state, no connect).
  * model_unavailable: OpenAI says the key can't use the model. token: the client secret call failed. mic_denied and
- * connect_failed happen in the browser and are reported back for the log.
+ * connect_failed happen in the browser and are reported back for the log. connect_failed also comes from the server's
+ * forward of the SDP offer (connect). ice_failed: the WebRTC media path never came up (network blocking live audio).
  */
-export type AiVoiceErrorCode = "not_allowed" | "feature_off" | "ai_off" | "model_off" | "rate_limited" | "model_unavailable" | "token" | "mic_denied" | "no_mic" | "connect_failed";
+export type AiVoiceErrorCode = "not_allowed" | "feature_off" | "ai_off" | "model_off" | "rate_limited" | "model_unavailable" | "token" | "mic_denied" | "no_mic" | "connect_failed" | "ice_failed";
+
+export type AiVoiceConnectResult = { ok: true; sdp: string } | { ok: false; httpStatus: number; error: { type: string | null; code: string | null; message: string; modelUnavailable: boolean } };
 
 export type AiVoiceStartResult = { ok: true; sessionId: string; ticket: AiRealtimeTicket; maxSeconds: number } | { ok: false; code: AiVoiceErrorCode; message: string };
 export type AiVoiceProposeResult = { ok: true; proposalId: string; feature: "voice_chat"; changes: AiToolChange[] } | { ok: false; message: string };
@@ -89,15 +92,64 @@ export class AiVoiceChatService {
   }
 
   /**
-   * The browser reports a failure that happened after start (mic denied, WebRTC connect failed) so it reaches the
-   * runtime log. Only the code, status and OpenAI's scrubbed error text; nothing is stored.
+   * Hotfix: the browser's SDP offer, forwarded to OpenAI's realtime calls endpoint with the EPHEMERAL client secret the
+   * browser got from start. The API key is never read here. Only the caller's own started, not ended, not failed session.
+   * Any failure inserts one failed row for the session (so End leaves no session_ended row for it) and one log line with
+   * the HTTP status and OpenAI's scrubbed error. The secret and SDP are never logged.
    */
-  static reportClientFailure(viewer: Viewer | null, raw: { sessionId?: unknown; code?: unknown; status?: unknown; type?: unknown; message?: unknown }): { ok: boolean } {
+  static async connect(args: { db: AiToolsDb; viewer: Viewer | null; sessionId: unknown; clientSecret: unknown; sdp: unknown; fetchImpl?: AiRealtimeFetch; now?: () => Date }): Promise<AiVoiceConnectResult> {
+    const { db, viewer } = args;
+    const deny = (httpStatus: number, message: string): AiVoiceConnectResult => ({ ok: false, httpStatus, error: { type: null, code: null, message, modelUnavailable: false } });
+    if (!viewer?.isAdmin) return deny(403, AiCopy.NOT_AUTHORIZED);
+    const session = await AiVoiceChatService.session(db, viewer, args.sessionId);
+    if (!session || (await AiVoiceChatService.ended(db, viewer, session.suggestionId)) || (await AiVoiceChatService.failedRow(db, viewer, session.suggestionId))) return deny(409, AiToolsCopy.VOICE_SESSION_GONE);
+    const secret = typeof args.clientSecret === "string" ? args.clientSecret.trim() : "";
+    const sdp = typeof args.sdp === "string" ? args.sdp : "";
+    if (!secret || secret.length > 4096 || !sdp.trim() || sdp.length > AiRealtimeClient.SDP_MAX) {
+      await AiVoiceChatService.logFailure(db, viewer, session, "connect_failed", { status: 400, type: "bad_request", message: "missing or oversized offer or client secret" }, args.now);
+      return deny(400, AiToolsCopy.VOICE_CONNECT_FAILED);
+    }
+    const r = await AiRealtimeClient.call(secret, sdp, args.fetchImpl);
+    if (r.ok) return { ok: true, sdp: r.sdp };
+    const code: AiVoiceErrorCode = r.modelUnavailable ? "model_unavailable" : "connect_failed";
+    await AiVoiceChatService.logFailure(db, viewer, session, code, { status: r.status ?? null, type: r.type ?? r.kind, errorCode: r.code ?? null, message: r.message ?? null, source: "server" }, args.now, [secret]);
+    // OpenAI's status passes through; a network failure or timeout is a 502 or 504 from us.
+    const httpStatus = typeof r.status === "number" ? r.status : r.kind === "timeout" ? 504 : 502;
+    return { ok: false, httpStatus, error: { type: r.type ?? r.kind, code: r.code ?? null, message: r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
+  }
+
+  /** One failed row per session (append-only; usageSeconds 0) plus the log line. Every value is scrubbed of keys and tokens. */
+  private static async logFailure(db: AiToolsDb, viewer: Viewer, session: AiToolUsageRow, code: AiVoiceErrorCode, detail: Record<string, unknown>, now: (() => Date) | undefined, secrets: readonly string[] = []): Promise<void> {
+    const clean: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(detail)) clean[k] = typeof v === "string" ? AiRealtimeClient.scrub(v, secrets) : v;
+    console.error("AI tools: voice connect failed", { code, sessionId: session.suggestionId, model: session.model ?? null, ...clean });
+    if (await AiVoiceChatService.failedRow(db, viewer, session.suggestionId)) return;
+    await db.aiUsageLog.create({
+      data: { id: randomUUID(), suggestionId: session.suggestionId, userEmail: viewer.email, projectId: null, feature: FEATURE, event: "failed", provider: session.provider, model: session.model, inputLength: 0, outputLength: null, numberCheckPassed: null, suggestedText: null, usageSeconds: 0, costUsd: null, createdAt: (now ?? (() => new Date()))() },
+    });
+  }
+
+  private static async failedRow(db: AiToolsDb, viewer: Viewer, sessionId: string): Promise<AiToolUsageRow | null> {
+    return db.aiUsageLog.findFirst({ where: { suggestionId: sessionId, userEmail: viewer.email, event: "failed" } });
+  }
+
+  /**
+   * The browser reports a failure that happened after start (mic denied, connect failed, ICE failed) so it reaches the
+   * runtime log. A connect, model or ICE failure on the caller's own live session also inserts the session's failed
+   * row (once; the server's forward may already have written it), so End leaves no session_ended row for it.
+   */
+  static async reportClientFailure(db: AiToolsDb | null, viewer: Viewer | null, raw: { sessionId?: unknown; code?: unknown; status?: unknown; type?: unknown; message?: unknown }, now?: () => Date): Promise<{ ok: boolean }> {
     if (!viewer?.isAdmin) return { ok: false };
-    const codes: AiVoiceErrorCode[] = ["mic_denied", "no_mic", "connect_failed", "model_unavailable"];
+    const codes: AiVoiceErrorCode[] = ["mic_denied", "no_mic", "connect_failed", "model_unavailable", "ice_failed"];
     const code = codes.includes(raw.code as AiVoiceErrorCode) ? (raw.code as AiVoiceErrorCode) : "connect_failed";
     const s = (v: unknown) => (typeof v === "string" && v ? AiRealtimeClient.scrub(v) : null);
-    console.error("AI tools: voice connect failed (browser)", { code, sessionId: typeof raw.sessionId === "string" && UUID.test(raw.sessionId) ? raw.sessionId : null, status: typeof raw.status === "number" ? raw.status : null, type: s(raw.type), message: s(raw.message) });
+    const detail = { status: typeof raw.status === "number" ? raw.status : null, type: s(raw.type), message: s(raw.message), source: "browser" };
+    const session = db && code !== "mic_denied" && code !== "no_mic" ? await AiVoiceChatService.session(db, viewer, raw.sessionId) : null;
+    if (db && session && !(await AiVoiceChatService.ended(db, viewer, session.suggestionId))) {
+      await AiVoiceChatService.logFailure(db, viewer, session, code, detail, now);
+      return { ok: true };
+    }
+    console.error("AI tools: voice connect failed (browser)", { code, sessionId: typeof raw.sessionId === "string" && UUID.test(raw.sessionId) ? raw.sessionId : null, ...detail });
     return { ok: true };
   }
 
@@ -164,6 +216,8 @@ export class AiVoiceChatService {
     if (!session) return { ok: false, message: AiToolsCopy.VOICE_SESSION_GONE };
     const done = await AiVoiceChatService.ended(db, viewer, session.suggestionId);
     if (done) return { ok: true, seconds: done.usageSeconds ?? 0 };
+    // A session that failed to connect already has its failed row; it never gets a session_ended row.
+    if (await AiVoiceChatService.failedRow(db, viewer, session.suggestionId)) return { ok: true, seconds: 0 };
     const at = now();
     const seconds = AiVoiceChat.seconds(session.createdAt, at);
     const price = await AiVoiceChatService.price(db, session.model ?? "");
