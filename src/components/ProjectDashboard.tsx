@@ -289,8 +289,10 @@ export function ProjectDashboard({
   const toggleMulti = (id: string) => setMultiIds((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   // What "/" calls: set by the top bar (focus the search field, or open it when it is collapsed to an icon).
   const focusSearchRef = useRef<() => void>(() => {});
-  // Admin edit mode. Non-admins stay in "view" (there is no way to switch).
-  const [mode, setMode] = useState<DrawerMode>("view");
+  // Admin edit mode. The project drawer opens straight into the edit form for admins (no Edit click);
+  // non-admins stay in "view" (there is no way to switch).
+  const openMode = (id: string | null): DrawerMode => (id && admin?.formValues[id] ? "edit" : "view");
+  const [mode, setMode] = useState<DrawerMode>(() => openMode(initialProjectId ?? null));
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const dirtyRef = useRef(false);
   const pendingRef = useRef<(() => void) | null>(null);
@@ -527,7 +529,7 @@ export function ProjectDashboard({
   const selectRow = (id: string | null) =>
     guard(() => {
       leaveForm();
-      setMode("view");
+      setMode(openMode(id));
       setSelectedId(id);
     });
   const openNew = () =>
@@ -556,7 +558,7 @@ export function ProjectDashboard({
       return;
     }
     leaveForm();
-    setMode("view");
+    setMode(created ? "view" : openMode(id));
     if (created && id) {
       // Show the new project whatever the current filter, then scroll its row into view.
       clearAll();
@@ -943,12 +945,7 @@ export function ProjectDashboard({
                     : {})}
                   saveMilestones={(edit) => admin.saveMilestonesAction(selected.id, edit)}
                   onSaved={onSaved}
-                  onCancel={() =>
-                    guard(() => {
-                      leaveForm();
-                      setMode("view");
-                    })
-                  }
+                  onCancel={requestClose}
                   onDirtyChange={onDirtyChange}
                   confirmDiscard={confirmDiscard}
                   onKeepEditing={() => setConfirmDiscard(false)}
