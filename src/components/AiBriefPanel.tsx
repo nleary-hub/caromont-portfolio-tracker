@@ -14,8 +14,8 @@ const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px
 export type AiBriefState = { kind: "idle" } | { kind: "error"; message: string } | { kind: "brief"; brief: AiBrief };
 
 /** Step 8: a read-only brief with links to the projects. Not saved, emailed or added to any report. */
-export function AiBriefPanel({ disabledNote, initial }: { disabledNote: string | null; initial?: AiBriefState }) {
-  const [focus, setFocus] = useState("");
+export function AiBriefPanel({ disabledNote, initial, initialFocus = "", focusOptions, compact = false, onOpenFull }: { disabledNote: string | null; initial?: AiBriefState; initialFocus?: string; focusOptions?: readonly string[]; compact?: boolean; onOpenFull?: (state: AiBriefState, focus: string) => void }) {
+  const [focus, setFocus] = useState(initialFocus);
   const [state, setState] = useState<AiBriefState>(initial ?? { kind: "idle" });
   const [pending, start] = useTransition();
   const off = disabledNote !== null;
@@ -25,7 +25,14 @@ export function AiBriefPanel({ disabledNote, initial }: { disabledNote: string |
         {C.BRIEF_LABEL}
       </label>
       <div className="flex items-center gap-3">
-        <input id="ai-brief-focus" className={`${INPUT} max-w-[24rem]`} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder={C.BRIEF_PLACEHOLDER} disabled={off} aria-describedby="ai-brief-help" />
+        <input id="ai-brief-focus" className={`${INPUT} max-w-[24rem]`} value={focus} onChange={(e) => setFocus(e.target.value)} placeholder={C.BRIEF_PLACEHOLDER} disabled={off} aria-describedby="ai-brief-help" list={focusOptions ? "ai-brief-focus-options" : undefined} />
+        {focusOptions && (
+          <datalist id="ai-brief-focus-options">
+            {focusOptions.map((o) => (
+              <option key={o} value={o} />
+            ))}
+          </datalist>
+        )}
         <button
           type="button"
           className={TOOL_PRIMARY}
@@ -49,7 +56,7 @@ export function AiBriefPanel({ disabledNote, initial }: { disabledNote: string |
       <AiOffNote id="ai-brief-off" note={disabledNote} testId="ai-tool-meeting_brief-off" />
       {state.kind === "error" && <AiAlert tone="danger" testId="ai-tool-brief-error">{state.message}</AiAlert>}
       {state.kind === "brief" && (
-        <article aria-label={C.BRIEF_TITLE} className="flex flex-col gap-3 rounded-card border border-line bg-input/60 p-3" data-testid="ai-tool-brief">
+        <article aria-label={C.BRIEF_TITLE} className={`flex flex-col gap-3 rounded-card border border-line bg-input/60 p-3 ${compact ? "max-h-[11.5rem] overflow-hidden" : ""}`} data-testid="ai-tool-brief">
           <div className="flex items-center gap-2">
             <span className="rounded-pill bg-(--status-not-started-dark-bg) px-2 py-px text-(--status-not-started-dark-fg) type-label">{C.AI_LABEL}</span>
             <span className="text-muted type-caption">{C.BRIEF_NOTE}</span>
@@ -58,6 +65,11 @@ export function AiBriefPanel({ disabledNote, initial }: { disabledNote: string |
           <BriefList title={C.BRIEF_STUCK} items={state.brief.stuck} />
           <BriefList title={C.BRIEF_ASK} items={state.brief.ask} />
         </article>
+      )}
+      {compact && onOpenFull && state.kind === "brief" && (
+        <button type="button" className="self-start text-accent type-table-strong hover:underline" onClick={() => onOpenFull(state, focus)} data-testid="ai-brief-open-full">
+          {C.BRIEF_OPEN_FULL}
+        </button>
       )}
     </div>
   );
