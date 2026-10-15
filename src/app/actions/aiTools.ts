@@ -165,11 +165,21 @@ export async function removeRelatedLink(id: string): Promise<AiToolLineResult> {
 export async function startAiVoiceChat() {
   try {
     const c = await context();
-    if (!c) return { ok: false as const, message: AiCopy.NOT_AUTHORIZED };
+    if (!c) return { ok: false as const, code: "not_allowed" as const, message: AiCopy.NOT_AUTHORIZED };
     return await AiVoiceChatService.start({ db: c.db, viewer: c.viewer, scope: c.scope });
   } catch (e) {
-    console.error("AI tools failed: voice start", (e as Error)?.name);
-    return { ok: false as const, message: AiToolsCopy.VOICE_START_FAILED };
+    console.error("AI tools failed: voice start", { code: "token", name: (e as Error)?.name ?? null });
+    return { ok: false as const, code: "token" as const, message: AiToolsCopy.VOICE_TOKEN_FAILED };
+  }
+}
+
+/** Step 10: the browser reports a mic or WebRTC failure so the real error reaches the runtime log. Saves nothing. */
+export async function reportAiVoiceFailure(info: { sessionId?: string | null; code: string; status?: number | null; type?: string | null; message?: string | null }) {
+  try {
+    const c = await context();
+    return AiVoiceChatService.reportClientFailure(c?.viewer ?? null, info ?? {});
+  } catch {
+    return { ok: false };
   }
 }
 

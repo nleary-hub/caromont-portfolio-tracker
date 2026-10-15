@@ -17,7 +17,7 @@ import { AiToolsService } from "@/lib/services/AiToolsService";
 import { AiVoiceChatService } from "@/lib/services/AiVoiceChatService";
 import { A, ADMIN, B, ENV, MEMBER, SCOPE, toolsSetup } from "./helpers/aiTools";
 
-vi.mock("@/app/actions/aiTools", () => ({ proposeAiToolChanges: vi.fn(), applyAiToolLine: vi.fn(), rejectAiToolLine: vi.fn(), transcribeAiDictation: vi.fn(), startAiVoiceChat: vi.fn(), proposeAiVoiceEdits: vi.fn(), endAiVoiceChat: vi.fn() }));
+vi.mock("@/app/actions/aiTools", () => ({ proposeAiToolChanges: vi.fn(), applyAiToolLine: vi.fn(), rejectAiToolLine: vi.fn(), transcribeAiDictation: vi.fn(), startAiVoiceChat: vi.fn(), proposeAiVoiceEdits: vi.fn(), endAiVoiceChat: vi.fn(), reportAiVoiceFailure: vi.fn() }));
 vi.mock("@/app/actions/aiAdmin", () => ({ addAiModel: vi.fn(), setAiFeatureEnabled: vi.fn(), setAiModelEnabled: vi.fn(), setAiModelPrices: vi.fn(), setAiFeatureModel: vi.fn() }));
 
 const KEY = "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ";
@@ -60,7 +60,7 @@ describe("step 10: voice chat toggle and kill switch", () => {
     db.featureRows = [{ feature: "voice_chat", enabled: false, updatedAt: T0, updatedBy: ADMIN.email, model: "gpt-live-1" } as never];
     expect(await AiToolsReadiness.voiceChatNote(db as never, ENV)).toBe(AiToolsCopy.FEATURE_OFF_NOTE);
     const rt = realtime();
-    expect(await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: rt.f })).toEqual({ ok: false, message: AiToolsCopy.FEATURE_OFF });
+    expect(await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: rt.f })).toEqual({ ok: false, code: "feature_off", message: AiToolsCopy.FEATURE_OFF });
     const on = await voiceSetup();
     expect(await AiToolsReadiness.voiceChatNote(on as never, { ...ENV, AI_FEATURE_VOICE_CHAT: "off" })).toBe(AiToolsCopy.FEATURE_OFF_NOTE);
     expect((await AiVoiceChatService.start({ db: on, viewer: ADMIN, scope: SCOPE, env: { ...ENV, AI_FEATURE_VOICE_CHAT: "off" }, fetchImpl: rt.f })).ok).toBe(false);
@@ -79,7 +79,7 @@ describe("step 10: model setting", () => {
     off.models = off.models.map((m) => (m.id === "gpt-live-1" ? { ...m, enabled: false } : m));
     expect(await AiToolsReadiness.voiceChatNote(off as never, ENV)).toBe(AiToolsCopy.MODEL_OFF_NOTE);
     const rt = realtime();
-    expect(await AiVoiceChatService.start({ db: off, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: rt.f })).toEqual({ ok: false, message: AiToolsCopy.MODEL_OFF_NOTE });
+    expect(await AiVoiceChatService.start({ db: off, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: rt.f })).toEqual({ ok: false, code: "model_off", message: AiToolsCopy.MODEL_OFF_NOTE });
     expect(rt.calls).toHaveLength(0);
     const html = renderToStaticMarkup(createElement(AiVoiceChatPanel, { disabledNote: AiToolsCopy.MODEL_OFF_NOTE }));
     expect(html).toMatch(/aria-disabled="true"[^>]*aria-describedby="ai-voice-off"/);
@@ -106,7 +106,7 @@ describe("step 10: roles", () => {
   it("refuses non-admins on every server entry with the generic denial", async () => {
     const db = await voiceSetup();
     const rt = realtime();
-    expect(await AiVoiceChatService.start({ db, viewer: MEMBER, scope: SCOPE, env: ENV, fetchImpl: rt.f })).toEqual({ ok: false, message: AiCopy.NOT_AUTHORIZED });
+    expect(await AiVoiceChatService.start({ db, viewer: MEMBER, scope: SCOPE, env: ENV, fetchImpl: rt.f })).toEqual({ ok: false, code: "not_allowed", message: AiCopy.NOT_AUTHORIZED });
     expect((await AiVoiceChatService.start({ db, viewer: null, scope: SCOPE, env: ENV, fetchImpl: rt.f })).ok).toBe(false);
     expect((await AiVoiceChatService.propose({ db, viewer: MEMBER, scope: SCOPE, sessionId: "x", toolArgs: "{}", env: ENV })).ok).toBe(false);
     expect((await AiVoiceChatService.end({ db, viewer: MEMBER, sessionId: "x" })).ok).toBe(false);
@@ -251,7 +251,7 @@ describe("step 10: privacy and usage", () => {
 
   it("a failed mint logs failed and returns the plain error", async () => {
     const db = await voiceSetup();
-    expect(await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime(false).f })).toEqual({ ok: false, message: AiToolsCopy.VOICE_START_FAILED });
+    expect(await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime(false).f })).toEqual({ ok: false, code: "token", message: AiToolsCopy.VOICE_TOKEN_FAILED });
     expect(db.usage.at(-1)?.event).toBe("failed");
   });
 });

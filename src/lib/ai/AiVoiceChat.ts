@@ -1,4 +1,5 @@
 import { AiToolsModel, type AiToolField, type AiToolProject } from "./AiToolsModel";
+import { AiToolsCopy } from "./AiToolsCopy";
 
 type Price = number | string | { toString(): string } | null | undefined;
 
@@ -90,5 +91,21 @@ export class AiVoiceChat {
     const per = Number(String(inputPrice));
     if (!Number.isFinite(per) || per < 0) return null;
     return Math.round((seconds / 60) * per * 1_000_000) / 1_000_000;
+  }
+}
+
+/** Browser-side voice chat failures: which message to show and which code to report for the log. */
+export class AiVoiceErrors {
+  /** getUserMedia failed: permission blocked vs no microphone at all. */
+  static mic(e: unknown): { code: "mic_denied" | "no_mic"; message: string } {
+    const name = (e as { name?: unknown })?.name;
+    return name === "NotAllowedError" || name === "SecurityError" || name === "PermissionDeniedError" ? { code: "mic_denied", message: AiToolsCopy.VOICE_MIC_DENIED } : { code: "no_mic", message: AiToolsCopy.VOICE_NO_MIC };
+  }
+
+  /** The WebRTC handshake failed after the session started: the key can't use the model, or the connection itself. */
+  static connect(e: unknown): { code: "model_unavailable" | "connect_failed"; message: string; status: number | null; type: string | null; detail: string | null } {
+    const info = (e as { info?: { status?: number; type?: string; code?: string; message?: string; modelUnavailable?: boolean } })?.info ?? {};
+    const unavailable = info.modelUnavailable === true;
+    return { code: unavailable ? "model_unavailable" : "connect_failed", message: unavailable ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED, status: typeof info.status === "number" ? info.status : null, type: info.type ?? info.code ?? (e as Error)?.name ?? null, detail: info.message ?? null };
   }
 }

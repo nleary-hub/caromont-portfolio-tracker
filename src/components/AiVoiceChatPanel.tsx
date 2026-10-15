@@ -1,14 +1,14 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { endAiVoiceChat, proposeAiVoiceEdits, startAiVoiceChat } from "@/app/actions/aiTools";
+import { endAiVoiceChat, proposeAiVoiceEdits, reportAiVoiceFailure, startAiVoiceChat } from "@/app/actions/aiTools";
 import { AiChangeReview } from "@/components/AiToolsPanel";
 import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiRealtimeBrowser, type AiRealtimeConnection } from "@/lib/ai/AiRealtimeBrowser";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import type { AiToolChange } from "@/lib/ai/AiToolsModel";
-import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
+import { AiVoiceChat, AiVoiceErrors } from "@/lib/ai/AiVoiceChat";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const GHOST = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
@@ -28,7 +28,10 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
   const conn = useRef<AiRealtimeConnection | null>(null);
   const session = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const off = disabledNote !== null;
+  // Start can find the model off (turned off since the page loaded): show the greyed state, never a connect attempt.
+  const [lateNote, setLateNote] = useState<string | null>(null);
+  const note = disabledNote ?? lateNote;
+  const off = note !== null;
 
   const stop = async (message: string | null = null) => {
     if (timer.current) clearTimeout(timer.current);
@@ -55,14 +58,17 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
     let mic: MediaStream;
     try {
       mic = await navigator.mediaDevices.getUserMedia({ audio: true });
-    } catch {
+    } catch (e) {
       setPhase("idle");
-      return setError(C.VOICE_NO_MIC);
+      const m = AiVoiceErrors.mic(e);
+      void reportAiVoiceFailure({ code: m.code, type: (e as Error)?.name ?? null });
+      return setError(m.message);
     }
     const r = await startAiVoiceChat();
     if (!r.ok) {
       mic.getTracks().forEach((t) => t.stop());
       setPhase("idle");
+      if ("code" in r && r.code === "model_off") return setLateNote(r.message);
       return setError(r.message);
     }
     session.current = r.sessionId;
@@ -78,8 +84,10 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
           return p.changes.length ? `Listed ${p.changes.length} suggested change(s) on screen for review. Nothing is saved until the person applies them.` : C.NO_CHANGES;
         },
       });
-    } catch {
-      return stop(C.VOICE_START_FAILED);
+    } catch (e) {
+      const c = AiVoiceErrors.connect(e);
+      void reportAiVoiceFailure({ sessionId: r.sessionId, code: c.code, status: c.status, type: c.type, message: c.detail });
+      return stop(c.message);
     }
     timer.current = setTimeout(() => void stop(C.VOICE_TIME_UP), r.maxSeconds * 1000);
   };
@@ -93,7 +101,7 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
             {C.VOICE_STOP}
           </button>
         ) : (
-          <button type="button" className={TOOL_PRIMARY} disabled={!off && phase === "connecting"} {...pausedProps(disabledNote, "ai-voice-off")} onClick={() => void begin()} data-testid="ai-voice-start">
+          <button type="button" className={TOOL_PRIMARY} disabled={!off && phase === "connecting"} {...pausedProps(note, "ai-voice-off")} onClick={() => void begin()} data-testid="ai-voice-start">
             {phase === "connecting" ? C.VOICE_CONNECTING : C.VOICE_START}
           </button>
         )}
@@ -107,7 +115,7 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
       {error && <AiAlert tone="danger" testId="ai-voice-error">{error}</AiAlert>}
       <p className="text-muted type-caption">{C.VOICE_CHAT_HELP}</p>
       <p className="text-muted type-caption" data-testid="ai-voice-privacy">{C.VOICE_PRIVACY}</p>
-      <AiOffNote id="ai-voice-off" note={disabledNote} testId="ai-tool-voice_chat-off" />
+      <AiOffNote id="ai-voice-off" note={note} testId="ai-tool-voice_chat-off" />
       {reviews.map((r) => (
         <AiChangeReview key={r.proposalId} proposalId={r.proposalId} changes={r.changes} />
       ))}
