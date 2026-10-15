@@ -27,6 +27,8 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { ProjectFormSubmit } from "./ProjectEditForm";
+import { DependenciesEditor, type DependencyActions } from "./DependenciesEditor";
+import { DependencyCopy } from "@/lib/projects/DependencyCopy";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import type { AiOutcome, AiSuggestResult } from "@/lib/services/AiWritingService";
 import type { MilestoneSaveActionResult } from "@/app/actions/admin";
@@ -109,6 +111,8 @@ export interface AdminDashboardProps {
   saveRowOrderAction: (area: string, ids: string[]) => Promise<string | null>;
   /** Line layout: reset the manual order in every department. */
   resetRowOrderAction: () => Promise<string | null>;
+  /** Drawer Dependencies section (migration 0037). Absent, the section is not shown. */
+  dependencyActions?: DependencyActions;
 }
 
 /** Admin drawer mode: detail view, edit form, or the empty New project form. */
@@ -376,6 +380,8 @@ export function ProjectDashboard({
   const showInfor = ViewSettings.visibleColumns(dashboardView).includes("inforNumber");
   const selected = rows.find((r) => r.id === selectedId) ?? null;
   // The side panel slides in when it opens, not when it switches between detail and edit.
+  // Edit drawer header "Blocked by n" (from the Dependencies section once it loads).
+  const [blockedCount, setBlockedCount] = useState<{ id: string; n: number } | null>(null);
   const drawerOpen = (mode === "new" && Boolean(admin)) || Boolean(selected);
   const [drawerWasOpen, setDrawerWasOpen] = useState(drawerOpen);
   const [drawerEntering, setDrawerEntering] = useState(false);
@@ -740,6 +746,7 @@ export function ProjectDashboard({
             departments={line?.departments}
             today={today}
             onClose={requestClose}
+            headerTag={mode === "edit" && blockedCount?.id === selected.id && blockedCount.n > 0 ? <BlockedByTag n={blockedCount.n} /> : null}
             onEdit={admin && mode === "view" && admin.formValues[selected.id] ? () => setMode("edit") : undefined}
             peopleEditor={
               admin ? (
@@ -783,6 +790,11 @@ export function ProjectDashboard({
                   templates={admin.templates}
                   ownerOptions={admin.milestoneOwnerOptions}
                   today={today}
+                  dependencies={
+                    admin.dependencyActions ? (
+                      <DependenciesEditor key={`deps-${selected.id}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount({ id: selected.id, n })} />
+                    ) : null
+                  }
                   people={
                     <ProjectPeopleEditor
                       key={`form-${selected.id}`}
@@ -937,6 +949,7 @@ export function ProjectDrawer({
   departments,
   historyAction,
   headerAction,
+  headerTag,
   entering = false,
   onEntered,
 }: {
@@ -945,6 +958,8 @@ export function ProjectDrawer({
   onEntered?: () => void;
   /** A secondary action in the header, right of the title (Restore to active on the Cancelled page). */
   headerAction?: ReactNode;
+  /** Small tag next to the edit header caption ("Blocked by 2"). */
+  headerTag?: ReactNode;
   /** Null for the New project form. */
   row: DashboardRow | null;
   /** Loads the History section and the "Previously" Infor numbers (detail view only). */
@@ -985,7 +1000,12 @@ export function ProjectDrawer({
       >
         <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
           <div className="min-w-0">
-            {row && <div className="text-muted type-caption">{ServiceAreaInfo.label(row.serviceArea, departments)} · Edit project</div>}
+            {row && (
+              <div className="flex items-center gap-2 text-muted type-caption">
+                <span>{ServiceAreaInfo.label(row.serviceArea, departments)} · Edit project</span>
+                {headerTag}
+              </div>
+            )}
             <h2 className="mt-1 type-heading text-base">{row ? row.name : "New project"}</h2>
           </div>
           {closeButton}
@@ -1161,5 +1181,14 @@ function EmptyLineState({ line, admin, onNew }: { line: ServiceLineScope; admin:
         </div>
       )}
     </section>
+  );
+}
+
+/** Edit drawer header tag: "Blocked by 2". */
+function BlockedByTag({ n }: { n: number }) {
+  return (
+    <span data-testid="blocked-by-tag" className="rounded-[4px] bg-(--status-at-risk-dark-bg) px-1.5 text-[11px] leading-4 font-medium text-(--status-at-risk-dark-fg)">
+      {DependencyCopy.count(n)}
+    </span>
   );
 }

@@ -69,10 +69,10 @@ class M36 {
 }
 
 describe("0036_owner_name_lists: seeding on production-shaped data (PGlite, example names)", () => {
-  it("is the newest migration, right after 0035_ai_assistant_hardening", () => {
+  it("comes right after 0035_ai_assistant_hardening; only 0037_project_dependencies comes after it", () => {
     const f = M36.folders();
-    expect(f.at(-1)).toBe(M);
-    expect(f.at(-2)).toBe("0035_ai_assistant_hardening");
+    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0037_project_dependencies"]);
+    expect(f[f.indexOf(M) - 1]).toBe("0035_ai_assistant_hardening");
   });
 
   it("is add-only: no DROP, DELETE FROM, ALTER of an existing table, and no write to projects or milestones", () => {
