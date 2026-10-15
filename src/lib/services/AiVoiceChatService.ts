@@ -48,7 +48,7 @@ export class AiVoiceChatService {
     if (!saved) return { ok: false, message: AiToolsCopy.AI_OFF };
     // The admin-chosen voice chat model. Never picked or switched here; it must be one an admin turned on.
     const model = await AiVoiceChatService.model(db);
-    if (!model || !(await AiModelService.enabledIds(db)).includes(model)) return { ok: false, message: AiToolsCopy.MODEL_OFF_NOTE };
+    if (!model || !(await AiModelService.enabledIds(db, "realtime")).includes(model)) return { ok: false, message: AiToolsCopy.MODEL_OFF_NOTE };
     const user = viewer.email;
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: ["suggested", "failed", "proposed", "session_started"] }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, message: AiCopy.RATE_LIMITED };

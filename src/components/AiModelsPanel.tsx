@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
-import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiModelEnabled, setAiModelPrices } from "@/app/actions/aiAdmin";
+import { addAiModel, listOpenAiModels, setAiFeatureEnabled, setAiFeatureModel, setAiModelEnabled, setAiModelPrices } from "@/app/actions/aiAdmin";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
+import { AiModelKinds, type AiListedModel, type AiModelKind } from "@/lib/ai/AiModelKinds";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import type { AiAdminResult, AiFeatureView, AiModelView } from "@/lib/services/AiModelService";
 
@@ -30,8 +31,12 @@ export function AiToggle({ checked, onChange, labelledBy, describedBy, disabled,
 }
 
 /** Admin > AI settings: the model list (add, on/off with the in-use warning, prices). */
-export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbReady: boolean }) {
+export function AiModelsPanel({ models, dbReady, initialList = null }: { models: AiModelView[]; dbReady: boolean; initialList?: OpenAiListState }) {
   const [newId, setNewId] = useState("");
+  const [list, setList] = useState<OpenAiListState>(initialList);
+  const [listing, startList] = useTransition();
+  /** The list failed to load: the typed id is saved unchecked (still off), with the note shown. */
+  const manual = list?.ok === false;
   const [addResult, setAddResult] = useState<AiAdminResult | null>(null);
   const [adding, startAdd] = useTransition();
   const [pending, startToggle] = useTransition();
@@ -77,6 +82,20 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
         </table>
       </div>
 
+      <OpenAiModelList
+        state={list}
+        loading={listing}
+        disabled={!dbReady || locked}
+        have={new Set(models.map((m) => m.id))}
+        onLoad={() => startList(async () => setList(await listOpenAiModels()))}
+        onAdd={(id) =>
+          startAdd(async () => {
+            const r = await addAiModel(id);
+            setAddResult(r);
+          })
+        }
+      />
+
       <form
         className="flex flex-col gap-1"
         onSubmit={(e) => {
@@ -84,7 +103,7 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
           // Locked while a price-refresh review is open (step 3c follow-up): the form does nothing until Cancel or Confirm.
           if (locked) return;
           startAdd(async () => {
-            const r = await addAiModel(newId);
+            const r = await addAiModel(newId, manual);
             setAddResult(r);
             if (r.ok) setNewId("");
           });
@@ -113,10 +132,54 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
           </p>
         ) : (
           <p id="ai-model-add-help" className="text-muted type-caption">
-            {C.MODEL_ADD_HELP}
+            {manual ? C.MODEL_ADD_MANUAL_HELP : C.MODEL_ADD_HELP}
           </p>
         )}
       </form>
+    </div>
+  );
+}
+
+export type OpenAiListState = { ok: true; models: AiListedModel[] } | { ok: false; error: string } | null;
+
+/**
+ * OpenAI's model list for the saved key, by type. Adding one saves it off; nothing is turned on here. When the list
+ * can't load, the note says so and the Add box below saves the typed id without the check.
+ */
+export function OpenAiModelList({ state, loading, disabled, have, onLoad, onAdd }: { state: OpenAiListState; loading: boolean; disabled: boolean; have: ReadonlySet<string>; onLoad: () => void; onAdd: (id: string) => void }) {
+  return (
+    <div className="flex flex-col gap-2" data-testid="ai-openai-list">
+      <div className="flex items-center gap-3">
+        <button type="button" className={SECONDARY} onClick={onLoad} disabled={disabled || loading} data-testid="ai-openai-list-load">
+          {loading ? C.MODEL_LIST_LOADING : C.MODEL_LIST_LOAD}
+        </button>
+        <span className="text-muted type-caption">{C.MODEL_LIST_HELP}</span>
+      </div>
+      {state && !state.ok && (
+        <div id="ai-openai-list-error">
+          <AiAlert tone="danger" testId="ai-openai-list-failed">
+            {C.MODEL_LIST_FAILED}
+          </AiAlert>
+        </div>
+      )}
+      {state?.ok && state.models.length === 0 && <p className="text-muted type-caption">{C.MODEL_LIST_EMPTY}</p>}
+      {state?.ok && state.models.length > 0 && (
+        <ul className="max-h-64 overflow-y-auto rounded-card border border-line" aria-label={C.MODEL_LIST_LOAD} data-testid="ai-openai-list-rows">
+          {state.models.map((m) => (
+            <li key={m.id} className="flex items-center justify-between gap-3 border-b border-line px-3 py-1.5 last:border-b-0">
+              <span className="min-w-0 truncate type-table text-fg">{m.id}</span>
+              <span className="ml-auto text-muted type-caption">{AiModelKinds.label(m.kind)}</span>
+              {have.has(m.id) ? (
+                <span className="w-[5.5rem] text-right text-muted type-caption">{C.MODEL_LIST_ADDED}</span>
+              ) : (
+                <button type="button" className={`${GHOST} w-[5.5rem]`} disabled={disabled} onClick={() => onAdd(m.id)} aria-label={`${C.MODEL_ADD}: ${m.id}`}>
+                  {C.MODEL_ADD}
+                </button>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
     </div>
   );
 }
@@ -158,6 +221,9 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
                 {C.MODEL_CHOSEN_OFF}
               </span>
             ))}
+          <span className="block text-muted type-caption" data-testid={`ai-model-kind-${m.id}`}>
+            {C.MODEL_KIND_LABEL}: {AiModelKinds.label(m.kind ?? null)}
+          </span>
           <span className="block whitespace-normal text-muted type-caption" data-testid={`ai-model-price-updated-${m.id}`}>
             {m.pricesUpdatedAt ? C.priceUpdated(PRICE_DATE.format(new Date(m.pricesUpdatedAt)), m.priceSource) : C.PRICE_NEVER_UPDATED}
           </span>
@@ -220,7 +286,8 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
 }
 
 /** Admin > AI settings: one toggle per AI feature. Future features (dictation, voice chat) add a row by adding a feature. */
-export function AiFeaturesPanel({ features, dbReady, modelOptions = [] }: { features: AiFeatureView[]; dbReady: boolean; modelOptions?: readonly string[] }) {
+/** `modelOptions`: enabled model ids by kind. Each own-model feature lists only its kind (dictation transcription, voice chat realtime). */
+export function AiFeaturesPanel({ features, dbReady, modelOptions = {} }: { features: AiFeatureView[]; dbReady: boolean; modelOptions?: Partial<Record<AiModelKind, readonly string[]>> }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
@@ -261,7 +328,7 @@ export function AiFeaturesPanel({ features, dbReady, modelOptions = [] }: { feat
                     }
                   >
                     <option value="">{AiToolsCopy.DICTATION_MODEL_NONE}</option>
-                    {[...new Set([...(f.model ? [f.model] : []), ...modelOptions])].map((m) => (
+                    {[...new Set([...(f.model ? [f.model] : []), ...(modelOptions[AiModelKinds.forFeature(f.feature)] ?? [])])].map((m) => (
                       <option key={m} value={m}>
                         {m}
                       </option>

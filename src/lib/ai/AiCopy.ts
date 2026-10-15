@@ -21,7 +21,7 @@ export class AiCopy {
   static readonly PROVIDER_PLACEHOLDER = "Select a provider";
   static readonly MODEL_LABEL = "Model name";
   /** Placeholder copy for Writing Bot to finalize (step 3b: admins choose the models). */
-  static readonly MODEL_HELP = "Choose one of the models turned on under Models below.";
+  static readonly MODEL_HELP = "Choose one of the chat models turned on under Models below.";
   /** Save or call with a model that isn't turned on under Models. Placeholder for Writing Bot. */
   static readonly MODEL_NOT_ALLOWED = "That model is turned off. An admin can choose one that's on in AI settings.";
   static readonly MODEL_PICKER_EMPTY = "No models are on. Turn one on under Models.";
@@ -45,6 +45,15 @@ export class AiCopy {
   static readonly MODEL_NOT_FOUND = "OpenAI doesn't list that model for the saved API key";
   static readonly MODEL_CHECK_NEEDS_KEY = "Save OpenAI as the provider with an API key first, so the model can be checked";
   static readonly MODEL_CHECK_FAILED = "Couldn't reach OpenAI to check the model. Try again.";
+  static readonly MODEL_WRONG_KIND = "That model doesn't fit this feature. Choose one from the list.";
+  static readonly MODEL_LIST_LOAD = "Show OpenAI models";
+  static readonly MODEL_LIST_LOADING = "Loading…";
+  static readonly MODEL_LIST_HELP = "Models OpenAI lists for the saved API key. Adding one doesn't turn it on.";
+  static readonly MODEL_LIST_EMPTY = "OpenAI listed no chat, transcription or realtime models for this key.";
+  static readonly MODEL_LIST_FAILED = "Couldn't load OpenAI's model list. You can still type a model ID below. It's saved without checking and starts off. If OpenAI doesn't have that model, calls to it will fail.";
+  static readonly MODEL_ADD_MANUAL_HELP = "The model list didn't load, so this ID is saved without checking. It starts off.";
+  static readonly MODEL_LIST_ADDED = "Added";
+  static readonly MODEL_KIND_LABEL = "Type";
   static readonly PRICE_UNIT_NONE = "No price";
   static readonly PRICE_UNIT_PER_1M_TOKENS = "Per 1M tokens";
   static readonly PRICE_UNIT_PER_MINUTE = "Per minute";

@@ -19,7 +19,7 @@ const API_KEY = "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ";
 const ENV = { AI_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
 const SCOPE = ServiceLine.defaultScope();
 const PROJECT = "10000000-0000-4000-8000-000000000006";
-const OPENAI: AiRuntimeConfig = { provider: "openai", model: "gpt-6-luna", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY };
+const OPENAI: AiRuntimeConfig = { provider: "openai", model: "gpt-6-luna", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY, allowedModels: ["gpt-6-luna"] };
 const ANTHROPIC: AiRuntimeConfig = { ...OPENAI, provider: "anthropic", model: "gpt-6-luna" };
 const AZURE: AiRuntimeConfig = { ...OPENAI, provider: "azure_openai", azureEndpoint: "https://res.openai.azure.com", azureDeployment: "notes" };
 const COMPAT: AiRuntimeConfig = { ...OPENAI, provider: "openai_compatible", baseUrl: "https://llm.example.org/v1" };
@@ -113,7 +113,7 @@ describe("a reply that runs out of tokens before any text", () => {
     const db = new FakeAiDb();
     db.projects.push({ id: PROJECT, serviceLineId: SCOPE.id, departmentId: null, archivedAt: null });
     const fields = { enabled: true, provider: "openai" as const, model: "gpt-6-luna", baseUrl: "", azureEndpoint: "", azureDeployment: "" };
-    expect(await AiSettingsService.save(db, Factory.ADMIN, { fields, newKey: API_KEY }, ENV)).toEqual({ ok: true });
+    expect(await AiSettingsService.save(db, Factory.ADMIN, { allowedModels: ["gpt-6-luna"], fields, newKey: API_KEY }, ENV)).toEqual({ ok: true });
     for (const feature of ["draft_from_bullets", "fit_for_report"]) {
       const calls: Record<string, unknown>[] = [];
       const r = await AiWritingService.suggest({ db, viewer: Factory.ADMIN, scope: SCOPE, projectId: PROJECT, feature, text: "quote rcvd", env: ENV, fetchImpl: reply(OPENAI_LENGTH, calls) });

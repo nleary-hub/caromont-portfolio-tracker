@@ -3,6 +3,7 @@ import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags, type AiToggleFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiProviders } from "@/lib/ai/AiProviders";
+import { AiModelKinds, type AiListedModel, type AiModelKind } from "@/lib/ai/AiModelKinds";
 import type { FetchLike } from "@/lib/ai/AiProviderClient";
 import type { AiSettingsHistoryRow, AiSettingsRow } from "@/lib/services/AiSettingsService";
 import { AiSettingsService } from "@/lib/services/AiSettingsService";
@@ -28,6 +29,8 @@ export interface AiModelRow {
   pricesUpdatedAt?: Date | null;
   pricesUpdatedBy?: string | null;
   priceSource?: string | null;
+  /** 0049: chat, transcription or realtime. Null or absent = worked out from the id. */
+  kind?: string | null;
 }
 
 export interface AiFeatureRow {
@@ -51,6 +54,8 @@ export interface AiModelView {
   /** Step 3c: ISO time the prices were last saved, and how ("manual" or "refreshed"). */
   pricesUpdatedAt?: string | null;
   priceSource?: "manual" | "refreshed" | null;
+  /** 0049: what the model is for (null = none of the kinds the app uses). */
+  kind?: AiModelKind | null;
 }
 
 export interface AiFeatureView {
@@ -94,8 +99,6 @@ export type AiPriceField = "input" | "output" | "unit";
  * admin-driven only: no code path here or in the AI services picks or switches a model on its own.
  */
 export class AiModelService {
-  /** Used only when ai_models can't be read (Vercel previews skip migrations): the 0039 seed, so behavior matches prod. */
-  static readonly FALLBACK_ENABLED: readonly string[] = AiProviders.ALLOWED_MODELS;
   static readonly UNITS: readonly AiPriceUnit[] = ["per_1m_tokens", "per_minute"];
   static readonly PRICE_MAX = 99_999_999;
   static readonly MODELS_URL = "https://api.openai.com/v1/models";
@@ -109,9 +112,22 @@ export class AiModelService {
     return s.length >= 1 && s.length <= AiProviders.MODEL_MAX && /^[A-Za-z0-9][A-Za-z0-9._:-]*$/.test(s) ? s : null;
   }
 
-  /** The ids the allowlist accepts: enabled rows only. */
-  static enabledOf(rows: readonly Pick<AiModelRow, "id" | "enabled">[]): string[] {
-    return rows.filter((r) => r.enabled).map((r) => r.id);
+  /** The ids an admin turned on, optionally only those of one kind. */
+  static enabledOf(rows: readonly (Pick<AiModelRow, "id" | "enabled"> & { kind?: string | null })[], kind?: AiModelKind): string[] {
+    return rows.filter((r) => r.enabled && (!kind || AiModelKinds.of(r) === kind)).map((r) => r.id);
+  }
+
+  /** Enabled model views of one kind, for a picker. */
+  static optionsOf(views: readonly AiModelView[], kind: AiModelKind): string[] {
+    return views.filter((v) => v.enabled && v.kind === kind).map((v) => v.id);
+  }
+
+  /** OpenAI's /v1/models body to [{ id, kind }], sorted by id, chat/transcription/realtime only. */
+  static parseList(body: unknown): AiListedModel[] {
+    const data = (body as { data?: unknown } | null)?.data;
+    if (!Array.isArray(data)) return [];
+    const ids = [...new Set(data.map((m) => (m as { id?: unknown })?.id).filter((id): id is string => typeof id === "string" && AiModelService.cleanId(id) === id))];
+    return ids.map((id) => ({ id, kind: AiModelKinds.classify(id) })).filter((m) => m.kind !== null).sort((a, b) => a.id.localeCompare(b.id));
   }
 
   /** "" = no price; otherwise a non-negative number with up to 4 decimals. null = invalid. */
@@ -178,6 +194,7 @@ export class AiModelService {
       inUse: r.id === selected,
       pricesUpdatedAt: r.pricesUpdatedAt ? new Date(r.pricesUpdatedAt).toISOString() : null,
       priceSource: r.priceSource === "manual" || r.priceSource === "refreshed" ? r.priceSource : null,
+      kind: AiModelKinds.of(r),
     }));
   }
 
@@ -187,14 +204,17 @@ export class AiModelService {
     return db.aiModel.findMany({ orderBy: { id: "asc" } });
   }
 
-  /** The allowlist at call time: enabled ids, or the seed when the table can't be read. */
-  static async enabledIds(db: Pick<AiModelDb, "aiModel"> | unknown): Promise<readonly string[]> {
+  /**
+   * The models allowed at call time: the enabled rows (of `kind`, when given). When ai_models can't be read the answer
+   * is none, so AI shows the clean model-off state. There is no built-in fallback model.
+   */
+  static async enabledIds(db: Pick<AiModelDb, "aiModel"> | unknown, kind?: AiModelKind): Promise<readonly string[]> {
     try {
       const m = (db as Partial<AiModelDb>)?.aiModel;
-      if (!m) return AiModelService.FALLBACK_ENABLED;
-      return AiModelService.enabledOf(await m.findMany({ orderBy: { id: "asc" } }));
+      if (!m) return [];
+      return AiModelService.enabledOf(await m.findMany({ orderBy: { id: "asc" } }), kind);
     } catch {
-      return AiModelService.FALLBACK_ENABLED;
+      return [];
     }
   }
 
@@ -215,27 +235,40 @@ export class AiModelService {
 
   /**
    * Adds an OpenAI model after checking it against OpenAI's models list with the saved key. New models start
-   * disabled. The key is used only in the request header and never logged or returned.
+   * disabled. The key is used only in the request header and never logged or returned. `manual`: the admin saw the
+   * list fail and typed the id; when OpenAI can't be reached it is saved unchecked (still off). A list that loads
+   * but lacks the id is still refused.
    */
-  static async add(db: AiModelDb, admin: Viewer, rawId: unknown, env: Env = process.env, fetchImpl: FetchLike | null = null, now: Date = new Date()): Promise<AiAdminResult> {
+  static async add(db: AiModelDb, admin: Viewer, rawId: unknown, env: Env = process.env, fetchImpl: FetchLike | null = null, now: Date = new Date(), opts: { manual?: boolean } = {}): Promise<AiAdminResult> {
     AdminPolicy.assertAdmin(admin);
     const id = AiModelService.cleanId(rawId);
     if (!id) return { ok: false, error: AiCopy.MODEL_ID_INVALID };
     if (await db.aiModel.findUnique({ where: { id } })) return { ok: false, error: AiCopy.MODEL_EXISTS };
     const listed = await AiModelService.openAiHas(db, id, env, fetchImpl);
-    if (listed !== true) return { ok: false, error: listed };
+    const unchecked = opts.manual === true && (listed === AiCopy.MODEL_CHECK_FAILED || listed === AiCopy.MODEL_CHECK_NEEDS_KEY);
+    if (listed !== true && !unchecked) return { ok: false, error: listed };
+    const kind = AiModelKinds.classify(id);
     return db.$transaction(async (tx) => {
-      await tx.aiModel.create({ data: { id, provider: "openai", enabled: false, priceUnit: null, inputPrice: null, outputPrice: null, addedAt: now, addedBy: admin.email, updatedAt: now, updatedBy: admin.email } });
+      await tx.aiModel.create({ data: { id, provider: "openai", enabled: false, priceUnit: null, inputPrice: null, outputPrice: null, addedAt: now, addedBy: admin.email, updatedAt: now, updatedBy: admin.email, ...(kind ? { kind } : {}) } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", "model_added", null, id, admin, now)] });
       return { ok: true, message: AiCopy.modelAdded(id) };
     });
   }
 
-  /** True when OpenAI lists `id` for the saved key; otherwise the message to show. */
-  static async openAiHas(db: Pick<AiModelDb, "aiSettings">, id: string, env: Env, fetchImpl: FetchLike | null): Promise<true | string> {
+  /**
+   * OpenAI's model list for the saved key, classified by kind (chat, transcription, realtime). Admin only. Read-only:
+   * nothing is added or turned on. The key goes in the request header only and is never logged or returned.
+   */
+  static async listOpenAi(db: Pick<AiModelDb, "aiSettings">, admin: Viewer, env: Env = process.env, fetchImpl: FetchLike | null = null): Promise<{ ok: true; models: AiListedModel[] } | { ok: false; error: string }> {
+    AdminPolicy.assertAdmin(admin);
+    const r = await AiModelService.fetchList(db, env, fetchImpl);
+    return r.ok ? { ok: true, models: AiModelService.parseList(r.body) } : r;
+  }
+
+  private static async fetchList(db: Pick<AiModelDb, "aiSettings">, env: Env, fetchImpl: FetchLike | null): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
     const row = await AiSettingsService.row(db as never).catch(() => null);
-    const config = row ? AiSettingsService.runtime({ ...row, model: row.model || id }, env) : null;
-    if (!config || config.provider !== "openai") return AiCopy.MODEL_CHECK_NEEDS_KEY;
+    const config = row ? AiSettingsService.runtime({ ...row, model: row.model || "list" }, env) : null;
+    if (!config || config.provider !== "openai") return { ok: false, error: AiCopy.MODEL_CHECK_NEEDS_KEY };
     const doFetch = fetchImpl ?? (fetch as unknown as FetchLike);
     try {
       const res = await (doFetch as unknown as (u: string, i: object) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>)(AiModelService.MODELS_URL, {
@@ -243,12 +276,19 @@ export class AiModelService {
         headers: { authorization: `Bearer ${config.apiKey}` },
         signal: AbortSignal.timeout(15_000),
       });
-      if (!res.ok) return AiCopy.MODEL_CHECK_FAILED;
-      const body = JSON.parse(await res.text()) as { data?: { id?: unknown }[] };
-      return (body.data ?? []).some((m) => m?.id === id) ? true : AiCopy.MODEL_NOT_FOUND;
+      if (!res.ok) return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
+      return { ok: true, body: JSON.parse(await res.text()) };
     } catch {
-      return AiCopy.MODEL_CHECK_FAILED;
+      return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
     }
+  }
+
+  /** True when OpenAI lists `id` for the saved key; otherwise the message to show. */
+  static async openAiHas(db: Pick<AiModelDb, "aiSettings">, id: string, env: Env, fetchImpl: FetchLike | null): Promise<true | string> {
+    const r = await AiModelService.fetchList(db, env, fetchImpl);
+    if (!r.ok) return r.error;
+    const data = (r.body as { data?: { id?: unknown }[] } | null)?.data ?? [];
+    return Array.isArray(data) && data.some((m) => m?.id === id) ? true : AiCopy.MODEL_NOT_FOUND;
   }
 
   /**
@@ -333,6 +373,8 @@ export class AiModelService {
       if (model) {
         const row = await tx.aiModel.findUnique({ where: { id: model } });
         if (!row?.enabled) return { ok: false, error: AiCopy.MODEL_NOT_ALLOWED };
+        // The type filter, enforced here too: dictation takes transcription models, voice chat realtime ones.
+        if (AiModelKinds.of(row) !== AiModelKinds.forFeature(feature)) return { ok: false, error: AiCopy.MODEL_WRONG_KIND };
       }
       const before = ((await tx.aiFeatureSetting.findMany()).find((r) => r.feature === feature)?.model ?? "") || null;
       if ((before ?? "") === model) return { ok: true };

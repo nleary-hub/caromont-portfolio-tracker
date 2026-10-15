@@ -31,13 +31,14 @@ class SpyFetch {
   };
 }
 
-const config = (model: string): AiRuntimeConfig => ({ provider: "openai", model, baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY });
+const config = (model: string): AiRuntimeConfig => ({ provider: "openai", model, baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY, allowedModels: ["gpt-6-luna"] });
 
-describe("model allowlist (fallback seed gpt-6-luna; admins choose the rest in step 3b)", () => {
-  it("the fallback allows exactly gpt-6-luna", () => {
-    expect(AiProviders.ALLOWED_MODELS).toEqual(["gpt-6-luna"]);
-    expect(AiProviders.modelAllowed("gpt-6-luna")).toBe(true);
-    for (const m of ["gpt-4o-mini", "GPT-6-LUNA", "gpt-6-luna-preview", "claude-3-5-haiku-latest", "", null]) expect(AiProviders.modelAllowed(m)).toBe(false);
+describe("allowed models = the ones an admin turned on (no built-in list)", () => {
+  it("matches exactly against the list it is given, and an empty list allows nothing", () => {
+    expect("ALLOWED_MODELS" in AiProviders).toBe(false);
+    expect(AiProviders.modelAllowed("gpt-6-luna", ["gpt-6-luna"])).toBe(true);
+    for (const m of ["gpt-4o-mini", "GPT-6-LUNA", "gpt-6-luna-preview", "claude-3-5-haiku-latest", "", null]) expect(AiProviders.modelAllowed(m, ["gpt-6-luna"])).toBe(false);
+    expect(AiProviders.modelAllowed("gpt-6-luna", [])).toBe(false);
   });
 
   it("copy is plain English without em dashes", () => {
@@ -48,7 +49,7 @@ describe("model allowlist (fallback seed gpt-6-luna; admins choose the rest in s
   it("save rejects any other model (switch on or off) and stores nothing", async () => {
     for (const enabled of [true, false]) {
       const db = new FakeAiDb();
-      const r = await AiSettingsService.save(db, ADMIN, { fields: { ...FIELDS, enabled, model: "gpt-4o-mini" }, newKey: API_KEY }, ENV);
+      const r = await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: { ...FIELDS, enabled, model: "gpt-4o-mini" }, newKey: API_KEY }, ENV);
       expect(r).toEqual({ ok: false, error: AiCopy.FIX_FIELDS, fieldErrors: { model: AiCopy.MODEL_NOT_ALLOWED } });
       expect(db.settings).toBeNull();
       expect(db.writes).toEqual([]);
@@ -67,7 +68,7 @@ describe("model allowlist (fallback seed gpt-6-luna; admins choose the rest in s
   });
 
   it("save accepts gpt-6-luna", async () => {
-    expect(await AiSettingsService.save(new FakeAiDb(), ADMIN, { fields: FIELDS, newKey: API_KEY }, ENV)).toEqual({ ok: true });
+    expect(await AiSettingsService.save(new FakeAiDb(), ADMIN, { allowedModels: ["gpt-6-luna"], fields: FIELDS, newKey: API_KEY }, ENV)).toEqual({ ok: true });
   });
 
   it("AiProviderClient refuses another model without calling the provider", async () => {

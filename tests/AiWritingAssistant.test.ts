@@ -49,7 +49,7 @@ class MockProvider {
 
 async function configured(db = new FakeAiDb(), env: Record<string, string | undefined> = ENV) {
   db.projects.push({ id: PROJECT, serviceLineId: SCOPE.id, departmentId: null, archivedAt: null });
-  const r = await AiSettingsService.save(db, ADMIN, { fields: FIELDS, newKey: API_KEY }, env);
+  const r = await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: FIELDS, newKey: API_KEY }, env);
   expect(r).toEqual({ ok: true });
   return db;
 }
@@ -115,7 +115,7 @@ describe("the key is never serialized to the client, logged or returned", () => 
     const r = await suggest(db, echo, "Quote received Oct 6");
     expect(r).toEqual({ ok: false, kind: "provider", message: AiCopy.PROVIDER_ERROR });
     expect(JSON.stringify(errors.mock.calls)).not.toContain(API_KEY);
-    const config = AiSettingsService.runtime(db.settings, ENV)!;
+    const config = { ...AiSettingsService.runtime(db.settings, ENV)!, allowedModels: ["gpt-6-luna"] };
     const t = await AiWritingService.testConnection(config, echo.fetch);
     expect(t.ok).toBe(false);
     expect(JSON.stringify(t)).not.toContain(API_KEY);
@@ -128,7 +128,7 @@ describe("the key is never serialized to the client, logged or returned", () => 
 
   it("the change log records which field and the key action, never a key value (the check constraint refuses one)", async () => {
     const db = await configured();
-    await AiSettingsService.save(db, ADMIN, { fields: FIELDS, newKey: "sk-another-key-1234567890" }, ENV);
+    await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: FIELDS, newKey: "sk-another-key-1234567890" }, ENV);
     await AiSettingsService.clearKey(db, ADMIN);
     const keyRows = db.settingsHistory.filter((h) => h.field === "apiKey");
     expect(keyRows.map((h) => h.action)).toEqual(["key_set", "key_replaced", "key_cleared"]);
@@ -161,7 +161,7 @@ describe("off by default", () => {
     const db = await configured();
     expect(await AiSettingsService.isOn(db, ENV)).toBe(true);
     expect(await AiSettingsService.isOn(db, NO_ENV)).toBe(false);
-    await AiSettingsService.save(db, ADMIN, { fields: { ...FIELDS, enabled: false } }, ENV);
+    await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: { ...FIELDS, enabled: false } }, ENV);
     expect(await AiSettingsService.isOn(db, ENV)).toBe(false);
     const broken = new FakeAiDb();
     broken.aiSettings.findUnique = async () => {
@@ -172,16 +172,16 @@ describe("off by default", () => {
 
   it("turning it on needs a complete setup and a key; turning it off always saves, even without the encryption key", async () => {
     const db = new FakeAiDb();
-    const r = await AiSettingsService.save(db, ADMIN, { fields: { ...FIELDS, model: "" } }, ENV);
+    const r = await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: { ...FIELDS, model: "" } }, ENV);
     expect(r).toMatchObject({ ok: false, fieldErrors: { model: AiCopy.REQUIRED_MODEL, apiKey: AiCopy.REQUIRED_KEY } });
     expect(db.settings).toBeNull();
-    expect(await AiSettingsService.save(db, ADMIN, { fields: { ...FIELDS, enabled: false } }, NO_ENV)).toEqual({ ok: true });
+    expect(await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: { ...FIELDS, enabled: false } }, NO_ENV)).toEqual({ ok: true });
     expect(db.settings!.enabled).toBe(false);
   });
 
   it("with AI_SETTINGS_ENCRYPTION_KEY missing the key can't be saved, and the page says so", async () => {
     const db = new FakeAiDb();
-    const r = await AiSettingsService.save(db, ADMIN, { fields: { ...FIELDS, enabled: false }, newKey: API_KEY }, NO_ENV);
+    const r = await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: { ...FIELDS, enabled: false }, newKey: API_KEY }, NO_ENV);
     expect(r).toMatchObject({ ok: false, error: AiCopy.ENCRYPTION_MISSING });
     expect(db.settings).toBeNull();
     const view = AiSettingsService.view(null, NO_ENV);
@@ -191,7 +191,7 @@ describe("off by default", () => {
 
   it("when off, a suggestion request is refused before any provider call", async () => {
     const db = await configured();
-    await AiSettingsService.save(db, ADMIN, { fields: { ...FIELDS, enabled: false } }, ENV);
+    await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: { ...FIELDS, enabled: false } }, ENV);
     const p = new MockProvider();
     expect(await suggest(db, p, "Quote received")).toEqual({ ok: false, kind: "off", message: AiCopy.UNAVAILABLE });
     expect(p.calls).toHaveLength(0);
@@ -369,7 +369,7 @@ describe("discard writes no history", () => {
 });
 
 describe("provider calls (mocked), timeouts and rate limits", () => {
-  const config: AiRuntimeConfig = { provider: "openai", model: "gpt-6-luna", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY };
+  const config: AiRuntimeConfig = { provider: "openai", model: "gpt-6-luna", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY, allowedModels: ["gpt-6-luna"] };
 
   it("builds the request for each provider (key in a header only, never the URL or body)", () => {
     const prompt = AiPrompts.build("fit_for_report", "Quote received");
@@ -427,7 +427,7 @@ describe("provider calls (mocked), timeouts and rate limits", () => {
 
   it("test connection succeeds with the saved settings and reports the provider's error otherwise", async () => {
     const db = await configured();
-    const config2 = AiSettingsService.runtime(db.settings, ENV)!;
+    const config2 = { ...AiSettingsService.runtime(db.settings, ENV)!, allowedModels: ["gpt-6-luna"] };
     expect(await AiWritingService.testConnection(config2, new MockProvider("OK").fetch)).toMatchObject({ ok: true });
     expect(await AiWritingService.testConnection(config2, new MockProvider("The model `gpt-9` does not exist", 404).fetch)).toEqual({ ok: false, message: "HTTP 404: The model `gpt-9` does not exist" });
   });

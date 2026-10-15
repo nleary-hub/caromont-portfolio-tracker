@@ -173,7 +173,7 @@ export class AiToolsService {
     const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
     if (!saved) return { ok: false, kind: "off", message: AiToolsCopy.AI_OFF };
     // Only models an admin turned on (ai_models). Never switched automatically.
-    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db) };
+    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
     if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
 
     const user = viewer.email;
@@ -345,7 +345,7 @@ export class AiToolsService {
     if (!saved) return { ok: false, message: AiToolsCopy.AI_OFF };
     const model = await AiModelService.featureModel(db, "dictation");
     if (!model) return { ok: false, message: AiToolsCopy.DICTATION_NO_MODEL };
-    if (!(await AiModelService.enabledIds(db)).includes(model)) return { ok: false, message: AiCopy.MODEL_NOT_ALLOWED };
+    if (!(await AiModelService.enabledIds(db, "transcription")).includes(model)) return { ok: false, message: AiCopy.MODEL_NOT_ALLOWED };
     const user = viewer.email;
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, message: AiCopy.RATE_LIMITED };

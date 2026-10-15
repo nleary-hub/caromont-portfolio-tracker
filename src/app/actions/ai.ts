@@ -61,7 +61,7 @@ export async function saveAiSettings(_prev: AiSettingsFormState, form: FormData)
   if (!viewer) return { ok: false, message: "Not authorized." };
   if (!Db.isConfigured()) return { ok: false, message: AiCopy.SAVE_FAILED };
   try {
-    const r = await AiSettingsService.save(Db.client as unknown as AiSettingsDb, viewer, { ...AiSettingsService.parseForm(form), allowedModels: await AiModelService.enabledIds(Db.client) });
+    const r = await AiSettingsService.save(Db.client as unknown as AiSettingsDb, viewer, { ...AiSettingsService.parseForm(form), allowedModels: await AiModelService.enabledIds(Db.client, "chat") });
     if (!r.ok) return { ok: false, message: r.error, ...(r.fieldErrors ? { fieldErrors: r.fieldErrors as Record<string, string> } : {}) };
     revalidatePath("/admin/ai");
     revalidatePath("/");
@@ -93,7 +93,7 @@ export async function testAiConnection(): Promise<AiTestResult> {
   try {
     const row = await AiSettingsService.row(Db.client as unknown as AiSettingsDb);
     const saved = AiSettingsService.runtime(row);
-    const config = saved ? { ...saved, allowedModels: await AiModelService.enabledIds(Db.client) } : null;
+    const config = saved ? { ...saved, allowedModels: await AiModelService.enabledIds(Db.client, "chat") } : null;
     if (!config) return { ok: false, message: AiCopy.TEST_NEEDS_SETTINGS };
     const r = await AiWritingService.testConnection(config, undefined, { db: AiActions.db(), viewer });
     return r.ok ? { ok: true, message: AiCopy.testOk(config.provider, r.ms) } : { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${r.message}` };

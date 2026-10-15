@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from "vitest";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai/AiProviderClient";
+import { AiModelKinds } from "@/lib/ai/AiModelKinds";
 import { AiProviders } from "@/lib/ai/AiProviders";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { AiModelService, type AiFeatureRow, type AiModelDb, type AiModelRow } from "@/lib/services/AiModelService";
@@ -81,7 +82,7 @@ function modelsList(ids: string[], status = 200) {
 
 async function withKey() {
   const db = new FakeAiAdminDb().seed();
-  await AiSettingsService.save(db, ADMIN, { fields: FIELDS, newKey: KEY }, ENV);
+  await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: FIELDS, newKey: KEY }, ENV);
   return db;
 }
 
@@ -98,11 +99,11 @@ describe("allowlist from ai_models", () => {
     for (const m of ["gpt-example-mini", "GPT-EXAMPLE-PRO", "gpt-example", "", null]) expect(AiProviders.modelAllowed(m, allowed)).toBe(false);
   });
 
-  it("falls back to the 0039 seed when the table can't be read, and the seed keeps prod unchanged", async () => {
+  it("no fallback: an unreadable or missing table allows no model (the clean model-off state)", async () => {
     const db = new FakeAiAdminDb();
     db.fail = true;
-    expect(await AiModelService.enabledIds(db)).toEqual(["gpt-6-luna"]);
-    expect(await AiModelService.enabledIds(new FakeAiDb())).toEqual(["gpt-6-luna"]);
+    expect(await AiModelService.enabledIds(db)).toEqual([]);
+    expect(await AiModelService.enabledIds({})).toEqual([]);
     expect(await AiModelService.enabledIds(new FakeAiAdminDb().seed())).toEqual(["gpt-6-luna"]);
   });
 
@@ -338,5 +339,56 @@ describe("3c follow-up: prices always show 4 decimals", () => {
     expect(AiModelService.inputText("0.05")).toBe("0.0500");
     expect(AiModelService.inputText(12)).toBe("12.0000");
     expect(AiModelService.inputText(null)).toBe("");
+  });
+});
+
+describe("models from OpenAI's list, by type (feat/ai-placement-models)", () => {
+  it("classifies example ids into chat, transcription and realtime; the rest are left out", () => {
+    expect(AiModelKinds.classify("gpt-6-luna")).toBe("chat");
+    expect(AiModelKinds.classify("gpt-example-mini")).toBe("chat");
+    expect(AiModelKinds.classify("o4-example")).toBe("chat");
+    expect(AiModelKinds.classify("gpt-transcribe")).toBe("transcription");
+    expect(AiModelKinds.classify("whisper-1")).toBe("transcription");
+    expect(AiModelKinds.classify("gpt-live-1")).toBe("realtime");
+    expect(AiModelKinds.classify("gpt-example-realtime-preview")).toBe("realtime");
+    for (const id of ["text-embedding-example", "gpt-image-1", "tts-1", "dall-e-3", "omni-moderation-latest", ""]) expect(AiModelKinds.classify(id)).toBeNull();
+    expect(AiModelKinds.of({ id: "gpt-example-mini", kind: "realtime" })).toBe("realtime");
+    expect(AiModelKinds.forFeature("dictation")).toBe("transcription");
+    expect(AiModelKinds.forFeature("voice_chat")).toBe("realtime");
+    expect(AiModelKinds.forFeature("revise_note")).toBe("chat");
+  });
+
+  it("listOpenAi returns the classified list, read-only, and never the key", async () => {
+    const db = await withKey();
+    const { f, calls } = modelsList(["gpt-6-luna", "gpt-transcribe", "gpt-live-1", "text-embedding-example"]);
+    const r = await AiModelService.listOpenAi(db.m, ADMIN, ENV, f);
+    expect(r).toEqual({ ok: true, models: [{ id: "gpt-6-luna", kind: "chat" }, { id: "gpt-live-1", kind: "realtime" }, { id: "gpt-transcribe", kind: "transcription" }] });
+    expect(calls).toHaveLength(1);
+    expect(JSON.stringify(r)).not.toContain(KEY);
+    expect(db.models.map((m) => m.id)).toEqual(["gpt-6-luna"]);
+    expect(await AiModelService.listOpenAi(db.m, ADMIN, ENV, modelsList([], 500).f)).toEqual({ ok: false, error: AiCopy.MODEL_CHECK_FAILED });
+    await expect(AiModelService.listOpenAi(db.m, NOT_ADMIN, ENV, f)).rejects.toThrow();
+  });
+
+  it("manual entry after a failed list saves the id unchecked and off; a listed-but-missing id is still refused", async () => {
+    const db = await withKey();
+    expect(await AiModelService.add(db.m, ADMIN, "gpt-transcribe", ENV, modelsList([], 503).f, new Date(), { manual: true })).toMatchObject({ ok: true });
+    expect(db.models.find((m) => m.id === "gpt-transcribe")).toMatchObject({ enabled: false, kind: "transcription" });
+    expect(await AiModelService.add(db.m, ADMIN, "gpt-example-missing", ENV, modelsList(["gpt-6-luna"]).f, new Date(), { manual: true })).toEqual({ ok: false, error: AiCopy.MODEL_NOT_FOUND });
+    expect(await AiModelService.add(db.m, ADMIN, "gpt-example-mini", ENV, modelsList([], 503).f)).toEqual({ ok: false, error: AiCopy.MODEL_CHECK_FAILED });
+  });
+
+  it("enabledIds and the feature model check filter by type", async () => {
+    const db = new FakeAiAdminDb().seed();
+    const now = new Date("2026-10-15T12:00:00Z");
+    for (const id of ["gpt-transcribe", "gpt-live-1"]) db.models.push({ ...db.models[0], id, enabled: true, addedAt: now, updatedAt: now });
+    expect(await AiModelService.enabledIds(db, "chat")).toEqual(["gpt-6-luna"]);
+    expect(await AiModelService.enabledIds(db, "transcription")).toEqual(["gpt-transcribe"]);
+    expect(await AiModelService.enabledIds(db, "realtime")).toEqual(["gpt-live-1"]);
+    expect(await AiModelService.setFeatureModel(db.m, ADMIN, "dictation", "gpt-6-luna")).toEqual({ ok: false, error: AiCopy.MODEL_WRONG_KIND });
+    expect(await AiModelService.setFeatureModel(db.m, ADMIN, "voice_chat", "gpt-transcribe")).toEqual({ ok: false, error: AiCopy.MODEL_WRONG_KIND });
+    expect(await AiModelService.setFeatureModel(db.m, ADMIN, "voice_chat", "gpt-live-1")).toEqual({ ok: true });
+    const views = AiModelService.views(db.models, null);
+    expect(AiModelService.optionsOf(views, "transcription")).toEqual(["gpt-transcribe"]);
   });
 });

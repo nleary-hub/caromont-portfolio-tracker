@@ -12,7 +12,10 @@ import type { AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
 import type { AiInput } from "@/lib/ai/AiInput";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
-import { AiModelService } from "@/lib/services/AiModelService";
+import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
+import { AiVoiceChatDrawer } from "@/components/AiVoiceChatDrawer";
+import { AiModelService, type AiModelDb } from "@/lib/services/AiModelService";
+import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import type { AiOutcome } from "@/lib/services/AiWritingService";
 import { setDashboardHeartbeat } from "@/app/actions/preferences";
@@ -242,9 +245,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // Off by default: no settings row, the switch off, an incomplete setup or no tables yet all mean no AI buttons.
   const aiOn = Boolean(admin) && Db.isConfigured() ? await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb) : false;
   // Draft and Fit paused: AI on, but its model is turned off under Models (the server refuses with MODEL_NOT_ALLOWED).
-  const aiPaused = aiOn ? AiWritingModel.paused({ aiOn, modelOn: await AiSettingsService.modelOn(Db.client as unknown as AiSettingsDb, await AiModelService.enabledIds(Db.client)) }) : false;
+  const aiPaused = aiOn ? AiWritingModel.paused({ aiOn, modelOn: await AiSettingsService.modelOn(Db.client as unknown as AiSettingsDb, await AiModelService.enabledIds(Db.client, "chat")) }) : false;
   // Revise with AI: the admin toggle (ai_feature_settings, on by default) and the env kill switch.
   const reviseOn = aiOn ? await AiModelService.featureOn(Db.client, "revise_note") : false;
+  // Voice chat in the header: hidden when the feature is off (no gap); greyed with the note when its model is off.
+  const voiceNote = aiOn ? await AiToolsReadiness.voiceChatNote(Db.client as unknown as AiModelDb & AiSettingsDb).catch(() => AiToolsCopy.MODEL_OFF_NOTE) : AiToolsCopy.FEATURE_OFF_NOTE;
+  const aiVoice = voiceNote === AiToolsCopy.FEATURE_OFF_NOTE || voiceNote === AiToolsCopy.AI_OFF_NOTE ? null : <AiVoiceChatDrawer disabledNote={voiceNote} />;
 
   return (
     <ProjectDashboard
@@ -377,6 +383,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
           }
         : {})}
       historyAction={loadProjectHistory}
+      {...(aiVoice ? { aiVoice } : {})}
       signOutAction={signOutAction}
     />
   );

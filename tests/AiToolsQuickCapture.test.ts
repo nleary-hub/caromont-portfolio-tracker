@@ -77,7 +77,7 @@ describe("step 6: dictation", () => {
     expect(AiModelService.affectedFeatures("gpt-transcribe", { enabled: true, model: "gpt-6-luna" }, views)).toEqual(["Dictation (speech to text)"]);
     expect(AiModelService.affectedFeatures("gpt-6-luna", { enabled: true, model: "gpt-6-luna" }, views)).not.toContain("Dictation (speech to text)");
     expect(AiFeatureFlags.parseToolFeature("dictation")).toBeNull();
-    const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: views, dbReady: true, modelOptions: ["gpt-6-luna", "gpt-transcribe"] }));
+    const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: views, dbReady: true, modelOptions: { transcription: ["gpt-transcribe"] } }));
     expect(html).toContain('data-testid="ai-feature-model-dictation"');
     expect(html).toContain(AiToolsCopy.DICTATION_MODEL_HELP);
   });
