@@ -1,3 +1,4 @@
+import { AiToolsCopy } from "./AiToolsCopy";
 import type { PhiKind } from "./AiPhiGuard";
 import type { AiProviderId } from "./AiProviders";
 
@@ -106,13 +107,13 @@ export class AiCopy {
   static readonly DISABLE_CONFIRM_YES = "Turn off anyway";
   static readonly DISABLE_CONFIRM_NO = "Keep on";
   static readonly FEATURES_TITLE = "Features";
-  static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone. Each one uses the model chosen above.";
+  static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone. Each one uses the model chosen above, except Dictation, which has its own model.";
   static readonly FEATURE_ON_HELP = "On for everyone.";
   static readonly FEATURE_OFF_HELP = "Off for everyone. The button is hidden.";
   static readonly FEATURE_REVISE_NOTE = "Revise with AI on the update note";
 
   static featureLabel(feature: string): string {
-    return feature === "revise_note" ? AiCopy.FEATURE_REVISE_NOTE : feature;
+    return feature === "revise_note" ? AiCopy.FEATURE_REVISE_NOTE : (AiToolsCopy.FEATURE_LABELS[feature] ?? feature);
   }
 
   static featureKilled(envName: string): string {
@@ -207,6 +208,8 @@ export class AiCopy {
         return AiCopy.MODELS_TITLE;
       case "aiFeature":
         return AiCopy.FEATURES_TITLE;
+      case "aiFeatureModel":
+        return AiToolsCopy.DICTATION_MODEL_LABEL;
       case "aiPriceRefresh":
         return AiCopy.PRICE_REFRESH_FIELD;
       case "apiKey":

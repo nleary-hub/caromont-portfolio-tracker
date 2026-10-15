@@ -4,6 +4,7 @@ import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
 import { readdirSync } from "node:fs";
 import { describe, expect, it, vi } from "vitest";
+import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiProviders } from "@/lib/ai/AiProviders";
@@ -172,7 +173,7 @@ describe("adding models", () => {
     // Per minute: one price; the output price is ignored (its field is disabled).
     expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_minute", "0.006", "abc")).toMatchObject({ ok: true });
     expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_minute", "0.006", "")).toMatchObject({ ok: true });
-    expect(AiModelService.views(db.models, null)[0]).toMatchObject({ priceUnit: "per_minute", inputPrice: "0.006", outputPrice: "" });
+    expect(AiModelService.views(db.models, null)[0]).toMatchObject({ priceUnit: "per_minute", inputPrice: "0.0060", outputPrice: "" });
   });
 });
 
@@ -180,7 +181,7 @@ describe("disable warning", () => {
   it("disabling the model in use needs confirmation; nothing changes until confirmed", async () => {
     const db = await withKey();
     const r = await AiModelService.setEnabled(db.m, ADMIN, "gpt-6-luna", false, false, ENV);
-    expect(r).toEqual({ ok: false, needsConfirm: true, error: AiCopy.disableWarning("gpt-6-luna", [AiCopy.SWITCH_LABEL, AiCopy.FEATURE_REVISE_NOTE]) });
+    expect(r).toEqual({ ok: false, needsConfirm: true, error: AiCopy.disableWarning("gpt-6-luna", [AiCopy.SWITCH_LABEL, ...AiModelService.featureViews([], ENV).filter((f) => !f.ownModel).map((f) => f.label)]) });
     expect(db.models[0].enabled).toBe(true);
     expect(await AiModelService.setEnabled(db.m, ADMIN, "gpt-6-luna", false, true, ENV)).toEqual({ ok: true });
     expect(db.models[0].enabled).toBe(false);
@@ -196,9 +197,9 @@ describe("disable warning", () => {
   });
 
   it("the warning lists only enabled features", () => {
-    const features = AiModelService.featureViews([{ feature: "revise_note", enabled: false, updatedAt: new Date(), updatedBy: "x" }], {});
+    const features = AiModelService.featureViews(AiFeatureFlags.ALL.map((feature) => ({ feature, enabled: false, updatedAt: new Date(), updatedBy: "x" })), {});
     expect(AiModelService.affectedFeatures("gpt-6-luna", { enabled: true, model: "gpt-6-luna" }, features)).toEqual([AiCopy.SWITCH_LABEL]);
-    const killed = AiModelService.featureViews([], { AI_FEATURE_REVISE_NOTE: "off" });
+    const killed = AiModelService.featureViews([], Object.fromEntries(Object.values(AiFeatureFlags.FLAGS).map((n) => [n, "off"])));
     expect(AiModelService.affectedFeatures("gpt-6-luna", { enabled: true, model: "gpt-6-luna" }, killed)).toEqual([AiCopy.SWITCH_LABEL]);
     expect(AiModelService.affectedFeatures("gpt-example-mini", { enabled: true, model: "gpt-6-luna" }, features)).toEqual([]);
   });
@@ -218,7 +219,7 @@ describe("feature toggles", () => {
     expect(db.settingsHistory.at(-1)).toMatchObject({ field: "aiFeature", action: "feature_off", newValue: "revise_note" });
     await AiModelService.setFeature(db.m, ADMIN, "revise_note", true);
     expect(await AiModelService.featureOn(db, "revise_note", { AI_FEATURE_REVISE_NOTE: "0" })).toBe(false);
-    expect(await AiModelService.setFeature(db.m, ADMIN, "dictation", true)).toEqual({ ok: false, error: AiCopy.SAVE_FAILED });
+    expect(await AiModelService.setFeature(db.m, ADMIN, "not_a_feature", true)).toEqual({ ok: false, error: AiCopy.SAVE_FAILED });
     await expect(AiModelService.setFeature(db.m, NOT_ADMIN, "revise_note", false)).rejects.toThrow();
   });
 
@@ -231,7 +232,7 @@ describe("feature toggles", () => {
   });
 
   it("featureViews flags the env kill switch", () => {
-    expect(AiModelService.featureViews([], { AI_FEATURE_REVISE_NOTE: "off" })).toEqual([
+    expect(AiModelService.featureViews([], { AI_FEATURE_REVISE_NOTE: "off" }).filter((v) => v.feature === "revise_note")).toEqual([
       { feature: "revise_note", label: AiCopy.FEATURE_REVISE_NOTE, enabled: true, killedByEnv: true, envName: "AI_FEATURE_REVISE_NOTE" },
     ]);
   });
@@ -268,7 +269,7 @@ describe("0039_ai_models_features (PGlite)", () => {
     const db = await PGlite.create();
     for (const f of readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) await db.exec(readFileSync(path.join(dir, f, "migration.sql"), "utf8"));
     expect((await db.query(`SELECT "id", "enabled" FROM "ai_models"`)).rows).toEqual([{ id: "gpt-6-luna", enabled: true }]);
-    expect((await db.query(`SELECT "feature", "enabled" FROM "ai_feature_settings"`)).rows).toEqual([{ feature: "revise_note", enabled: true }]);
+    expect((await db.query(`SELECT "feature", "enabled" FROM "ai_feature_settings" WHERE "feature" = 'revise_note'`)).rows).toEqual([{ feature: "revise_note", enabled: true }]);
     await db.exec(`INSERT INTO "ai_models" ("id", "addedBy", "updatedBy") VALUES ('gpt-example-mini', 'a@example.org', 'a@example.org')`);
     expect((await db.query(`SELECT "enabled" FROM "ai_models" WHERE "id" = 'gpt-example-mini'`)).rows).toEqual([{ enabled: false }]);
     await expect(db.exec(`DELETE FROM "ai_models" WHERE "id" = 'gpt-example-mini'`)).rejects.toThrow();
@@ -327,5 +328,15 @@ describe("Figma review fixes (v2)", () => {
     const form = SRC("src/components/AiSettingsForm.tsx");
     expect(form).toContain('const modelOffOn = enabled && Boolean(view.modelOff);');
     expect(form).toContain('modelOffOn ? "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)"');
+  });
+});
+
+describe("3c follow-up: prices always show 4 decimals", () => {
+  it("formats every stored price with 4 decimals", () => {
+    expect(AiModelService.inputText(0.1)).toBe("0.1000");
+    expect(AiModelService.inputText("0.5")).toBe("0.5000");
+    expect(AiModelService.inputText("0.05")).toBe("0.0500");
+    expect(AiModelService.inputText(12)).toBe("12.0000");
+    expect(AiModelService.inputText(null)).toBe("");
   });
 });

@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
-import { addAiModel, setAiFeatureEnabled, setAiModelEnabled, setAiModelPrices } from "@/app/actions/aiAdmin";
+import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiModelEnabled, setAiModelPrices } from "@/app/actions/aiAdmin";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
+import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import type { AiAdminResult, AiFeatureView, AiModelView } from "@/lib/services/AiModelService";
 
 /** The same 2px focus outline used across the AI settings page since #50. */
@@ -80,6 +81,8 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
         className="flex flex-col gap-1"
         onSubmit={(e) => {
           e.preventDefault();
+          // Locked while a price-refresh review is open (step 3c follow-up): the form does nothing until Cancel or Confirm.
+          if (locked) return;
           startAdd(async () => {
             const r = await addAiModel(newId);
             setAddResult(r);
@@ -87,13 +90,14 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
           });
         }}
         data-testid="ai-model-add"
+        data-locked={locked || undefined}
       >
         <label htmlFor="ai-model-add" className="text-muted type-caption">
           {C.MODEL_ADD_LABEL}
         </label>
         <div className="flex items-start gap-2">
-          <input id="ai-model-add" className={INPUT} value={newId} onChange={(e) => setNewId(e.target.value)} placeholder={C.MODEL_ADD_PLACEHOLDER} maxLength={100} autoComplete="off" spellCheck={false} disabled={!dbReady} aria-invalid={(addResult && !addResult.ok) || undefined} aria-describedby={addResult && !addResult.ok ? "ai-model-add-error" : "ai-model-add-help"} />
-          <button type="submit" className={SECONDARY} disabled={!dbReady || adding || !newId.trim()} data-testid="ai-model-add-button">
+          <input id="ai-model-add" className={INPUT} value={newId} onChange={(e) => setNewId(e.target.value)} placeholder={C.MODEL_ADD_PLACEHOLDER} maxLength={100} autoComplete="off" spellCheck={false} disabled={!dbReady} readOnly={locked} aria-disabled={locked || undefined} aria-invalid={(addResult && !addResult.ok) || undefined} aria-describedby={addResult && !addResult.ok ? "ai-model-add-error" : "ai-model-add-help"} />
+          <button type="submit" className={`${SECONDARY} aria-disabled:cursor-not-allowed aria-disabled:opacity-50`} disabled={!dbReady || adding || !newId.trim()} aria-disabled={locked || undefined} data-testid="ai-model-add-button">
             {adding ? C.MODEL_ADDING : C.MODEL_ADD}
           </button>
         </div>
@@ -132,6 +136,10 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
   const edit = (set: (v: string) => void) => (e: { target: { value: string } }) => {
     if (!locked) set(e.target.value);
   };
+  /** On blur a valid price is shown with 4 decimals, like the saved ones (3c follow-up). Invalid text is left as typed. */
+  const tidy = (v: string, set: (v: string) => void) => () => {
+    if (!locked && /^\$?\d+(\.\d{1,4})?$/.test(v.trim())) set(Number(v.trim().replace(/^\$/, "")).toFixed(4));
+  };
   const invalid = (f: "input" | "output" | "unit") => (bad === f ? { "aria-invalid": true as const, "aria-describedby": priceErrorId } : {});
   return (
     <>
@@ -165,10 +173,10 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
           </select>
         </td>
         <td className="px-3 py-2">
-          <input aria-label={`${C.MODELS_HEADERS[3]}, ${m.id}`} className={`${PRICE_INPUT}`} value={input} onChange={edit(setInput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.00" disabled={!dbReady} {...invalid("input")} data-testid={`ai-model-input-price-${m.id}`} />
+          <input aria-label={`${C.MODELS_HEADERS[3]}, ${m.id}`} className={`${PRICE_INPUT}`} value={input} onChange={edit(setInput)} onBlur={tidy(input, setInput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.0000" disabled={!dbReady} {...invalid("input")} data-testid={`ai-model-input-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
-          <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${PRICE_INPUT}`} value={output} onChange={edit(setOutput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.00" disabled={!dbReady || unit === "per_minute"} {...invalid("output")} data-testid={`ai-model-output-price-${m.id}`} />
+          <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${PRICE_INPUT}`} value={output} onChange={edit(setOutput)} onBlur={tidy(output, setOutput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.0000" disabled={!dbReady || unit === "per_minute"} {...invalid("output")} data-testid={`ai-model-output-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
           <button type="button" className={GHOST} disabled={!dbReady || saving} {...lock} data-testid={`ai-model-save-${m.id}`} onClick={() => !locked && startSave(async () => setSaved(await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output)))}>
@@ -212,7 +220,7 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
 }
 
 /** Admin > AI settings: one toggle per AI feature. Future features (dictation, voice chat) add a row by adding a feature. */
-export function AiFeaturesPanel({ features, dbReady }: { features: AiFeatureView[]; dbReady: boolean }) {
+export function AiFeaturesPanel({ features, dbReady, modelOptions = [] }: { features: AiFeatureView[]; dbReady: boolean; modelOptions?: readonly string[] }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
@@ -233,6 +241,37 @@ export function AiFeaturesPanel({ features, dbReady }: { features: AiFeatureView
               <p id={helpId} className="mt-0.5 text-muted type-caption">
                 {f.killedByEnv ? C.featureKilled(f.envName) : f.enabled ? C.FEATURE_ON_HELP : C.FEATURE_OFF_HELP}
               </p>
+              {f.ownModel && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <label htmlFor={`ai-feature-${f.feature}-model`} className="text-muted type-caption">
+                    {AiToolsCopy.DICTATION_MODEL_LABEL}
+                  </label>
+                  <select
+                    id={`ai-feature-${f.feature}-model`}
+                    className={`${INPUT} max-w-[16rem]`}
+                    value={f.model ?? ""}
+                    disabled={!dbReady || pending}
+                    aria-describedby={`ai-feature-${f.feature}-model-help`}
+                    data-testid={`ai-feature-model-${f.feature}`}
+                    onChange={(e) =>
+                      start(async () => {
+                        const r = await setAiFeatureModel(f.feature, e.target.value);
+                        setError(r.ok ? null : r.error);
+                      })
+                    }
+                  >
+                    <option value="">{AiToolsCopy.DICTATION_MODEL_NONE}</option>
+                    {[...new Set([...(f.model ? [f.model] : []), ...modelOptions])].map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <p id={`ai-feature-${f.feature}-model-help`} className="text-muted type-caption">
+                    {AiToolsCopy.DICTATION_MODEL_HELP}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         );

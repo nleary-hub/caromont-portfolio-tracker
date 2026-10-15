@@ -102,7 +102,7 @@ export default async function AiSettingsPage() {
           {AiCopy.FEATURES_TITLE}
         </h2>
         <p className="text-muted type-caption">{AiCopy.FEATURES_INTRO}</p>
-        <AiFeaturesPanel features={features} dbReady={dbReady} />
+        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={models.filter((m) => m.enabled).map((m) => m.id)} />
       </section>
 
       <section className="flex flex-col gap-2" aria-labelledby="ai-history-heading">

@@ -283,6 +283,19 @@ describe("review lock and focus UI", () => {
     }
   });
 
+  it("3c follow-up: locks the Add an OpenAI model field and button while the review is open", async () => {
+    const d = new FakePriceDb();
+    d.add("gpt-live-1", "per_minute", 0.06, null);
+    const parsed = OpenAiPricingParser.parse(FIXTURE);
+    if (!parsed.ok) throw new Error("fixture");
+    const open = await render({ kind: "review", review: AiPriceRefreshService.compare(d.models, parsed.prices, null) });
+    expect(open).toMatch(/<input id="ai-model-add"[^>]*readOnly=""[^>]*aria-disabled="true"/i);
+    expect(open).toMatch(/aria-disabled="true"[^>]*data-testid="ai-model-add-button"/);
+    expect(open).toMatch(/data-testid="ai-model-add" data-locked="true"/);
+    const idle = await render({ kind: "idle" });
+    expect(idle).not.toMatch(/aria-disabled="true"[^>]*data-testid="ai-model-add-button"/);
+  });
+
   it("loading label shows once inside a polite live region; saved line is focusable; tag never wraps", async () => {
     const loading = await render({ kind: "loading" });
     expect(loading).toContain(`aria-live="polite" class="col-start-1 row-start-1" data-testid="ai-price-refresh-label">${AiCopy.REFRESHING_PRICES.replace("'", "&#x27;")}<`);

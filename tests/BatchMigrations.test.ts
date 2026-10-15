@@ -40,7 +40,7 @@ describe("batch migrations 0028 to 0032 on production-shaped data (PGlite)", () 
     const f = folders();
     const at = f.indexOf("0027_report_colors");
     expect(f.slice(at, at + 6)).toEqual(["0027_report_colors", ...BATCH]);
-    expect(f.slice(at + 6)).toEqual(["0033_ai_writing_assistant", "0034_review_and_status_chips", "0035_ai_assistant_hardening", "0036_owner_name_lists", "0037_project_dependencies", "0038_ai_review_apply", "0039_ai_models_features", "0040_ai_price_refresh"]);
+    expect(f.slice(at + 6)).toEqual(["0033_ai_writing_assistant", "0034_review_and_status_chips", "0035_ai_assistant_hardening", "0036_owner_name_lists", "0037_project_dependencies", "0038_ai_review_apply", "0039_ai_models_features", "0040_ai_price_refresh", "0041_ai_tools_meeting_notes", "0042_ai_tools_bulk_edit", "0043_ai_tools_quick_capture", "0044_ai_tools_next_step", "0045_ai_tools_request_to_project", "0046_ai_tools_meeting_brief", "0047_ai_tools_related_links"]);
   });
 
   it("apply cleanly on existing data; every existing row is unchanged and the new columns read their defaults", async () => {

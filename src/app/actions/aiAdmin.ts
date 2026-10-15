@@ -39,6 +39,10 @@ export async function setAiModelPrices(id: string, unit: string, input: string, 
   return run("setAiModelPrices", (db, v) => AiModelService.setPrices(db, v, id, unit, input, output));
 }
 
+export async function setAiFeatureModel(feature: string, model: string): Promise<AiAdminResult> {
+  return run("setAiFeatureModel", (db, v) => AiModelService.setFeatureModel(db, v, feature, model));
+}
+
 export async function setAiFeatureEnabled(feature: string, enabled: boolean): Promise<AiAdminResult> {
   return run("setAiFeatureEnabled", (db, v) => AiModelService.setFeature(db, v, feature, Boolean(enabled)));
 }

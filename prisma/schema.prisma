@@ -845,6 +845,8 @@ model AiUsageLog {
   suggestedText     String?
   /// accepted_with_override only: how many numbers or dates were still not in the original (the count, never the values)
   unverifiedCount   Int?
+  /// AI tools (0041): which line of a multi-line proposal an applied or rejected row is about
+  lineIndex         Int?
   createdAt         DateTime @default(now())
 
   @@index([userEmail, createdAt])
@@ -917,6 +919,27 @@ model AiFeatureSetting {
   enabled   Boolean  @default(true)
   updatedAt DateTime @default(now())
   updatedBy String
+  /// 0043: the feature's own model (dictation only: a transcription model). Null = not chosen yet.
+  model     String?
 
   @@map("ai_feature_settings")
+}
+
+/// Step 9 (0047): a person-confirmed "related" link between two projects of one line (AI-suggested, never automatic).
+/// Stored once per pair (projectAId < projectBId). Never deleted (trigger); Remove sets removedAt.
+model ProjectRelatedLink {
+  id            String    @id @default(uuid()) @db.Uuid
+  serviceLineId String    @db.Uuid
+  projectAId    String    @db.Uuid
+  projectBId    String    @db.Uuid
+  reason        String?
+  createdAt     DateTime  @default(now())
+  createdBy     String
+  removedAt     DateTime?
+  removedBy     String?
+
+  @@unique([projectAId, projectBId])
+  @@index([projectBId])
+  @@index([serviceLineId])
+  @@map("project_related_links")
 }
