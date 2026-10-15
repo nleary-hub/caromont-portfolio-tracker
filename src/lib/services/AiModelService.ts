@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { AiCopy } from "@/lib/ai/AiCopy";
-import { AiFeatureFlags, type AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
+import { AiFeatureFlags, type AiToggleFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiProviders } from "@/lib/ai/AiProviders";
 import type { FetchLike } from "@/lib/ai/AiProviderClient";
 import type { AiSettingsHistoryRow, AiSettingsRow } from "@/lib/services/AiSettingsService";
@@ -52,7 +52,7 @@ export interface AiModelView {
 }
 
 export interface AiFeatureView {
-  feature: AiReviewFeature;
+  feature: AiToggleFeature;
   label: string;
   /** The admin toggle (DB). */
   enabled: boolean;
@@ -145,7 +145,7 @@ export class AiModelService {
   }
 
   static featureViews(rows: readonly AiFeatureRow[], env: Env = process.env): AiFeatureView[] {
-    return AiFeatureFlags.FEATURES.map((feature) => ({
+    return AiFeatureFlags.ALL.map((feature) => ({
       feature,
       label: AiCopy.featureLabel(feature),
       enabled: rows.find((r) => r.feature === feature)?.enabled ?? true,
@@ -186,7 +186,7 @@ export class AiModelService {
   }
 
   /** Feature on: env kill switch on AND the admin toggle on (missing row or unreadable table = on, the #56 default). */
-  static async featureOn(db: unknown, feature: AiReviewFeature, env: Env = process.env): Promise<boolean> {
+  static async featureOn(db: unknown, feature: AiToggleFeature, env: Env = process.env): Promise<boolean> {
     if (!AiFeatureFlags.isOn(feature, env)) return false;
     try {
       const f = (db as Partial<AiModelDb>)?.aiFeatureSetting;
@@ -286,7 +286,7 @@ export class AiModelService {
 
   static async setFeature(db: AiModelDb, admin: Viewer, rawFeature: unknown, enabled: boolean, now: Date = new Date()): Promise<AiAdminResult> {
     AdminPolicy.assertAdmin(admin);
-    const feature = AiFeatureFlags.parseFeature(rawFeature);
+    const feature = AiFeatureFlags.parseToggle(rawFeature);
     if (!feature) return { ok: false, error: AiCopy.SAVE_FAILED };
     return db.$transaction(async (tx) => {
       await tx.aiFeatureSetting.upsert({ where: { feature }, create: { feature, enabled, updatedAt: now, updatedBy: admin.email }, update: { enabled, updatedAt: now, updatedBy: admin.email } });

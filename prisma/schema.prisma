@@ -845,6 +845,8 @@ model AiUsageLog {
   suggestedText     String?
   /// accepted_with_override only: how many numbers or dates were still not in the original (the count, never the values)
   unverifiedCount   Int?
+  /// AI tools (0041): which line of a multi-line proposal an applied or rejected row is about
+  lineIndex         Int?
   createdAt         DateTime @default(now())
 
   @@index([userEmail, createdAt])

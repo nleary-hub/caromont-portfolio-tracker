@@ -19,6 +19,7 @@ describe("AdminMenu.itemsFor", () => {
       ["work", "Export CSV", "/admin/import/export"],
       ["work", "Generate PDF", "/api/reports/preview"],
       ["work", "Reports", "/reports"],
+      ["work", "AI tools", "/ai-tools"],
       ["work", "Report freeze", "/reports#report-admin"],
       ["work", "Report contents", "/admin/settings"],
       ["library", "Departments", "/admin/departments"],
@@ -121,9 +122,9 @@ describe("AdminMenuButton (open)", () => {
   const html = renderToStaticMarkup(createElement(AdminMenuButton, { items: AdminMenu.itemsFor(ADMIN)!, initialOpen: true }));
 
   it("renders every shipped item as a menuitem, with a divider between each of the three groups", () => {
-    expect(html.match(/role="menuitem"/g)).toHaveLength(14);
+    expect(html.match(/role="menuitem"/g)).toHaveLength(15);
     expect(html.match(/role="separator"/g)).toHaveLength(2);
-    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "Report freeze", "Report contents", "Departments", "People", "Audit log", "Dashboard view", "Service lines", "Templates", "AI settings"]) {
+    for (const label of ["Import", "CSV template", "Export CSV", "Generate PDF", "Reports", "AI tools", "Report freeze", "Report contents", "Departments", "People", "Audit log", "Dashboard view", "Service lines", "Templates", "AI settings"]) {
       expect(html).toContain(`>${label}<`);
     }
     expect(html).toContain('<span class="am-caption">Draft</span>');

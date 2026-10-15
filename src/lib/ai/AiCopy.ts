@@ -1,3 +1,4 @@
+import { AiToolsCopy } from "./AiToolsCopy";
 import type { PhiKind } from "./AiPhiGuard";
 import type { AiProviderId } from "./AiProviders";
 
@@ -112,7 +113,7 @@ export class AiCopy {
   static readonly FEATURE_REVISE_NOTE = "Revise with AI on the update note";
 
   static featureLabel(feature: string): string {
-    return feature === "revise_note" ? AiCopy.FEATURE_REVISE_NOTE : feature;
+    return feature === "revise_note" ? AiCopy.FEATURE_REVISE_NOTE : (AiToolsCopy.FEATURE_LABELS[feature] ?? feature);
   }
 
   static featureKilled(envName: string): string {
