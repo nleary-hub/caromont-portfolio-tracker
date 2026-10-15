@@ -223,3 +223,34 @@ describe("imports leave owner and requester (physician champion) blank", () => {
     expect(names.rows).toEqual([]);
   });
 });
+
+describe("shared picker (PeopleCombobox): search state, menu placement, No match row", () => {
+  it("search placeholder copy", () => {
+    expect(PeopleComboboxModel.SEARCH_PLACEHOLDER).toBe("Search or add a name");
+  });
+
+  it("opens below when there is room, upward near the drawer footer, never past the viewport", () => {
+    expect(PeopleComboboxModel.placement({ top: 100, bottom: 128 }, 1000)).toEqual({ up: false, maxHeight: 280 });
+    expect(PeopleComboboxModel.placement({ top: 900, bottom: 928 }, 1000)).toEqual({ up: true, maxHeight: 280 });
+    expect(PeopleComboboxModel.placement({ top: 150, bottom: 178 }, 400)).toEqual({ up: false, maxHeight: 210 });
+  });
+
+  it("No match is a message row (not an option); the highlight goes straight to Add", () => {
+    const rows = PeopleComboboxModel.rows("owner", ["Avery Example"], "Riley Example", true, { kind: "unset" }, MilestoneOwnerCopy.VARIANT);
+    expect(rows.some((r) => r.type === "message" && r.text === PeopleComboboxModel.NO_MATCH)).toBe(true);
+    const opts = PeopleComboboxModel.options(rows);
+    expect(opts.some((o) => o.label === PeopleComboboxModel.NO_MATCH)).toBe(false);
+    expect(opts[PeopleComboboxModel.defaultHighlight(rows, true)].variant).toBe("add");
+  });
+
+  it("closed markup keeps the combobox role and no portal; the menu renders only while open", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { PeopleCombobox } = await import("@/components/PeopleCombobox");
+    const html = renderToStaticMarkup(createElement(PeopleCombobox, { role: "owner", id: "o", label: "Owner", options: ["Avery Example"], value: { kind: "name", name: "Avery Example" }, onPick: () => {} }));
+    expect(html).toContain('role="combobox"');
+    expect(html).toContain('aria-expanded="false"');
+    expect(html).toContain('value="Avery Example"');
+    expect(html).not.toContain('role="listbox"');
+  });
+});

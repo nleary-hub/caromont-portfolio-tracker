@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useLayoutEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import type { PeopleRole } from "@/lib/people/PeopleDirectory";
 import { PeopleComboboxModel, type ComboOption, type ComboVariant, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
 import { Chevron, FieldControlStyle } from "./FieldControl";
@@ -37,6 +38,14 @@ export function PeopleCombobox({ role, id, label, options, value, onPick, varian
   const [filtering, setFiltering] = useState(false);
   const [highlight, setHighlight] = useState(-1);
   const inputRef = useRef<HTMLInputElement>(null);
+  // Fixed position of the open menu (portal), recomputed on scroll and resize; opens upward when there isn't room below.
+  const [place, setPlace] = useState<{
+    left: number;
+    width: number;
+    top?: number;
+    bottom?: number;
+    maxHeight: number;
+  } | null>(null);
   const listId = `${id}-listbox`;
   const shown = PeopleComboboxModel.display(value, variant);
   const offList = !open && PeopleComboboxModel.offList(value, options);
@@ -51,14 +60,36 @@ export function PeopleCombobox({ role, id, label, options, value, onPick, varian
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [active?.key, open]);
 
+  useLayoutEffect(() => {
+    if (!open) return;
+    const measure = () => {
+      const el = inputRef.current;
+      if (!el) return;
+      const rect = el.getBoundingClientRect();
+      const { up, maxHeight } = PeopleComboboxModel.placement(rect, window.innerHeight);
+      setPlace({
+        left: rect.left,
+        width: Math.max(rect.width, 240),
+        maxHeight,
+        ...(up ? { bottom: window.innerHeight - rect.top + 4 } : { top: rect.bottom + 4 }),
+      });
+    };
+    measure();
+    window.addEventListener("resize", measure);
+    window.addEventListener("scroll", measure, true);
+    return () => {
+      window.removeEventListener("resize", measure);
+      window.removeEventListener("scroll", measure, true);
+    };
+  }, [open]);
+
   const openList = () => {
-    const q = value.kind === "name" ? value.name : "";
+    // Search state: the field empties to a search box (the saved value comes back on close without a pick).
+    const q = "";
     setQuery(q);
     setFiltering(false);
     setHighlight(PeopleComboboxModel.defaultHighlight(PeopleComboboxModel.rows(role, options, q, false, value, variant), false));
     setOpen(true);
-    // The field already shows the current name, so select it now: typing replaces it.
-    inputRef.current?.select();
   };
   const close = () => {
     setOpen(false);
@@ -105,21 +136,35 @@ export function PeopleCombobox({ role, id, label, options, value, onPick, varian
         type="text"
         role="combobox"
         aria-expanded={open}
-        aria-controls={listId}
+        aria-controls={open ? listId : undefined}
         aria-autocomplete="list"
         aria-activedescendant={active ? optionId(active) : undefined}
         autoComplete="off"
         spellCheck={false}
         data-testid={testId ?? `${role}-combobox`}
         value={open ? query : value.kind === "name" ? value.name : ""}
-        placeholder={shown.text}
+        placeholder={open ? PeopleComboboxModel.SEARCH_PLACEHOLDER : shown.text}
         onChange={(e) => type(e.target.value)}
         onClick={() => (open ? undefined : openList())}
         onKeyDown={onKeyDown}
         onBlur={close}
         aria-describedby={offList ? `${id}-offlist` : undefined}
-        className={`${offList ? FieldControlStyle.BOX.replace("pr-7", "pr-[96px]") : FieldControlStyle.BOX} ${compact ? "!h-7" : ""} placeholder:text-muted ${shown.muted ? "text-muted" : "text-fg"}`}
+        className={`${offList ? FieldControlStyle.BOX.replace("pr-7", "pr-[96px]") : FieldControlStyle.BOX} ${compact ? "!h-7" : ""} ${open ? "!pl-7 cursor-text" : ""} placeholder:text-muted ${open || !shown.muted ? "text-fg" : "text-muted"}`}
       />
+      {open && (
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 12 12"
+          fill="none"
+          aria-hidden="true"
+          data-testid="combobox-search-icon"
+          className="pointer-events-none absolute top-1/2 left-2 -translate-y-1/2 text-muted"
+        >
+          <circle cx="5.25" cy="5.25" r="3.5" stroke="currentColor" strokeWidth="1.4" />
+          <path d="m8 8 2.5 2.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+        </svg>
+      )}
       {offList && (
         <span
           id={`${id}-offlist`}
@@ -143,64 +188,77 @@ export function PeopleCombobox({ role, id, label, options, value, onPick, varian
       >
         <Chevron open={open} />
       </button>
-      <ul
-        id={listId}
-        role="listbox"
-        aria-label={label}
-        hidden={!open}
-        className="absolute left-0 z-20 mt-1 max-h-[280px] w-full min-w-[240px] overflow-y-auto rounded-card border border-line bg-card py-1 shadow-md"
-      >
-        {open &&
-          rows.map((r, i) => {
-            if (r.type === "divider") return <li key={`d${i}`} role="presentation" aria-hidden="true" className="my-1 border-t border-line" />;
-            if (r.type === "message")
+      {open &&
+        place &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <ul
+            id={listId}
+            role="listbox"
+            aria-label={label}
+            data-placement={place.top === undefined ? "up" : "down"}
+            style={{
+              position: "fixed",
+              left: place.left,
+              width: place.width,
+              top: place.top,
+              bottom: place.bottom,
+              maxHeight: place.maxHeight,
+            }}
+            className="z-[1000] overflow-y-auto rounded-card border border-line bg-card py-1 type-table shadow-md"
+          >
+            {rows.map((r, i) => {
+              if (r.type === "divider") return <li key={`d${i}`} role="presentation" aria-hidden="true" className="my-1 border-t border-line" />;
+              if (r.type === "message")
+                return (
+                  <li key={`m${i}`} role="presentation" aria-hidden="true" data-variant="message" className="flex h-8 cursor-default items-center px-3 text-muted select-none">
+                    {r.text}
+                  </li>
+                );
+              const isActive = active?.key === r.key;
+              const tone = r.variant === "add" ? "text-accent" : r.variant === "pinned" && r.value.kind === "unset" ? "text-muted" : "text-fg";
               return (
-                <li key={`m${i}`} role="presentation" className="flex h-8 items-center px-3 text-muted">
-                  {r.text}
+                <li
+                  key={r.key}
+                  id={optionId(r)}
+                  role="option"
+                  aria-selected={isActive}
+                  aria-checked={r.current}
+                  data-variant={r.variant}
+                  onMouseDown={(e) => e.preventDefault()}
+                  onMouseEnter={() => setHighlight(opts.indexOf(r))}
+                  onClick={() => pick(r)}
+                  className={`flex h-8 cursor-pointer items-center gap-2 px-3 ${tone} ${isActive ? "bg-row-selected outline-2 -outline-offset-2 outline-accent outline-solid" : ""}`}
+                >
+                  {r.variant === "add" && (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" className="flex-none">
+                      <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+                    </svg>
+                  )}
+                  <span className="min-w-0 flex-1 truncate">
+                    {r.segments.map((s, j) =>
+                      s.match ? (
+                        <span key={j} className="font-semibold">
+                          {s.text}
+                        </span>
+                      ) : (
+                        <span key={j}>{s.text}</span>
+                      ),
+                    )}
+                  </span>
+                  {r.current && (
+                    <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" className="flex-none text-accent" data-testid="current-check">
+                      <path d="M2.5 6.5 5 9l4.5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+                    </svg>
+                  )}
                 </li>
               );
-            const isActive = active?.key === r.key;
-            const tone = r.variant === "add" ? "text-accent" : r.variant === "pinned" && r.value.kind === "unset" ? "text-muted" : "text-fg";
-            return (
-              <li
-                key={r.key}
-                id={optionId(r)}
-                role="option"
-                aria-selected={isActive}
-                aria-checked={r.current}
-                data-variant={r.variant}
-                onMouseDown={(e) => e.preventDefault()}
-                onMouseEnter={() => setHighlight(opts.indexOf(r))}
-                onClick={() => pick(r)}
-                className={`flex h-8 cursor-pointer items-center gap-2 px-3 ${tone} ${isActive ? "bg-row-selected" : ""}`}
-              >
-                {r.variant === "add" && (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" className="flex-none">
-                    <path d="M6 2v8M2 6h8" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
-                  </svg>
-                )}
-                <span className="min-w-0 flex-1 truncate">
-                  {r.segments.map((s, j) =>
-                    s.match ? (
-                      <span key={j} className="font-semibold">
-                        {s.text}
-                      </span>
-                    ) : (
-                      <span key={j}>{s.text}</span>
-                    ),
-                  )}
-                </span>
-                {r.current && (
-                  <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true" className="flex-none text-accent" data-testid="current-check">
-                    <path d="M2.5 6.5 5 9l4.5-6" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
-                  </svg>
-                )}
-              </li>
-            );
-          })}
-      </ul>
+            })}
+          </ul>,
+          document.body,
+        )}
       <span className="sr-only" aria-live="polite">
-        {open ? (rows.find((r) => r.type === "message") as { text: string } | undefined)?.text ?? "" : ""}
+        {open ? ((rows.find((r) => r.type === "message") as { text: string } | undefined)?.text ?? "") : ""}
       </span>
     </div>
   );
