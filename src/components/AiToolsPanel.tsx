@@ -41,7 +41,6 @@ export function AiToolsPanel({
   projectId = null,
   rows = 5,
   dictation,
-  context,
 }: {
   feature: AiToolFeature;
   label: string;
@@ -55,8 +54,6 @@ export function AiToolsPanel({
   rows?: number;
   /** Step 6: show the Dictate button (Quick capture). Its own disabled note (dictation off, or no model chosen). */
   dictation?: { disabledNote: string | null };
-  /** Placements: which rows the tool works on (the selection or the visible rows). Shown, and sent with the text. */
-  context?: { line: string; prefix: string };
 }) {
   const id = useId();
   const [text, setText] = useState(initialText);
@@ -66,7 +63,7 @@ export function AiToolsPanel({
 
   const propose = () =>
     start(async () => {
-      const r = await proposeAiToolChanges(feature, context ? `${context.prefix}\n\n${text}` : text, projectId);
+      const r = await proposeAiToolChanges(feature, text, projectId);
       setState(r.ok ? { kind: "review", proposal: r } : { kind: "error", message: r.message });
     });
 
@@ -75,11 +72,6 @@ export function AiToolsPanel({
       <label htmlFor={`${id}-text`} className="text-muted type-caption">
         {label}
       </label>
-      {context && (
-        <p className="text-muted type-caption" data-testid={`ai-tool-${feature}-context`}>
-          {context.line}
-        </p>
-      )}
       <textarea id={`${id}-text`} className={AREA} rows={rows} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} disabled={off} aria-describedby={`${id}-help`} data-testid={`ai-tool-${feature}-input`} />
       <p id={`${id}-help`} className="text-muted type-caption">
         {help}

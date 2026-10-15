@@ -1,6 +1,6 @@
 "use client";
 
-import { AI_GHOST, AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
+import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import Link from "next/link";
 import { useState, useTransition } from "react";
 import { confirmAiRelatedLink, proposeAiRelatedLinks, rejectAiToolLine, removeRelatedLink } from "@/app/actions/aiTools";
@@ -22,7 +22,7 @@ const ProjectLink = ({ id, name }: { id: string; name: string }) => (
 );
 
 /** Step 9: suggested related-project links, each added only when a person clicks Link, plus the confirmed list. */
-export function AiLinksPanel({ disabledNote, saved, initial, focus = "", inline = false }: { disabledNote: string | null; saved: AiRelatedLinkView[]; initial?: AiLinksState; focus?: string; inline?: boolean }) {
+export function AiLinksPanel({ disabledNote, saved, initial }: { disabledNote: string | null; saved: AiRelatedLinkView[]; initial?: AiLinksState }) {
   const [state, setState] = useState<AiLinksState>(initial ?? { kind: "idle" });
   const [lines, setLines] = useState<Record<number, LineStatus>>({});
   const [removed, setRemoved] = useState<Set<string>>(new Set());
@@ -31,25 +31,25 @@ export function AiLinksPanel({ disabledNote, saved, initial, focus = "", inline 
   const set = (line: number, s: LineStatus) => setLines((l) => ({ ...l, [line]: s }));
   return (
     <div className="flex flex-col gap-3" data-testid="ai-tool-related_links">
-      {!inline && <p className="text-muted type-caption">{C.LINKS_HELP}</p>}
+      <p className="text-muted type-caption">{C.LINKS_HELP}</p>
       <AiOffNote id="ai-links-off" note={disabledNote} testId="ai-tool-related_links-off" />
       <div className="flex items-center gap-3">
         <button
           type="button"
-          className={inline ? AI_GHOST : TOOL_PRIMARY}
+          className={TOOL_PRIMARY}
           disabled={!off && pending}
           {...pausedProps(disabledNote, "ai-links-off")}
           data-testid="ai-tool-related_links-propose"
           onClick={() =>
             !off &&
             start(async () => {
-              const r = await proposeAiRelatedLinks(focus);
+              const r = await proposeAiRelatedLinks("");
               setLines({});
               setState(r.ok ? { kind: "review", proposalId: r.proposalId, links: r.links } : { kind: "error", message: r.message });
             })
           }
         >
-          {pending ? C.PROPOSING : inline ? C.LINKS_FIND : C.LINKS_PROPOSE}
+          {pending ? C.PROPOSING : C.LINKS_PROPOSE}
         </button>
       </div>
       {state.kind === "error" && <AiAlert tone="danger" testId="ai-tool-links-error">{state.message}</AiAlert>}
@@ -124,7 +124,6 @@ export function AiLinksPanel({ disabledNote, saved, initial, focus = "", inline 
             </div>
           </div>
         ))}
-      {!inline && (
       <section className="flex flex-col gap-1" aria-labelledby="ai-links-saved-title" data-testid="ai-links-saved">
         <h3 id="ai-links-saved-title" className="type-table-strong text-fg">
           {C.LINKS_SAVED_TITLE}
@@ -154,7 +153,6 @@ export function AiLinksPanel({ disabledNote, saved, initial, focus = "", inline 
           </ul>
         )}
       </section>
-      )}
     </div>
   );
 }

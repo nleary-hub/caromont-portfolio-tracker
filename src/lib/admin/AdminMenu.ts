@@ -54,6 +54,8 @@ export class AdminMenu {
     { id: "csv-export", group: "work", kind: "download", icon: "download", label: "Export CSV", href: "/admin/import/export", shipped: true },
     { id: "generate-pdf", group: "work", kind: "action", icon: "pdf", label: "Generate PDF", caption: "Draft", href: "/api/reports/preview", shipped: true },
     { id: "reports", group: "work", kind: "link", icon: "archive", label: "Reports", href: "/reports", shipped: true },
+    // AI tools (steps 4 to 9): suggestions a person applies line by line.
+    { id: "ai-tools", group: "work", kind: "link", icon: "sparkle", label: "AI tools", href: "/ai-tools", shipped: true },
     { id: "freeze", group: "work", kind: "link", icon: "snowflake", label: AdminMenu.REPORT_FREEZE, href: "/reports#report-admin", shipped: true },
     // Report contents of the active line (departments in report, totals grid), right after the freeze options.
     // Departments and contracts leads have their own pages (Departments, People).
@@ -67,8 +69,6 @@ export class AdminMenu {
     { id: "service-lines", group: "admin", kind: "link", icon: "tag", label: "Service lines", href: "/admin/service-lines", shipped: true },
     // Milestone templates.
     { id: "templates", group: "admin", kind: "link", icon: "template", label: "Templates", href: "/admin/templates", shipped: true },
-    // AI tools hub: a secondary spot (the tools themselves sit where people work on the dashboard). Route unchanged.
-    { id: "ai-tools", group: "admin", kind: "link", icon: "sparkle", label: "AI tools", href: "/ai-tools", shipped: true },
     // Writing assistant: provider, model and API key (off by default).
     { id: "ai-settings", group: "admin", kind: "link", icon: "sparkle", label: AdminMenu.AI_SETTINGS, href: "/admin/ai", shipped: true },
   ];
