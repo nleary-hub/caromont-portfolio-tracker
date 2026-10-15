@@ -80,6 +80,8 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
         className="flex flex-col gap-1"
         onSubmit={(e) => {
           e.preventDefault();
+          // Locked while a price-refresh review is open (step 3c follow-up): the form does nothing until Cancel or Confirm.
+          if (locked) return;
           startAdd(async () => {
             const r = await addAiModel(newId);
             setAddResult(r);
@@ -87,13 +89,14 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
           });
         }}
         data-testid="ai-model-add"
+        data-locked={locked || undefined}
       >
         <label htmlFor="ai-model-add" className="text-muted type-caption">
           {C.MODEL_ADD_LABEL}
         </label>
         <div className="flex items-start gap-2">
-          <input id="ai-model-add" className={INPUT} value={newId} onChange={(e) => setNewId(e.target.value)} placeholder={C.MODEL_ADD_PLACEHOLDER} maxLength={100} autoComplete="off" spellCheck={false} disabled={!dbReady} aria-invalid={(addResult && !addResult.ok) || undefined} aria-describedby={addResult && !addResult.ok ? "ai-model-add-error" : "ai-model-add-help"} />
-          <button type="submit" className={SECONDARY} disabled={!dbReady || adding || !newId.trim()} data-testid="ai-model-add-button">
+          <input id="ai-model-add" className={INPUT} value={newId} onChange={(e) => setNewId(e.target.value)} placeholder={C.MODEL_ADD_PLACEHOLDER} maxLength={100} autoComplete="off" spellCheck={false} disabled={!dbReady} readOnly={locked} aria-disabled={locked || undefined} aria-invalid={(addResult && !addResult.ok) || undefined} aria-describedby={addResult && !addResult.ok ? "ai-model-add-error" : "ai-model-add-help"} />
+          <button type="submit" className={`${SECONDARY} aria-disabled:cursor-not-allowed aria-disabled:opacity-50`} disabled={!dbReady || adding || !newId.trim()} aria-disabled={locked || undefined} data-testid="ai-model-add-button">
             {adding ? C.MODEL_ADDING : C.MODEL_ADD}
           </button>
         </div>
