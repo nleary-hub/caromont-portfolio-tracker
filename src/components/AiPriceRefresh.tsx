@@ -61,8 +61,8 @@ export function AiPriceRefresh({ dbReady, initial, children }: { dbReady: boolea
 
   return (
     <div className="flex flex-col gap-2" data-testid="ai-price-refresh">
-      <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
-        <button ref={refreshRef} type="button" className={`${SECONDARY} inline-grid shrink-0`} onClick={refresh} disabled={!dbReady || state.kind === "loading" || state.kind === "review"} aria-describedby="ai-price-refresh-help" data-testid="ai-price-refresh-button">
+      <div className="flex flex-col items-start gap-1">
+        <button ref={refreshRef} type="button" className={`${SECONDARY} inline-grid place-items-center`} onClick={refresh} disabled={!dbReady || state.kind === "loading" || state.kind === "review"} aria-describedby="ai-price-refresh-help" data-testid="ai-price-refresh-button">
           {/* Both labels share one grid cell, so the button keeps one width while loading. */}
           <span aria-hidden className="invisible col-start-1 row-start-1">
             {C.REFRESHING_PRICES}

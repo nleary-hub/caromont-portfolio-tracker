@@ -11,7 +11,7 @@ import type { AiAdminResult, AiFeatureView, AiModelView } from "@/lib/services/A
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-invalid:border-danger ${FOCUS}`;
 /** Price inputs: fixed width so 4 decimals (0.0500) always fit. */
-const PRICE_INPUT = `${INPUT.replace("w-full min-w-0 ", "")} w-[7.5rem] min-w-[7.5rem] tabular-nums`;
+const PRICE_INPUT = `${INPUT.replace("w-full min-w-0 ", "")} w-[6.5rem] min-w-[6.5rem] tabular-nums`;
 const GHOST = `h-7 whitespace-nowrap rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:border-line ${FOCUS}`;
 /** Secondary: no glow (only the settings Save, the primary button, glows). */
 const SECONDARY = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
@@ -150,7 +150,7 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
                 {C.MODEL_CHOSEN_OFF}
               </span>
             ))}
-          <span className="block text-muted type-caption" data-testid={`ai-model-price-updated-${m.id}`}>
+          <span className="block whitespace-normal text-muted type-caption" data-testid={`ai-model-price-updated-${m.id}`}>
             {m.pricesUpdatedAt ? C.priceUpdated(PRICE_DATE.format(new Date(m.pricesUpdatedAt)), m.priceSource) : C.PRICE_NEVER_UPDATED}
           </span>
         </td>
