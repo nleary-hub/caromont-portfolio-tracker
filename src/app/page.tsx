@@ -13,6 +13,7 @@ import type { AiInput } from "@/lib/ai/AiInput";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
+import { AiVoiceChatDrawer } from "@/components/AiVoiceChatDrawer";
 import { AiModelService, type AiModelDb } from "@/lib/services/AiModelService";
 import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
@@ -249,7 +250,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const reviseOn = aiOn ? await AiModelService.featureOn(Db.client, "revise_note") : false;
   // Voice chat in the header: hidden when the feature is off (no gap); greyed with the note when its model is off.
   const voiceNote = aiOn ? await AiToolsReadiness.voiceChatNote(Db.client as unknown as AiModelDb & AiSettingsDb).catch(() => AiToolsCopy.MODEL_OFF_NOTE) : AiToolsCopy.FEATURE_OFF_NOTE;
-  const aiVoice = voiceNote === AiToolsCopy.FEATURE_OFF_NOTE || voiceNote === AiToolsCopy.AI_OFF_NOTE ? null : { note: voiceNote };
+  const aiVoice = voiceNote === AiToolsCopy.FEATURE_OFF_NOTE || voiceNote === AiToolsCopy.AI_OFF_NOTE ? null : <AiVoiceChatDrawer disabledNote={voiceNote} />;
 
   return (
     <ProjectDashboard
