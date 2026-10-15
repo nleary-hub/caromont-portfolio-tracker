@@ -173,11 +173,11 @@ export async function startAiVoiceChat() {
   }
 }
 
-/** Step 10: the browser reports a mic or WebRTC failure so the real error reaches the runtime log. Saves nothing. */
+/** Step 10: the browser reports a mic, connect or ICE failure so the real error reaches the runtime log; a failed connect also gets its failed row. */
 export async function reportAiVoiceFailure(info: { sessionId?: string | null; code: string; status?: number | null; type?: string | null; message?: string | null }) {
   try {
     const c = await context();
-    return AiVoiceChatService.reportClientFailure(c?.viewer ?? null, info ?? {});
+    return await AiVoiceChatService.reportClientFailure(c?.db ?? null, c?.viewer ?? null, info ?? {});
   } catch {
     return { ok: false };
   }
