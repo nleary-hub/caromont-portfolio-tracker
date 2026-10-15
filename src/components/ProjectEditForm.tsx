@@ -337,9 +337,9 @@ export function ProjectEditForm({
                 )}
               </Field>
             )}
-            {/* Start date help text stays in the Start date column (row 2, column 1); hidden while an error shows. */}
+            {/* Start date help text spans the full drawer width (both columns), under the dates row; hidden while an error shows. */}
             {shown("startDate").length === 0 && (
-              <p className="col-start-1 -mt-2 text-muted type-table" data-testid="start-date-help">
+              <p className="col-span-2 -mt-2 text-muted type-table" data-testid="start-date-help">
                 {StartDate.HELP}
               </p>
             )}
