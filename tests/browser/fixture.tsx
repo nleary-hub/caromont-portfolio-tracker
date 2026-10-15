@@ -21,6 +21,7 @@ const admin: AdminDashboardProps = {
   pickerCounts: { dashboard: counts, report: counts }, hiddenFromReportIds: [],
   saveViewSettingsAction: noop, setProjectHiddenAction: noop, deleteProjectAction: noop,
   ownerSuggestions: ["Fictional Owner"], requesterSuggestions: ["Fictional Requester"],
+  milestoneOwnerOptions: ["Fictional Contracts Lead", "Fictional Owner", "Fictional Requester"],
   setPeopleFieldAction: noop, menuItems: [],
   formValues: Object.fromEntries(rows.map(row => [row.id, ProjectFormModel.fromSource({ ...row,
     accomplishment: null, description: null, completedOn: null })])),

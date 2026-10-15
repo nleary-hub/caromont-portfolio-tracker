@@ -48,6 +48,22 @@ export class PeopleComboboxModel {
   static readonly EMPTY = "No names yet. Type to add one.";
   /** Empty list where typing can't add a name (milestone owners): names come from Admin > People. */
   static readonly NO_NAMES = "No people yet. Add them on the People page in Admin.";
+  /** Placeholder while the picker is open and the search text is empty (search state). */
+  static readonly SEARCH_PLACEHOLDER = "Search or add a name";
+  /** Tallest the open menu gets (px); matches max-h-[280px]. */
+  static readonly MENU_MAX = 280;
+
+  /**
+   * Where the open menu goes (fixed, in a portal so a sticky drawer footer can't clip it): below the field, or above
+   * it when there isn't room below and there is more room above. maxHeight never runs past the viewport edge.
+   */
+  static placement(field: { top: number; bottom: number }, viewportHeight: number, gap = 4, margin = 8): { up: boolean; maxHeight: number } {
+    const below = viewportHeight - field.bottom - gap - margin;
+    const above = field.top - gap - margin;
+    const up = below < PeopleComboboxModel.MENU_MAX && above > below;
+    return { up, maxHeight: Math.max(0, Math.min(PeopleComboboxModel.MENU_MAX, up ? above : below)) };
+  }
+
   /** Gray tag on a closed field whose name is not on the line's list (Admin > People), e.g. Mark Wingard. */
   static readonly NOT_ON_LIST = "Not on list";
 

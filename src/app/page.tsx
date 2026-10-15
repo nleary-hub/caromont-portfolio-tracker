@@ -1,4 +1,6 @@
 import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
+import { OwnerNameLists } from "@/lib/people/OwnerNameLists";
+import { OwnerNamesService } from "@/lib/services/OwnerNamesService";
 import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
@@ -72,7 +74,7 @@ class DashboardData {
       completedFiscalYear: null,
       layout: LineLayout.defaults(),
       admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: PeopleDirectory.merge(scope.owners), requesterSuggestions: PeopleDirectory.merge(scope.requesters), menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
+        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: PeopleDirectory.merge(scope.owners), requesterSuggestions: PeopleDirectory.merge(scope.requesters), milestoneOwnerOptions: OwnerNameLists.combined(scope, []), menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
         : null,
       error,
     };
@@ -183,6 +185,8 @@ class DashboardData {
               // The line's lists (Admin > People); blocked names are dropped even if stored.
               ownerSuggestions: PeopleDirectory.merge(scope.owners),
               requesterSuggestions: PeopleDirectory.merge(scope.requesters),
+              // Milestone owners: every list of the line plus the milestone-owner list (a typed new name joins that one).
+              milestoneOwnerOptions: await OwnerNamesService.pickerOptions(scope, db),
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
               // The form reads the stored legacy fields; the checklist comes separately.
               formValues: DashboardData.formValues(stored, listedIds),

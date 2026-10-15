@@ -9,6 +9,10 @@ export class MilestoneOwnerCopy {
   static ariaLabel(step: number): string {
     return `Owner for step ${step}`;
   }
-  /** Picker: names from the line's Owners list only (no "Add 'X'"); former staff are already left out by PeopleDirectory.merge. */
-  static readonly VARIANT: ComboVariant = { clearLabel: MilestoneOwnerCopy.CLEAR, unsetText: MilestoneOwnerCopy.UNASSIGNED, allowAdd: false };
+  /**
+   * Picker: names from the line's Owners, Requesters and Contracts leads lists plus the milestone-owner list, and
+   * "Add 'X'" for a typed new name (saved to the milestone-owner list, no prompt). Former staff are left out by
+   * PeopleDirectory.merge and can't be added.
+   */
+  static readonly VARIANT: ComboVariant = { clearLabel: MilestoneOwnerCopy.CLEAR, unsetText: MilestoneOwnerCopy.UNASSIGNED, allowAdd: true };
 }
