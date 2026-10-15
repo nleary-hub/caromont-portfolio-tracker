@@ -33,6 +33,24 @@ describe("step 9: related-project links", () => {
     expect(await AiToolsService.listLinks(db, SCOPE)).toEqual([]);
   });
 
+  it("adding or removing a link never marks a project Changed or writes ProjectHistory (like dependencies); removal stays non-public", async () => {
+    const db = await toolsSetup();
+    const before = JSON.stringify(db.toolProjects);
+    const r = await AiToolsService.proposeLinks({ db, viewer: ADMIN, scope: SCOPE, input: "", env: ENV, fetchImpl: new MockProvider(REPLY).fetch });
+    if (!r.ok) throw new Error(r.message);
+    const l = r.links[0];
+    expect(await AiToolsService.applyLink({ db, viewer: ADMIN, scope: SCOPE, proposalId: r.proposalId, line: 0, aId: l.aId, bId: l.bId, reason: l.reason, env: ENV })).toEqual({ ok: true });
+    expect(await AiToolsService.removeLink(db, ADMIN, SCOPE, db.linkRows[0].id)).toEqual({ ok: true });
+    expect(db.writes.filter((w) => !/^(aiUsageLog|projectRelatedLink)\./.test(w))).toEqual([]);
+    expect(db.writes.filter((w) => w === "projectRelatedLink.update")).toHaveLength(1);
+    expect(JSON.stringify(db.toolProjects)).toBe(before);
+    // The removal is kept on the link row (removedAt, removedBy) only, never in the public project history.
+    expect(db.linkRows[0]).toMatchObject({ removedBy: ADMIN.email });
+    const src = readFileSync(path.resolve(__dirname, "../src/lib/services/AiToolsService.ts"), "utf8");
+    const linkCode = src.slice(src.indexOf("static async applyLink"));
+    expect(linkCode).not.toMatch(/projectHistory|ProjectService|reviewedAt|changedAt/);
+  });
+
   it("a project out of scope can't be linked; the kill switch stops it", async () => {
     const db = await toolsSetup();
     const r = await AiToolsService.proposeLinks({ db, viewer: ADMIN, scope: SCOPE, input: "", env: ENV, fetchImpl: new MockProvider(REPLY).fetch });
