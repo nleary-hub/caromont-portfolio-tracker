@@ -150,3 +150,10 @@ describe("voice chat picker: OpenAI's realtime list, no built-in voice model", (
     expect(failed).toContain(AiCopy.MODEL_PICKER_USE);
   });
 });
+
+describe("voice invalid_model copy", () => {
+  it("says the selected model doesn't support live voice", async () => {
+    const { AiToolsCopy } = await import("@/lib/ai/AiToolsCopy");
+    expect(AiToolsCopy.VOICE_MODEL_UNAVAILABLE).toBe("The selected voice model doesn't support live voice. An admin can choose a realtime model in AI settings.");
+  });
+});

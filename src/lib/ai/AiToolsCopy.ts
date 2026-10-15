@@ -195,7 +195,7 @@ export class AiToolsCopy {
   static readonly VOICE_PRIVACY = "Audio goes straight to the AI provider and is never saved here. Only minutes and cost are logged.";
   static readonly VOICE_NO_MIC = "The microphone isn't available. Check this site's microphone permission in your browser.";
   static readonly VOICE_START_FAILED = "Voice chat couldn't start. Try again in a moment.";
-  static readonly VOICE_MODEL_UNAVAILABLE = "The voice chat model isn't available for the saved API key. An admin can choose another one in AI settings.";
+  static readonly VOICE_MODEL_UNAVAILABLE = "The selected voice model doesn't support live voice. An admin can choose a realtime model in AI settings.";
   static readonly VOICE_TOKEN_FAILED = "OpenAI didn't open a voice session. Try again in a moment. If it keeps happening, an admin can check the API key in AI settings.";
   static readonly VOICE_MIC_DENIED = "Microphone access is blocked for this site. Allow it in your browser, then try again.";
   static readonly VOICE_CONNECT_FAILED = "The voice connection couldn't be set up. Check your network, then try again.";
