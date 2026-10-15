@@ -30,10 +30,10 @@ export class AiToolsCopy {
   static readonly APPLIED = "Applied";
   static readonly REJECTED = "Rejected";
   static readonly NO_CHANGES = "The AI found no changes to suggest.";
-  static readonly EMPTY_VALUE = "(blank)";
+  static readonly EMPTY_VALUE = "\u2013";
   static readonly FEATURE_OFF_NOTE = "Turned off in AI settings.";
-  static readonly AI_OFF_NOTE = "AI turned off in settings";
-  static readonly MODEL_OFF_NOTE = "AI model turned off in settings";
+  static readonly AI_OFF_NOTE = "AI is turned off in AI settings.";
+  static readonly MODEL_OFF_NOTE = "The AI model is turned off. An admin can turn one on in AI settings.";
 
   static readonly FIELD_LABELS: Readonly<Record<string, string>> = {
     status: "Status",
@@ -51,11 +51,11 @@ export class AiToolsCopy {
   static readonly AI_OFF = "AI is turned off in AI settings. Nothing was changed.";
   static readonly PROVIDER_ERROR = "The AI service didn't respond. Nothing was changed. Try again in a moment.";
   static readonly TIMEOUT = "The AI service took too long to respond. Nothing was changed. Try again in a moment.";
-  static readonly PARSE_FAILED = "The AI reply couldn't be read. Try again.";
+  static readonly PARSE_FAILED = "The AI reply couldn't be read. Nothing was changed. Try again.";
 
   // Step 4: Meeting notes to updates.
   static readonly MEETING_TITLE = "Meeting notes to updates";
-  static readonly MEETING_HELP = "Paste notes from a meeting. The AI suggests status, next milestone, date and update changes for the projects the notes mention.";
+  static readonly MEETING_HELP = "Paste notes from a meeting. The AI suggests status, next milestone, date and Latest update changes for the projects the notes mention.";
   static readonly MEETING_LABEL = "Meeting notes";
   static readonly MEETING_PLACEHOLDER = "For example: Example Clinic refresh is on hold until the vendor confirms. Sample Lab move, due date now Dec 1.";
 
@@ -80,7 +80,7 @@ export class AiToolsCopy {
   static readonly DICTATION_NO_MIC = "The microphone isn't available in this browser.";
   static readonly DICTATION_FAILED = "The recording couldn't be transcribed. Nothing was changed. Try again or type instead.";
   static readonly DICTATION_TOO_LONG = "Recordings can be up to 2 minutes.";
-  static readonly DICTATION_NO_MODEL = "No dictation model chosen in AI settings";
+  static readonly DICTATION_NO_MODEL = "No dictation model is chosen in AI settings.";
   static readonly DICTATION_MODEL_LABEL = "Dictation model";
   static readonly DICTATION_MODEL_NONE = "Choose a model";
   static readonly DICTATION_MODEL_HELP = "Dictation needs a speech-to-text model, such as a gpt-transcribe model. Only models that are on are listed.";
@@ -97,15 +97,15 @@ export class AiToolsCopy {
 
   // Step 7: Request to draft project.
   static readonly REQUEST_TITLE = "Request to draft project";
-  static readonly REQUEST_HELP = "Paste a project request. The AI drafts a new project for you to check. Owner, physician, requester and department stay blank for you to fill in.";
+  static readonly REQUEST_HELP = "Paste a project request. The AI drafts a new project for you to check. Owner, physician champion, requester and department stay blank for you to fill in.";
   static readonly REQUEST_LABEL = "Project request";
   static readonly REQUEST_PLACEHOLDER = "For example: Example Clinic asks for a second ultrasound room by June 30. Needs a vendor quote first.";
   static readonly REQUEST_PROPOSE = "Draft project";
   static readonly DRAFT_TITLE = "Review draft project";
-  static readonly DRAFT_HELP = "Edit anything before you create it. It's created as Not started, with no owner or department.";
+  static readonly DRAFT_HELP = "Edit anything before you create it. It's created as Not started, with owner, physician champion, requester and department blank.";
   static readonly DRAFT_CREATE = "Create project";
   static readonly DRAFT_DISCARD = "Discard";
-  static readonly DRAFT_CREATED = "Project created. Open it on the dashboard to assign an owner and department.";
+  static readonly DRAFT_CREATED = "Project created. Open it on the dashboard to fill in the owner, physician champion, requester and department.";
   static readonly DRAFT_DISCARDED = "Draft discarded. Nothing was created.";
   static readonly DRAFT_INVALID = "Check the draft: a name is required, and dates must be real dates.";
   static readonly DRAFT_LABELS: Readonly<Record<string, string>> = {
@@ -119,11 +119,11 @@ export class AiToolsCopy {
 
   // Step 8: Pre-meeting brief.
   static readonly BRIEF_TITLE = "Pre-meeting brief";
-  static readonly BRIEF_HELP = "One click makes a one-page brief from the projects in this line: what moved, what's stuck and what to ask. It's shown here only. It isn't saved, emailed or added to any report.";
+  static readonly BRIEF_HELP = "One click makes a one-page brief from the projects in this service line: what moved, what's stuck and what to ask. It's shown here only. It isn't saved, emailed or added to any report.";
   static readonly BRIEF_LABEL = "Focus (optional)";
   static readonly BRIEF_PLACEHOLDER = "For example: Imaging, or projects owned by Sample Owner";
   static readonly BRIEF_PROPOSE = "Make brief";
-  static readonly BRIEF_DEFAULT = "All projects in this line.";
+  static readonly BRIEF_DEFAULT = "All projects in this service line.";
   static readonly BRIEF_MOVED = "What moved";
   static readonly BRIEF_STUCK = "What's stuck";
   static readonly BRIEF_ASK = "What to ask";
