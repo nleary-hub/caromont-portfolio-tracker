@@ -17,7 +17,12 @@ export class AiToolsCopy {
     request_to_project: "Request to draft project",
     meeting_brief: "Pre-meeting brief",
     related_links: "Related-project links",
+    voice_chat: "Voice chat",
   };
+
+  // Step 10: Voice chat (stub, filled in as the feature lands).
+  static readonly VOICE_CHAT_TITLE = "Voice chat";
+  static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. Any change it suggests is listed for you to review. Audio is never saved.";
 
   // Shared review list.
   static readonly PROPOSE = "Suggest changes";
