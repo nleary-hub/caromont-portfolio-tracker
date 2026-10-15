@@ -2,9 +2,10 @@
 
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
-import { addAiModel, setAiFeatureEnabled, setAiModelEnabled, setAiModelPrices } from "@/app/actions/aiAdmin";
+import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiModelEnabled, setAiModelPrices } from "@/app/actions/aiAdmin";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
+import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import type { AiAdminResult, AiFeatureView, AiModelView } from "@/lib/services/AiModelService";
 
 /** The same 2px focus outline used across the AI settings page since #50. */
@@ -219,7 +220,7 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
 }
 
 /** Admin > AI settings: one toggle per AI feature. Future features (dictation, voice chat) add a row by adding a feature. */
-export function AiFeaturesPanel({ features, dbReady }: { features: AiFeatureView[]; dbReady: boolean }) {
+export function AiFeaturesPanel({ features, dbReady, modelOptions = [] }: { features: AiFeatureView[]; dbReady: boolean; modelOptions?: readonly string[] }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   return (
@@ -240,6 +241,37 @@ export function AiFeaturesPanel({ features, dbReady }: { features: AiFeatureView
               <p id={helpId} className="mt-0.5 text-muted type-caption">
                 {f.killedByEnv ? C.featureKilled(f.envName) : f.enabled ? C.FEATURE_ON_HELP : C.FEATURE_OFF_HELP}
               </p>
+              {f.ownModel && (
+                <div className="mt-2 flex flex-col gap-1">
+                  <label htmlFor={`ai-feature-${f.feature}-model`} className="text-muted type-caption">
+                    {AiToolsCopy.DICTATION_MODEL_LABEL}
+                  </label>
+                  <select
+                    id={`ai-feature-${f.feature}-model`}
+                    className={`${INPUT} max-w-[16rem]`}
+                    value={f.model ?? ""}
+                    disabled={!dbReady || pending}
+                    aria-describedby={`ai-feature-${f.feature}-model-help`}
+                    data-testid={`ai-feature-model-${f.feature}`}
+                    onChange={(e) =>
+                      start(async () => {
+                        const r = await setAiFeatureModel(f.feature, e.target.value);
+                        setError(r.ok ? null : r.error);
+                      })
+                    }
+                  >
+                    <option value="">{AiToolsCopy.DICTATION_MODEL_NONE}</option>
+                    {[...new Set([...(f.model ? [f.model] : []), ...modelOptions])].map((m) => (
+                      <option key={m} value={m}>
+                        {m}
+                      </option>
+                    ))}
+                  </select>
+                  <p id={`ai-feature-${f.feature}-model-help`} className="text-muted type-caption">
+                    {AiToolsCopy.DICTATION_MODEL_HELP}
+                  </p>
+                </div>
+              )}
             </div>
           </div>
         );

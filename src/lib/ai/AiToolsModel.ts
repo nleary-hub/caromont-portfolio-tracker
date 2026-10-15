@@ -136,6 +136,12 @@ export class AiToolsModel {
     return out;
   }
 
+  /** Keeps the lines of the first project only, renumbered (Quick capture is about one project). */
+  static oneProject(changes: readonly AiToolChange[]): AiToolChange[] {
+    const first = changes[0]?.projectId;
+    return changes.filter((c) => c.projectId === first).map((c, i) => ({ ...c, line: i }));
+  }
+
   /** The patch the normal project save receives for one applied line. */
   static patch(field: AiToolField, value: string): Record<string, string | null> {
     return { [field]: value === "" ? null : value };

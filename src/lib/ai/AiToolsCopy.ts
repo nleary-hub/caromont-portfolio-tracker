@@ -11,6 +11,8 @@ export class AiToolsCopy {
   static readonly FEATURE_LABELS: Readonly<Record<string, string>> = {
     meeting_notes: "Meeting notes to updates",
     bulk_edit: "Plain-English bulk edit",
+    quick_capture: "Quick capture",
+    dictation: "Dictation (speech to text)",
   };
 
   // Shared review list.
@@ -58,6 +60,23 @@ export class AiToolsCopy {
   static readonly BULK_HELP = "Describe a change for many projects at once. The AI lists each project it would change, with before and after. It can change status, next milestone and dates, never the update note.";
   static readonly BULK_LABEL = "What should change?";
   static readonly BULK_PLACEHOLDER = "For example: Move every On hold project due in November to December 1.";
+
+  // Step 6: Quick capture and dictation.
+  static readonly CAPTURE_TITLE = "Quick capture";
+  static readonly CAPTURE_HELP = "Type or dictate one rough line. The AI finds the project and drafts the update for you to review.";
+  static readonly CAPTURE_LABEL = "Rough update";
+  static readonly CAPTURE_PLACEHOLDER = "For example: example clinic refresh slipped, vendor delay";
+  static readonly DICTATE = "Dictate";
+  static readonly DICTATE_STOP = "Stop and transcribe";
+  static readonly TRANSCRIBING = "Transcribing…";
+  static readonly DICTATION_HELP = "Recordings are turned into text and then discarded. Read the text before you ask for suggestions.";
+  static readonly DICTATION_NO_MIC = "The microphone isn't available in this browser.";
+  static readonly DICTATION_FAILED = "The recording couldn't be transcribed. Nothing was changed. Try again or type instead.";
+  static readonly DICTATION_TOO_LONG = "Recordings can be up to 2 minutes.";
+  static readonly DICTATION_NO_MODEL = "No dictation model chosen in AI settings";
+  static readonly DICTATION_MODEL_LABEL = "Dictation model";
+  static readonly DICTATION_MODEL_NONE = "Choose a model";
+  static readonly DICTATION_MODEL_HELP = "Dictation needs a speech-to-text model, such as a gpt-transcribe model. Only models that are on are listed.";
 
   static fieldLabel(field: string): string {
     return AiToolsCopy.FIELD_LABELS[field] ?? field;

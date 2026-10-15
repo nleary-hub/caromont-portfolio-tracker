@@ -35,6 +35,8 @@ export interface AiFeatureRow {
   enabled: boolean;
   updatedAt: Date;
   updatedBy: string;
+  /** 0043: the feature's own model (dictation only). Absent before 0043 runs. */
+  model?: string | null;
 }
 
 /** Client-safe model row for the settings page. */
@@ -59,6 +61,10 @@ export interface AiFeatureView {
   /** The env kill switch is off: the feature is off whatever the toggle says. */
   killedByEnv: boolean;
   envName: string;
+  /** Step 6: set only for features with their own model setting (dictation). */
+  ownModel?: true;
+  /** The chosen model for an own-model feature ("" = none chosen yet). */
+  model?: string;
 }
 
 /** The narrow slice of Prisma these services use (tests pass an in-memory fake). */
@@ -139,19 +145,26 @@ export class AiModelService {
 
   /** Enabled features that would lose their model if `modelId` were disabled (the warning list). */
   static affectedFeatures(modelId: string, settings: Pick<AiSettingsRow, "enabled" | "model"> | null, features: readonly AiFeatureView[]): string[] {
-    if (!settings?.enabled || (settings.model ?? "").trim() !== modelId) return [];
+    if (!settings?.enabled) return [];
+    const on = features.filter((f) => f.enabled && !f.killedByEnv);
     // The writing assistant (Draft from bullets, Fit for report) follows the main switch; the rest have toggles.
-    return [AiCopy.SWITCH_LABEL, ...features.filter((f) => f.enabled && !f.killedByEnv).map((f) => f.label)];
+    const main = (settings.model ?? "").trim() === modelId ? [AiCopy.SWITCH_LABEL, ...on.filter((f) => !f.ownModel).map((f) => f.label)] : [];
+    // Features with their own model (dictation, step 6) are named when that model is theirs.
+    return [...main, ...on.filter((f) => f.ownModel && f.model === modelId).map((f) => f.label)];
   }
 
   static featureViews(rows: readonly AiFeatureRow[], env: Env = process.env): AiFeatureView[] {
-    return AiFeatureFlags.ALL.map((feature) => ({
-      feature,
-      label: AiCopy.featureLabel(feature),
-      enabled: rows.find((r) => r.feature === feature)?.enabled ?? true,
-      killedByEnv: !AiFeatureFlags.isOn(feature, env),
-      envName: AiFeatureFlags.FLAGS[feature],
-    }));
+    return AiFeatureFlags.ALL.map((feature) => {
+      const row = rows.find((r) => r.feature === feature);
+      const view: AiFeatureView = {
+        feature,
+        label: AiCopy.featureLabel(feature),
+        enabled: row?.enabled ?? true,
+        killedByEnv: !AiFeatureFlags.isOn(feature, env),
+        envName: AiFeatureFlags.FLAGS[feature],
+      };
+      return AiFeatureFlags.OWN_MODEL.includes(feature) ? { ...view, ownModel: true, model: row?.model ?? "" } : view;
+    });
   }
 
   static views(rows: readonly AiModelRow[], settings: Pick<AiSettingsRow, "model"> | null): AiModelView[] {
@@ -291,6 +304,40 @@ export class AiModelService {
     return db.$transaction(async (tx) => {
       await tx.aiFeatureSetting.upsert({ where: { feature }, create: { feature, enabled, updatedAt: now, updatedBy: admin.email }, update: { enabled, updatedAt: now, updatedBy: admin.email } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiFeature", enabled ? "feature_on" : "feature_off", null, feature, admin, now)] });
+      return { ok: true };
+    });
+  }
+
+  /** Step 6: the model an own-model feature (dictation) calls. "" = none chosen. Unreadable table = none. */
+  static async featureModel(db: unknown, feature: AiToggleFeature): Promise<string> {
+    try {
+      const f = (db as Partial<AiModelDb>)?.aiFeatureSetting;
+      if (!f) return "";
+      return ((await f.findMany()).find((r) => r.feature === feature)?.model ?? "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * Step 6: picks the model of a feature that has its own (dictation). It must be a model an admin turned on; ""
+   * clears it. One history row (aiFeatureModel). Never chosen automatically.
+   */
+  static async setFeatureModel(db: AiModelDb, admin: Viewer, rawFeature: unknown, rawModel: unknown, now: Date = new Date()): Promise<AiAdminResult> {
+    AdminPolicy.assertAdmin(admin);
+    const feature = AiFeatureFlags.parseToggle(rawFeature);
+    if (!feature || !AiFeatureFlags.OWN_MODEL.includes(feature)) return { ok: false, error: AiCopy.SAVE_FAILED };
+    const model = rawModel === "" ? "" : AiModelService.cleanId(rawModel);
+    if (model === null) return { ok: false, error: AiCopy.MODEL_ID_INVALID };
+    return db.$transaction(async (tx) => {
+      if (model) {
+        const row = await tx.aiModel.findUnique({ where: { id: model } });
+        if (!row?.enabled) return { ok: false, error: AiCopy.MODEL_NOT_ALLOWED };
+      }
+      const before = ((await tx.aiFeatureSetting.findMany()).find((r) => r.feature === feature)?.model ?? "") || null;
+      if ((before ?? "") === model) return { ok: true };
+      await tx.aiFeatureSetting.upsert({ where: { feature }, create: { feature, enabled: true, model: model || null, updatedAt: now, updatedBy: admin.email }, update: { model: model || null, updatedAt: now, updatedBy: admin.email } });
+      await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiFeatureModel", "changed", before, model || null, admin, now)] });
       return { ok: true };
     });
   }

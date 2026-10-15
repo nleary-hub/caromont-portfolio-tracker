@@ -181,7 +181,7 @@ describe("disable warning", () => {
   it("disabling the model in use needs confirmation; nothing changes until confirmed", async () => {
     const db = await withKey();
     const r = await AiModelService.setEnabled(db.m, ADMIN, "gpt-6-luna", false, false, ENV);
-    expect(r).toEqual({ ok: false, needsConfirm: true, error: AiCopy.disableWarning("gpt-6-luna", [AiCopy.SWITCH_LABEL, ...AiModelService.featureViews([], ENV).map((f) => f.label)]) });
+    expect(r).toEqual({ ok: false, needsConfirm: true, error: AiCopy.disableWarning("gpt-6-luna", [AiCopy.SWITCH_LABEL, ...AiModelService.featureViews([], ENV).filter((f) => !f.ownModel).map((f) => f.label)]) });
     expect(db.models[0].enabled).toBe(true);
     expect(await AiModelService.setEnabled(db.m, ADMIN, "gpt-6-luna", false, true, ENV)).toEqual({ ok: true });
     expect(db.models[0].enabled).toBe(false);

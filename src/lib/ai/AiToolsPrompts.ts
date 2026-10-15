@@ -41,6 +41,14 @@ export class AiToolsPrompts {
       ...AiToolsPrompts.COMMON,
       ...AiToolsPrompts.CHANGES_FORMAT,
     ].join("\n"),
+    quick_capture: [
+      "You turn one rough update line into a suggested update for one project in a hospital service line portfolio tracker.",
+      "Fields you may change: status, nextMilestone, dueDate, note.",
+      "Find the single project the line is about. If no project clearly matches, or more than one could, reply with no changes.",
+      "For note, add the new fact to the old Latest update in one short sentence and keep the rest.",
+      ...AiToolsPrompts.COMMON,
+      ...AiToolsPrompts.CHANGES_FORMAT,
+    ].join("\n"),
   };
 
   static build(feature: AiToolFeature, input: string, context: string): AiPrompt {

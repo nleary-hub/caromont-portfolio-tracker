@@ -9,6 +9,7 @@ import { AiProviders } from "@/lib/ai/AiProviders";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiToolsModel, type AiToolChange, type AiToolField, type AiToolProject } from "@/lib/ai/AiToolsModel";
 import { AiToolsPrompts } from "@/lib/ai/AiToolsPrompts";
+import { AiTranscriptionClient, type AiTranscribeFetch } from "@/lib/ai/AiTranscriptionClient";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
@@ -55,6 +56,7 @@ const FIELDS: Partial<Record<AiToolFeature, readonly AiToolField[]>> = {
   meeting_notes: AiToolsModel.ALL_FIELDS,
   // Step 5 (decision D3): no note, owner, physician or department changes in bulk.
   bulk_edit: ["status", "nextMilestone", "dueDate", "targetCompletion"],
+  quick_capture: ["status", "nextMilestone", "dueDate", "note"],
 };
 
 /**
@@ -170,7 +172,9 @@ export class AiToolsService {
       build: (input) => AiToolsPrompts.build(args.feature, input, AiToolsModel.context(projects, fields)),
     });
     if (!r.ok) return r;
-    const changes = AiToolsModel.parseChanges(r.text, projects, fields);
+    const parsed = AiToolsModel.parseChanges(r.text, projects, fields);
+    // Quick capture is about one project: lines for any other project are dropped.
+    const changes = parsed && args.feature === "quick_capture" ? AiToolsModel.oneProject(parsed) : parsed;
     if (!changes) {
       await r.log("failed");
       return { ok: false, kind: "parse", message: AiToolsCopy.PARSE_FAILED };
@@ -254,5 +258,37 @@ export class AiToolsService {
         createdAt: now,
       },
     });
+  }
+
+  /**
+   * Step 6: dictation. Audio to text with the dictation model (its own setting; must be admin-enabled). Returns text
+   * for the person to read and edit; nothing is suggested or saved. One usage row (lengths and model, no text).
+   */
+  static async transcribe(args: { db: AiToolsDb; viewer: Viewer | null; audio: unknown; env?: Env; fetchImpl?: AiTranscribeFetch; now?: () => Date }): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+    const { db, viewer } = args;
+    const env = args.env ?? process.env;
+    const now = args.now ?? (() => new Date());
+    if (!viewer?.isAdmin) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    if (!(await AiModelService.featureOn(db, "dictation", env))) return { ok: false, message: AiToolsCopy.FEATURE_OFF };
+    const audio = args.audio as Blob | null;
+    if (!audio || typeof audio !== "object" || typeof audio.size !== "number" || typeof audio.type !== "string" || !AiTranscriptionClient.acceptable(audio.type, audio.size)) return { ok: false, message: AiToolsCopy.DICTATION_FAILED };
+    const row = await AiSettingsService.row(db).catch(() => null);
+    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    if (!saved) return { ok: false, message: AiToolsCopy.AI_OFF };
+    const model = await AiModelService.featureModel(db, "dictation");
+    if (!model) return { ok: false, message: AiToolsCopy.DICTATION_NO_MODEL };
+    if (!(await AiModelService.enabledIds(db)).includes(model)) return { ok: false, message: AiCopy.MODEL_NOT_ALLOWED };
+    const user = viewer.email;
+    const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
+    if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, message: AiCopy.RATE_LIMITED };
+    const r = await AiTranscriptionClient.transcribe(saved, model, audio, args.fetchImpl);
+    await db.aiUsageLog.create({
+      data: { id: randomUUID(), suggestionId: randomUUID(), userEmail: user, projectId: null, feature: "dictation", event: r.ok ? "proposed" : "failed", provider: saved.provider, model, inputLength: audio.size, outputLength: r.ok ? r.text.length : null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
+    });
+    if (!r.ok) {
+      console.error("AI tools: transcription failed", { kind: r.kind });
+      return { ok: false, message: AiToolsCopy.DICTATION_FAILED };
+    }
+    return { ok: true, text: r.text.slice(0, AiToolsService.INPUT_MAX) };
   }
 }

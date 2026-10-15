@@ -7,10 +7,13 @@ export type AiReviewFeature = "revise_note";
  * The AI tools (steps 4 to 9) on the AI tools page. Each proposes, a person confirms each line, nothing auto-applies.
  * Kept apart from AiReviewFeature so the edit-form review layer never accepts a tool feature (and the reverse).
  */
-export type AiToolFeature = "meeting_notes" | "bulk_edit";
+export type AiToolFeature = "meeting_notes" | "bulk_edit" | "quick_capture";
+
+/** Input features: they turn speech into text for a person to read before anything is suggested (step 6). */
+export type AiInputFeature = "dictation";
 
 /** Every feature with a toggle on Admin > AI settings. */
-export type AiToggleFeature = AiReviewFeature | AiToolFeature;
+export type AiToggleFeature = AiReviewFeature | AiToolFeature | AiInputFeature;
 
 /**
  * Per-feature kill switches for the review-then-apply layer. Every feature is ON by default; setting its environment
@@ -22,16 +25,24 @@ export class AiFeatureFlags {
     revise_note: "AI_FEATURE_REVISE_NOTE",
     meeting_notes: "AI_FEATURE_MEETING_NOTES",
     bulk_edit: "AI_FEATURE_BULK_EDIT",
+    quick_capture: "AI_FEATURE_QUICK_CAPTURE",
+    dictation: "AI_FEATURE_DICTATION",
   };
 
   /** Review-layer features (the edit form). */
   static readonly FEATURES: readonly AiReviewFeature[] = ["revise_note"];
 
   /** AI tools page features, in step order. */
-  static readonly TOOL_FEATURES: readonly AiToolFeature[] = ["meeting_notes", "bulk_edit"];
+  static readonly TOOL_FEATURES: readonly AiToolFeature[] = ["meeting_notes", "bulk_edit", "quick_capture"];
 
   /** Everything with a toggle on the settings page, in display order. */
-  static readonly ALL: readonly AiToggleFeature[] = [...AiFeatureFlags.FEATURES, ...AiFeatureFlags.TOOL_FEATURES];
+  static readonly ALL: readonly AiToggleFeature[] = [...AiFeatureFlags.FEATURES, ...AiFeatureFlags.TOOL_FEATURES, "dictation"];
+
+  /**
+   * Features with their own model setting, because they need a different model type than the text features (CTO,
+   * Oct 15: step 6 adds transcription). The rest use the model chosen in AI settings.
+   */
+  static readonly OWN_MODEL: readonly AiToggleFeature[] = ["dictation"];
 
   /**
    * Kill switch for Admin > AI settings "Refresh prices" (step 3c). On unless set to off, false, 0 or no, like the

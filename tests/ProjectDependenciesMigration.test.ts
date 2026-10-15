@@ -37,7 +37,7 @@ describe("0037_project_dependencies (PGlite, example data)", () => {
   it("comes right after 0036_owner_name_lists; only the later AI migrations come after it", () => {
     const f = folders();
     expect(f[f.indexOf(M) - 1]).toBe("0036_owner_name_lists");
-    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0038_ai_review_apply", "0039_ai_models_features", "0040_ai_price_refresh", "0041_ai_tools_meeting_notes", "0042_ai_tools_bulk_edit"]);
+    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0038_ai_review_apply", "0039_ai_models_features", "0040_ai_price_refresh", "0041_ai_tools_meeting_notes", "0042_ai_tools_bulk_edit", "0043_ai_tools_quick_capture"]);
   });
 
   it("is add-only: only CREATE TABLE / CREATE INDEX, no DROP, ALTER, UPDATE, DELETE or report tables", () => {

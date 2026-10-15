@@ -83,7 +83,7 @@ describe("0033_ai_writing_assistant on production-shaped data (PGlite)", () => {
   it("comes right after 0032; only 0034_review_and_status_chips, 0035_ai_assistant_hardening 0036_owner_name_lists, 0037_project_dependencies and 0038_ai_review_apply come after it", () => {
     const f = M33.folders();
     expect(f[f.indexOf(M) - 1]).toBe("0032_project_complete_milestone");
-    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0034_review_and_status_chips", "0035_ai_assistant_hardening", "0036_owner_name_lists", "0037_project_dependencies", "0038_ai_review_apply", "0039_ai_models_features", "0040_ai_price_refresh", "0041_ai_tools_meeting_notes", "0042_ai_tools_bulk_edit"]);
+    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0034_review_and_status_chips", "0035_ai_assistant_hardening", "0036_owner_name_lists", "0037_project_dependencies", "0038_ai_review_apply", "0039_ai_models_features", "0040_ai_price_refresh", "0041_ai_tools_meeting_notes", "0042_ai_tools_bulk_edit", "0043_ai_tools_quick_capture"]);
   });
 
   it("is additive: three new tables, every existing table, column and row unchanged, no row inserted (AI off by default)", async () => {

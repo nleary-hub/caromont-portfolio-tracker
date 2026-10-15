@@ -66,3 +66,15 @@ export async function rejectAiToolLine(proposalId: string, line: number): Promis
     return { ok: false, message: AiToolsCopy.APPLY_FAILED };
   }
 }
+
+/** Step 6: dictation. FormData with one "audio" file. Returns text for the person to read; saves nothing. */
+export async function transcribeAiDictation(form: FormData): Promise<{ ok: true; text: string } | { ok: false; message: string }> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    return await AiToolsService.transcribe({ db: c.db, viewer: c.viewer, audio: form.get("audio") });
+  } catch (e) {
+    console.error("AI tools failed: transcribe", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.DICTATION_FAILED };
+  }
+}

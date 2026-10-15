@@ -19,4 +19,14 @@ export class AiToolsReadiness {
     for (const f of features) out[f] = (await AiModelService.featureOn(db, f, env)) ? base : AiToolsCopy.FEATURE_OFF_NOTE;
     return out;
   }
+
+  /** Step 6: the Dictate button's note (null = ready). Dictation uses its own model, not the text model. */
+  static async dictationNote(db: AiModelDb & AiSettingsDb, env: Env = process.env): Promise<string | null> {
+    if (!(await AiModelService.featureOn(db, "dictation", env))) return AiToolsCopy.FEATURE_OFF_NOTE;
+    const row = await AiSettingsService.row(db).catch(() => null);
+    if (!row?.enabled) return AiToolsCopy.AI_OFF_NOTE;
+    const model = await AiModelService.featureModel(db, "dictation");
+    if (!model) return AiToolsCopy.DICTATION_NO_MODEL;
+    return (await AiModelService.enabledIds(db)).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
+  }
 }

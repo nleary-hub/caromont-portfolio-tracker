@@ -919,6 +919,8 @@ model AiFeatureSetting {
   enabled   Boolean  @default(true)
   updatedAt DateTime @default(now())
   updatedBy String
+  /// 0043: the feature's own model (dictation only: a transcription model). Null = not chosen yet.
+  model     String?
 
   @@map("ai_feature_settings")
 }

@@ -2,6 +2,7 @@
 
 import { useId, useState, useTransition } from "react";
 import { applyAiToolLine, proposeAiToolChanges, rejectAiToolLine } from "@/app/actions/aiTools";
+import { AiDictationButton } from "@/components/AiDictationButton";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import type { AiToolFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
@@ -35,6 +36,7 @@ export function AiToolsPanel({
   initialText = "",
   projectId = null,
   rows = 5,
+  dictation,
 }: {
   feature: AiToolFeature;
   label: string;
@@ -46,6 +48,8 @@ export function AiToolsPanel({
   initialText?: string;
   projectId?: string | null;
   rows?: number;
+  /** Step 6: show the Dictate button (Quick capture). Its own disabled note (dictation off, or no model chosen). */
+  dictation?: { disabledNote: string | null };
 }) {
   const id = useId();
   const [text, setText] = useState(initialText);
@@ -68,6 +72,7 @@ export function AiToolsPanel({
       <p id={`${id}-help`} className="text-muted type-caption">
         {help}
       </p>
+      {dictation && !off && <AiDictationButton disabledNote={dictation.disabledNote} onText={(t) => setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t))} />}
       <div className="flex items-center gap-3">
         <button type="button" className={PRIMARY} onClick={propose} disabled={off || pending || !text.trim()} data-testid={`ai-tool-${feature}-propose`}>
           {pending ? C.PROPOSING : C.PROPOSE}

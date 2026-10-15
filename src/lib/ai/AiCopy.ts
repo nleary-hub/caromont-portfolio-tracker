@@ -208,6 +208,8 @@ export class AiCopy {
         return AiCopy.MODELS_TITLE;
       case "aiFeature":
         return AiCopy.FEATURES_TITLE;
+      case "aiFeatureModel":
+        return AiToolsCopy.DICTATION_MODEL_LABEL;
       case "aiPriceRefresh":
         return AiCopy.PRICE_REFRESH_FIELD;
       case "apiKey":

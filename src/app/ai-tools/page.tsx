@@ -24,9 +24,11 @@ export default async function AiToolsPage() {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) notFound();
   let notes: Record<string, string | null> = Object.fromEntries(AiFeatureFlags.TOOL_FEATURES.map((f) => [f, C.AI_OFF_NOTE]));
+  let dictationNote: string | null = C.AI_OFF_NOTE;
   if (Db.isConfigured()) {
     try {
       notes = await AiToolsReadiness.notes(Db.client as unknown as AiModelDb & AiSettingsDb, AiFeatureFlags.TOOL_FEATURES);
+      dictationNote = await AiToolsReadiness.dictationNote(Db.client as unknown as AiModelDb & AiSettingsDb);
     } catch {
       // Tables not migrated yet (Vercel previews skip migrations): every tool shows disabled.
     }
@@ -57,6 +59,13 @@ export default async function AiToolsPage() {
           {C.BULK_TITLE}
         </h2>
         <AiToolsPanel feature="bulk_edit" label={C.BULK_LABEL} help={C.BULK_HELP} placeholder={C.BULK_PLACEHOLDER} disabledNote={notes.bulk_edit ?? null} rows={3} />
+      </section>
+
+      <section className={section} aria-labelledby="ai-tool-capture-heading" id="quick-capture">
+        <h2 id="ai-tool-capture-heading" className="type-heading">
+          {C.CAPTURE_TITLE}
+        </h2>
+        <AiToolsPanel feature="quick_capture" label={C.CAPTURE_LABEL} help={C.CAPTURE_HELP} placeholder={C.CAPTURE_PLACEHOLDER} disabledNote={notes.quick_capture ?? null} rows={2} dictation={{ disabledNote: dictationNote }} />
       </section>
     </main>
   );
