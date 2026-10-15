@@ -29,6 +29,9 @@ export interface DashboardTableProps {
   /** Dashboard view settings (drives the one column model shared by every group). */
   settings: ViewSettingsValue;
   selectedId: string | null;
+  /** AI toolbar menu: rows picked with Ctrl or Cmd click (Bulk edit selected). Absent = no multi-select. */
+  multiIds?: ReadonlySet<string>;
+  onMultiToggle?: (id: string) => void;
   /** A just-created project's row, highlighted like the selected row for a moment (NewRowFlash). */
   flashId?: string | null;
   onSelect: (id: string | null) => void;
@@ -164,7 +167,7 @@ class TableMeasure {
  * flexible column. Admins resize from each header's right edge, drag headers (Project stays first) and drag
  * rows within their department; everyone else sees the same layout with no handles or grips.
  */
-export function DashboardTable({ rows, settings, selectedId, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, empty }: DashboardTableProps) {
+export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiToggle, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, empty }: DashboardTableProps) {
   const value = layout?.value ?? LineLayout.defaults();
   const effective = value.columns ? LineLayout.orderedSettings("dashboard", settings, value.columns.order) : settings;
   const baseOrder = value.columns?.order ?? LineLayout.orderFromSettings("dashboard", settings);
@@ -526,8 +529,9 @@ export function DashboardTable({ rows, settings, selectedId, flashId = null, onS
                   stack={stack}
                   dueFlags={dueFlags}
                   today={today}
-                  selected={r.id === selectedId || r.id === flashId}
+                  selected={r.id === selectedId || r.id === flashId || Boolean(multiIds?.has(r.id))}
                   onSelect={onSelect}
+                  onMultiToggle={onMultiToggle}
                   chips={chips}
                   search={search}
                   hit={hit}
@@ -671,6 +675,7 @@ function ProjectRow({
   search = "",
   hit = null,
   onReview,
+  onMultiToggle,
 }: {
   row: DashboardRow;
   columns: readonly DashboardColumn[];
@@ -689,6 +694,7 @@ function ProjectRow({
   search?: string;
   hit?: SearchHit | null;
   onReview?: () => void;
+  onMultiToggle?: (id: string) => void;
 }) {
   const td = `${CELL} ${selected ? "bg-row-selected" : lifted ? "bg-card" : ""}`;
   // Chips hidden: a Changed row keeps a quiet cue (2px lilac inset rule and "• Changed" under the meta line).
@@ -698,7 +704,7 @@ function ProjectRow({
     <tr
       data-row-key={row.id}
       data-lifted={lifted || undefined}
-      onClick={() => onSelect(selected ? null : row.id)}
+      onClick={(e) => (onMultiToggle && (e.metaKey || e.ctrlKey) ? onMultiToggle(row.id) : onSelect(selected ? null : row.id))}
       style={style}
       className={`pb-row cursor-pointer ${lifted ? "" : "hover:[&>td]:bg-row-selected/60"} ${animate && !lifted ? "transition-transform duration-150 ease-out motion-reduce:transition-none" : ""}`}
       aria-selected={selected}

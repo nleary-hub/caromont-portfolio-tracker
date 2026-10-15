@@ -56,6 +56,10 @@ import { StartDate } from "@/lib/projects/StartDate";
 import { DashboardAmbient, DrawerSpotlight, SummaryHeartbeat } from "./DashboardAmbient";
 import { AccountMenu } from "./AccountMenu";
 import { AiVoiceChatDrawer } from "./AiVoiceChatDrawer";
+import { AiBriefButton, AiBriefCard, AiQuickCapture, AiToolbarMenu, type AiPlacementNotes } from "./AiPlacements";
+import { AiLinksPanel } from "./AiLinksPanel";
+import { AiNextStepPanel } from "./AiNextStepPanel";
+import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
@@ -173,6 +177,8 @@ interface Props {
   historyAction?: HistoryLoader;
   /** Dashboard header Voice chat: present only when AI and the voice_chat feature are on. note = model-off note or null. */
   aiVoice?: { note: string | null };
+  /** AI tools where people work (placement spec). Absent key = that feature is off (not rendered). */
+  aiPlacements?: AiPlacementNotes;
   /** A project link (/?project=<id>) the server checked: its detail opens on load. */
   initialProjectId?: string;
   /** Account menu > Dashboard heartbeat, as saved on the account (default On). */
@@ -225,6 +231,7 @@ export function ProjectDashboard({
   signOutAction,
   historyAction,
   aiVoice,
+  aiPlacements,
   initialProjectId,
   heartbeat: heartbeatProp = true,
   setHeartbeatAction,
@@ -249,6 +256,9 @@ export function ProjectDashboard({
       .catch(failed);
   };
   const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
+  // AI toolbar menu: rows picked with Ctrl or Cmd click for "Bulk edit selected (N)".
+  const [multiIds, setMultiIds] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleMulti = (id: string) => setMultiIds((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   // What "/" calls: set by the top bar (focus the search field, or open it when it is collapsed to an icon).
   const focusSearchRef = useRef<() => void>(() => {});
   // Admin edit mode. Non-admins stay in "view" (there is no way to switch).
@@ -594,7 +604,14 @@ export function ProjectDashboard({
         closedQuery={closedQuery}
         pdfDepartments={departments}
         adminMenu={admin && admin.menuItems.length > 0 ? <AdminMenuButton items={admin.menuItems} /> : undefined}
-        aiActions={aiVoice ? <AiVoiceChatDrawer disabledNote={aiVoice.note} /> : undefined}
+        aiActions={
+          aiVoice || (aiPlacements && "quick_capture" in aiPlacements) ? (
+            <>
+              {aiVoice && <AiVoiceChatDrawer disabledNote={aiVoice.note} />}
+              {aiPlacements && "quick_capture" in aiPlacements && <AiQuickCapture note={aiPlacements.quick_capture ?? null} {...("dictation" in aiPlacements ? { dictationNote: aiPlacements.dictation ?? null } : {})} />}
+            </>
+          ) : undefined
+        }
         account={
             <form action={signOutAction} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-muted">
               <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">
@@ -620,7 +637,10 @@ export function ProjectDashboard({
         {emptyLine && <EmptyLineState line={line!} admin={Boolean(admin)} onNew={openNew} />}
 
         {/* A line with no projects shows only the banner; tiles, toolbar and table appear with the first project. */}
-        {!emptyLine && tileTemplate && (
+        {/* Top row: the status tiles, and the Pre-meeting brief card in the right column when that feature is on. */}
+        {!emptyLine && (tileTemplate || (aiPlacements && "meeting_brief" in aiPlacements)) && (
+          <div className={aiPlacements && "meeting_brief" in aiPlacements ? "grid grid-cols-[minmax(0,1fr)_380px] items-start gap-2" : "contents"}>
+            {tileTemplate && (
           <section className="pb-summary relative grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
             {tiles.map((t) =>
               t === "completedFy" ? (
@@ -636,6 +656,9 @@ export function ProjectDashboard({
             {/* Heartbeat switch Off: no line, head, trail or washes are rendered and no animation runs. */}
             {heartbeat && <SummaryHeartbeat tilesKey={tiles.join(",")} />}
           </section>
+            )}
+            {aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard note={aiPlacements.meeting_brief ?? null} focusOptions={[...new Set([...(line?.departments ?? []).map((d) => d.name), ...rows.map((r) => r.name)])]} />}
+          </div>
         )}
 
         {!emptyLine && (
@@ -653,6 +676,7 @@ export function ProjectDashboard({
             </span>
           )}
           <SortChip text={DashboardQuery.sortChip(sort)} onManual={() => setQ({ ...q, sort: null })} />
+          {aiPlacements && <AiToolbarMenu notes={aiPlacements} selected={rows.filter((r) => multiIds.has(r.id)).map((r) => ({ id: r.id, name: r.name }))} visible={visible.map((r) => ({ id: r.id, name: r.name }))} />}
           {review && <MarkAllReviewedButton count={reviewable.length} onClick={() => setConfirmBulk(true)} />}
           {admin && (
             <button
@@ -702,6 +726,7 @@ export function ProjectDashboard({
               }
               settings={dashboardView}
               selectedId={selectedId}
+              {...(aiPlacements && ("bulk_edit" in aiPlacements || "meeting_notes" in aiPlacements) ? { multiIds, onMultiToggle: toggleMulti } : {})}
               flashId={flashId}
               onSelect={selectRow}
               today={today}
@@ -778,6 +803,7 @@ export function ProjectDashboard({
             onClose={requestClose}
             headerTag={mode === "edit" && blockedCount?.id === selected.id && blockedCount.n > 0 ? <BlockedByTag n={blockedCount.n} /> : null}
             onEdit={admin && mode === "view" && admin.formValues[selected.id] ? () => setMode("edit") : undefined}
+            {...(aiPlacements && "meeting_brief" in aiPlacements ? { headerAction: <AiBriefButton note={aiPlacements.meeting_brief ?? null} projectName={selected.name} /> } : {})}
             peopleEditor={
               admin ? (
                 <ProjectPeopleEditor
@@ -820,9 +846,20 @@ export function ProjectDashboard({
                   templates={admin.templates}
                   ownerOptions={admin.milestoneOwnerOptions}
                   today={today}
+                  {...(aiPlacements && "next_step" in aiPlacements ? { aiNextStep: <AiNextStepPanel key={`next-${selected.id}`} inline projects={[{ id: selected.id, name: selected.name }]} initialProject={selected.id} disabledNote={aiPlacements.next_step ?? null} /> } : {})}
                   dependencies={
                     admin.dependencyActions ? (
-                      <DependenciesEditor key={`deps-${selected.id}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount({ id: selected.id, n })} />
+                      <>
+                        <DependenciesEditor key={`deps-${selected.id}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount({ id: selected.id, n })} />
+                        {aiPlacements && "related_links" in aiPlacements && (
+                          <section aria-labelledby="ai-related-title" className="mt-3 flex flex-col gap-2" data-testid="ai-related-section">
+                            <h4 id="ai-related-title" className="text-muted type-label">
+                              {AiToolsCopy.LINKS_SUGGESTED_TITLE}
+                            </h4>
+                            <AiLinksPanel key={`links-${selected.id}`} inline focus={selected.name} saved={[]} disabledNote={aiPlacements.related_links ?? null} />
+                          </section>
+                        )}
+                      </>
                     ) : null
                   }
                   people={

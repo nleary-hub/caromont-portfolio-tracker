@@ -35,3 +35,15 @@ export function pausedProps(note: string | null, noteId: string) {
     ? {}
     : { "aria-disabled": true as const, "aria-describedby": noteId };
 }
+
+/** Placements: the ghost AI entry button (32px, sparkle + label, 2px focus outline, no glow). Paused = aria-disabled. */
+export const AI_GHOST = `inline-flex h-8 items-center gap-1.5 whitespace-nowrap rounded-control border border-line bg-transparent px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-disabled:cursor-not-allowed aria-disabled:opacity-50 aria-disabled:hover:border-line ${FOCUS}`;
+
+/** The small sparkle every AI entry point shows next to its label. */
+export function Sparkle() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 16 16" className="size-3.5 shrink-0" fill="currentColor">
+      <path d="M8 1.5l1.3 3.6 3.7 1.4-3.7 1.4L8 11.5 6.7 7.9 3 6.5l3.7-1.4L8 1.5zM12.5 10.5l.6 1.6 1.4.6-1.4.6-.6 1.7-.6-1.7-1.4-.6 1.4-.6.6-1.6z" />
+    </svg>
+  );
+}

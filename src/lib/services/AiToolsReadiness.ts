@@ -42,3 +42,20 @@ export class AiToolsReadiness {
     return model && (await AiModelService.enabledIds(db, "realtime")).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
   }
 }
+
+/**
+ * The dashboard's AI placements: each feature's note, with features that are off left out (not rendered, no gap).
+ * null = ready; a note = shown greyed with it (model off). AI off altogether = nothing (the caller skips this).
+ */
+export class AiPlacementData {
+  static readonly FEATURES = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "meeting_brief", "related_links"] as const;
+
+  static async load(db: AiModelDb & AiSettingsDb, env: Env = process.env): Promise<Partial<Record<(typeof AiPlacementData.FEATURES)[number] | "dictation", string | null>>> {
+    const notes = await AiToolsReadiness.notes(db, AiPlacementData.FEATURES, env);
+    const out: Partial<Record<string, string | null>> = {};
+    for (const f of AiPlacementData.FEATURES) if (notes[f] !== AiToolsCopy.FEATURE_OFF_NOTE && notes[f] !== AiToolsCopy.AI_OFF_NOTE) out[f] = notes[f] ?? null;
+    const dictation = await AiToolsReadiness.dictationNote(db, env);
+    if (dictation !== AiToolsCopy.FEATURE_OFF_NOTE && dictation !== AiToolsCopy.AI_OFF_NOTE) out.dictation = dictation === AiToolsCopy.DICTATION_NO_MODEL ? AiToolsCopy.MODEL_OFF_NOTE : dictation;
+    return out;
+  }
+}
