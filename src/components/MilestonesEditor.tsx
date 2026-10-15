@@ -10,6 +10,7 @@ import { CheckedByTooltip } from "./CheckedByTooltip";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { PeopleCombobox } from "./PeopleCombobox";
 import { MilestoneOwnerCopy } from "@/lib/projects/MilestoneOwnerCopy";
+import { OwnerNameLists } from "@/lib/people/OwnerNameLists";
 
 export interface MilestonesEditorProps {
   /** Checklist at open (stored steps, or the legacy next milestone shown as step 1). */
@@ -28,7 +29,7 @@ export interface MilestonesEditorProps {
   onStateChange: (state: EditorState) => void;
   /** Messages for the whole section (e.g. "Next milestone is required for this status"). */
   errors: string[];
-  /** Owner picker names for each step (the line's Owners list, cleaned by PeopleDirectory.merge). Omit to hide the picker. */
+  /** Owner picker names for each step (every People list of the line plus the milestone-owner list, OwnerNameLists.combined). Omit to hide the picker. */
   ownerOptions?: readonly string[];
 }
 
@@ -55,6 +56,9 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
   const [editingDue, setEditingDue] = useState<string | null>(null);
   const [dragFrom, setDragFrom] = useState<number | null>(null);
   const [announce, setAnnounce] = useState("");
+  // Names typed in this drawer ("Add 'X'"): offered on every step right away; the server saves them to the milestone-owner list.
+  const [typedOwners, setTypedOwners] = useState<string[]>([]);
+  const pickerOptions = ownerOptions ? OwnerNameLists.withTyped(ownerOptions, typedOwners) : [];
   const rootRef = useRef<HTMLDivElement>(null);
   const focusKey = useRef<string | null>(null);
 
@@ -447,9 +451,12 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
                         role="owner"
                         id={`ms-owner-${s.key}`}
                         label={MilestoneOwnerCopy.ariaLabel(i + 1)}
-                        options={ownerOptions}
+                        options={pickerOptions}
                         value={s.owner ? { kind: "name", name: s.owner } : { kind: "unset" }}
-                        onPick={(next) => void commit(MilestoneEditorModel.update(state, s.key, { owner: next.kind === "name" ? next.name : null }))}
+                        onPick={(next) => {
+                          if (next.kind === "name") setTypedOwners((t) => [...t, next.name]);
+                          void commit(MilestoneEditorModel.update(state, s.key, { owner: next.kind === "name" ? next.name : null }));
+                        }}
                         variant={MilestoneOwnerCopy.VARIANT}
                         name=""
                         testId="milestone-owner-combobox"

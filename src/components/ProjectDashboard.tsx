@@ -75,6 +75,8 @@ export interface AdminDashboardProps {
   ownerSuggestions: string[];
   /** Existing requester names for the drawer requester picker (admin only). */
   requesterSuggestions: string[];
+  /** Milestone Owner picker names: Owners, Requesters, Contracts leads and the milestone-owner list (migration 0036). */
+  milestoneOwnerOptions: string[];
   setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
   /** Top bar admin menu items (`AdminMenu.itemsFor`, computed on the server). */
   menuItems: AdminMenuItem[];
@@ -704,7 +706,7 @@ export function ProjectDashboard({
               original={ProjectFormModel.empty(today)}
               milestones={[]}
               templates={admin.templates}
-              ownerOptions={admin.ownerSuggestions}
+              ownerOptions={admin.milestoneOwnerOptions}
               checkerName={admin.checkerName}
               today={today}
               people={null}
@@ -779,7 +781,7 @@ export function ProjectDashboard({
                   milestones={admin.milestoneSteps[selected.id] ?? []}
                   checkerName={admin.checkerName}
                   templates={admin.templates}
-                  ownerOptions={admin.ownerSuggestions}
+                  ownerOptions={admin.milestoneOwnerOptions}
                   today={today}
                   people={
                     <ProjectPeopleEditor

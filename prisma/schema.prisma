@@ -468,6 +468,7 @@ model ServiceLine {
   reportOptions    ReportOptions?
   reportOptionsLog ReportOptionsHistory[]
   templates        MilestoneTemplate[]
+  milestoneOwners  MilestoneOwnerName[]
   templateLog      MilestoneTemplateHistory[]
   history          ServiceLineHistory[]
   activeFor        ServiceLineUserState[]
@@ -845,4 +846,20 @@ model AiUsageLog {
   @@index([suggestionId])
   @@index([projectId, createdAt])
   @@map("ai_usage_log")
+}
+
+/// Milestone-owner list (migration 0036): names typed into a milestone's Owner picker that are on none of the line's
+/// other lists (Owners, Requesters, Contracts leads). Written only by OwnerNamesService; one spelling per name per line
+/// (unique nameKey = trimmed, space-collapsed, lowercase name; a DB check keeps it in step with name).
+model MilestoneOwnerName {
+  id            String      @id @default(uuid()) @db.Uuid
+  serviceLineId String      @db.Uuid
+  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  name          String
+  nameKey       String
+  createdAt     DateTime    @default(now())
+  createdBy     String
+
+  @@unique([serviceLineId, nameKey])
+  @@map("milestone_owner_names")
 }

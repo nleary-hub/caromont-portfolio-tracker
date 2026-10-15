@@ -11,6 +11,7 @@ import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { ProjectPeopleForms } from "@/lib/services/ProjectPeopleForms";
 import { ProjectArchivedError, ProjectNotFoundError, ProjectService, type MilestoneEdit } from "@/lib/services/ProjectService";
 import { MilestoneService, type MilestoneStepDto } from "@/lib/services/MilestoneService";
+import { OwnerNamesService } from "@/lib/services/OwnerNamesService";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectValidationError, type FieldErrors } from "@/lib/validation/ProjectValidator";
@@ -93,27 +94,23 @@ class ProjectFormAction {
  * `milestones` is omitted when the checklist was not touched.
  */
 export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
-  return ProjectFormAction.run("saveProjectForm", (admin, scope) =>
-    ProjectService.saveForm(
-      String(projectId),
-      ProjectFormModel.toInput(ProjectFormAction.values(changes)),
-      admin,
-      undefined,
-      ProjectFormAction.milestones(milestones),
-      scope,
-    ),
-  );
+  return ProjectFormAction.run("saveProjectForm", async (admin, line) => {
+    const { edit, scope } = await OwnerNamesService.prepareMilestones(line, ProjectFormAction.milestones(milestones), admin);
+    return ProjectService.saveForm(String(projectId), ProjectFormModel.toInput(ProjectFormAction.values(changes)), admin, undefined, edit, scope);
+  });
 }
 
 /** Drawer Milestones autosave: one checklist change, saved immediately. Returns the stored steps. */
 export async function saveProjectMilestones(projectId: string, milestones: unknown): Promise<MilestoneSaveActionResult> {
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
-  const edit = ProjectFormAction.milestones(milestones);
-  if (!edit) return { ok: false, error: "Nothing to save." };
+  const raw = ProjectFormAction.milestones(milestones);
+  if (!raw) return { ok: false, error: "Nothing to save." };
   try {
-    const scope = await ServiceLineAccess.activeFor(viewer);
-    const steps = await ProjectService.saveMilestones(String(projectId), edit, viewer, undefined, scope);
+    const line = await ServiceLineAccess.activeFor(viewer);
+    // A typed owner on no list joins the milestone-owner list; the check then accepts every list's names.
+    const { edit, scope } = await OwnerNamesService.prepareMilestones(line, raw, viewer);
+    const steps = await ProjectService.saveMilestones(String(projectId), edit ?? raw, viewer, undefined, scope);
     revalidatePath("/");
     revalidatePath("/admin/audit");
     const people = ServiceLine.peopleNames(scope);
@@ -130,9 +127,10 @@ export type MilestoneSaveActionResult = { ok: true; steps: MilestoneStepDto[] } 
 
 /** Create a project from the New project drawer (name and department required), with its checklist. */
 export async function createProjectFromForm(values: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
-  return ProjectFormAction.run("createProjectFromForm", (admin, scope) =>
-    ProjectService.createFromForm(ProjectFormModel.toInput(ProjectFormAction.values(values)), admin, undefined, ProjectFormAction.milestones(milestones), scope),
-  );
+  return ProjectFormAction.run("createProjectFromForm", async (admin, line) => {
+    const { edit, scope } = await OwnerNamesService.prepareMilestones(line, ProjectFormAction.milestones(milestones), admin);
+    return ProjectService.createFromForm(ProjectFormModel.toInput(ProjectFormAction.values(values)), admin, undefined, edit, scope);
+  });
 }
 
 export async function saveViewSettings(context: string, value: unknown): Promise<AdminActionResult> {

@@ -80,10 +80,10 @@ class M33 {
 }
 
 describe("0033_ai_writing_assistant on production-shaped data (PGlite)", () => {
-  it("comes right after 0032; only 0034_review_and_status_chips and 0035_ai_assistant_hardening come after it", () => {
+  it("comes right after 0032; only 0034_review_and_status_chips, 0035_ai_assistant_hardening and 0036_owner_name_lists come after it", () => {
     const f = M33.folders();
     expect(f[f.indexOf(M) - 1]).toBe("0032_project_complete_milestone");
-    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0034_review_and_status_chips", "0035_ai_assistant_hardening"]);
+    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0034_review_and_status_chips", "0035_ai_assistant_hardening", "0036_owner_name_lists"]);
   });
 
   it("is additive: three new tables, every existing table, column and row unchanged, no row inserted (AI off by default)", async () => {
