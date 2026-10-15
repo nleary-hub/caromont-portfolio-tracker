@@ -19,7 +19,7 @@ const PRIMARY = `h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-wh
  * key field stays visible but disabled, with the reason; the other settings still save (turning AI off must always
  * work). Test connection is disabled until a provider, model and readable key are saved (it uses the saved settings).
  */
-export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettingsView; keySavedLine: string | null; dbReady: boolean }) {
+export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [] }: { view: AiSettingsView; keySavedLine: string | null; dbReady: boolean; modelOptions?: readonly string[] }) {
   const [state, action, pending] = useActionState<AiSettingsFormState, FormData>(saveAiSettings, null);
   const [enabled, setEnabled] = useState(view.enabled);
   const [provider, setProvider] = useState<AiProviderId | "">(view.provider ?? "");
@@ -41,7 +41,7 @@ export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettin
   const canTest = dbReady && view.ready;
   const status = !view.enabled ? C.STATUS_OFF : view.ready ? C.STATUS_READY : C.STATUS_NOT_READY;
   const statusClass = !view.enabled ? "bg-(--status-not-started-dark-bg) text-(--status-not-started-dark-fg)" : view.ready ? "bg-(--status-on-track-dark-bg) text-(--status-on-track-dark-fg)" : "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)";
-  const switchHelp = !enabled ? C.SWITCH_HELP_OFF : view.enabled && view.ready ? C.SWITCH_HELP_ON : C.SWITCH_ON_NOT_READY;
+  const switchHelp = !enabled ? C.SWITCH_HELP_OFF : view.enabled && view.ready ? C.SWITCH_HELP_ON : view.modelOff ? C.SWITCH_ON_MODEL_OFF : C.SWITCH_ON_NOT_READY;
 
   return (
     <div className="flex flex-col gap-4">
@@ -88,7 +88,7 @@ export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettin
               ))}
             </select>
           </Field>
-          <ModelField value={view.model} error={err("model")} disabled={!dbReady} />
+          <ModelField value={view.model} error={err("model")} disabled={!dbReady} options={modelOptions} />
           {provider === "openai_compatible" && (
             <div className="col-span-2">
               <Field id="ai-base-url" label={C.BASE_URL_LABEL} error={err("baseUrl")} help={C.BASE_URL_HELP}>
@@ -214,11 +214,52 @@ export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettin
   );
 }
 
-/** The model name field: grey hint, or the red alert with a red border; the input names whichever shows (aria-describedby). */
-export function ModelField({ value, error, disabled }: { value: string; error?: string; disabled?: boolean }) {
+/**
+ * The model picker: only models an admin turned on under Models (the allowlist). A button opens the list; the hidden
+ * input posts the choice. Grey hint, or the red alert with a red border; the button names whichever shows.
+ */
+export function ModelField({ value, error, disabled, options = [], defaultOpen = false }: { value: string; error?: string; disabled?: boolean; options?: readonly string[]; defaultOpen?: boolean }) {
+  const [model, setModel] = useState(value);
+  const [open, setOpen] = useState(defaultOpen);
+  const pick = (m: string) => {
+    setModel(m);
+    setOpen(false);
+  };
   return (
     <Field id="ai-model" label={C.MODEL_LABEL} error={error} help={C.MODEL_HELP}>
-      <input id="ai-model" name="model" className={INPUT} defaultValue={value} maxLength={AiProviders.MODEL_MAX} autoComplete="off" spellCheck={false} aria-invalid={Boolean(error) || undefined} aria-describedby={error ? "ai-model-error" : "ai-model-help"} disabled={disabled} />
+      <input type="hidden" name="model" value={model} />
+      <div className="relative">
+        <button
+          type="button"
+          id="ai-model"
+          className={`${INPUT} flex items-center justify-between text-left ${error ? "border-danger" : ""}`}
+          aria-haspopup="listbox"
+          aria-expanded={open}
+          aria-controls="ai-model-list"
+          aria-describedby={error ? "ai-model-error" : "ai-model-help"}
+          disabled={disabled}
+          onClick={() => setOpen((v) => !v)}
+          onKeyDown={(e) => {
+            if (e.key === "Escape") setOpen(false);
+          }}
+          data-testid="ai-model-picker"
+        >
+          <span className={model ? "text-fg" : "text-muted"}>{model || C.MODEL_PICKER_PLACEHOLDER}</span>
+          <span aria-hidden className="text-muted">▾</span>
+        </button>
+        {open && (
+          <ul id="ai-model-list" role="listbox" aria-label={C.MODEL_LABEL} className="absolute z-10 mt-1 w-full rounded-control border border-line bg-card py-1 shadow-lg" data-testid="ai-model-list" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+            {options.length === 0 && <li className="px-2.5 py-1.5 text-muted type-caption">{C.MODEL_PICKER_EMPTY}</li>}
+            {options.map((m) => (
+              <li key={m} role="option" aria-selected={m === model}>
+                <button type="button" className={`w-full px-2.5 py-1.5 text-left type-table hover:bg-input ${m === model ? "text-accent" : "text-fg"} ${FOCUS}`} onClick={() => pick(m)}>
+                  {m}
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </Field>
   );
 }

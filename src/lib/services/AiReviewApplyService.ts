@@ -13,6 +13,7 @@ import { AiReviewModel, type AiProposal } from "@/lib/ai/AiReviewModel";
 import { AiReviewPrompts } from "@/lib/ai/AiReviewPrompts";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
+import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService } from "./AiSettingsService";
 import { AiWritingService, type AiUsageRow, type AiWritingDb } from "./AiWritingService";
 
@@ -83,7 +84,7 @@ export class AiReviewApplyService {
     if (!feature) return { ok: false, kind: "denied", message: AiCopy.NOT_AUTHORIZED };
     const access = await AiReviewApplyService.access(db, viewer, projectId, scope);
     if (access !== "ok") return { ok: false, kind: access, message: AiReviewApplyService.denial(access) };
-    if (!AiFeatureFlags.isOn(feature, env)) return { ok: false, kind: "feature_off", message: AiCopy.FEATURE_OFF };
+    if (!(await AiModelService.featureOn(db, feature, env))) return { ok: false, kind: "feature_off", message: AiCopy.FEATURE_OFF };
 
     const instruction = await AiInputs.toText(args.input, AppConfig.NOTE_MAX_LENGTH, args.transcriber);
     if (!instruction.ok) {
@@ -94,9 +95,11 @@ export class AiReviewApplyService {
     const current = typeof args.current === "string" ? args.current.slice(0, AppConfig.NOTE_MAX_LENGTH) : "";
 
     const row = await AiSettingsService.row(db).catch(() => null);
-    const config = row?.enabled ? AiSettingsService.runtime(row, env) : null;
-    if (!config) return { ok: false, kind: "off", message: AiCopy.UNAVAILABLE };
-    if (!AiProviders.modelAllowed(config.model)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
+    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    if (!saved) return { ok: false, kind: "off", message: AiCopy.UNAVAILABLE };
+    // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
+    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db) };
+    if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
 
     const user = viewer!.email;
     if (AiReviewApplyService.inFlight.has(user)) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
@@ -156,7 +159,7 @@ export class AiReviewApplyService {
     if (!proposed) return { ok: false, message: AiCopy.APPLY_FAILED };
     const feature = AiFeatureFlags.parseFeature(proposed.feature);
     if (!feature) return { ok: false, message: AiCopy.APPLY_FAILED };
-    if (event === "applied" && !AiFeatureFlags.isOn(feature, env)) return { ok: false, message: AiCopy.FEATURE_OFF };
+    if (event === "applied" && !(await AiModelService.featureOn(db, feature, env))) return { ok: false, message: AiCopy.FEATURE_OFF };
     if (event !== "rejected") {
       const access = await AiReviewApplyService.access(db, viewer, proposed.projectId, scope);
       if (access !== "ok") return { ok: false, message: AiReviewApplyService.denial(access) };

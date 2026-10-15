@@ -10,6 +10,7 @@ import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai
 import { AiProviders } from "@/lib/ai/AiProviders";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
+import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 
 type Env = Record<string, string | undefined>;
@@ -106,10 +107,12 @@ export class AiWritingService {
     if (!(await AiWritingService.canEdit(db, viewer, projectId, scope))) return { ok: false, kind: "not_allowed", message: AiCopy.NOT_ALLOWED };
 
     const row = await AiSettingsService.row(db).catch(() => null);
-    const config = row?.enabled ? AiSettingsService.runtime(row, env) : null;
-    if (!config) return { ok: false, kind: "off", message: AiCopy.UNAVAILABLE };
+    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    if (!saved) return { ok: false, kind: "off", message: AiCopy.UNAVAILABLE };
+    // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
+    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db) };
     // Allowlist at call time: a saved model outside the list (for example from before the allowlist) is never called.
-    if (!AiProviders.modelAllowed(config.model)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
+    if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
 
     const suggestionId = randomUUID();
     const base = { suggestionId, userEmail: viewer.email, projectId, feature, provider: config.provider, model: config.model, inputLength: text.length };

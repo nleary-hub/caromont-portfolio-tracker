@@ -14,12 +14,68 @@ export class AiCopy {
   static readonly SWITCH_HELP_OFF = "Off. No AI buttons show when anyone writes an update.";
   static readonly SWITCH_HELP_ON = "On. Editors see Draft from bullets and Fit for report when they write an update.";
   static readonly SWITCH_ON_NOT_READY = "On, but not ready. Add the provider, model and API key before anyone sees the buttons.";
+  /** Placeholder for Writing Bot (step 3b). */
+  static readonly SWITCH_ON_MODEL_OFF = "On, but not ready. The chosen model is turned off under Models. Choose a model that is on.";
   static readonly PROVIDER_LABEL = "Provider";
   static readonly PROVIDER_PLACEHOLDER = "Select a provider";
   static readonly MODEL_LABEL = "Model name";
-  static readonly MODEL_HELP = "Use gpt-6-luna. It's the only model allowed for the writing assistant.";
-  /** Save or call with any model other than the allowed one. */
-  static readonly MODEL_NOT_ALLOWED = "That model isn't allowed. Enter gpt-6-luna.";
+  /** Placeholder copy for Writing Bot to finalize (step 3b: admins choose the models). */
+  static readonly MODEL_HELP = "Choose one of the models turned on under Models below.";
+  /** Save or call with a model that isn't turned on under Models. Placeholder for Writing Bot. */
+  static readonly MODEL_NOT_ALLOWED = "That model isn't turned on. Choose a model that is on under Models.";
+  static readonly MODEL_PICKER_EMPTY = "No models are on. Turn one on under Models.";
+  static readonly MODEL_PICKER_PLACEHOLDER = "Choose a model";
+
+  // ---- Admin > AI settings: Models and Features (step 3b) -----------------------------------------------------------
+  static readonly MODELS_TITLE = "Models";
+  static readonly MODELS_INTRO = "OpenAI models admins can choose. A new model starts off. Prices are for reference and are entered by hand.";
+  static readonly MODELS_HEADERS = ["Model", "On", "Price unit", "Input price", "Output price", ""] as const;
+  static readonly MODELS_EMPTY = "No models yet.";
+  static readonly MODEL_IN_USE = "In use";
+  static readonly MODEL_ADD_LABEL = "Add an OpenAI model";
+  static readonly MODEL_ADD_PLACEHOLDER = "For example gpt-example-mini";
+  static readonly MODEL_ADD_HELP = "Checked against OpenAI's model list with the saved API key. It starts off.";
+  static readonly MODEL_ADD = "Add model";
+  static readonly MODEL_ADDING = "Checking…";
+  static readonly MODEL_ID_INVALID = "Enter a model name using letters, numbers, dots, dashes or underscores";
+  static readonly MODEL_EXISTS = "That model is already in the list";
+  static readonly MODEL_NOT_FOUND = "OpenAI doesn't list that model for the saved API key";
+  static readonly MODEL_CHECK_NEEDS_KEY = "Save OpenAI as the provider with an API key first, so the model can be checked";
+  static readonly MODEL_CHECK_FAILED = "Couldn't reach OpenAI to check the model. Try again.";
+  static readonly PRICE_UNIT_NONE = "No price";
+  static readonly PRICE_UNIT_PER_1M_TOKENS = "Per 1M tokens";
+  static readonly PRICE_UNIT_PER_MINUTE = "Per minute";
+  static readonly PRICE_SAVE = "Save prices";
+  static readonly PRICES_SAVED = "Prices saved.";
+  static readonly PRICE_INVALID = "Enter a price like 0.15, or leave it blank";
+  static readonly PRICE_UNIT_REQUIRED = "Choose a price unit";
+  static readonly DISABLE_CONFIRM_YES = "Turn off anyway";
+  static readonly DISABLE_CONFIRM_NO = "Keep on";
+  static readonly FEATURES_TITLE = "Features";
+  static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone. Each one uses the model chosen above.";
+  static readonly FEATURE_ON_HELP = "On.";
+  static readonly FEATURE_OFF_HELP = "Off. The button is hidden and the server refuses requests.";
+  static readonly FEATURE_REVISE_NOTE = "Revise with AI on the update note";
+
+  static featureLabel(feature: string): string {
+    return feature === "revise_note" ? AiCopy.FEATURE_REVISE_NOTE : feature;
+  }
+
+  static featureKilled(envName: string): string {
+    return `Off on the server (${envName}). The toggle takes effect once that setting is removed.`;
+  }
+
+  static modelAdded(id: string): string {
+    return `${id} added. It's off until you turn it on.`;
+  }
+
+  static disableWarning(id: string, features: readonly string[]): string {
+    return `${id} is the model in use. Turning it off stops: ${features.join(", ")}. Choose another model first, or turn it off anyway.`;
+  }
+
+  static priceUnitLabel(u: string | null): string {
+    return u === "per_1m_tokens" ? AiCopy.PRICE_UNIT_PER_1M_TOKENS : u === "per_minute" ? AiCopy.PRICE_UNIT_PER_MINUTE : AiCopy.PRICE_UNIT_NONE;
+  }
   static readonly BASE_URL_LABEL = "Base URL";
   static readonly BASE_URL_HELP = "The provider's OpenAI-compatible API address, starting with https://. For example https://api.example.com/v1.";
   static readonly AZURE_ENDPOINT_LABEL = "Azure endpoint";
@@ -93,6 +149,10 @@ export class AiCopy {
         return AiCopy.AZURE_ENDPOINT_LABEL;
       case "azureDeployment":
         return AiCopy.AZURE_DEPLOYMENT_LABEL;
+      case "aiModel":
+        return AiCopy.MODELS_TITLE;
+      case "aiFeature":
+        return AiCopy.FEATURES_TITLE;
       case "apiKey":
         return AiCopy.KEY_LABEL;
       default:
@@ -105,6 +165,11 @@ export class AiCopy {
     if (action === "key_set") return "Key added";
     if (action === "key_replaced") return "Key replaced";
     if (action === "key_cleared") return "Key cleared";
+    if (action === "model_added") return `${newValue ?? ""} added (off)`;
+    if (action === "model_enabled") return `${newValue ?? ""} turned on`;
+    if (action === "model_disabled") return `${newValue ?? ""} turned off`;
+    if (action === "feature_on") return `${AiCopy.featureLabel(newValue ?? "")} turned on`;
+    if (action === "feature_off") return `${AiCopy.featureLabel(newValue ?? "")} turned off`;
     const show = (v: string | null) => (v === null || v === "" ? "(none)" : field === "enabled" ? (v === "true" ? "On" : "Off") : field === "provider" ? AiCopy.providerName(v) : v);
     return `${show(oldValue)} to ${show(newValue)}`;
   }

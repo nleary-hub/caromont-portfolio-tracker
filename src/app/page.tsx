@@ -8,9 +8,10 @@ import { loadProjectHistory } from "@/app/actions/history";
 import { addProjectDependency, loadProjectDependencies, removeProjectDependency } from "@/app/actions/dependencies";
 import { recordSuggestionOutcome, suggestNote } from "@/app/actions/ai";
 import { applyAiChange, proposeAiChange, rejectAiChange, undoAiChange } from "@/app/actions/aiReview";
-import { AiFeatureFlags, type AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
+import type { AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
 import type { AiInput } from "@/lib/ai/AiInput";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
+import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import type { AiOutcome } from "@/lib/services/AiWritingService";
 import { setDashboardHeartbeat } from "@/app/actions/preferences";
@@ -239,6 +240,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const { rows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
   // Off by default: no settings row, the switch off, an incomplete setup or no tables yet all mean no AI buttons.
   const aiOn = Boolean(admin) && Db.isConfigured() ? await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb) : false;
+  // Revise with AI: the admin toggle (ai_feature_settings, on by default) and the env kill switch.
+  const reviseOn = aiOn ? await AiModelService.featureOn(Db.client, "revise_note") : false;
 
   return (
     <ProjectDashboard
@@ -287,7 +290,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 return saveProjectForm(projectId, changes, milestones);
               },
               // Revise with AI (review-then-apply layer): AI on and the revise_note kill switch on (on by default).
-              ...(aiOn && AiFeatureFlags.isOn("revise_note")
+              ...(reviseOn
                 ? {
                     aiReview: {
                       proposeAction: async (projectId: string | null, feature: AiReviewFeature, current: string, input: AiInput) => {
