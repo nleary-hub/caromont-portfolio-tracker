@@ -106,6 +106,8 @@ export interface AdminDashboardProps {
     /** projectId null: the New project form. */
     suggestAction: (projectId: string | null, feature: AiFeature, text: string) => Promise<AiSuggestResult>;
     outcomeAction: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
+    /** On, but the model is turned off under Models: Draft and Fit show as paused with the model-off note. */
+    paused?: boolean;
   };
   /** Revise with AI (review-then-apply layer). Present only when AI is on and the revise_note kill switch is on. */
   aiReview?: {
@@ -747,6 +749,7 @@ export function ProjectDashboard({
                       outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) =>
                         unverifiedCount === undefined ? admin.aiWriting!.outcomeAction(suggestionId, outcome) : admin.aiWriting!.outcomeAction(suggestionId, outcome, unverifiedCount),
                     },
+                    aiPaused: Boolean(admin.aiWriting.paused),
                   }
                 : {})}
               onSaved={onSaved}
@@ -852,6 +855,7 @@ export function ProjectDashboard({
                           outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) =>
                             unverifiedCount === undefined ? admin.aiWriting!.outcomeAction(suggestionId, outcome) : admin.aiWriting!.outcomeAction(suggestionId, outcome, unverifiedCount),
                         },
+                        aiPaused: Boolean(admin.aiWriting.paused),
                       }
                     : {})}
                   saveMilestones={(edit) => admin.saveMilestonesAction(selected.id, edit)}

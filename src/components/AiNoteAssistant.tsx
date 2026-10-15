@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ReactNode } from "react";
+import { useId, useState, type ReactNode } from "react";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import { AiSuggestionMarks, type AiMarkSegment } from "@/lib/ai/AiSuggestionMarks";
@@ -17,6 +17,8 @@ export interface AiNoteActions {
 /** 2px focus ring on every control of the assistant (keyboard focus only). */
 export const AI_FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const BTN = `inline-flex h-7 shrink-0 items-center gap-1.5 whitespace-nowrap rounded-control border border-line bg-input px-2.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${AI_FOCUS}`;
+/** Draft and Fit while the model is off: muted text, no hover change, full focus ring; stays focusable (aria-disabled). */
+const BTN_PAUSED = `inline-flex h-7 shrink-0 cursor-not-allowed items-center gap-1.5 whitespace-nowrap rounded-control border border-line bg-input px-2.5 text-muted type-table-strong ${AI_FOCUS}`;
 /** Primary (Accept, Use this text). Disabled is the neutral gray control, not a dimmed blue. */
 const PRIMARY = `h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${AI_FOCUS}`;
 const GHOST = `h-7 rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${AI_FOCUS}`;
@@ -117,6 +119,7 @@ export function AiNoteAssistant({
   actions,
   onUse,
   onRun,
+  paused = false,
 }: {
   value: string;
   noteMax: number;
@@ -125,7 +128,13 @@ export function AiNoteAssistant({
   onUse: (text: string) => void;
   /** Called when Draft or Fit is pressed (the form clears its "Your original text is back." line). */
   onRun?: () => void;
+  /**
+   * The model is turned off under Models: Draft and Fit stay visible and focusable but do nothing (aria-disabled, not
+   * the disabled attribute), and the model-off note is tied to both with aria-describedby.
+   */
+  paused?: boolean;
 }) {
+  const pausedNoteId = useId();
   const [busy, setBusy] = useState<AiFeature | null>(null);
   const [message, setMessage] = useState<{ text: string; kind: "phi" | "error" | "empty" } | null>(null);
   const [suggestion, setSuggestion] = useState<(AiSuggestion & { original: string }) | null>(null);
@@ -134,6 +143,8 @@ export function AiNoteAssistant({
   const [confirmedFor, setConfirmedFor] = useState<string | null>(null);
 
   const run = async (feature: AiFeature) => {
+    // Paused (model off): aria-disabled keeps focus, so a click or Enter lands here and does nothing.
+    if (paused) return;
     if (busy) return;
     onRun?.();
     if (!value.trim()) return setMessage({ text: C.EMPTY_INPUT, kind: "empty" });
@@ -201,15 +212,21 @@ export function AiNoteAssistant({
   return (
     <div className="flex flex-col gap-2" data-testid="ai-assistant">
       <div className="flex items-center gap-2">
-        <button type="button" className={BTN} disabled={busy !== null} onClick={() => run("draft_from_bullets")} title={C.DRAFT_TOOLTIP} data-testid="ai-draft">
+        <button type="button" className={paused ? BTN_PAUSED : BTN} disabled={!paused && busy !== null} aria-disabled={paused ? "true" : undefined} aria-describedby={paused ? pausedNoteId : undefined} onClick={() => run("draft_from_bullets")} title={C.DRAFT_TOOLTIP} data-testid="ai-draft">
           <Sparkle />
           {busy === "draft_from_bullets" ? C.WORKING : C.DRAFT_BUTTON}
         </button>
-        <button type="button" className={BTN} disabled={busy !== null} onClick={() => run("fit_for_report")} title={C.FIT_TOOLTIP} data-testid="ai-fit">
+        <button type="button" className={paused ? BTN_PAUSED : BTN} disabled={!paused && busy !== null} aria-disabled={paused ? "true" : undefined} aria-describedby={paused ? pausedNoteId : undefined} onClick={() => run("fit_for_report")} title={C.FIT_TOOLTIP} data-testid="ai-fit">
           <Sparkle />
           {busy === "fit_for_report" ? C.WORKING : C.FIT_BUTTON}
         </button>
       </div>
+      {paused && (
+        // The grey help line at full contrast (not dimmed like the paused buttons).
+        <p id={pausedNoteId} className="-mt-1 text-muted type-caption" data-testid="ai-model-off-note">
+          {C.MODEL_OFF_NOTE}
+        </p>
+      )}
       <p className="-mt-1 text-muted type-caption" data-testid="ai-phi-helper">
         {C.PHI_HELPER}
       </p>
