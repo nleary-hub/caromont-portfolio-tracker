@@ -55,12 +55,18 @@ import { StartDateDefaultTag } from "./StartDateDefaultTag";
 import { StartDate } from "@/lib/projects/StartDate";
 import { DashboardAmbient, DrawerSpotlight, SummaryHeartbeat } from "./DashboardAmbient";
 import { AccountMenu } from "./AccountMenu";
-import { AiBriefButton, AiBriefCard, AiQuickCapture, AiRowMenu, AiToolbarMenu, type AiPlacementNotes, type AiRowShortcut } from "./AiPlacements";
-import { AiLinksPanel } from "./AiLinksPanel";
-import { AiNextStepPanel } from "./AiNextStepPanel";
+import type { AiPlacementNotes, AiRowShortcut } from "./AiPlacements";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
+// AI placements use server actions: loaded on demand so importing the dashboard never pulls them in (tests, non-AI views).
+const AiBriefButton = dynamic(() => import("./AiPlacements").then((m) => m.AiBriefButton));
+const AiBriefCard = dynamic(() => import("./AiPlacements").then((m) => m.AiBriefCard));
+const AiQuickCapture = dynamic(() => import("./AiPlacements").then((m) => m.AiQuickCapture));
+const AiRowMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiRowMenu));
+const AiToolbarMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiToolbarMenu));
+const AiLinksPanel = dynamic(() => import("./AiLinksPanel").then((m) => m.AiLinksPanel));
+const AiNextStepPanel = dynamic(() => import("./AiNextStepPanel").then((m) => m.AiNextStepPanel));
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
 const ProjectPeopleEditor = dynamic(() => import("./ProjectPeopleEditor").then((m) => m.ProjectPeopleEditor));

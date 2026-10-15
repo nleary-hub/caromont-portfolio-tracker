@@ -1,6 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { createPortal } from "react-dom";
+
+/** Render into document.body so the header backdrop blur never clips it (inline when there is no DOM, e.g. tests). */
+function Portal({ children }: { children: ReactNode }) {
+  return typeof document === "undefined" ? <>{children}</> : createPortal(children, document.body);
+}
 import { AiBriefPanel, type AiBriefState } from "@/components/AiBriefPanel";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
 import { AI_GHOST, Sparkle } from "@/components/AiToolsUi";
@@ -45,6 +51,7 @@ export function AiDrawer({ title, onClose, children, testId }: { title: string; 
     };
   }, [onClose]);
   return (
+    <Portal>
     <aside
       ref={panel}
       tabIndex={-1}
@@ -61,6 +68,7 @@ export function AiDrawer({ title, onClose, children, testId }: { title: string; 
       </div>
       {children}
     </aside>
+    </Portal>
   );
 }
 
@@ -131,6 +139,13 @@ export function AiToolbarMenu({ notes, selected, visible, defaultOpen = false, d
 export function AiQuickCapture({ note, dictationNote, defaultOpen = false, recording = false }: { note: string | null; dictationNote?: string | null; defaultOpen?: boolean; /** Preview/tests: start in the Recording state. */ recording?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const off = note !== null;
+  const anchor = useRef<HTMLSpanElement>(null);
+  const [pos, setPos] = useState({ top: 64, right: 24 });
+  useEffect(() => {
+    if (!open || !anchor.current) return;
+    const r = anchor.current.getBoundingClientRect();
+    setPos({ top: r.bottom + 8, right: Math.max(8, window.innerWidth - r.right) });
+  }, [open]);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       const t = e.target as HTMLElement | null;
@@ -144,16 +159,18 @@ export function AiQuickCapture({ note, dictationNote, defaultOpen = false, recor
     return () => window.removeEventListener("keydown", onKey);
   }, [off]);
   return (
-    <span className="group relative shrink-0" data-testid="ai-quick-capture">
+    <span ref={anchor} className="group relative shrink-0" data-testid="ai-quick-capture">
       <button type="button" className={AI_GHOST} aria-haspopup="dialog" aria-expanded={open} aria-keyshortcuts="Q" {...(off ? paused(note, "ai-capture-tip") : { "aria-describedby": "ai-capture-tip" })} onClick={() => !off && setOpen((v) => !v)} data-testid="ai-capture-button">
         <Sparkle />
         {C.CAPTURE_BUTTON}
       </button>
       {!open && <Tip id="ai-capture-tip" text={note ?? C.CAPTURE_SHORTCUT} />}
       {open && !off && (
-        <div role="dialog" aria-label={C.CAPTURE_TITLE} className="absolute top-full right-0 z-40 mt-2 w-[380px] rounded-card border border-line bg-card p-3 shadow-lg" data-testid="ai-capture-popover">
+        <Portal>
+        <div role="dialog" aria-label={C.CAPTURE_TITLE} className="fixed z-50 w-[380px] rounded-card border border-line bg-card p-3 shadow-lg" style={{ top: pos.top, right: pos.right }} data-testid="ai-capture-popover">
           <AiToolsPanel feature="quick_capture" label={C.CAPTURE_LABEL} help={C.CAPTURE_HELP} placeholder={C.CAPTURE_PLACEHOLDER} disabledNote={null} rows={3} {...(dictationNote !== undefined ? { dictation: { disabledNote: dictationNote, mic: true, ...(recording ? { initialState: "recording" as const } : {}) } } : {})} />
         </div>
+        </Portal>
       )}
     </span>
   );
@@ -217,7 +234,7 @@ export function AiRowMenu({ rowName, items, onPick, defaultOpen = false }: { row
   const item = `flex w-full items-center gap-2 px-3 py-1.5 text-left font-normal type-table text-fg hover:bg-row-selected aria-disabled:cursor-not-allowed aria-disabled:text-muted aria-disabled:hover:bg-transparent ${FOCUS}`;
   return (
     <span ref={ref} className="relative mt-1 ml-1 inline-block align-top" onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.key === "Escape" && setOpen(false)} data-testid="ai-row-menu">
-      <button type="button" className={`inline-flex h-6 items-center rounded-control border border-line bg-card px-2 text-[12px] leading-4 text-muted hover:text-fg ${FOCUS}`} aria-haspopup="menu" aria-expanded={open} aria-label={`${C.ROW_MENU_LABEL}: ${rowName}`} onClick={() => setOpen((v) => !v)} data-testid="ai-row-menu-button">
+      <button type="button" className={`inline-flex h-6 items-center rounded-control border border-line bg-card px-2 text-[12px] leading-4 text-muted opacity-0 hover:text-fg focus-visible:opacity-100 aria-expanded:opacity-100 [tr:hover_&]:opacity-100 [tr[aria-selected=true]_&]:opacity-100 ${FOCUS}`} aria-haspopup="menu" aria-expanded={open} aria-label={`${C.ROW_MENU_LABEL}: ${rowName}`} onClick={() => setOpen((v) => !v)} data-testid="ai-row-menu-button">
         <span aria-hidden="true">…</span>
       </button>
       {open && (
