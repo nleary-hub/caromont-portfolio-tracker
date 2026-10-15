@@ -71,7 +71,10 @@ export interface AiModelDb {
   $transaction<T>(fn: (tx: AiModelDb) => Promise<T>): Promise<T>;
 }
 
-export type AiAdminResult = { ok: true; message?: string } | { ok: false; error: string; needsConfirm?: boolean };
+export type AiAdminResult = { ok: true; message?: string } | { ok: false; error: string; needsConfirm?: boolean; field?: AiPriceField };
+
+/** The price control an error belongs to (red border, aria-invalid, aria-describedby on that control). */
+export type AiPriceField = "input" | "output" | "unit";
 
 /**
  * Admin > AI settings: the OpenAI model list (add, enable, disable, prices) and the per-feature toggles. Selection is
@@ -244,10 +247,11 @@ export class AiModelService {
     AdminPolicy.assertAdmin(admin);
     const id = AiModelService.cleanId(rawId);
     const inP = AiModelService.parsePrice(input);
-    const outP = AiModelService.parsePrice(output);
-    if (inP === null || outP === null) return { ok: false, error: AiCopy.PRICE_INVALID };
+    // Per-minute models have one price (input); the output price field is disabled for them and ignored here.
+    const outP = AiModelService.parseUnit(unit) === "per_minute" ? "" : AiModelService.parsePrice(output);
+    if (inP === null || outP === null) return { ok: false, error: AiCopy.PRICE_INVALID, field: inP === null ? "input" : "output" };
     const priceUnit = inP === "" && outP === "" ? null : AiModelService.parseUnit(unit);
-    if ((inP !== "" || outP !== "") && !priceUnit) return { ok: false, error: AiCopy.PRICE_UNIT_REQUIRED };
+    if ((inP !== "" || outP !== "") && !priceUnit) return { ok: false, error: AiCopy.PRICE_UNIT_REQUIRED, field: "unit" };
     return db.$transaction(async (tx) => {
       const row = id ? await tx.aiModel.findUnique({ where: { id } }) : null;
       if (!row || !id) return { ok: false, error: AiCopy.MODEL_ID_INVALID };

@@ -39,8 +39,10 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [] 
   const err = (f: string) => (state && !state.ok ? state.fieldErrors?.[f] : undefined);
   const keyBlocked = !view.encryption.ready;
   const canTest = dbReady && view.ready;
-  const status = !view.enabled ? C.STATUS_OFF : view.ready ? C.STATUS_READY : C.STATUS_NOT_READY;
-  const statusClass = !view.enabled ? "bg-(--status-not-started-dark-bg) text-(--status-not-started-dark-fg)" : view.ready ? "bg-(--status-on-track-dark-bg) text-(--status-on-track-dark-fg)" : "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)";
+  // Switch on but the chosen model is off under Models: amber Not ready, even before the switch is saved (step 3b).
+  const modelOffOn = enabled && Boolean(view.modelOff);
+  const status = modelOffOn ? C.STATUS_NOT_READY : !view.enabled ? C.STATUS_OFF : view.ready ? C.STATUS_READY : C.STATUS_NOT_READY;
+  const statusClass = modelOffOn ? "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)" : !view.enabled ? "bg-(--status-not-started-dark-bg) text-(--status-not-started-dark-fg)" : view.ready ? "bg-(--status-on-track-dark-bg) text-(--status-on-track-dark-fg)" : "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)";
   const switchHelp = !enabled ? C.SWITCH_HELP_OFF : view.enabled && view.ready ? C.SWITCH_HELP_ON : view.modelOff ? C.SWITCH_ON_MODEL_OFF : C.SWITCH_ON_NOT_READY;
 
   return (
@@ -232,7 +234,9 @@ export function ModelField({ value, error, disabled, options = [], defaultOpen =
         <button
           type="button"
           id="ai-model"
-          className={`${INPUT} flex items-center justify-between text-left ${error ? "border-danger" : ""}`}
+          role="combobox"
+          aria-invalid={Boolean(error) || undefined}
+          className={`${INPUT} flex items-center justify-between text-left`}
           aria-haspopup="listbox"
           aria-expanded={open}
           aria-controls="ai-model-list"

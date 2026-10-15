@@ -10,7 +10,8 @@ import type { AiAdminResult, AiFeatureView, AiModelView } from "@/lib/services/A
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger ${FOCUS}`;
 const GHOST = `h-7 whitespace-nowrap rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
-const PRIMARY = `h-8 whitespace-nowrap rounded-control btn-primary bg-accent-strong px-3.5 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${FOCUS}`;
+/** Secondary: no glow (only the settings Save, the primary button, glows). */
+const SECONDARY = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 
 /** On/off switch (.acct-switch carries the 2px focus-visible outline). */
 export function AiToggle({ checked, onChange, labelledBy, describedBy, disabled, testId }: { checked: boolean; onChange: (v: boolean) => void; labelledBy: string; describedBy?: string; disabled?: boolean; testId: string }) {
@@ -85,7 +86,7 @@ export function AiModelsPanel({ models, dbReady }: { models: AiModelView[]; dbRe
         </label>
         <div className="flex items-start gap-2">
           <input id="ai-model-add" className={INPUT} value={newId} onChange={(e) => setNewId(e.target.value)} placeholder={C.MODEL_ADD_PLACEHOLDER} maxLength={100} autoComplete="off" spellCheck={false} disabled={!dbReady} aria-invalid={(addResult && !addResult.ok) || undefined} aria-describedby={addResult && !addResult.ok ? "ai-model-add-error" : "ai-model-add-help"} />
-          <button type="submit" className={PRIMARY} disabled={!dbReady || adding || !newId.trim()} data-testid="ai-model-add-button">
+          <button type="submit" className={SECONDARY} disabled={!dbReady || adding || !newId.trim()} data-testid="ai-model-add-button">
             {adding ? C.MODEL_ADDING : C.MODEL_ADD}
           </button>
         </div>
@@ -117,6 +118,9 @@ function ModelRow({ m, dbReady, pending, onToggle, confirm, error, onConfirm, on
   const [saving, startSave] = useTransition();
   const slug = m.id.replace(/[^A-Za-z0-9_-]/g, "_");
   const nameId = `ai-model-${slug}-name`;
+  const priceErrorId = `ai-model-${slug}-price-error`;
+  const bad = saved && !saved.ok ? (saved.field ?? null) : null;
+  const invalid = (f: "input" | "output" | "unit") => (bad === f ? { "aria-invalid": true as const, "aria-describedby": priceErrorId } : {});
   return (
     <>
       <tr className="border-t border-line" data-testid={`ai-model-row-${m.id}`}>
@@ -124,26 +128,35 @@ function ModelRow({ m, dbReady, pending, onToggle, confirm, error, onConfirm, on
           <span id={nameId} className="type-table-strong text-fg">
             {m.id}
           </span>
-          {m.inUse && <span className="ml-2 rounded-pill bg-(--status-on-track-dark-bg) px-2 py-px text-(--status-on-track-dark-fg) type-label">{C.MODEL_IN_USE}</span>}
+          {m.inUse &&
+            (m.enabled ? (
+              <span className="ml-2 rounded-pill bg-(--status-on-track-dark-bg) px-2 py-px text-(--status-on-track-dark-fg) type-label" data-testid="ai-model-in-use">
+                {C.MODEL_IN_USE}
+              </span>
+            ) : (
+              <span className="ml-2 rounded-pill bg-(--status-not-started-dark-bg) px-2 py-px text-(--status-not-started-dark-fg) type-label" data-testid="ai-model-chosen-off">
+                {C.MODEL_CHOSEN_OFF}
+              </span>
+            ))}
         </td>
         <td className="px-3 py-2">
           <AiToggle checked={m.enabled} onChange={onToggle} labelledBy={nameId} disabled={!dbReady || pending} testId={`ai-model-toggle-${m.id}`} />
         </td>
         <td className="px-3 py-2">
-          <select aria-label={`${C.MODELS_HEADERS[2]}, ${m.id}`} className={`${INPUT} min-w-[8.5rem]`} value={unit} onChange={(e) => setUnit(e.target.value)} disabled={!dbReady}>
+          <select aria-label={`${C.MODELS_HEADERS[2]}, ${m.id}`} className={`${INPUT} min-w-[8.5rem]`} value={unit} onChange={(e) => setUnit(e.target.value)} disabled={!dbReady} {...invalid("unit")}>
             <option value="">{C.PRICE_UNIT_NONE}</option>
             <option value="per_1m_tokens">{C.PRICE_UNIT_PER_1M_TOKENS}</option>
             <option value="per_minute">{C.PRICE_UNIT_PER_MINUTE}</option>
           </select>
         </td>
         <td className="px-3 py-2">
-          <input aria-label={`${C.MODELS_HEADERS[3]}, ${m.id}`} className={`${INPUT} max-w-28`} value={input} onChange={(e) => setInput(e.target.value)} inputMode="decimal" placeholder="0.00" disabled={!dbReady} />
+          <input aria-label={`${C.MODELS_HEADERS[3]}, ${m.id}`} className={`${INPUT} max-w-28`} value={input} onChange={(e) => setInput(e.target.value)} inputMode="decimal" placeholder="0.00" disabled={!dbReady} {...invalid("input")} data-testid={`ai-model-input-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
-          <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${INPUT} max-w-28`} value={output} onChange={(e) => setOutput(e.target.value)} inputMode="decimal" placeholder="0.00" disabled={!dbReady} />
+          <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${INPUT} max-w-28`} value={output} onChange={(e) => setOutput(e.target.value)} inputMode="decimal" placeholder="0.00" disabled={!dbReady || unit === "per_minute"} {...invalid("output")} data-testid={`ai-model-output-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
-          <button type="button" className={GHOST} disabled={!dbReady || saving} onClick={() => startSave(async () => setSaved(await setAiModelPrices(m.id, unit, input, output)))}>
+          <button type="button" className={GHOST} disabled={!dbReady || saving} onClick={() => startSave(async () => setSaved(await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output)))}>
             {C.PRICE_SAVE}
           </button>
         </td>
@@ -154,7 +167,7 @@ function ModelRow({ m, dbReady, pending, onToggle, confirm, error, onConfirm, on
             {confirm ? (
               <div className="flex items-center gap-2 rounded-control bg-(--status-off-track-dark-bg) px-3 py-2" role="alert" data-testid="ai-model-disable-warning">
                 <span className="min-w-0 flex-1 text-fg type-table">{confirm}</span>
-                <button type="button" className={`h-7 rounded-control px-2.5 text-muted type-table-strong hover:text-fg ${FOCUS}`} onClick={onCancel}>
+                <button type="button" className={`h-7 rounded-control border border-line px-2.5 text-fg type-table-strong hover:border-accent ${FOCUS}`} onClick={onCancel} data-testid="ai-model-disable-cancel">
                   {C.DISABLE_CONFIRM_NO}
                 </button>
                 <button type="button" className={`h-7 rounded-control bg-(--status-off-track-dark-bg) px-2.5 text-danger type-table-strong ring-1 ring-danger/40 ${FOCUS}`} onClick={onConfirm} disabled={pending} data-testid="ai-model-disable-confirm">
@@ -166,9 +179,11 @@ function ModelRow({ m, dbReady, pending, onToggle, confirm, error, onConfirm, on
                 {error}
               </AiAlert>
             ) : saved && !saved.ok ? (
-              <AiAlert tone="danger" testId="ai-model-price-error">
-                {saved.error}
-              </AiAlert>
+              <div id={priceErrorId}>
+                <AiAlert tone="danger" testId="ai-model-price-error">
+                  {saved.error}
+                </AiAlert>
+              </div>
             ) : (
               <p role="status" className="text-(--status-on-track-dark-fg) type-table">
                 {saved?.ok ? (saved.message ?? C.PRICES_SAVED) : null}

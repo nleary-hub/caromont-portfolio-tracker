@@ -166,8 +166,11 @@ describe("adding models", () => {
     const db = new FakeAiAdminDb().seed();
     expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_1m_tokens", "1.25", "$10")).toMatchObject({ ok: true });
     expect(db.models[0]).toMatchObject({ priceUnit: "per_1m_tokens", inputPrice: 1.25, outputPrice: 10 });
-    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_1m_tokens", "-1", "")).toEqual({ ok: false, error: AiCopy.PRICE_INVALID });
-    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "", "0.5", "")).toEqual({ ok: false, error: AiCopy.PRICE_UNIT_REQUIRED });
+    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_1m_tokens", "-1", "")).toEqual({ ok: false, error: AiCopy.PRICE_INVALID, field: "input" });
+    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_1m_tokens", "1", "abc")).toEqual({ ok: false, error: AiCopy.PRICE_INVALID, field: "output" });
+    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "", "0.5", "")).toEqual({ ok: false, error: AiCopy.PRICE_UNIT_REQUIRED, field: "unit" });
+    // Per minute: one price; the output price is ignored (its field is disabled).
+    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_minute", "0.006", "abc")).toMatchObject({ ok: true });
     expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_minute", "0.006", "")).toMatchObject({ ok: true });
     expect(AiModelService.views(db.models, null)[0]).toMatchObject({ priceUnit: "per_minute", inputPrice: "0.006", outputPrice: "" });
   });
@@ -235,6 +238,17 @@ describe("feature toggles", () => {
 });
 
 describe("step 3b copy", () => {
+  it("Writing Bot wording (exact)", () => {
+    expect(AiCopy.MODEL_CHOSEN_OFF).toBe("Chosen, but off");
+    expect(AiCopy.MODEL_NOT_ALLOWED).toBe("That model is turned off. An admin can choose one that's on in AI settings.");
+    expect(AiCopy.MODELS_INTRO).toBe("OpenAI models admins can choose. New models start off. Prices are entered by hand and are for reference only.");
+    expect(AiCopy.FEATURE_ON_HELP).toBe("On for everyone.");
+    expect(AiCopy.FEATURE_OFF_HELP).toBe("Off for everyone. The button is hidden.");
+    expect(AiCopy.featureKilled("AI_FEATURE_REVISE_NOTE")).toBe("Turned off on the server by AI_FEATURE_REVISE_NOTE. This toggle has no effect until that setting is removed.");
+    expect(AiCopy.disableWarning("gpt-6-luna", ["A", "B"])).toBe("gpt-6-luna is the model in use. Turning it off stops A, B. Choose another model first, or turn it off anyway.");
+    expect(AiCopy.DB_MISSING).toBe("The AI settings tables aren't in this database yet, so settings can't be saved here.");
+  });
+
   it("no em dashes and no hardcoded gpt-6-luna in the model copy", () => {
     const all = Object.values(AiCopy).filter((v) => typeof v === "string").join(" ") + AiCopy.disableWarning("m", ["a"]) + AiCopy.featureKilled("X") + AiCopy.modelAdded("m");
     expect(all).not.toMatch(/\u2014/);
@@ -277,5 +291,41 @@ describe("toggle styles (same as #50)", () => {
     expect(html).toMatch(/role="switch" aria-checked="true"[^>]*class="acct-switch/);
     const css = readFileSync(path.resolve(__dirname, "../src/styles/account-menu.css"), "utf8");
     expect(css).toContain(".acct-switch:focus-visible { outline: 2px solid var(--dark-accent); outline-offset: 2px; }");
+  });
+});
+
+describe("Figma review fixes (v2)", () => {
+  const SRC = (p: string) => readFileSync(path.resolve(__dirname, "..", p), "utf8");
+  const render = async (models: Parameters<typeof import("@/components/AiModelsPanel").AiModelsPanel>[0]["models"]) => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { AiModelsPanel } = await import("@/components/AiModelsPanel");
+    return renderToStaticMarkup(createElement(AiModelsPanel, { models, dbReady: true }));
+  };
+  const row = { id: "gpt-6-luna", enabled: true, priceUnit: null, inputPrice: "", outputPrice: "", inUse: true };
+
+  it("chosen model on: green In use; chosen model off: muted Chosen, but off", async () => {
+    expect(await render([row])).toContain(`data-testid="ai-model-in-use">${AiCopy.MODEL_IN_USE}<`);
+    const off = await render([{ ...row, enabled: false }]);
+    expect(off).toMatch(/bg-\(--status-not-started-dark-bg\)[^"]*" data-testid="ai-model-chosen-off">Chosen, but off</);
+    expect(off).not.toContain("ai-model-in-use");
+  });
+
+  it("Add model has no glow (no btn-primary); per-minute rows keep the output price disabled", async () => {
+    const html = await render([{ ...row, priceUnit: "per_minute", inputPrice: "0.006" }]);
+    const add = html.match(/<button type="submit" class="([^"]*)"/)![1];
+    expect(add).not.toContain("btn-primary");
+    expect(add).toContain("border border-line");
+    expect(html).toMatch(/<input[^>]*disabled=""[^>]*data-testid="ai-model-output-price-gpt-6-luna"/);
+  });
+
+  it("price errors mark the control (aria-invalid, aria-describedby to the red alert); Keep on has a border; amber Not ready when the chosen model is off", () => {
+    const panel = SRC("src/components/AiModelsPanel.tsx");
+    expect(panel).toContain('"aria-invalid": true as const, "aria-describedby": priceErrorId');
+    expect(panel).toContain("<div id={priceErrorId}>");
+    expect(panel).toMatch(/border border-line px-2\.5 text-fg[^`]*`\} onClick=\{onCancel\}/);
+    const form = SRC("src/components/AiSettingsForm.tsx");
+    expect(form).toContain('const modelOffOn = enabled && Boolean(view.modelOff);');
+    expect(form).toContain('modelOffOn ? "bg-(--status-at-risk-dark-bg) text-(--status-at-risk-dark-fg)"');
   });
 });

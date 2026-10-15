@@ -22,16 +22,18 @@ export class AiCopy {
   /** Placeholder copy for Writing Bot to finalize (step 3b: admins choose the models). */
   static readonly MODEL_HELP = "Choose one of the models turned on under Models below.";
   /** Save or call with a model that isn't turned on under Models. Placeholder for Writing Bot. */
-  static readonly MODEL_NOT_ALLOWED = "That model isn't turned on. Choose a model that is on under Models.";
+  static readonly MODEL_NOT_ALLOWED = "That model is turned off. An admin can choose one that's on in AI settings.";
   static readonly MODEL_PICKER_EMPTY = "No models are on. Turn one on under Models.";
   static readonly MODEL_PICKER_PLACEHOLDER = "Choose a model";
 
   // ---- Admin > AI settings: Models and Features (step 3b) -----------------------------------------------------------
   static readonly MODELS_TITLE = "Models";
-  static readonly MODELS_INTRO = "OpenAI models admins can choose. A new model starts off. Prices are for reference and are entered by hand.";
+  static readonly MODELS_INTRO = "OpenAI models admins can choose. New models start off. Prices are entered by hand and are for reference only.";
   static readonly MODELS_HEADERS = ["Model", "On", "Price unit", "Input price", "Output price", ""] as const;
   static readonly MODELS_EMPTY = "No models yet.";
   static readonly MODEL_IN_USE = "In use";
+  /** Placeholder for Writing Bot: the chosen model is turned off. */
+  static readonly MODEL_CHOSEN_OFF = "Chosen, but off";
   static readonly MODEL_ADD_LABEL = "Add an OpenAI model";
   static readonly MODEL_ADD_PLACEHOLDER = "For example gpt-example-mini";
   static readonly MODEL_ADD_HELP = "Checked against OpenAI's model list with the saved API key. It starts off.";
@@ -53,8 +55,8 @@ export class AiCopy {
   static readonly DISABLE_CONFIRM_NO = "Keep on";
   static readonly FEATURES_TITLE = "Features";
   static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone. Each one uses the model chosen above.";
-  static readonly FEATURE_ON_HELP = "On.";
-  static readonly FEATURE_OFF_HELP = "Off. The button is hidden and the server refuses requests.";
+  static readonly FEATURE_ON_HELP = "On for everyone.";
+  static readonly FEATURE_OFF_HELP = "Off for everyone. The button is hidden.";
   static readonly FEATURE_REVISE_NOTE = "Revise with AI on the update note";
 
   static featureLabel(feature: string): string {
@@ -62,7 +64,7 @@ export class AiCopy {
   }
 
   static featureKilled(envName: string): string {
-    return `Off on the server (${envName}). The toggle takes effect once that setting is removed.`;
+    return `Turned off on the server by ${envName}. This toggle has no effect until that setting is removed.`;
   }
 
   static modelAdded(id: string): string {
@@ -70,7 +72,7 @@ export class AiCopy {
   }
 
   static disableWarning(id: string, features: readonly string[]): string {
-    return `${id} is the model in use. Turning it off stops: ${features.join(", ")}. Choose another model first, or turn it off anyway.`;
+    return `${id} is the model in use. Turning it off stops ${features.join(", ")}. Choose another model first, or turn it off anyway.`;
   }
 
   static priceUnitLabel(u: string | null): string {
@@ -121,7 +123,7 @@ export class AiCopy {
   static readonly STATUS_READY = "Ready";
   static readonly STATUS_OFF = "Off";
   static readonly STATUS_NOT_READY = "Not ready";
-  static readonly DB_MISSING = "The AI settings tables are not in this database yet (migration 0033). Settings can't be saved here.";
+  static readonly DB_MISSING = "The AI settings tables aren't in this database yet, so settings can't be saved here.";
 
   static testOk(provider: AiProviderId, ms: number): string {
     return `Connected. ${AiCopy.providerName(provider)} replied in ${ms.toLocaleString("en-US")} ms.`;

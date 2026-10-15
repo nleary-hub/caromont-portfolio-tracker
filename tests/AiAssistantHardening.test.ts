@@ -251,12 +251,14 @@ describe("model field styles (Figma review)", () => {
     const { createElement } = await import("react");
     const { ModelField } = await import("@/components/AiSettingsForm");
     const html = renderToStaticMarkup(createElement(ModelField, { value: "some-other-model", error: AiCopy.MODEL_NOT_ALLOWED }));
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('role="combobox"');
     expect(html).toContain('aria-describedby="ai-model-error"');
-    expect(html).toContain("border-danger");
+    expect(html).toContain("aria-invalid:border-danger");
     expect(html).toContain('id="ai-model-error"');
     expect(html).toMatch(/role="alert" class="[^"]*bg-\(--status-off-track-dark-bg\) text-danger/);
     expect(html).toContain("focus-visible:outline-2");
-    expect(html).toContain("That model isn&#x27;t turned on. Choose a model that is on under Models.");
+    expect(html).toContain("That model is turned off. An admin can choose one that&#x27;s on in AI settings.");
     expect(html).not.toContain("ai-model-help");
   });
 });
