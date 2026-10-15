@@ -7,6 +7,7 @@ import { AiLinksPanel } from "@/components/AiLinksPanel";
 import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
+import { AiVoiceChatPanel } from "@/components/AiVoiceChatPanel";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
@@ -23,7 +24,7 @@ export const maxDuration = 90;
 export const metadata: Metadata = { title: C.PAGE_TITLE };
 
 /**
- * AI tools (steps 4 to 9). Admins only, like editing: anyone else gets a 404. Every tool proposes; a person applies or
+ * AI tools (steps 4 to 10). Admins only, like editing: anyone else gets a 404. Every tool proposes; a person applies or
  * rejects each line. Nothing here reads or writes snapshots, PDFs, report_artifacts or handoff.json.
  */
 export default async function AiToolsPage() {
@@ -31,12 +32,14 @@ export default async function AiToolsPage() {
   if (!viewer?.isAdmin) notFound();
   let notes: Record<string, string | null> = Object.fromEntries(AiFeatureFlags.TOOL_FEATURES.map((f) => [f, C.AI_OFF_NOTE]));
   let dictationNote: string | null = C.AI_OFF_NOTE;
+  let voiceNote: string | null = C.AI_OFF_NOTE;
   let projects: { id: string; name: string }[] = [];
   let links: AiRelatedLinkView[] = [];
   if (Db.isConfigured()) {
     try {
       notes = await AiToolsReadiness.notes(Db.client as unknown as AiModelDb & AiSettingsDb, AiFeatureFlags.TOOL_FEATURES);
       dictationNote = await AiToolsReadiness.dictationNote(Db.client as unknown as AiModelDb & AiSettingsDb);
+      voiceNote = await AiToolsReadiness.voiceChatNote(Db.client as unknown as AiModelDb & AiSettingsDb);
       const scope = await ServiceLineAccess.activeFor(viewer);
       projects = (await AiToolsService.projects(Db.client as unknown as AiToolsDb, scope)).map((p) => ({ id: p.id, name: p.name }));
       links = await AiToolsService.listLinks(Db.client as unknown as AiToolsDb, scope).catch(() => []);
@@ -120,6 +123,14 @@ export default async function AiToolsPage() {
           {C.LINKS_TITLE}
         </h2>
         <AiLinksPanel disabledNote={notes.related_links ?? null} saved={links} />
+      </section>
+      )}
+      {voiceNote !== C.FEATURE_OFF_NOTE && (
+      <section className={section} aria-labelledby="ai-tool-voice-heading" id="voice-chat">
+        <h2 id="ai-tool-voice-heading" className="type-heading">
+          {C.VOICE_CHAT_TITLE}
+        </h2>
+        <AiVoiceChatPanel disabledNote={voiceNote} />
       </section>
       )}
     </main>

@@ -244,7 +244,7 @@ export function AiFeaturesPanel({ features, dbReady, modelOptions = [] }: { feat
               {f.ownModel && (
                 <div className="mt-2 flex flex-col gap-1">
                   <label htmlFor={`ai-feature-${f.feature}-model`} className="text-muted type-caption">
-                    {AiToolsCopy.DICTATION_MODEL_LABEL}
+                    {AiToolsCopy.modelLabel(f.feature)}
                   </label>
                   <select
                     id={`ai-feature-${f.feature}-model`}
@@ -268,7 +268,7 @@ export function AiFeaturesPanel({ features, dbReady, modelOptions = [] }: { feat
                     ))}
                   </select>
                   <p id={`ai-feature-${f.feature}-model-help`} className="text-muted type-caption">
-                    {AiToolsCopy.DICTATION_MODEL_HELP}
+                    {AiToolsCopy.modelHelp(f.feature)}
                   </p>
                 </div>
               )}

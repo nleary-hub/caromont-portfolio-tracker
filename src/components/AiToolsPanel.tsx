@@ -17,11 +17,14 @@ const INPUT = `h-8 w-full min-w-0 rounded-control border border-line bg-input px
 const AREA = `min-h-24 w-full rounded-control border border-line bg-input px-2.5 py-2 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger ${FOCUS}`;
 const GHOST = `h-7 whitespace-nowrap rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 
+/** Paused like the model-off buttons: greyed, still focusable, explained by the line's error. */
+const PAUSED = "aria-disabled:cursor-not-allowed aria-disabled:border-line aria-disabled:bg-(--status-not-started-dark-bg) aria-disabled:text-muted";
+
 export type AiToolsState = { kind: "idle" } | { kind: "error"; message: string } | { kind: "review"; proposal: Extract<AiToolProposeResult, { ok: true }> };
 /** A value as people read it: status labels ("On hold"), blank as a muted en dash. */
 const show = (field: string, v: string) => (!v ? <span className="text-muted" data-testid="ai-tool-empty">{C.EMPTY_VALUE}</span> : field === "status" && ProjectStatusInfo.isValid(v) ? ProjectStatusInfo.label(v) : v);
 
-type LineState = { status: "open" | "applied" | "rejected"; value: string; error?: string };
+export type LineState = { status: "open" | "applied" | "rejected"; value: string; error?: string };
 
 /**
  * One change-suggesting AI tool: text in, a review list out. Each line is applied or rejected on its own; nothing is
@@ -189,10 +192,13 @@ export function AiChangeReview({ proposalId, changes, initialLines, bulk }: { pr
                       <div className="flex gap-2">
                         <button
                           type="button"
-                          className={GHOST}
+                          className={`${GHOST} ${PAUSED}`}
                           disabled={busy}
+                          {...(l.error ? { "aria-disabled": true as const, "aria-describedby": errorId(c.line) } : {})}
                           data-testid={`ai-tool-apply-${c.line}`}
                           onClick={() =>
+                            // Design review: an invalid line's Apply is paused (focusable, greyed) until the value is edited.
+                            !l.error &&
                             start(async () => {
                               const r = await applyAiToolLine(proposalId, c.line, c.projectId, c.field, l.value);
                               set(c.line, r.ok ? { status: "applied", error: undefined } : { error: r.message });

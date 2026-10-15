@@ -3,7 +3,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AiBulkEdit, type AiBulkSummary } from "@/lib/ai/AiBulkEdit";
 import { AiCopy } from "@/lib/ai/AiCopy";
-import { AiFeatureFlags, type AiToolFeature } from "@/lib/ai/AiFeatureFlags";
+import { AiFeatureFlags, type AiLiveFeature, type AiToolFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiProviderClient, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiProviders } from "@/lib/ai/AiProviders";
@@ -19,7 +19,15 @@ import { AiWritingService, type AiUsageRow } from "./AiWritingService";
 
 type Env = Record<string, string | undefined>;
 
-export type AiToolUsageRow = AiUsageRow & { lineIndex?: number | null };
+export type AiToolUsageRow = AiUsageRow & {
+  lineIndex?: number | null;
+  /** Step 10 (0048): voice chat session length in whole seconds and its cost from the admin-entered price. */
+  usageSeconds?: number | null;
+  costUsd?: number | null;
+};
+
+/** A feature whose lines are applied or rejected in the AI tools review list (step 10 adds voice chat). */
+export type AiReviewableTool = AiToolFeature | AiLiveFeature;
 
 /** The narrow slice of Prisma the AI tools use (tests pass an in-memory fake). */
 export interface AiToolsDb extends AiSettingsDb {
@@ -82,12 +90,14 @@ export type AiToolLineResult = { ok: true } | { ok: false; message: string };
 const RATE_EVENTS = ["suggested", "failed", "proposed"];
 
 /** Which fields each change-suggesting tool may touch. */
-const FIELDS: Partial<Record<AiToolFeature, readonly AiToolField[]>> = {
+const FIELDS: Partial<Record<AiReviewableTool, readonly AiToolField[]>> = {
   meeting_notes: AiToolsModel.ALL_FIELDS,
   // Step 5 (decision D3): no note, owner, physician or department changes in bulk.
   bulk_edit: ["status", "nextMilestone", "dueDate", "targetCompletion"],
   quick_capture: ["status", "nextMilestone", "dueDate", "note"],
   next_step: ["nextMilestone", "dueDate"],
+  // Step 10: voice chat suggests through the same review list (AiVoiceChat.FIELDS).
+  voice_chat: AiToolsModel.ALL_FIELDS,
 };
 
 /** Extra read-only fields a tool sees (it can't change them). */
@@ -108,11 +118,11 @@ export class AiToolsService {
   static readonly BULK_HISTORY_COMMENT = "ai:bulk_edit";
 
   /** The history tag an applied line carries (null = a plain edit). */
-  static historyComment(feature: AiToolFeature): string | null {
+  static historyComment(feature: AiReviewableTool): string | null {
     return feature === "bulk_edit" ? AiToolsService.BULK_HISTORY_COMMENT : null;
   }
 
-  static fieldsOf(feature: AiToolFeature): readonly AiToolField[] {
+  static fieldsOf(feature: AiReviewableTool): readonly AiToolField[] {
     return FIELDS[feature] ?? [];
   }
 
@@ -283,12 +293,12 @@ export class AiToolsService {
     return { ok: true };
   }
 
-  private static async openLine(db: AiToolsDb, viewer: Viewer | null, proposalId: unknown, rawLine: unknown, env: Env, applying: boolean): Promise<{ ok: true; row: AiToolUsageRow; line: number; feature: AiToolFeature } | { ok: false; message: string }> {
+  private static async openLine(db: AiToolsDb, viewer: Viewer | null, proposalId: unknown, rawLine: unknown, env: Env, applying: boolean): Promise<{ ok: true; row: AiToolUsageRow; line: number; feature: AiReviewableTool } | { ok: false; message: string }> {
     if (!viewer?.isAdmin) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
     const line = Number(rawLine);
     if (typeof proposalId !== "string" || !/^[0-9a-f-]{36}$/i.test(proposalId) || !Number.isInteger(line) || line < 0 || line >= AiToolsModel.MAX_LINES) return { ok: false, message: AiToolsCopy.APPLY_FAILED };
     const row = await db.aiUsageLog.findFirst({ where: { suggestionId: proposalId, userEmail: viewer.email, event: "proposed" } });
-    const feature = AiFeatureFlags.parseToolFeature(row?.feature);
+    const feature = AiFeatureFlags.parseReviewableTool(row?.feature);
     if (!row || !feature) return { ok: false, message: AiToolsCopy.APPLY_FAILED };
     if (applying && !(await AiModelService.featureOn(db, feature, env))) return { ok: false, message: AiToolsCopy.FEATURE_OFF };
     const closed = await db.aiUsageLog.findFirst({ where: { suggestionId: proposalId, userEmail: viewer.email, event: { in: ["applied", "rejected"] }, lineIndex: line } });
