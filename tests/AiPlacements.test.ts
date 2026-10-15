@@ -105,7 +105,7 @@ describe("placement 2: Suggest next step and row shortcuts", () => {
 describe("placement 3: Quick capture and dictation", () => {
   it("feature off: header gets no Quick capture (aiActions undefined)", () => {
     const src = readFileSync("src/components/ProjectDashboard.tsx", "utf8");
-    expect(src).toMatch(/aiActions=\{aiPlacements && "quick_capture" in aiPlacements \?/);
+    expect(src).toContain(`{aiPlacements && "quick_capture" in aiPlacements && <AiQuickCapture`);
     expect(readFileSync("src/components/DashboardTopBar.tsx", "utf8")).toContain("{aiActions && <div");
   });
   it("ready: Quick capture with the Q shortcut in its tooltip", () => {
