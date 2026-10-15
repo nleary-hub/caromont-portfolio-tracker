@@ -7,7 +7,7 @@ import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiProviderClient, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiProviders } from "@/lib/ai/AiProviders";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
-import { AiToolsModel, type AiBrief, type AiProjectDraft, type AiToolChange, type AiToolField, type AiToolProject } from "@/lib/ai/AiToolsModel";
+import { AiToolsModel, type AiLinkSuggestion, type AiBrief, type AiProjectDraft, type AiToolChange, type AiToolField, type AiToolProject } from "@/lib/ai/AiToolsModel";
 import { AiToolsPrompts } from "@/lib/ai/AiToolsPrompts";
 import { AiTranscriptionClient, type AiTranscribeFetch } from "@/lib/ai/AiTranscriptionClient";
 import { AppConfig } from "@/lib/config/AppConfig";
@@ -30,6 +30,35 @@ export interface AiToolsDb extends AiSettingsDb {
   project: {
     findMany(args: object): Promise<ProjectRowForTools[]>;
   };
+  /** Step 9 (0047). */
+  projectRelatedLink?: {
+    findMany(args: object): Promise<AiRelatedLinkRow[]>;
+    findUnique(args: { where: { id: string } | { projectAId_projectBId: { projectAId: string; projectBId: string } } }): Promise<AiRelatedLinkRow | null>;
+    create(args: { data: AiRelatedLinkRow }): Promise<unknown>;
+    update(args: { where: { id: string }; data: Partial<AiRelatedLinkRow> }): Promise<unknown>;
+  };
+}
+
+export interface AiRelatedLinkRow {
+  id: string;
+  serviceLineId: string;
+  projectAId: string;
+  projectBId: string;
+  reason: string | null;
+  createdAt: Date;
+  createdBy: string;
+  removedAt: Date | null;
+  removedBy: string | null;
+}
+
+/** A confirmed link as the page lists it. */
+export interface AiRelatedLinkView {
+  id: string;
+  aId: string;
+  aName: string;
+  bId: string;
+  bName: string;
+  reason: string;
 }
 
 export interface ProjectRowForTools {
@@ -346,5 +375,65 @@ export class AiToolsService {
     }
     await r.log("proposed", { outputLength: brief.moved.length + brief.stuck.length + brief.ask.length });
     return { ok: true, brief };
+  }
+
+  private static links(db: AiToolsDb) {
+    if (!db.projectRelatedLink) throw new Error("project_related_links is not available");
+    return db.projectRelatedLink;
+  }
+
+  /** Step 9: confirmed (not removed) links of the line, between projects the viewer can see. */
+  static async listLinks(db: AiToolsDb, scope: ServiceLineScope): Promise<AiRelatedLinkView[]> {
+    const projects = await AiToolsService.projects(db, scope);
+    const name = new Map(projects.map((p) => [p.id, p.name]));
+    const rows = await AiToolsService.links(db).findMany({ where: { serviceLineId: scope.id, removedAt: null }, orderBy: { createdAt: "desc" } });
+    return rows.filter((r) => name.has(r.projectAId) && name.has(r.projectBId)).map((r) => ({ id: r.id, aId: r.projectAId, aName: name.get(r.projectAId)!, bId: r.projectBId, bName: name.get(r.projectBId)!, reason: r.reason ?? "" }));
+  }
+
+  /** Step 9: suggested links to confirm one by one. Saves nothing. */
+  static async proposeLinks(args: { db: AiToolsDb; viewer: Viewer | null; scope: ServiceLineScope; input: unknown; env?: Env; fetchImpl?: FetchLike; now?: () => Date }): Promise<{ ok: true; proposalId: string; links: AiLinkSuggestion[] } | AiToolFailure> {
+    if (!args.viewer?.isAdmin) return { ok: false, kind: "denied", message: AiCopy.NOT_AUTHORIZED };
+    const projects = await AiToolsService.projects(args.db, args.scope);
+    const existing = new Set((await AiToolsService.links(args.db).findMany({ where: { serviceLineId: args.scope.id, removedAt: null } })).map((r) => AiToolsModel.pairKey(r.projectAId, r.projectBId)));
+    const r = await AiToolsService.call({ ...args, feature: "related_links", input: typeof args.input === "string" && args.input.trim() ? args.input : AiToolsCopy.BRIEF_DEFAULT, build: (input) => AiToolsPrompts.build("related_links", input, AiToolsModel.context(projects, ["status", "note"])) });
+    if (!r.ok) return r;
+    const links = AiToolsModel.parseLinks(r.text, projects, existing);
+    if (!links) {
+      await r.log("failed");
+      return { ok: false, kind: "parse", message: AiToolsCopy.PARSE_FAILED };
+    }
+    const kept = JSON.stringify(links);
+    await r.log("proposed", { outputLength: links.length, suggestedText: AiPhiGuard.check(kept).ok ? kept : null });
+    return { ok: true, proposalId: r.proposalId, links };
+  }
+
+  /** Step 9: confirm one suggested link. Both projects must still be in the viewer's scope. One "applied" row. */
+  static async applyLink(args: { db: AiToolsDb; viewer: Viewer | null; scope: ServiceLineScope; proposalId: unknown; line: unknown; aId: unknown; bId: unknown; reason: unknown; env?: Env; now?: Date }): Promise<AiToolLineResult> {
+    const open = await AiToolsService.openLine(args.db, args.viewer, args.proposalId, args.line, args.env ?? process.env, true);
+    if (!open.ok) return open;
+    if (open.feature !== "related_links" || typeof args.aId !== "string" || typeof args.bId !== "string" || args.aId === args.bId) return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+    const ids = new Set((await AiToolsService.projects(args.db, args.scope)).map((p) => p.id));
+    if (!ids.has(args.aId) || !ids.has(args.bId)) return { ok: false, message: AiCopy.PROJECT_GONE };
+    const [a, b] = args.aId < args.bId ? [args.aId, args.bId] : [args.bId, args.aId];
+    const reason = typeof args.reason === "string" ? args.reason.trim().slice(0, AiToolsModel.REASON_MAX) || null : null;
+    const now = args.now ?? new Date();
+    const links = AiToolsService.links(args.db);
+    const found = await links.findUnique({ where: { projectAId_projectBId: { projectAId: a, projectBId: b } } });
+    if (found && !found.removedAt) return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+    if (found) await links.update({ where: { id: found.id }, data: { removedAt: null, removedBy: null, reason, createdAt: now, createdBy: args.viewer!.email } });
+    else await links.create({ data: { id: randomUUID(), serviceLineId: args.scope.id, projectAId: a, projectBId: b, reason, createdAt: now, createdBy: args.viewer!.email, removedAt: null, removedBy: null } });
+    await AiToolsService.decision(args.db, open.row, "applied", open.line, a, null, now);
+    return { ok: true };
+  }
+
+  /** Step 9: Remove a confirmed link (sets removedAt; the row stays). Admin only, same line. Not an AI call. */
+  static async removeLink(db: AiToolsDb, viewer: Viewer | null, scope: ServiceLineScope, id: unknown, now: Date = new Date()): Promise<AiToolLineResult> {
+    if (!viewer?.isAdmin) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    if (typeof id !== "string" || !/^[0-9a-f-]{36}$/i.test(id)) return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+    const links = AiToolsService.links(db);
+    const row = await links.findUnique({ where: { id } });
+    if (!row || row.serviceLineId !== scope.id || row.removedAt) return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+    await links.update({ where: { id }, data: { removedAt: now, removedBy: viewer.email } });
+    return { ok: true };
   }
 }

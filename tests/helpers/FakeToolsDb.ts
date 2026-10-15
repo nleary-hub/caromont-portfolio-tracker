@@ -1,4 +1,4 @@
-import type { AiToolUsageRow, ProjectRowForTools } from "@/lib/services/AiToolsService";
+import type { AiRelatedLinkRow, AiToolUsageRow, ProjectRowForTools } from "@/lib/services/AiToolsService";
 import { FakeAiDb } from "./FakeAiDb";
 
 /** FakeAiDb plus what the AI tools read: example projects (never real rows) and usage rows by line. */
@@ -36,6 +36,26 @@ export class FakeToolsDb extends FakeAiDb {
     findMany: async (args: { where: { serviceLineId: string; id?: string } }) => {
       this.lastProjectQuery = args;
       return this.toolProjects.filter((p) => p.serviceLineId === args.where.serviceLineId && (!args.where.id || p.id === args.where.id));
+    },
+  };
+
+  linkRows: AiRelatedLinkRow[] = [];
+  projectRelatedLink = {
+    findMany: async (args: { where: { serviceLineId: string; removedAt: null } }) => this.linkRows.filter((r) => r.serviceLineId === args.where.serviceLineId && !r.removedAt),
+    findUnique: async (args: { where: { id: string } | { projectAId_projectBId: { projectAId: string; projectBId: string } } }) => {
+      const w = args.where;
+      return this.linkRows.find((r) => ("id" in w ? r.id === w.id : r.projectAId === w.projectAId_projectBId.projectAId && r.projectBId === w.projectAId_projectBId.projectBId)) ?? null;
+    },
+    create: async (args: { data: AiRelatedLinkRow }) => {
+      this.writes.push("projectRelatedLink.create");
+      this.linkRows.push({ ...args.data });
+      return args.data;
+    },
+    update: async (args: { where: { id: string }; data: Partial<AiRelatedLinkRow> }) => {
+      this.writes.push("projectRelatedLink.update");
+      const r = this.linkRows.find((x) => x.id === args.where.id)!;
+      Object.assign(r, args.data);
+      return r;
     },
   };
 }

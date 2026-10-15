@@ -924,3 +924,22 @@ model AiFeatureSetting {
 
   @@map("ai_feature_settings")
 }
+
+/// Step 9 (0047): a person-confirmed "related" link between two projects of one line (AI-suggested, never automatic).
+/// Stored once per pair (projectAId < projectBId). Never deleted (trigger); Remove sets removedAt.
+model ProjectRelatedLink {
+  id            String    @id @default(uuid()) @db.Uuid
+  serviceLineId String    @db.Uuid
+  projectAId    String    @db.Uuid
+  projectBId    String    @db.Uuid
+  reason        String?
+  createdAt     DateTime  @default(now())
+  createdBy     String
+  removedAt     DateTime?
+  removedBy     String?
+
+  @@unique([projectAId, projectBId])
+  @@index([projectBId])
+  @@index([serviceLineId])
+  @@map("project_related_links")
+}

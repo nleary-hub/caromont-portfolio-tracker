@@ -16,6 +16,7 @@ export class AiToolsCopy {
     next_step: "Next-step suggestion",
     request_to_project: "Request to draft project",
     meeting_brief: "Pre-meeting brief",
+    related_links: "Related-project links",
   };
 
   // Shared review list.
@@ -125,6 +126,20 @@ export class AiToolsCopy {
   static readonly BRIEF_ASK = "What to ask";
   static readonly BRIEF_EMPTY = "Nothing to list.";
   static readonly BRIEF_NOTE = "AI-written from each project's status and Latest update. Check the linked projects before the meeting.";
+
+  // Step 9: Related-project links.
+  static readonly LINKS_TITLE = "Related-project links";
+  static readonly LINKS_HELP = "The AI looks for projects that share a vendor, a location or a blocker and suggests links. Each link is added only when you confirm it. Links don't change any project or report.";
+  static readonly LINKS_PROPOSE = "Suggest links";
+  static readonly LINKS_REVIEW_TITLE = "Review suggested links";
+  static readonly LINKS_HEADERS = ["Project", "Related project", "Why", ""] as const;
+  static readonly LINK_CONFIRM = "Link";
+  static readonly LINK_LINKED = "Linked";
+  static readonly LINKS_NONE = "The AI found no new links to suggest.";
+  static readonly LINKS_SAVED_TITLE = "Confirmed links";
+  static readonly LINKS_SAVED_EMPTY = "No links yet.";
+  static readonly LINK_REMOVE = "Remove";
+  static readonly LINK_REMOVED = "Link removed.";
 
   static fieldLabel(field: string): string {
     return AiToolsCopy.FIELD_LABELS[field] ?? field;

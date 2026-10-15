@@ -51,6 +51,16 @@ export interface AiBrief {
   ask: AiBriefItem[];
 }
 
+/** Step 9: one suggested link between two projects. */
+export interface AiLinkSuggestion {
+  line: number;
+  aId: string;
+  aName: string;
+  bId: string;
+  bName: string;
+  reason: string;
+}
+
 /** Pure rules of the AI tools (unit tested): context building, reply parsing and value checks. */
 export class AiToolsModel {
   static readonly ALL_FIELDS: readonly AiToolField[] = ["status", "nextMilestone", "dueDate", "targetCompletion", "note"];
@@ -209,6 +219,37 @@ export class AiToolsModel {
         .filter((x): x is AiBriefItem => x !== null)
         .slice(0, AiToolsModel.BRIEF_ITEMS_MAX);
     return { moved: list("moved"), stuck: list("stuck"), ask: list("ask") };
+  }
+
+  static readonly LINKS_MAX = 20;
+
+  /** A pair in stored order (smaller id first), so A to B and B to A are the same link. */
+  static pairKey(a: string, b: string): string {
+    return a < b ? `${a}:${b}` : `${b}:${a}`;
+  }
+
+  /** Step 9: reads suggested links. Unknown refs, self links, repeats and already-linked pairs are dropped. */
+  static parseLinks(text: string, projects: readonly AiToolProject[], existing: ReadonlySet<string>): AiLinkSuggestion[] | null {
+    const body = AiToolsModel.json(text) as { links?: unknown } | null;
+    if (!body || !Array.isArray(body.links)) return null;
+    const at = (ref: unknown) => {
+      const m = typeof ref === "string" ? /^P(\d+)$/i.exec(ref.trim()) : null;
+      return m ? projects[Number(m[1]) - 1] : undefined;
+    };
+    const seen = new Set(existing);
+    const out: AiLinkSuggestion[] = [];
+    for (const l of body.links as Record<string, unknown>[]) {
+      if (out.length >= AiToolsModel.LINKS_MAX) break;
+      const a = at(l?.a);
+      const b = at(l?.b);
+      if (!a || !b || a.id === b.id) continue;
+      const key = AiToolsModel.pairKey(a.id, b.id);
+      if (seen.has(key)) continue;
+      seen.add(key);
+      const reason = typeof l.reason === "string" ? l.reason.trim().slice(0, AiToolsModel.REASON_MAX) : "";
+      out.push({ line: out.length, aId: a.id, aName: a.name, bId: b.id, bName: b.name, reason });
+    }
+    return out;
   }
 
   /** The patch the normal project save receives for one applied line. */

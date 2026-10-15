@@ -122,3 +122,40 @@ export async function makeAiMeetingBrief(focus: string) {
     return { ok: false as const, kind: "provider" as const, message: AiToolsCopy.PROVIDER_ERROR };
   }
 }
+
+/** Step 9: suggested related-project links. Saves nothing. */
+export async function proposeAiRelatedLinks(focus: string) {
+  try {
+    const c = await context();
+    if (!c) return { ok: false as const, kind: "denied" as const, message: AiCopy.NOT_AUTHORIZED };
+    return await AiToolsService.proposeLinks({ ...c, input: focus });
+  } catch (e) {
+    console.error("AI tools failed: links", (e as Error)?.name);
+    return { ok: false as const, kind: "provider" as const, message: AiToolsCopy.PROVIDER_ERROR };
+  }
+}
+
+export async function confirmAiRelatedLink(proposalId: string, line: number, aId: string, bId: string, reason: string): Promise<AiToolLineResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    const r = await AiToolsService.applyLink({ ...c, proposalId, line, aId, bId, reason });
+    if (r.ok) revalidatePath("/ai-tools");
+    return r;
+  } catch (e) {
+    console.error("AI tools failed: link", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+  }
+}
+
+export async function removeRelatedLink(id: string): Promise<AiToolLineResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    const r = await AiToolsService.removeLink(c.db, c.viewer, c.scope, id);
+    if (r.ok) revalidatePath("/ai-tools");
+    return r;
+  } catch {
+    return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+  }
+}

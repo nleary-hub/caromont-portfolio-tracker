@@ -75,6 +75,14 @@ export class AiToolsPrompts {
       "- If the user names a focus (a department, a person or a topic), use only the projects that match it.",
       ...AiToolsPrompts.COMMON,
     ].join("\n"),
+    related_links: [
+      "You suggest links between related projects in a hospital service line portfolio tracker: projects that share a vendor, a location or a blocker, from their names and Latest updates.",
+      'Reply with JSON only, in this shape: {"links":[{"a":"P1","b":"P2","reason":"Both wait on the same vendor"}]}',
+      "- Only suggest a link when the project list shows the shared vendor, location or blocker. reason names it in 15 words or fewer.",
+      "- At most 20 links. Never link a project to itself.",
+      '- If there are none, reply {"links":[]}.',
+      ...AiToolsPrompts.COMMON,
+    ].join("\n"),
   };
 
   static build(feature: AiToolFeature, input: string, context: string): AiPrompt {
