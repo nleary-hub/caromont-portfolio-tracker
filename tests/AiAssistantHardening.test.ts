@@ -2,7 +2,7 @@ import { randomBytes, randomUUID } from "node:crypto";
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
 import { AiPrompts } from "@/lib/ai/AiPrompts";
@@ -229,5 +229,35 @@ describe("cron wiring", () => {
     expect(route).toContain("ReportHttp.cronAuthorized");
     expect(route).not.toMatch(/FreezeService|cron\/freeze"/);
     expect(freeze).not.toMatch(/AiRetention|ai-retention/);
+  });
+});
+
+// The form imports its Server Functions (session, DB); the field render needs none of them.
+vi.mock("@/app/actions/ai", () => ({ saveAiSettings: vi.fn(), clearAiKey: vi.fn(), testAiConnection: vi.fn() }));
+
+describe("model field styles (Figma review)", () => {
+  it("help: grey hint under the field, named by aria-describedby", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { ModelField } = await import("@/components/AiSettingsForm");
+    const html = renderToStaticMarkup(createElement(ModelField, { value: "gpt-6-luna" }));
+    expect(html).toContain('aria-describedby="ai-model-help"');
+    expect(html).toMatch(/<p id="ai-model-help" class="text-muted type-caption">/);
+    expect(html).not.toContain("aria-invalid=");
+  });
+
+  it("error: red alert box (role=alert), red border, 2px focus outline, announced via aria-describedby and aria-invalid", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { ModelField } = await import("@/components/AiSettingsForm");
+    const html = renderToStaticMarkup(createElement(ModelField, { value: "some-other-model", error: AiCopy.MODEL_NOT_ALLOWED }));
+    expect(html).toContain('aria-invalid="true"');
+    expect(html).toContain('aria-describedby="ai-model-error"');
+    expect(html).toContain('id="ai-model-error"');
+    expect(html).toMatch(/role="alert" class="[^"]*bg-\(--status-off-track-dark-bg\) text-danger/);
+    expect(html).toContain("aria-invalid:border-danger");
+    expect(html).toContain("focus-visible:outline-2");
+    expect(html).toContain("That model isn&#x27;t allowed. Enter gpt-6-luna.");
+    expect(html).not.toContain("ai-model-help");
   });
 });
