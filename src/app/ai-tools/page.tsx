@@ -51,6 +51,13 @@ export default async function AiToolsPage() {
         </h2>
         <AiToolsPanel feature="meeting_notes" label={C.MEETING_LABEL} help={C.MEETING_HELP} placeholder={C.MEETING_PLACEHOLDER} disabledNote={notes.meeting_notes ?? null} rows={8} />
       </section>
+
+      <section className={section} aria-labelledby="ai-tool-bulk-heading" id="bulk-edit">
+        <h2 id="ai-tool-bulk-heading" className="type-heading">
+          {C.BULK_TITLE}
+        </h2>
+        <AiToolsPanel feature="bulk_edit" label={C.BULK_LABEL} help={C.BULK_HELP} placeholder={C.BULK_PLACEHOLDER} disabledNote={notes.bulk_edit ?? null} rows={3} />
+      </section>
     </main>
   );
 }

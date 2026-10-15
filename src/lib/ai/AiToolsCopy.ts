@@ -10,6 +10,7 @@ export class AiToolsCopy {
 
   static readonly FEATURE_LABELS: Readonly<Record<string, string>> = {
     meeting_notes: "Meeting notes to updates",
+    bulk_edit: "Plain-English bulk edit",
   };
 
   // Shared review list.
@@ -51,6 +52,12 @@ export class AiToolsCopy {
   static readonly MEETING_HELP = "Paste notes from a meeting. The AI suggests status, next milestone, date and update changes for the projects the notes mention.";
   static readonly MEETING_LABEL = "Meeting notes";
   static readonly MEETING_PLACEHOLDER = "For example: Example Clinic refresh is on hold until the vendor confirms. Sample Lab move, due date now Dec 1.";
+
+  // Step 5: Plain-English bulk edit.
+  static readonly BULK_TITLE = "Plain-English bulk edit";
+  static readonly BULK_HELP = "Describe a change for many projects at once. The AI lists each project it would change, with before and after. It can change status, next milestone and dates, never the update note.";
+  static readonly BULK_LABEL = "What should change?";
+  static readonly BULK_PLACEHOLDER = "For example: Move every On hold project due in November to December 1.";
 
   static fieldLabel(field: string): string {
     return AiToolsCopy.FIELD_LABELS[field] ?? field;

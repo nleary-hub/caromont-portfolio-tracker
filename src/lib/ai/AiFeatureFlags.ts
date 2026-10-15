@@ -7,7 +7,7 @@ export type AiReviewFeature = "revise_note";
  * The AI tools (steps 4 to 9) on the AI tools page. Each proposes, a person confirms each line, nothing auto-applies.
  * Kept apart from AiReviewFeature so the edit-form review layer never accepts a tool feature (and the reverse).
  */
-export type AiToolFeature = "meeting_notes";
+export type AiToolFeature = "meeting_notes" | "bulk_edit";
 
 /** Every feature with a toggle on Admin > AI settings. */
 export type AiToggleFeature = AiReviewFeature | AiToolFeature;
@@ -21,13 +21,14 @@ export class AiFeatureFlags {
   static readonly FLAGS: Readonly<Record<AiToggleFeature, string>> = {
     revise_note: "AI_FEATURE_REVISE_NOTE",
     meeting_notes: "AI_FEATURE_MEETING_NOTES",
+    bulk_edit: "AI_FEATURE_BULK_EDIT",
   };
 
   /** Review-layer features (the edit form). */
   static readonly FEATURES: readonly AiReviewFeature[] = ["revise_note"];
 
   /** AI tools page features, in step order. */
-  static readonly TOOL_FEATURES: readonly AiToolFeature[] = ["meeting_notes"];
+  static readonly TOOL_FEATURES: readonly AiToolFeature[] = ["meeting_notes", "bulk_edit"];
 
   /** Everything with a toggle on the settings page, in display order. */
   static readonly ALL: readonly AiToggleFeature[] = [...AiFeatureFlags.FEATURES, ...AiFeatureFlags.TOOL_FEATURES];

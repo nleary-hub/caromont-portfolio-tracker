@@ -53,6 +53,8 @@ const RATE_EVENTS = ["suggested", "failed", "proposed"];
 /** Which fields each change-suggesting tool may touch. */
 const FIELDS: Partial<Record<AiToolFeature, readonly AiToolField[]>> = {
   meeting_notes: AiToolsModel.ALL_FIELDS,
+  // Step 5 (decision D3): no note, owner, physician or department changes in bulk.
+  bulk_edit: ["status", "nextMilestone", "dueDate", "targetCompletion"],
 };
 
 /**

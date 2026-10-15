@@ -33,6 +33,14 @@ export class AiToolsPrompts {
       ...AiToolsPrompts.COMMON,
       ...AiToolsPrompts.CHANGES_FORMAT,
     ].join("\n"),
+    bulk_edit: [
+      "You turn a plain-English bulk edit request into suggested changes for a hospital service line portfolio tracker.",
+      "Fields you may change: status, nextMilestone, dueDate, targetCompletion. Never change the note.",
+      "Apply the request only to the projects it clearly matches, using the project list's names, statuses and dates.",
+      "Move dates exactly as asked (for example, the same day one month later). Do not change projects the request does not match.",
+      ...AiToolsPrompts.COMMON,
+      ...AiToolsPrompts.CHANGES_FORMAT,
+    ].join("\n"),
   };
 
   static build(feature: AiToolFeature, input: string, context: string): AiPrompt {

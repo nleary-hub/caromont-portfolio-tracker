@@ -1,4 +1,3 @@
-import { randomBytes } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
@@ -6,45 +5,15 @@ import { describe, expect, it, vi } from "vitest";
 import { AiChangeReview, AiToolsPanel } from "@/components/AiToolsPanel";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
-import type { FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiToolsModel, type AiToolProject } from "@/lib/ai/AiToolsModel";
-import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
-import { AiSettingsService } from "@/lib/services/AiSettingsService";
 import { AiToolsService } from "@/lib/services/AiToolsService";
 import { FakeToolsDb } from "./helpers/FakeToolsDb";
-import { Factory } from "./helpers/factories";
 
 vi.mock("@/app/actions/aiTools", () => ({ proposeAiToolChanges: vi.fn(), applyAiToolLine: vi.fn(), rejectAiToolLine: vi.fn() }));
 
-const ENV = { AI_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
-const ADMIN = Factory.ADMIN;
-const MEMBER = Factory.MEMBER;
-const SCOPE = ServiceLine.defaultScope();
-const A = "10000000-0000-4000-8000-0000000000a1";
-const B = "10000000-0000-4000-8000-0000000000b2";
-const FIELDS = { enabled: true, provider: "openai" as const, model: "gpt-6-luna", baseUrl: "", azureEndpoint: "", azureDeployment: "" };
-
-export class MockProvider {
-  calls: string[] = [];
-  constructor(private reply: string, private status = 200) {}
-  fetch: FetchLike = async (_url, init) => {
-    this.calls.push(init.body);
-    const payload = this.status === 200 ? { choices: [{ message: { content: this.reply } }] } : { error: { message: "down" } };
-    return { ok: this.status === 200, status: this.status, text: async () => JSON.stringify(payload) };
-  };
-}
-
-export async function toolsSetup() {
-  const db = new FakeToolsDb();
-  db.toolProjects.push({ id: A, serviceLineId: SCOPE.id, name: "Example Clinic refresh", status: "OnTrack", nextMilestone: "Vendor quote", dueDate: new Date("2026-11-01T00:00:00Z"), targetCompletion: null, note: "Quote requested." });
-  db.toolProjects.push({ id: B, serviceLineId: SCOPE.id, name: "Sample Lab move", status: "AtRisk", nextMilestone: null, dueDate: null, targetCompletion: null, note: null });
-  db.toolProjects.push({ id: "20000000-0000-4000-8000-000000000001", serviceLineId: "20000000-0000-4000-8000-0000000000ff", name: "Other line project", status: "OnTrack", nextMilestone: null, dueDate: null, targetCompletion: null, note: null });
-  expect(await AiSettingsService.save(db, ADMIN, { fields: FIELDS, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV)).toEqual({ ok: true });
-  db.writes = [];
-  return db;
-}
+import { A, ADMIN, ENV, MEMBER, MockProvider, SCOPE, toolsSetup } from "./helpers/aiTools";
 
 const REPLY = JSON.stringify({
   changes: [
