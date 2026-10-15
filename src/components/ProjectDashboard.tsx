@@ -667,7 +667,7 @@ export function ProjectDashboard({
         {/* A line with no projects shows only the banner; tiles, toolbar and table appear with the first project. */}
         {/* Top row: the status tiles, and the Pre-meeting brief card in the right column when that feature is on. */}
         {!emptyLine && (tileTemplate || (aiPlacements && "meeting_brief" in aiPlacements)) && (
-          <div className={aiPlacements && "meeting_brief" in aiPlacements ? "grid grid-cols-[minmax(0,1fr)_380px] items-start gap-2" : "contents"}>
+          <div className={aiPlacements && "meeting_brief" in aiPlacements ? `grid grid-cols-[minmax(0,1fr)_380px] gap-2 ${tileTemplate ? "items-stretch" : "items-start"}` : "contents"}>
             {tileTemplate && (
           <section className="pb-summary relative grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
             {tiles.map((t) =>
@@ -685,7 +685,7 @@ export function ProjectDashboard({
             {heartbeat && <SummaryHeartbeat tilesKey={tiles.join(",")} />}
           </section>
             )}
-            {aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard note={aiPlacements.meeting_brief ?? null} focusOptions={[...new Set([...(line?.departments ?? []).map((d) => d.name), ...rows.map((r) => r.name)])]} />}
+            {aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard capped={Boolean(tileTemplate)} note={aiPlacements.meeting_brief ?? null} focusOptions={[...new Set([...(line?.departments ?? []).map((d) => d.name), ...rows.map((r) => r.name)])]} />}
           </div>
         )}
 

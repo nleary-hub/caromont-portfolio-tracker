@@ -72,7 +72,7 @@ describe("placement 1: list toolbar AI menu", () => {
     const h = html(createElement(AiToolbarMenu, { notes: { bulk_edit: null }, selected: rows, visible: rows, defaultTool: "bulk_edit" }));
     expect(h).toContain("w-[480px]");
     expect(h).toContain('data-testid="ai-drawer-bulk_edit"');
-    expect(h).toContain("Working on 3 selected projects");
+    expect(h).toContain("Working on 3 selected projects: ");
   });
 });
 
@@ -162,7 +162,7 @@ describe("placement 4: Pre-meeting brief", () => {
     expect(src).toMatch(/aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard/);
     expect(src).toMatch(/"meeting_brief" in aiPlacements \? \{ headerAction: <AiBriefButton/);
     // No brief = the plain tiles section, no extra grid column.
-    expect(src).toContain('"meeting_brief" in aiPlacements ? "grid grid-cols-[minmax(0,1fr)_380px] items-start gap-2" : "contents"');
+    expect(src).toContain('"meeting_brief" in aiPlacements ? `grid grid-cols-[minmax(0,1fr)_380px] gap-2 ${tileTemplate ? "items-stretch" : "items-start"}` : "contents"');
   });
 });
 
