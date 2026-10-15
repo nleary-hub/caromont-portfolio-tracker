@@ -86,7 +86,7 @@ export class AiToolsCopy {
   static readonly DICTATION_NO_MODEL = "No dictation model is chosen in AI settings.";
   static readonly DICTATION_MODEL_LABEL = "Dictation model";
   static readonly DICTATION_MODEL_NONE = "Choose a model";
-  static readonly DICTATION_MODEL_HELP = "Dictation needs a speech-to-text model, such as a gpt-transcribe model. Only models that are on are listed.";
+  static readonly DICTATION_MODEL_HELP = "Dictation needs a speech-to-text model, such as a gpt-transcribe model. Only transcription models that are on are listed.";
 
   // Step 7: Next-step suggestion.
   static readonly NEXT_TITLE = "Next-step suggestion";

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { createPortal } from "react-dom";
 import { AiVoiceChatPanel } from "@/components/AiVoiceChatPanel";
 import { TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
@@ -57,7 +58,8 @@ export function AiVoiceChatDrawer({ disabledNote, defaultOpen = false }: { disab
           </span>
         )}
       </span>
-      {open && !off && (
+      {open && !off && typeof document !== "undefined" && createPortal(
+        // Portal: the header's backdrop blur would otherwise make it the containing block of this fixed drawer.
         <aside
           role="dialog"
           aria-label={C.VOICE_CHAT_TITLE}
@@ -71,7 +73,8 @@ export function AiVoiceChatDrawer({ disabledNote, defaultOpen = false }: { disab
             </button>
           </div>
           <AiVoiceChatPanel disabledNote={null} />
-        </aside>
+        </aside>,
+        document.body,
       )}
     </>
   );
