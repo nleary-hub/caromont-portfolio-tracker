@@ -76,7 +76,7 @@ export default async function AiSettingsPage() {
         </p>
       )}
 
-      <section className={section} aria-labelledby="ai-settings-heading">
+      <section className={`${section} relative z-20`} aria-labelledby="ai-settings-heading">
         <h2 id="ai-settings-heading" className="type-heading">
           {AiCopy.SWITCH_LABEL}
         </h2>

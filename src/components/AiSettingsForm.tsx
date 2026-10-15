@@ -252,7 +252,7 @@ export function ModelField({ value, error, disabled, options = [], defaultOpen =
           <span aria-hidden className="text-muted">▾</span>
         </button>
         {open && (
-          <ul id="ai-model-list" role="listbox" aria-label={C.MODEL_LABEL} className="absolute z-10 mt-1 w-full rounded-control border border-line bg-card py-1 shadow-lg" data-testid="ai-model-list" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+          <ul id="ai-model-list" role="listbox" aria-label={C.MODEL_LABEL} className="absolute z-30 mt-1 w-full rounded-control border border-line bg-input py-1 shadow-[0_12px_32px_rgba(0,0,0,.55)]" data-testid="ai-model-list" onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
             {options.length === 0 && <li className="px-2.5 py-1.5 text-muted type-caption">{C.MODEL_PICKER_EMPTY}</li>}
             {options.map((m) => (
               <li key={m} role="option" aria-selected={m === model}>

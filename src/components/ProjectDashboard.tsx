@@ -55,8 +55,18 @@ import { StartDateDefaultTag } from "./StartDateDefaultTag";
 import { StartDate } from "@/lib/projects/StartDate";
 import { DashboardAmbient, DrawerSpotlight, SummaryHeartbeat } from "./DashboardAmbient";
 import { AccountMenu } from "./AccountMenu";
+import type { AiPlacementNotes, AiRowShortcut } from "./AiPlacements";
+import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
+// AI placements use server actions: loaded on demand so importing the dashboard never pulls them in (tests, non-AI views).
+const AiBriefButton = dynamic(() => import("./AiPlacements").then((m) => m.AiBriefButton));
+const AiBriefCard = dynamic(() => import("./AiPlacements").then((m) => m.AiBriefCard));
+const AiQuickCapture = dynamic(() => import("./AiPlacements").then((m) => m.AiQuickCapture));
+const AiRowMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiRowMenu));
+const AiToolbarMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiToolbarMenu));
+const AiLinksPanel = dynamic(() => import("./AiLinksPanel").then((m) => m.AiLinksPanel));
+const AiNextStepPanel = dynamic(() => import("./AiNextStepPanel").then((m) => m.AiNextStepPanel));
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
 const ProjectPeopleEditor = dynamic(() => import("./ProjectPeopleEditor").then((m) => m.ProjectPeopleEditor));
@@ -172,6 +182,8 @@ interface Props {
   historyAction?: HistoryLoader;
   /** Dashboard header Voice chat (AiVoiceChatDrawer, built by the page): present only when AI and voice_chat are on. */
   aiVoice?: ReactNode;
+  /** AI tools where people work (placement spec). Absent key = that feature is off (not rendered). */
+  aiPlacements?: AiPlacementNotes;
   /** A project link (/?project=<id>) the server checked: its detail opens on load. */
   initialProjectId?: string;
   /** Account menu > Dashboard heartbeat, as saved on the account (default On). */
@@ -224,6 +236,7 @@ export function ProjectDashboard({
   signOutAction,
   historyAction,
   aiVoice,
+  aiPlacements,
   initialProjectId,
   heartbeat: heartbeatProp = true,
   setHeartbeatAction,
@@ -248,6 +261,32 @@ export function ProjectDashboard({
       .catch(failed);
   };
   const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
+  // AI toolbar menu: rows picked with Ctrl or Cmd click for "Bulk edit selected (N)".
+  // Bumped after Suggested related projects > Link so the Dependencies list reloads.
+  const [depsVersion, setDepsVersion] = useState(0);
+  // Row "..." AI shortcuts: open the edit drawer, then focus that field's AI button once the form is there.
+  const rowShortcuts: AiRowShortcut[] = [
+    ...(admin && aiPlacements && "next_step" in aiPlacements ? [{ key: "next_step" as const, label: AiToolsCopy.NEXT_INLINE, note: aiPlacements.next_step ?? null }] : []),
+    ...(admin?.aiWriting ? [{ key: "draft" as const, label: AiToolsCopy.ROW_DRAFT, note: admin.aiWriting.paused ? AiToolsCopy.MODEL_OFF_NOTE : null }] : []),
+  ];
+  const openShortcut = (id: string, key: AiRowShortcut["key"]) =>
+    guard(() => {
+      leaveForm();
+      setSelectedId(id);
+      setMode("edit");
+      const testId = key === "next_step" ? "ai-tool-next_step-propose" : "ai-draft";
+      let tries = 0;
+      const focus = () => {
+        const el = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
+        if (el) {
+          el.scrollIntoView({ block: "center" });
+          el.focus();
+        } else if (++tries < 20) setTimeout(focus, 50);
+      };
+      setTimeout(focus, 50);
+    });
+  const [multiIds, setMultiIds] = useState<ReadonlySet<string>>(() => new Set());
+  const toggleMulti = (id: string) => setMultiIds((cur) => { const next = new Set(cur); if (next.has(id)) next.delete(id); else next.add(id); return next; });
   // What "/" calls: set by the top bar (focus the search field, or open it when it is collapsed to an icon).
   const focusSearchRef = useRef<() => void>(() => {});
   // Admin edit mode. Non-admins stay in "view" (there is no way to switch).
@@ -593,7 +632,14 @@ export function ProjectDashboard({
         closedQuery={closedQuery}
         pdfDepartments={departments}
         adminMenu={admin && admin.menuItems.length > 0 ? <AdminMenuButton items={admin.menuItems} /> : undefined}
-        aiActions={aiVoice ?? undefined}
+        aiActions={
+          aiVoice || (aiPlacements && "quick_capture" in aiPlacements) ? (
+            <>
+              {aiVoice}
+              {aiPlacements && "quick_capture" in aiPlacements && <AiQuickCapture note={aiPlacements.quick_capture ?? null} {...("dictation" in aiPlacements ? { dictationNote: aiPlacements.dictation ?? null } : {})} />}
+            </>
+          ) : undefined
+        }
         account={
             <form action={signOutAction} className="flex shrink-0 items-center gap-2 whitespace-nowrap text-muted">
               <div className="grid size-[30px] place-items-center rounded-full border border-(--status-on-hold-dark-fg) bg-(--status-on-hold-dark-bg) type-label font-semibold text-(--status-on-hold-dark-fg)">
@@ -619,7 +665,10 @@ export function ProjectDashboard({
         {emptyLine && <EmptyLineState line={line!} admin={Boolean(admin)} onNew={openNew} />}
 
         {/* A line with no projects shows only the banner; tiles, toolbar and table appear with the first project. */}
-        {!emptyLine && tileTemplate && (
+        {/* Top row: the status tiles, and the Pre-meeting brief card in the right column when that feature is on. */}
+        {!emptyLine && (tileTemplate || (aiPlacements && "meeting_brief" in aiPlacements)) && (
+          <div className={aiPlacements && "meeting_brief" in aiPlacements ? "grid grid-cols-[minmax(0,1fr)_380px] items-start gap-2" : "contents"}>
+            {tileTemplate && (
           <section className="pb-summary relative grid gap-2" style={{ gridTemplateColumns: tileTemplate }} aria-label="Status summary">
             {tiles.map((t) =>
               t === "completedFy" ? (
@@ -635,6 +684,9 @@ export function ProjectDashboard({
             {/* Heartbeat switch Off: no line, head, trail or washes are rendered and no animation runs. */}
             {heartbeat && <SummaryHeartbeat tilesKey={tiles.join(",")} />}
           </section>
+            )}
+            {aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard note={aiPlacements.meeting_brief ?? null} focusOptions={[...new Set([...(line?.departments ?? []).map((d) => d.name), ...rows.map((r) => r.name)])]} />}
+          </div>
         )}
 
         {!emptyLine && (
@@ -652,6 +704,7 @@ export function ProjectDashboard({
             </span>
           )}
           <SortChip text={DashboardQuery.sortChip(sort)} onManual={() => setQ({ ...q, sort: null })} />
+          {aiPlacements && <AiToolbarMenu notes={aiPlacements} selected={rows.filter((r) => multiIds.has(r.id)).map((r) => ({ id: r.id, name: r.name }))} visible={visible.map((r) => ({ id: r.id, name: r.name }))} />}
           {review && <MarkAllReviewedButton count={reviewable.length} onClick={() => setConfirmBulk(true)} />}
           {admin && (
             <button
@@ -701,6 +754,8 @@ export function ProjectDashboard({
               }
               settings={dashboardView}
               selectedId={selectedId}
+              {...(aiPlacements && ("bulk_edit" in aiPlacements || "meeting_notes" in aiPlacements) ? { multiIds, onMultiToggle: toggleMulti } : {})}
+              {...(rowShortcuts.length && admin ? { rowMenu: (r: DashboardRow) => (admin.formValues[r.id] ? <AiRowMenu rowName={r.name} items={rowShortcuts} onPick={(k) => openShortcut(r.id, k)} /> : null) } : {})}
               flashId={flashId}
               onSelect={selectRow}
               today={today}
@@ -777,6 +832,7 @@ export function ProjectDashboard({
             onClose={requestClose}
             headerTag={mode === "edit" && blockedCount?.id === selected.id && blockedCount.n > 0 ? <BlockedByTag n={blockedCount.n} /> : null}
             onEdit={admin && mode === "view" && admin.formValues[selected.id] ? () => setMode("edit") : undefined}
+            {...(aiPlacements && "meeting_brief" in aiPlacements ? { headerAction: <AiBriefButton note={aiPlacements.meeting_brief ?? null} projectName={selected.name} /> } : {})}
             peopleEditor={
               admin ? (
                 <ProjectPeopleEditor
@@ -819,9 +875,32 @@ export function ProjectDashboard({
                   templates={admin.templates}
                   ownerOptions={admin.milestoneOwnerOptions}
                   today={today}
+                  {...(aiPlacements && "next_step" in aiPlacements ? { aiNextStep: <AiNextStepPanel key={`next-${selected.id}`} inline projects={[{ id: selected.id, name: selected.name }]} initialProject={selected.id} disabledNote={aiPlacements.next_step ?? null} /> } : {})}
                   dependencies={
                     admin.dependencyActions ? (
-                      <DependenciesEditor key={`deps-${selected.id}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount({ id: selected.id, n })} />
+                      <>
+                        <DependenciesEditor key={`deps-${selected.id}-${depsVersion}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount({ id: selected.id, n })} />
+                        {aiPlacements && "related_links" in aiPlacements && (
+                          <section aria-labelledby="ai-related-title" className="mt-3 flex flex-col gap-2" data-testid="ai-related-section">
+                            <h4 id="ai-related-title" className="text-muted type-label">
+                              {AiToolsCopy.LINKS_SUGGESTED_TITLE}
+                            </h4>
+                            <AiLinksPanel
+                              key={`links-${selected.id}`}
+                              inline
+                              focus={selected.name}
+                              saved={[]}
+                              disabledNote={aiPlacements.related_links ?? null}
+                              onLink={async (aId, bId) => {
+                                // Normal edit path: the same add as the Dependencies picker (checks, history entry).
+                                const r = await admin.dependencyActions!.add(selected.id, aId === selected.id ? bId : aId);
+                                if (r.ok) setDepsVersion((v) => v + 1);
+                                return r.ok ? { ok: true as const } : { ok: false as const, error: r.error };
+                              }}
+                            />
+                          </section>
+                        )}
+                      </>
                     ) : null
                   }
                   people={
@@ -1039,7 +1118,14 @@ export function ProjectDrawer({
             )}
             <h2 className="mt-1 type-heading text-base">{row ? row.name : "New project"}</h2>
           </div>
-          {closeButton}
+          {row && headerAction ? (
+            <div className="flex shrink-0 items-center gap-1.5">
+              {headerAction}
+              {closeButton}
+            </div>
+          ) : (
+            closeButton
+          )}
         </div>
         {form}
       </aside>
@@ -1061,12 +1147,13 @@ export function ProjectDrawer({
         </div>
         {onEdit || headerAction ? (
           <div className="flex shrink-0 items-center gap-1.5">
-            {headerAction}
             {onEdit && (
               <button type="button" onClick={onEdit} className="pb-ghost h-7 rounded-[6px] px-2.5 text-muted type-table-strong hover:bg-input hover:text-fg">
                 Edit
               </button>
             )}
+            {/* Brief sits directly left of the close button (placement spec 4). */}
+            {headerAction}
             {closeButton}
           </div>
         ) : (

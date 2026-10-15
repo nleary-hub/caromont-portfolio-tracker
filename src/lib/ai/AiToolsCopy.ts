@@ -166,6 +166,26 @@ export class AiToolsCopy {
 
   // Step 10: Voice chat.
   static readonly VOICE_CHAT_TITLE = "Voice chat";
+  static readonly NEXT_INLINE = "Recommend next milestone";
+  static readonly BRIEF_OPEN_FULL = "Open full";
+  static readonly BRIEF_CARD_TITLE = "Pre-meeting brief";
+  static readonly BRIEF_BUTTON = "Brief";
+  static readonly LINKS_FIND = "Find related";
+  static readonly LINK_DISMISS = "Dismiss";
+  static readonly RECORDING = "Recording";
+  static readonly ROW_MENU_LABEL = "More actions";
+  static readonly ROW_DRAFT = "Draft with AI";
+  static readonly LINKS_SUGGESTED_TITLE = "Suggested related projects";
+  static readonly AI_MENU = "AI";
+  static readonly AI_MENU_BULK = (n: number) => `Bulk edit selected (${n})`;
+  static readonly AI_MENU_MEETING = "Meeting notes to updates";
+  static readonly AI_MENU_SELECT_FIRST = "Select one or more rows first.";
+  static readonly AI_MENU_SELECT_HINT = "Ctrl or Cmd click rows to select them.";
+  static readonly CAPTURE_BUTTON = "Quick capture";
+  static readonly CAPTURE_SHORTCUT = "Shortcut: Q";
+  static readonly selectionLine = (n: number, names: string) => `Working on ${n} selected ${n === 1 ? "project" : "projects"}: ${names}`;
+  static readonly visibleLine = (n: number) => `Working on the ${n} ${n === 1 ? "project" : "projects"} in view.`;
+  static readonly scopePrefix = (names: string) => `Only change these projects: ${names}.`;
   static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. Any change the AI suggests is listed below. Nothing is saved until you apply it.";
   static readonly VOICE_START = "Start voice chat";
   static readonly VOICE_STOP = "End chat";

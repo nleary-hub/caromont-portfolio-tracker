@@ -53,6 +53,8 @@ export interface ProjectEditFormProps {
   startDateIsDefault?: boolean;
   /** Dependencies section body (saves on pick). Null or omitted for a new project. */
   dependencies?: ReactNode;
+  /** AI placements: "Recommend next milestone" under the milestones (Next milestone). Absent when the feature is off. */
+  aiNextStep?: ReactNode;
   /** The People editor (saves on pick). Null for a new project. */
   people: ReactNode;
   /** Delete project with its confirmation. Null for a new project. */
@@ -96,6 +98,7 @@ export function ProjectEditForm({
   today,
   startDateIsDefault,
   dependencies,
+  aiNextStep,
   people,
   adminDelete,
   onSubmit,
@@ -387,6 +390,7 @@ export function ProjectEditForm({
             errors={milestoneMessages}
             ownerOptions={ownerOptions}
           />
+          {aiNextStep}
           <div className="grid grid-cols-2 gap-3">
             <Field field="percentComplete" label="% complete" errors={shown("percentComplete")}>
               <input

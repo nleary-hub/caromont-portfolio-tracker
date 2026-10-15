@@ -41,6 +41,7 @@ export function AiToolsPanel({
   projectId = null,
   rows = 5,
   dictation,
+  context,
 }: {
   feature: AiToolFeature;
   label: string;
@@ -53,7 +54,9 @@ export function AiToolsPanel({
   projectId?: string | null;
   rows?: number;
   /** Step 6: show the Dictate button (Quick capture). Its own disabled note (dictation off, or no model chosen). */
-  dictation?: { disabledNote: string | null };
+  dictation?: { disabledNote: string | null; mic?: boolean; initialState?: "idle" | "recording" | "sending" };
+  /** Placements: which rows the tool works on (the selection or the visible rows). Shown, and sent with the text. */
+  context?: { line: string; prefix: string };
 }) {
   const id = useId();
   const [text, setText] = useState(initialText);
@@ -63,7 +66,7 @@ export function AiToolsPanel({
 
   const propose = () =>
     start(async () => {
-      const r = await proposeAiToolChanges(feature, text, projectId);
+      const r = await proposeAiToolChanges(feature, context ? `${context.prefix}\n\n${text}` : text, projectId);
       setState(r.ok ? { kind: "review", proposal: r } : { kind: "error", message: r.message });
     });
 
@@ -72,12 +75,26 @@ export function AiToolsPanel({
       <label htmlFor={`${id}-text`} className="text-muted type-caption">
         {label}
       </label>
-      <textarea id={`${id}-text`} className={AREA} rows={rows} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} disabled={off} aria-describedby={`${id}-help`} data-testid={`ai-tool-${feature}-input`} />
+      {context && (
+        <p className="text-muted type-caption" data-testid={`ai-tool-${feature}-context`}>
+          {context.line}
+        </p>
+      )}
+      {dictation?.mic && !off ? (
+        <div className="relative">
+          <textarea id={`${id}-text`} className={`${AREA} pr-11`} rows={rows} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} aria-describedby={`${id}-help`} data-testid={`ai-tool-${feature}-input`} />
+          <div className="absolute right-1.5 bottom-1.5">
+            <AiDictationButton mic disabledNote={dictation.disabledNote} {...(dictation.initialState ? { initialState: dictation.initialState } : {})} onText={(t) => setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t))} />
+          </div>
+        </div>
+      ) : (
+        <textarea id={`${id}-text`} className={AREA} rows={rows} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} disabled={off} aria-describedby={`${id}-help`} data-testid={`ai-tool-${feature}-input`} />
+      )}
       <p id={`${id}-help`} className="text-muted type-caption">
         {help}
       </p>
       <AiOffNote id={`${id}-off`} note={disabledNote} testId={`ai-tool-${feature}-off`} />
-      {dictation && !off && <AiDictationButton disabledNote={dictation.disabledNote} onText={(t) => setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t))} />}
+      {dictation && !dictation.mic && !off && <AiDictationButton disabledNote={dictation.disabledNote} onText={(t) => setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t))} />}
       <div className="flex items-center gap-3">
         <button type="button" className={TOOL_PRIMARY} onClick={() => !off && propose()} disabled={!off && (pending || !text.trim())} {...pausedProps(disabledNote, `${id}-off`)} data-testid={`ai-tool-${feature}-propose`}>
           {pending ? C.PROPOSING : C.PROPOSE}

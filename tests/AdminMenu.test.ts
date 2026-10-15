@@ -19,7 +19,6 @@ describe("AdminMenu.itemsFor", () => {
       ["work", "Export CSV", "/admin/import/export"],
       ["work", "Generate PDF", "/api/reports/preview"],
       ["work", "Reports", "/reports"],
-      ["work", "AI tools", "/ai-tools"],
       ["work", "Report freeze", "/reports#report-admin"],
       ["work", "Report contents", "/admin/settings"],
       ["library", "Departments", "/admin/departments"],
@@ -28,6 +27,7 @@ describe("AdminMenu.itemsFor", () => {
       ["admin", "Dashboard view", "/#view-settings"],
       ["admin", "Service lines", "/admin/service-lines"],
       ["admin", "Templates", "/admin/templates"],
+      ["admin", "AI tools", "/ai-tools"],
       ["admin", "AI settings", "/admin/ai"],
     ]);
     expect(items.find((i) => i.id === "generate-pdf")).toMatchObject({ kind: "action", caption: "Draft" });

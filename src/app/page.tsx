@@ -15,7 +15,7 @@ import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiVoiceChatDrawer } from "@/components/AiVoiceChatDrawer";
 import { AiModelService, type AiModelDb } from "@/lib/services/AiModelService";
-import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
+import { AiPlacementData, AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import type { AiOutcome } from "@/lib/services/AiWritingService";
 import { setDashboardHeartbeat } from "@/app/actions/preferences";
@@ -251,6 +251,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   // Voice chat in the header: hidden when the feature is off (no gap); greyed with the note when its model is off.
   const voiceNote = aiOn ? await AiToolsReadiness.voiceChatNote(Db.client as unknown as AiModelDb & AiSettingsDb).catch(() => AiToolsCopy.MODEL_OFF_NOTE) : AiToolsCopy.FEATURE_OFF_NOTE;
   const aiVoice = voiceNote === AiToolsCopy.FEATURE_OFF_NOTE || voiceNote === AiToolsCopy.AI_OFF_NOTE ? null : <AiVoiceChatDrawer disabledNote={voiceNote} />;
+  // In-context AI buttons (placement spec): absent = feature off (not rendered); a note = model off (greyed).
+  const aiPlacements = aiOn ? await AiPlacementData.load(Db.client as unknown as AiModelDb & AiSettingsDb).catch(() => undefined) : undefined;
 
   return (
     <ProjectDashboard
@@ -384,6 +386,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
         : {})}
       historyAction={loadProjectHistory}
       {...(aiVoice ? { aiVoice } : {})}
+      {...(aiPlacements ? { aiPlacements } : {})}
       signOutAction={signOutAction}
     />
   );
