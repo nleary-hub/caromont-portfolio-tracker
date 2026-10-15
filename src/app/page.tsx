@@ -7,6 +7,9 @@ import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, 
 import { loadProjectHistory } from "@/app/actions/history";
 import { addProjectDependency, loadProjectDependencies, removeProjectDependency } from "@/app/actions/dependencies";
 import { recordSuggestionOutcome, suggestNote } from "@/app/actions/ai";
+import { applyAiChange, proposeAiChange, rejectAiChange, undoAiChange } from "@/app/actions/aiReview";
+import { AiFeatureFlags, type AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
+import type { AiInput } from "@/lib/ai/AiInput";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import type { AiOutcome } from "@/lib/services/AiWritingService";
@@ -283,6 +286,29 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 "use server";
                 return saveProjectForm(projectId, changes, milestones);
               },
+              // Revise with AI (review-then-apply layer): AI on and the revise_note kill switch on (on by default).
+              ...(aiOn && AiFeatureFlags.isOn("revise_note")
+                ? {
+                    aiReview: {
+                      proposeAction: async (projectId: string | null, feature: AiReviewFeature, current: string, input: AiInput) => {
+                        "use server";
+                        return proposeAiChange(projectId, feature, current, input);
+                      },
+                      applyAction: async (proposalId: string, text: string) => {
+                        "use server";
+                        return applyAiChange(proposalId, text);
+                      },
+                      rejectAction: async (proposalId: string) => {
+                        "use server";
+                        return rejectAiChange(proposalId);
+                      },
+                      undoAction: async (proposalId: string) => {
+                        "use server";
+                        return undoAiChange(proposalId);
+                      },
+                    },
+                  }
+                : {}),
               // Writing assistant: only when an admin turned AI on and it is fully configured (off by default).
               ...(aiOn
                 ? {

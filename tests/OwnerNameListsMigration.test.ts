@@ -69,9 +69,9 @@ class M36 {
 }
 
 describe("0036_owner_name_lists: seeding on production-shaped data (PGlite, example names)", () => {
-  it("comes right after 0035_ai_assistant_hardening; only 0037_project_dependencies comes after it", () => {
+  it("comes right after 0035_ai_assistant_hardening; only 0037_project_dependencies and 0038_ai_review_apply come after it", () => {
     const f = M36.folders();
-    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0037_project_dependencies"]);
+    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0037_project_dependencies", "0038_ai_review_apply"]);
     expect(f[f.indexOf(M) - 1]).toBe("0035_ai_assistant_hardening");
   });
 

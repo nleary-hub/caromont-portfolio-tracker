@@ -31,6 +31,10 @@ import { DependenciesEditor, type DependencyActions } from "./DependenciesEditor
 import { DependencyCopy } from "@/lib/projects/DependencyCopy";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import type { AiOutcome, AiSuggestResult } from "@/lib/services/AiWritingService";
+import type { AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
+import type { AiInput } from "@/lib/ai/AiInput";
+import type { AiDecisionResult, AiProposeResult } from "@/lib/services/AiReviewApplyService";
+import type { AiReviewActions } from "./AiReviewPanel";
 import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import { DashboardTopBar, type TopBarReport } from "./DashboardTopBar";
 import type { PeopleFieldName } from "./ProjectPeopleEditor";
@@ -103,6 +107,13 @@ export interface AdminDashboardProps {
     suggestAction: (projectId: string | null, feature: AiFeature, text: string) => Promise<AiSuggestResult>;
     outcomeAction: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
   };
+  /** Revise with AI (review-then-apply layer). Present only when AI is on and the revise_note kill switch is on. */
+  aiReview?: {
+    proposeAction: (projectId: string | null, feature: AiReviewFeature, current: string, input: AiInput) => Promise<AiProposeResult>;
+    applyAction: (proposalId: string, text: string) => Promise<AiDecisionResult>;
+    rejectAction: (proposalId: string) => Promise<AiDecisionResult>;
+    undoAction: (proposalId: string) => Promise<AiDecisionResult>;
+  };
   /** New project drawer: create (name and department required), with its checklist. */
   createProjectAction: (values: Partial<ProjectFormValues>, milestones: MilestoneEdit | null) => ReturnType<ProjectFormSubmit>;
   /** Line layout: save column order and width shares (null = reset columns). */
@@ -121,6 +132,16 @@ export type DrawerMode = "view" | "edit" | "new";
 /** How long a newly created project's row stays highlighted after it scrolls into view. */
 export class NewRowFlash {
   static readonly MS = 1500;
+}
+
+/** Binds the review-then-apply actions to one project (null: the New project form). */
+function reviewActions(r: NonNullable<AdminDashboardProps["aiReview"]>, projectId: string | null): AiReviewActions {
+  return {
+    propose: (current, input) => r.proposeAction(projectId, "revise_note", current, input),
+    apply: (id, text) => r.applyAction(id, text),
+    reject: (id) => r.rejectAction(id),
+    undo: (id) => r.undoAction(id),
+  };
 }
 
 interface Props {
@@ -718,6 +739,7 @@ export function ProjectDashboard({
               people={null}
               adminDelete={null}
               onSubmit={admin.createProjectAction}
+              {...(admin.aiReview ? { aiReview: reviewActions(admin.aiReview, null) } : {})}
               {...(admin.aiWriting
                 ? {
                     ai: {
@@ -822,6 +844,7 @@ export function ProjectDashboard({
                     />
                   }
                   onSubmit={(changes, milestones) => submitForm(selected.id, selected.name, changes, milestones)}
+                  {...(admin.aiReview ? { aiReview: reviewActions(admin.aiReview, selected.id) } : {})}
                   {...(admin.aiWriting
                     ? {
                         ai: {

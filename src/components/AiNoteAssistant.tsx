@@ -24,7 +24,7 @@ const GHOST = `h-7 rounded-control border border-line px-3 text-fg type-table-st
 const MARK_WORD = "rounded-[2px] bg-[rgba(76,141,255,0.18)] text-fg";
 const MARK_NUMBER = "rounded-[2px] bg-[rgba(245,184,61,0.14)] text-fg underline decoration-(--status-at-risk-dark-fg) decoration-2 underline-offset-[3px]";
 
-function Sparkle() {
+export function Sparkle() {
   return (
     <svg width="12" height="12" viewBox="0 0 16 16" aria-hidden fill="none" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round">
       <path d="M8 1.5l1.6 4.3 4.4 1.7-4.4 1.7L8 13.5l-1.6-4.3L2 7.5l4.4-1.7z" />
@@ -62,7 +62,7 @@ export function AiAlert({ tone, testId, children }: { tone: "danger" | "warning"
 }
 
 /** The suggestion with its marks; the screen-reader list names each marked value, missing numbers and dates first. */
-function MarkedText({ segments }: { segments: readonly AiMarkSegment[] }) {
+export function MarkedText({ segments }: { segments: readonly AiMarkSegment[] }) {
   const announced = AiSuggestionMarks.announced(segments);
   return (
     <>
@@ -86,7 +86,7 @@ function MarkedText({ segments }: { segments: readonly AiMarkSegment[] }) {
   );
 }
 
-function Legend({ numbers }: { numbers: boolean }) {
+export function Legend({ numbers }: { numbers: boolean }) {
   return (
     <div className="flex flex-col gap-1 text-muted type-caption" data-testid="ai-legend">
       <span className="flex items-center gap-2">
