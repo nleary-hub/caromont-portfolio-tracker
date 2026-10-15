@@ -7,6 +7,7 @@ import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
+import { AiVoiceChatService } from "@/lib/services/AiVoiceChatService";
 import { AiToolsService, type AiToolLineResult, type AiToolProposeResult, type AiToolsDb } from "@/lib/services/AiToolsService";
 import { ProjectService } from "@/lib/services/ProjectService";
 import type { ProjectInput } from "@/lib/validation/ProjectValidator";
@@ -157,5 +158,41 @@ export async function removeRelatedLink(id: string): Promise<AiToolLineResult> {
     return r;
   } catch {
     return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+  }
+}
+
+/** Step 10: voice chat. Mints a short-lived realtime client secret; the API key never leaves the server. */
+export async function startAiVoiceChat() {
+  try {
+    const c = await context();
+    if (!c) return { ok: false as const, message: AiCopy.NOT_AUTHORIZED };
+    return await AiVoiceChatService.start({ db: c.db, viewer: c.viewer, scope: c.scope });
+  } catch (e) {
+    console.error("AI tools failed: voice start", (e as Error)?.name);
+    return { ok: false as const, message: AiToolsCopy.VOICE_START_FAILED };
+  }
+}
+
+/** Step 10: the model's suggest_project_changes call, listed for review. Saves nothing. */
+export async function proposeAiVoiceEdits(sessionId: string, toolArgs: string) {
+  try {
+    const c = await context();
+    if (!c) return { ok: false as const, message: AiCopy.NOT_AUTHORIZED };
+    return await AiVoiceChatService.propose({ db: c.db, viewer: c.viewer, scope: c.scope, sessionId, toolArgs: String(toolArgs).slice(0, AiToolsService.INPUT_MAX) });
+  } catch (e) {
+    console.error("AI tools failed: voice propose", (e as Error)?.name);
+    return { ok: false as const, message: AiToolsCopy.PARSE_FAILED };
+  }
+}
+
+/** Step 10: ends the session and logs its minutes and cost. */
+export async function endAiVoiceChat(sessionId: string) {
+  try {
+    const c = await context();
+    if (!c) return { ok: false as const, message: AiCopy.NOT_AUTHORIZED };
+    return await AiVoiceChatService.end({ db: c.db, viewer: c.viewer, sessionId });
+  } catch (e) {
+    console.error("AI tools failed: voice end", (e as Error)?.name);
+    return { ok: false as const, message: AiToolsCopy.VOICE_SESSION_GONE };
   }
 }

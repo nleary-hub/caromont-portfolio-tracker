@@ -29,4 +29,16 @@ export class AiToolsReadiness {
     if (!model) return AiToolsCopy.DICTATION_NO_MODEL;
     return (await AiModelService.enabledIds(db)).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
   }
+
+  /**
+   * Step 10: voice chat's note (null = ready). Feature off hides the card (FEATURE_OFF_NOTE); AI off, no model chosen
+   * or the chosen model turned off greys it with the shared model-off note.
+   */
+  static async voiceChatNote(db: AiModelDb & AiSettingsDb, env: Env = process.env): Promise<string | null> {
+    if (!(await AiModelService.featureOn(db, "voice_chat", env))) return AiToolsCopy.FEATURE_OFF_NOTE;
+    const row = await AiSettingsService.row(db).catch(() => null);
+    if (!row?.enabled) return AiToolsCopy.AI_OFF_NOTE;
+    const model = await AiModelService.featureModel(db, "voice_chat");
+    return model && (await AiModelService.enabledIds(db)).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
+  }
 }

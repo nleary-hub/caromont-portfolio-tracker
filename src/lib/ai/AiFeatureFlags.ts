@@ -72,6 +72,14 @@ export class AiFeatureFlags {
     return AiFeatureFlags.TOOL_FEATURES.includes(v as AiToolFeature) ? (v as AiToolFeature) : null;
   }
 
+  /**
+   * Features whose suggested edits go through the AI tools review list (apply or reject each line): the text tools
+   * plus voice chat (step 10). Voice chat is not a text tool, so parseToolFeature still refuses it.
+   */
+  static parseReviewableTool(v: unknown): AiToolFeature | AiLiveFeature | null {
+    return v === "voice_chat" ? "voice_chat" : AiFeatureFlags.parseToolFeature(v);
+  }
+
   static parseToggle(v: unknown): AiToggleFeature | null {
     return AiFeatureFlags.ALL.includes(v as AiToggleFeature) ? (v as AiToggleFeature) : null;
   }

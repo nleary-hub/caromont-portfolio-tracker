@@ -21,7 +21,7 @@ export type AiToolsState = { kind: "idle" } | { kind: "error"; message: string }
 /** A value as people read it: status labels ("On hold"), blank as a muted en dash. */
 const show = (field: string, v: string) => (!v ? <span className="text-muted" data-testid="ai-tool-empty">{C.EMPTY_VALUE}</span> : field === "status" && ProjectStatusInfo.isValid(v) ? ProjectStatusInfo.label(v) : v);
 
-type LineState = { status: "open" | "applied" | "rejected"; value: string; error?: string };
+export type LineState = { status: "open" | "applied" | "rejected"; value: string; error?: string };
 
 /**
  * One change-suggesting AI tool: text in, a review list out. Each line is applied or rejected on its own; nothing is
