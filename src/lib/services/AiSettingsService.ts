@@ -143,6 +143,8 @@ export class AiSettingsService {
     const errors: Partial<Record<keyof AiSettingsFields | "apiKey", string>> = {};
     const newKey = (input.newKey ?? "").trim();
     if (f.model.trim().length > AiProviders.MODEL_MAX) errors.model = AiCopy.MODEL_TOO_LONG;
+    // Allowlist: any model string other than the approved one is refused, on or off.
+    else if (f.model.trim() && !AiProviders.modelAllowed(f.model)) errors.model = AiCopy.MODEL_NOT_ALLOWED;
     if (f.provider === "openai_compatible" && f.baseUrl.trim() && !AiProviders.httpsUrl(f.baseUrl)) errors.baseUrl = AiCopy.INVALID_URL;
     if (f.provider === "azure_openai" && f.azureEndpoint.trim() && !AiProviders.httpsUrl(f.azureEndpoint)) errors.azureEndpoint = AiCopy.INVALID_URL;
     if (newKey) {

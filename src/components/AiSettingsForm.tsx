@@ -2,6 +2,7 @@
 
 import { useActionState, useState, useTransition } from "react";
 import { clearAiKey, saveAiSettings, testAiConnection, type AiSettingsFormState, type AiTestResult } from "@/app/actions/ai";
+import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
 import { AiProviders, type AiProviderId } from "@/lib/ai/AiProviders";
 import type { AiSettingsView } from "@/lib/services/AiSettingsService";
@@ -87,9 +88,7 @@ export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettin
               ))}
             </select>
           </Field>
-          <Field id="ai-model" label={C.MODEL_LABEL} error={err("model")} help={C.MODEL_HELP}>
-            <input id="ai-model" name="model" className={INPUT} defaultValue={view.model} maxLength={AiProviders.MODEL_MAX} autoComplete="off" spellCheck={false} aria-invalid={Boolean(err("model")) || undefined} disabled={!dbReady} />
-          </Field>
+          <ModelField value={view.model} error={err("model")} disabled={!dbReady} />
           {provider === "openai_compatible" && (
             <div className="col-span-2">
               <Field id="ai-base-url" label={C.BASE_URL_LABEL} error={err("baseUrl")} help={C.BASE_URL_HELP}>
@@ -215,6 +214,15 @@ export function AiSettingsForm({ view, keySavedLine, dbReady }: { view: AiSettin
   );
 }
 
+/** The model name field: grey hint, or the red alert with a red border; the input names whichever shows (aria-describedby). */
+export function ModelField({ value, error, disabled }: { value: string; error?: string; disabled?: boolean }) {
+  return (
+    <Field id="ai-model" label={C.MODEL_LABEL} error={error} help={C.MODEL_HELP}>
+      <input id="ai-model" name="model" className={INPUT} defaultValue={value} maxLength={AiProviders.MODEL_MAX} autoComplete="off" spellCheck={false} aria-invalid={Boolean(error) || undefined} aria-describedby={error ? "ai-model-error" : "ai-model-help"} disabled={disabled} />
+    </Field>
+  );
+}
+
 function Field({ id, label, error, help, children }: { id: string; label: string; error?: string; help?: string; children: React.ReactNode }) {
   return (
     <div className="flex min-w-0 flex-col gap-1">
@@ -222,7 +230,18 @@ function Field({ id, label, error, help, children }: { id: string; label: string
         {label}
       </label>
       {children}
-      {error ? <p className="text-danger type-table">{error}</p> : help ? <p className="text-muted type-caption">{help}</p> : null}
+      {/* Error: the red alert box from the editor (#50); help: the grey hint. Both carry the id the input's aria-describedby names. */}
+      {error ? (
+        <div id={`${id}-error`}>
+          <AiAlert tone="danger" testId={`${id}-error`}>
+            {error}
+          </AiAlert>
+        </div>
+      ) : help ? (
+        <p id={`${id}-help`} className="text-muted type-caption">
+          {help}
+        </p>
+      ) : null}
     </div>
   );
 }

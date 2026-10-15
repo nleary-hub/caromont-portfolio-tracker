@@ -31,7 +31,7 @@ const reply =
 async function suggestion(input: string, output: string) {
   const db = new FakeAiDb();
   db.projects.push({ id: PROJECT, serviceLineId: SCOPE.id, departmentId: null, archivedAt: null });
-  await AiSettingsService.save(db, ADMIN, { fields: { enabled: true, provider: "openai", model: "gpt-4o-mini", baseUrl: "", azureEndpoint: "", azureDeployment: "" }, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV);
+  await AiSettingsService.save(db, ADMIN, { fields: { enabled: true, provider: "openai", model: "gpt-6-luna", baseUrl: "", azureEndpoint: "", azureDeployment: "" }, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV);
   const r = await AiWritingService.suggest({ db, viewer: ADMIN, scope: SCOPE, projectId: PROJECT, feature: "draft_from_bullets", text: input, env: ENV, fetchImpl: reply(output) });
   if (!r.ok) throw new Error("expected a suggestion");
   return { db, r };
@@ -188,7 +188,7 @@ describe("test connection redacts anything key-shaped", () => {
   });
 
   it("the test-connection result never shows a prefix or the last 4", async () => {
-    const config = { provider: "openai" as const, model: "gpt-4o-mini", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: KEY };
+    const config = { provider: "openai" as const, model: "gpt-6-luna", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: KEY };
     const masked: FetchLike = async () => ({ ok: false, status: 401, text: async () => JSON.stringify({ error: { message: "Incorrect API key provided: sk-proj-****WXYZ." } }) });
     const r = await AiWritingService.testConnection(config, masked);
     expect(r).toEqual({ ok: false, message: "HTTP 401: Incorrect API key provided: [key hidden]." });
@@ -259,7 +259,7 @@ describe("PHI guard: bare numbers pass, labeled record numbers are blocked", () 
 describe("New project form", () => {
   it("an admin gets suggestions with no project yet (logged with a null project); others don't", async () => {
     const db = new FakeAiDb();
-    await AiSettingsService.save(db, ADMIN, { fields: { enabled: true, provider: "openai", model: "gpt-4o-mini", baseUrl: "", azureEndpoint: "", azureDeployment: "" }, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV);
+    await AiSettingsService.save(db, ADMIN, { fields: { enabled: true, provider: "openai", model: "gpt-6-luna", baseUrl: "", azureEndpoint: "", azureDeployment: "" }, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV);
     const r = await AiWritingService.suggest({ db, viewer: ADMIN, scope: SCOPE, projectId: null, feature: "draft_from_bullets", text: "quote rcvd oct 6", env: ENV, fetchImpl: reply("Quote received Oct 6.") });
     expect(r).toMatchObject({ ok: true, text: "Quote received Oct 6." });
     expect(db.usage.at(-1)).toMatchObject({ event: "suggested", projectId: null });

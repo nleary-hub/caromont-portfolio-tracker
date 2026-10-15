@@ -30,7 +30,7 @@ const ADMIN = Factory.ADMIN;
 const MEMBER = Factory.MEMBER;
 const SCOPE = ServiceLine.defaultScope();
 const PROJECT = "10000000-0000-4000-8000-000000000006";
-const FIELDS = { enabled: true, provider: "openai" as const, model: "gpt-4o-mini", baseUrl: "", azureEndpoint: "", azureDeployment: "" };
+const FIELDS = { enabled: true, provider: "openai" as const, model: "gpt-6-luna", baseUrl: "", azureEndpoint: "", azureDeployment: "" };
 
 /** A mocked provider: records every call, answers with `reply` (OpenAI shape). No test ever reaches a real provider. */
 class MockProvider {
@@ -369,7 +369,7 @@ describe("discard writes no history", () => {
 });
 
 describe("provider calls (mocked), timeouts and rate limits", () => {
-  const config: AiRuntimeConfig = { provider: "openai", model: "gpt-4o-mini", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY };
+  const config: AiRuntimeConfig = { provider: "openai", model: "gpt-6-luna", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: API_KEY };
 
   it("builds the request for each provider (key in a header only, never the URL or body)", () => {
     const prompt = AiPrompts.build("fit_for_report", "Quote received");

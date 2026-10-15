@@ -14,7 +14,7 @@ export interface AiRuntimeConfig {
 
 export type AiCallResult =
   | { ok: true; text: string; ms: number }
-  | { ok: false; kind: "timeout" | "http" | "network" | "empty" | "length"; status?: number; message: string; ms: number };
+  | { ok: false; kind: "timeout" | "http" | "network" | "empty" | "length" | "model_not_allowed"; status?: number; message: string; ms: number };
 
 export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{
   ok: boolean;
@@ -39,6 +39,8 @@ export class AiProviderClient {
 
   static async complete(config: AiRuntimeConfig, prompt: AiPrompt, fetchImpl: FetchLike = fetch as unknown as FetchLike, timeoutMs = AiProviderClient.TIMEOUT_MS): Promise<AiCallResult> {
     const started = Date.now();
+    // Allowlist, enforced at call time too: a stored or injected model outside the list never reaches the provider.
+    if (!AiProviders.modelAllowed(config.model)) return { ok: false, kind: "model_not_allowed", message: AiCopy.MODEL_NOT_ALLOWED, ms: 0 };
     const req = AiProviderClient.request(config, prompt);
     const ms = () => Date.now() - started;
     let res: Awaited<ReturnType<FetchLike>>;

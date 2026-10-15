@@ -93,7 +93,7 @@ export async function testAiConnection(): Promise<AiTestResult> {
     const row = await AiSettingsService.row(Db.client as unknown as AiSettingsDb);
     const config = AiSettingsService.runtime(row);
     if (!config) return { ok: false, message: AiCopy.TEST_NEEDS_SETTINGS };
-    const r = await AiWritingService.testConnection(config);
+    const r = await AiWritingService.testConnection(config, undefined, { db: AiActions.db(), viewer });
     return r.ok ? { ok: true, message: AiCopy.testOk(config.provider, r.ms) } : { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${r.message}` };
   } catch (e) {
     console.error("Admin action failed: testAiConnection", (e as Error)?.name);

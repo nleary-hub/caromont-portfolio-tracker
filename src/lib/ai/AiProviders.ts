@@ -31,6 +31,13 @@ export class AiProviders {
     }
   }
 
+  /** The only model the writing assistant may use (Nick, Oct 14, 2026). Checked on save and again before every call. */
+  static readonly ALLOWED_MODELS: readonly string[] = ["gpt-6-luna"];
+
+  static modelAllowed(model: unknown): boolean {
+    return typeof model === "string" && AiProviders.ALLOWED_MODELS.includes(model.trim());
+  }
+
   static parse(v: unknown): AiProviderId | null {
     return typeof v === "string" && (AiProviders.ALL as readonly string[]).includes(v) ? (v as AiProviderId) : null;
   }
