@@ -94,6 +94,8 @@ export class ProjectFormModel {
   static readonly AUTOSAVE_SAVING = "Saving…";
   static readonly AUTOSAVE_SAVED = "Saved";
   static readonly AUTOSAVE_BLOCKED = "Fix the highlighted fields to save.";
+  /** A save that failed for any reason other than field validation (network, server). */
+  static readonly AUTOSAVE_FAILED = "Couldn't save your change. Check your connection and try again.";
 
   static readonly LABELS: Readonly<Record<FormField, string>> = {
     name: "Name",

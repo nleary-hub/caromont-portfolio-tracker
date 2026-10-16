@@ -38,6 +38,40 @@ export class DueDatePopoverModel {
     return !Number.isNaN(d.getTime()) && d.toISOString().slice(0, 10) === v;
   }
 
+  /**
+   * Our own text field (no native date input): what a typed text means. Returns YYYY-MM-DD for a complete date,
+   * "" for an empty field, or null while it is not a full date yet. Accepts 2026-12-15, 12/15/2026, 12152026 and
+   * the field's own display text (Dec 15, 2026).
+   */
+  static parseTyped(text: string): string | "" | null {
+    const t = text.trim();
+    if (t === "") return "";
+    const ok = (y: number, m: number, d: number) => {
+      const v = `${String(y).padStart(4, "0")}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+      return DueDatePopoverModel.isDate(v) ? v : null;
+    };
+    let r: RegExpMatchArray | null;
+    if ((r = t.match(/^(\d{4})-(\d{1,2})-(\d{1,2})$/))) return ok(+r[1], +r[2], +r[3]);
+    if ((r = t.match(/^(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})$/))) return ok(+r[3], +r[1], +r[2]);
+    if ((r = t.match(/^(\d{2})(\d{2})(\d{4})$/))) return ok(+r[3], +r[1], +r[2]);
+    if ((r = t.match(/^([A-Za-z]{3})[a-z]*\.?\s+(\d{1,2}),?\s+(\d{4})$/))) {
+      const m = ["jan", "feb", "mar", "apr", "may", "jun", "jul", "aug", "sep", "oct", "nov", "dec"].indexOf(r[1].toLowerCase());
+      return m < 0 ? null : ok(+r[3], m + 1, +r[2]);
+    }
+    return null;
+  }
+
+  /** Today on this device's clock, YYYY-MM-DD: the calendar's today marker sits on the real current date. */
+  static localToday(now: Date = new Date()): string {
+    return `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+  }
+
+  /** Display text for the field and its closed trigger, e.g. "Dec 15, 2026". */
+  static display(iso: string): string {
+    if (!DueDatePopoverModel.isDate(iso)) return "";
+    return new Intl.DateTimeFormat("en-US", { month: "short", day: "numeric", year: "numeric", timeZone: "UTC" }).format(new Date(`${iso}T00:00:00Z`));
+  }
+
   /** Opens on the saved date's month, or today's month when there is no date. */
   static open(saved: string, today: string): DueDatePopoverState {
     const base = DueDatePopoverModel.isDate(saved) ? saved : today;

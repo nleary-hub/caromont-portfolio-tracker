@@ -10,13 +10,35 @@ import { DueDatePopoverModel, type DueDatePopoverEvent } from "@/lib/projects/Du
  * leaves the popover and saves a typed date; keyboard users type the date. onSave gets the same YYYY-MM-DD string the date input always produced; the caller saves it
  * through the existing milestone update, so there is no new write path.
  */
-export function DueDatePopover({ saved, today, label, onSave, onClose }: { saved: string; today: string; label: string; onSave: (date: string) => void; onClose: () => void }) {
+/** The milestone field's look; the project Start date passes its own form field class so trigger and field match. */
+export const DUE_DATE_FIELD = "h-7 w-[124px] shrink-0 rounded-control border border-accent bg-input px-1 text-fg tabular-nums type-table focus:outline-none";
+
+export function DueDatePopover({
+  saved,
+  today,
+  label,
+  onSave,
+  onClose,
+  fieldClassName = DUE_DATE_FIELD,
+}: {
+  saved: string;
+  today: string;
+  label: string;
+  onSave: (date: string) => void;
+  onClose: () => void;
+  fieldClassName?: string;
+}) {
   const [s, setS] = useState(() => DueDatePopoverModel.open(saved, today));
+  // The today marker follows this device's real date (the page's `today` can be a server or fixture date).
+  const [now] = useState(() => DueDatePopoverModel.localToday());
   const root = useRef<HTMLDivElement>(null);
   const done = useRef(false);
   const cal = useRef<HTMLDivElement>(null);
   // On open, scroll the drawer just enough that the whole calendar shows above the drawer's footer.
-  useEffect(() => cal.current?.scrollIntoView?.({ block: "nearest" }), []);
+  // Braces matter: newer Chrome returns a Promise from scrollIntoView, and an effect must return nothing or a cleanup.
+  useEffect(() => {
+    cal.current?.scrollIntoView?.({ block: "nearest" });
+  }, []);
   const send = (e: DueDatePopoverEvent) => {
     if (done.current) return;
     const r = DueDatePopoverModel.step(s, e, saved);
@@ -46,13 +68,21 @@ export function DueDatePopover({ saved, today, label, onSave, onClose }: { saved
         send({ type: e.relatedTarget ? "tabAway" : "outside" });
       }}
     >
+      {/* Our own text field, never the browser's native date input or picker. */}
       <input
-        type="date"
+        type="text"
+        inputMode="numeric"
         autoFocus
-        defaultValue={saved}
-        onChange={(e) => send({ type: "typed", value: e.target.value, cleared: e.target.value === "" && !e.target.validity.badInput })}
+        autoComplete="off"
+        defaultValue={DueDatePopoverModel.display(saved)}
+        placeholder="Pick a date"
+        onFocus={(e) => e.currentTarget.select()}
+        onChange={(e) => {
+          const v = DueDatePopoverModel.parseTyped(e.target.value);
+          send({ type: "typed", value: v ?? "", cleared: v === "" });
+        }}
         aria-label={label}
-        className="h-7 w-[124px] shrink-0 rounded-control border border-accent bg-input px-1 text-fg type-table focus:outline-none [&::-webkit-calendar-picker-indicator]:hidden"
+        className={fieldClassName}
         data-testid="due-date-input"
       />
       <div ref={cal} role="dialog" aria-label={`${label} calendar`} className="absolute right-0 z-30 mt-1 scroll-mb-24 w-[224px] rounded-control border border-line bg-card p-2 shadow-[0_12px_32px_rgba(0,0,0,.55)]">
@@ -82,7 +112,10 @@ export function DueDatePopover({ saved, today, label, onSave, onClose }: { saved
                 tabIndex={-1}
                 aria-pressed={d === s.draft}
                 onClick={() => send({ type: "pickDay", date: d })}
-                className={`h-6 rounded-control tabular-nums hover:bg-input focus-visible:outline-2 focus-visible:outline-accent ${d === s.draft ? "bg-accent text-white" : d === today ? "text-accent" : "text-fg"}`}
+                className={`h-6 rounded-control tabular-nums hover:bg-input focus-visible:outline-2 focus-visible:outline-accent ${d === s.draft ? "bg-accent text-white" : d === now ? "text-accent ring-1 ring-inset ring-accent" : "text-fg"}`}
+                aria-current={d === now ? "date" : undefined}
+                data-today={d === now ? "" : undefined}
+                data-selected={d === s.draft ? "" : undefined}
                 data-testid="due-date-day"
               >
                 {Number(d.slice(8))}
