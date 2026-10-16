@@ -16,7 +16,10 @@ export function DueDatePopover({ saved, today, label, onSave, onClose }: { saved
   const done = useRef(false);
   const cal = useRef<HTMLDivElement>(null);
   // On open, scroll the drawer just enough that the whole calendar shows above the drawer's footer.
-  useEffect(() => cal.current?.scrollIntoView?.({ block: "nearest" }), []);
+  // Braces matter: newer Chrome returns a Promise from scrollIntoView, and an effect must return nothing or a cleanup.
+  useEffect(() => {
+    cal.current?.scrollIntoView?.({ block: "nearest" });
+  }, []);
   const send = (e: DueDatePopoverEvent) => {
     if (done.current) return;
     const r = DueDatePopoverModel.step(s, e, saved);

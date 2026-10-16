@@ -909,7 +909,7 @@ export function ProjectDashboard({
                   dependencies={
                     admin.dependencyActions ? (
                       <>
-                        <DependenciesEditor key={`deps-${selected.id}-${depsVersion}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount({ id: selected.id, n })} />
+                        <DependenciesEditor key={`deps-${selected.id}-${depsVersion}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))} />
                         {aiPlacements && "related_links" in aiPlacements && (
                           <section aria-labelledby="ai-related-title" className="mt-3 flex flex-col gap-2" data-testid="ai-related-section">
                             <h4 id="ai-related-title" className="text-muted type-label">
