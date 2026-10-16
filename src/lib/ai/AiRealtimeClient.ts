@@ -1,3 +1,4 @@
+import type { AiVoiceApi } from "./AiModelKinds";
 import type { AiRuntimeConfig } from "./AiProviderClient";
 
 export type AiRealtimeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
@@ -10,6 +11,8 @@ export interface AiRealtimeTicket {
   /** Where the browser posts its WebRTC offer with the client secret: this app's own route (AiRealtimeClient.PROXY_PATH), which forwards it. */
   callsUrl: string;
   model: string;
+  /** Which voice API the session runs on. live: no client secret at all (clientSecret is ""); the server starts the session. */
+  api?: AiVoiceApi;
 }
 
 export interface AiRealtimeSessionConfig {
@@ -102,7 +105,7 @@ export class AiRealtimeClient {
       const value = typeof j.value === "string" ? j.value : typeof j.client_secret?.value === "string" ? j.client_secret.value : "";
       const exp = typeof j.expires_at === "number" ? j.expires_at : typeof j.client_secret?.expires_at === "number" ? j.client_secret.expires_at : 0;
       if (!value || value === config.apiKey) return { ok: false, kind: "parse" };
-      return { ok: true, ticket: { clientSecret: value, expiresAt: exp, callsUrl: AiRealtimeClient.PROXY_PATH, model: session.model } };
+      return { ok: true, ticket: { clientSecret: value, expiresAt: exp, callsUrl: AiRealtimeClient.PROXY_PATH, model: session.model, api: "realtime" } };
     } catch (e) {
       return { ok: false, kind: (e as Error)?.name === "TimeoutError" ? "timeout" : "network" };
     }

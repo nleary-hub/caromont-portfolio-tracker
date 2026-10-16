@@ -2,12 +2,13 @@
 
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
-import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiModelEnabled, setAiModelPrices } from "@/app/actions/aiAdmin";
+import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions } from "@/app/actions/aiAdmin";
 import { ModelField } from "@/components/AiModelPicker";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
 import { AiModelKinds, type AiModelKind } from "@/lib/ai/AiModelKinds";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
+import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 import { useOpenAiModelList, type OpenAiListState } from "@/components/useOpenAiModelList";
 import type { AiAdminResult, AiFeatureView, AiModelView } from "@/lib/services/AiModelService";
 
@@ -287,6 +288,57 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
   );
 }
 
+/**
+ * Voice chat instructions (admin only). Empty by default (the built-in rules); the server checks the length and always
+ * adds the project list, the suggest-changes rule and the patient-details rule.
+ */
+function VoiceInstructionsField({ initial, disabled }: { initial: string; disabled: boolean }) {
+  const [text, setText] = useState(initial);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [saving, start] = useTransition();
+  const over = text.trim().length > AiVoiceChat.INSTRUCTIONS_MAX;
+  return (
+    <div className="flex flex-col gap-1" data-testid="ai-voice-instructions">
+      <label htmlFor="ai-voice-instructions-input" className="text-muted type-caption">
+        {C.VOICE_INSTRUCTIONS_LABEL}
+      </label>
+      <textarea
+        id="ai-voice-instructions-input"
+        className="min-h-24 w-full rounded-control border border-line bg-input px-2.5 py-1.5 text-fg type-table focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-invalid:border-danger disabled:opacity-50"
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        aria-invalid={over || undefined}
+        aria-describedby="ai-voice-instructions-help"
+        disabled={disabled || saving}
+      />
+      <p id="ai-voice-instructions-help" className={`type-caption ${over ? "text-danger" : "text-muted"}`}>
+        {over ? C.VOICE_INSTRUCTIONS_TOO_LONG : C.VOICE_INSTRUCTIONS_HELP} {`(${text.trim().length} / ${AiVoiceChat.INSTRUCTIONS_MAX})`}
+      </p>
+      <div className="flex items-center gap-2">
+        <button
+          type="button"
+          className="h-7 rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={disabled || saving || over}
+          onClick={() =>
+            start(async () => {
+              const r = await setAiVoiceInstructions(text);
+              setMsg(r.ok ? { ok: true, text: r.message ?? C.VOICE_INSTRUCTIONS_SAVED } : { ok: false, text: r.error });
+            })
+          }
+          data-testid="ai-voice-instructions-save"
+        >
+          {C.VOICE_INSTRUCTIONS_SAVE}
+        </button>
+        {msg && (
+          <span role="status" className={`type-caption ${msg.ok ? "text-muted" : "text-danger"}`}>
+            {msg.text}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 /** Admin > AI settings: one toggle per AI feature. Future features (dictation, voice chat) add a row by adding a feature. */
 /**
  * `modelOptions`: enabled model ids by kind. Each own-model feature lists only its kind (dictation transcription, voice
@@ -333,6 +385,7 @@ export function AiFeaturesPanel({ features, dbReady, modelOptions = {}, initialL
                   label={AiToolsCopy.modelLabel(f.feature)}
                   help={AiToolsCopy.modelHelp(f.feature)}
                   kind={AiModelKinds.forFeature(f.feature)}
+                  {...(f.feature === "voice_chat" ? { placeholder: C.VOICE_MODEL_PLACEHOLDER } : {})}
                   noneLabel={AiToolsCopy.DICTATION_MODEL_NONE}
                   value={f.model ?? ""}
                   disabled={!dbReady || pending}
@@ -344,6 +397,7 @@ export function AiFeaturesPanel({ features, dbReady, modelOptions = {}, initialL
                 />
               </div>
             )}
+            {f.feature === "voice_chat" && <VoiceInstructionsField initial={f.instructions ?? ""} disabled={!dbReady || pending} />}
           </div>
         );
       })}

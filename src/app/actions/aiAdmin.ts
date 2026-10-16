@@ -58,6 +58,11 @@ export async function setAiFeatureModel(feature: string, model: string): Promise
   return run("setAiFeatureModel", (db, v) => AiModelService.setFeatureModel(db, v, feature, model));
 }
 
+/** Voice chat instructions (admin only; length checked on the server). */
+export async function setAiVoiceInstructions(text: string): Promise<AiAdminResult> {
+  return run("setAiVoiceInstructions", (db, v) => AiModelService.setVoiceInstructions(db, v, text));
+}
+
 export async function setAiFeatureEnabled(feature: string, enabled: boolean): Promise<AiAdminResult> {
   return run("setAiFeatureEnabled", (db, v) => AiModelService.setFeature(db, v, feature, Boolean(enabled)));
 }

@@ -41,16 +41,32 @@ export class AiVoiceChat {
     },
   } as const;
 
-  /** The session instructions: the projects the viewer can see (refs, names, fields) and the rules. */
-  static instructions(projects: readonly AiToolProject[]): string {
-    return [
-      "You are a voice assistant for a hospital project portfolio. Answer short questions about the projects listed below, in plain spoken English.",
-      "Only use the projects listed. If asked about anything else, say you can only see these projects.",
-      "Never claim to have saved or changed anything. When the person asks for a change, call suggest_project_changes; the change is then listed on screen for them to apply or reject.",
-      "Do not ask for or repeat patient details.",
-      "Projects (one JSON object per line):",
-      AiToolsModel.context(projects, AiVoiceChat.FIELDS),
-    ].join("\n");
+  /** Admin voice chat instructions are capped here (validated on the server). */
+  static readonly INSTRUCTIONS_MAX = 4000;
+  /** Always sent, whatever the admin instructions say. */
+  static readonly TOOL_CONTRACT = "Never claim to have saved or changed anything. When the person asks for a change, call suggest_project_changes; the change is then listed on screen for them to apply or reject.";
+  static readonly PATIENT_LINE = "Do not ask for or repeat patient details.";
+  static readonly BUILT_IN_RULES: readonly string[] = [
+    "You are a voice assistant for a hospital project portfolio. Answer short questions about the projects listed below, in plain spoken English.",
+    "Only use the projects listed. If asked about anything else, say you can only see these projects.",
+  ];
+
+  /**
+   * The session instructions, the same for the Live and Realtime adapters. The rules are the admin's voice chat
+   * instructions when set (Admin > AI settings), otherwise the built-in rules. The tool contract, the patient-details
+   * line and the projects the viewer can see (refs, names, fields) are always added.
+   */
+  static instructions(projects: readonly AiToolProject[], custom: string | null = null): string {
+    const rules = custom?.trim() ? [custom.trim().slice(0, AiVoiceChat.INSTRUCTIONS_MAX)] : AiVoiceChat.BUILT_IN_RULES;
+    return [...rules, AiVoiceChat.TOOL_CONTRACT, AiVoiceChat.PATIENT_LINE, "Projects (one JSON object per line):", AiToolsModel.context(projects, AiVoiceChat.FIELDS)].join("\n");
+  }
+
+  /**
+   * The Live (gpt-live-*) voice prompt: the same instructions plus one line, because on the Live API the suggest tool
+   * runs in the Responses backend (which gets the same instructions), so the voice model delegates change requests.
+   */
+  static liveInstructions(base: string): string {
+    return `${base}\nTo suggest changes, delegate the request to the backend, which calls suggest_project_changes.`;
   }
 
   /**

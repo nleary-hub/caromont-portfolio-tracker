@@ -161,7 +161,7 @@ export async function removeRelatedLink(id: string): Promise<AiToolLineResult> {
   }
 }
 
-/** Step 10: voice chat. Mints a short-lived realtime client secret; the API key never leaves the server. */
+/** Step 10: voice chat. Realtime: mints a short-lived client secret. Live: no browser token at all. The API key never leaves the server. */
 export async function startAiVoiceChat() {
   try {
     const c = await context();
@@ -196,11 +196,11 @@ export async function proposeAiVoiceEdits(sessionId: string, toolArgs: string) {
 }
 
 /** Step 10: ends the session and logs its minutes and cost. */
-export async function endAiVoiceChat(sessionId: string) {
+export async function endAiVoiceChat(sessionId: string, backendUsage: { responses: number; inputTokens: number; outputTokens: number } | null = null) {
   try {
     const c = await context();
     if (!c) return { ok: false as const, message: AiCopy.NOT_AUTHORIZED };
-    return await AiVoiceChatService.end({ db: c.db, viewer: c.viewer, sessionId });
+    return await AiVoiceChatService.end({ db: c.db, viewer: c.viewer, sessionId, backendUsage });
   } catch (e) {
     console.error("AI tools failed: voice end", (e as Error)?.name);
     return { ok: false as const, message: AiToolsCopy.VOICE_SESSION_GONE };

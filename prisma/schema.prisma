@@ -927,6 +927,8 @@ model AiFeatureSetting {
   updatedBy String
   /// 0043: the feature's own model (dictation only: a transcription model). Null = not chosen yet.
   model     String?
+  /// 0050: admin voice chat instructions (voice_chat only). Null = the built-in rules.
+  instructions String?
 
   @@map("ai_feature_settings")
 }

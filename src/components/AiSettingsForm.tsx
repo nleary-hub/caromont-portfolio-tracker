@@ -25,7 +25,8 @@ const PRIMARY = `h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-wh
  */
 export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [], initialList = null }: { view: AiSettingsView; keySavedLine: string | null; dbReady: boolean; modelOptions?: readonly string[]; initialList?: OpenAiListState }) {
   const openAi = useOpenAiModelList(initialList);
-  const [testModel, setTestModel] = useState("");
+  // #70: the test picker starts on the saved writing-assistant model when there is one, otherwise empty.
+  const [testModel, setTestModel] = useState(view.model ?? "");
   const [state, action, pending] = useActionState<AiSettingsFormState, FormData>(saveAiSettings, null);
   const [enabled, setEnabled] = useState(view.enabled);
   const [provider, setProvider] = useState<AiProviderId | "">(view.provider ?? "");
@@ -44,7 +45,7 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
   const [clearing, startClear] = useTransition();
   const err = (f: string) => (state && !state.ok ? state.fieldErrors?.[f] : undefined);
   const keyBlocked = !view.encryption.ready;
-  // Test needs the saved provider and a readable key; the model comes from the test picker (no default).
+  // Test needs the saved provider and a readable key; the model comes from the test picker (preselected with the saved model).
   const canTest = dbReady && Boolean(view.provider) && view.key.set && view.key.readable;
   // Switch on but the chosen model is off under Models: amber Not ready, even before the switch is saved (step 3b).
   const modelOffOn = enabled && Boolean(view.modelOff);
@@ -212,7 +213,7 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
 
       {/* Test connection: the saved settings, a tiny prompt; the result never contains the key. */}
       <div className="flex flex-col gap-2 rounded-control border border-line bg-input/60 px-3 py-2.5" data-testid="ai-test">
-        <ModelField id="ai-test-model" name={null} label={C.TEST_MODEL_LABEL} value="" disabled={!canTest} options={modelOptions} list={openAi.list} listLoading={openAi.loading} onLoadList={openAi.load} onChange={setTestModel} />
+        <ModelField id="ai-test-model" name={null} label={C.TEST_MODEL_LABEL} value={view.model ?? ""} disabled={!canTest} options={modelOptions} list={openAi.list} listLoading={openAi.loading} onLoadList={openAi.load} onChange={setTestModel} />
         <div className="flex items-center gap-3">
           <button type="button" className={GHOST} disabled={testing || !canTest} onClick={() => startTest(async () => setTest(await testAiConnection(testModel)))} data-testid="ai-test-button">
             {testing ? C.TESTING : C.TEST}

@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AiCopy } from "@/lib/ai/AiCopy";
+import { AiLiveClient } from "@/lib/ai/AiLiveClient";
+import { AiModelKinds } from "@/lib/ai/AiModelKinds";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiRealtimeClient, type AiRealtimeFetch, type AiRealtimeTicket } from "@/lib/ai/AiRealtimeClient";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
@@ -78,14 +80,25 @@ export class AiVoiceChatService {
 
     const projects = await AiToolsService.projects(db, args.scope);
     const sessionId = randomUUID();
-    const r = await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(projects), tools: [AiVoiceChat.TOOL], voice: AiVoiceChat.VOICE }, args.fetchImpl);
+    // Routed by the model's kind (AiModelKinds.voiceApi): gpt-live-* on the Live API, everything else on Realtime.
+    const api = AiModelKinds.voiceApi(model);
+    if (api === "live" && !(await AiModelService.enabledIds(db, "chat")).includes(saved.model)) {
+      // Live delegates to a Responses backend: the saved writing-assistant model, which must be a chat model that is on.
+      console.error("AI tools: voice session failed", { code: "model_off", api, model, reason: "no backend chat model" });
+      return { ok: false, code: "model_off", message: AiToolsCopy.VOICE_BACKEND_MODEL_OFF };
+    }
+    const r: Awaited<ReturnType<typeof AiRealtimeClient.mint>> =
+      api === "live"
+        ? // No token for the browser: the Live API has no ephemeral secret, so connect starts the session server side.
+          { ok: true, ticket: { clientSecret: "", expiresAt: Math.floor(now().getTime() / 1000) + AiLiveClient.CONNECT_WINDOW_S, callsUrl: AiRealtimeClient.PROXY_PATH, model, api } }
+        : await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(projects, await AiModelService.voiceInstructions(db)), tools: [AiVoiceChat.TOOL], voice: AiVoiceChat.VOICE }, args.fetchImpl);
     await db.aiUsageLog.create({
       data: { id: randomUUID(), suggestionId: sessionId, userEmail: user, projectId: null, feature: FEATURE, event: r.ok ? "session_started" : "failed", provider: saved.provider, model, inputLength: projects.length, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
     });
     if (!r.ok) {
       const code = r.modelUnavailable ? "model_unavailable" : "token";
       // The real error for the runtime log: our code, HTTP status and OpenAI's error type, code and message. No secrets.
-      console.error("AI tools: voice session failed", { code, kind: r.kind, model, status: r.status ?? null, type: r.type ?? null, errorCode: r.code ?? null, message: r.message ?? null });
+      console.error("AI tools: voice session failed", { code, api, kind: r.kind, model, status: r.status ?? null, type: r.type ?? null, errorCode: r.code ?? null, message: r.message ?? null });
       return { ok: false, code, message: code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_TOKEN_FAILED };
     }
     return { ok: true, sessionId, ticket: r.ticket, maxSeconds: AiVoiceChat.MAX_SESSION_S };
@@ -97,14 +110,15 @@ export class AiVoiceChatService {
    * Any failure inserts one failed row for the session (so End leaves no session_ended row for it) and one log line with
    * the HTTP status and OpenAI's scrubbed error. The secret and SDP are never logged.
    */
-  static async connect(args: { db: AiToolsDb; viewer: Viewer | null; sessionId: unknown; clientSecret: unknown; sdp: unknown; fetchImpl?: AiRealtimeFetch; now?: () => Date }): Promise<AiVoiceConnectResult> {
+  static async connect(args: { db: AiToolsDb; viewer: Viewer | null; sessionId: unknown; clientSecret: unknown; sdp: unknown; scope?: ServiceLineScope; env?: Env; fetchImpl?: AiRealtimeFetch; now?: () => Date }): Promise<AiVoiceConnectResult> {
     const { db, viewer } = args;
     const deny = (httpStatus: number, message: string): AiVoiceConnectResult => ({ ok: false, httpStatus, error: { type: null, code: null, message, modelUnavailable: false } });
     if (!viewer?.isAdmin) return deny(403, AiCopy.NOT_AUTHORIZED);
     const session = await AiVoiceChatService.session(db, viewer, args.sessionId);
     if (!session || (await AiVoiceChatService.ended(db, viewer, session.suggestionId)) || (await AiVoiceChatService.failedRow(db, viewer, session.suggestionId))) return deny(409, AiToolsCopy.VOICE_SESSION_GONE);
-    const secret = typeof args.clientSecret === "string" ? args.clientSecret.trim() : "";
     const sdp = typeof args.sdp === "string" ? args.sdp : "";
+    if (AiModelKinds.voiceApi(session.model ?? "") === "live") return AiVoiceChatService.connectLive({ ...args, viewer, session, sdp });
+    const secret = typeof args.clientSecret === "string" ? args.clientSecret.trim() : "";
     if (!secret || secret.length > 4096 || !sdp.trim() || sdp.length > AiRealtimeClient.SDP_MAX) {
       await AiVoiceChatService.logFailure(db, viewer, session, "connect_failed", { status: 400, type: "bad_request", message: "missing or oversized offer or client secret" }, args.now);
       return deny(400, AiToolsCopy.VOICE_CONNECT_FAILED);
@@ -114,6 +128,46 @@ export class AiVoiceChatService {
     const code: AiVoiceErrorCode = r.modelUnavailable ? "model_unavailable" : "connect_failed";
     await AiVoiceChatService.logFailure(db, viewer, session, code, { status: r.status ?? null, type: r.type ?? r.kind, errorCode: r.code ?? null, message: r.message ?? null, source: "server" }, args.now, [secret]);
     // OpenAI's status passes through; a network failure or timeout is a 502 or 504 from us.
+    const httpStatus = typeof r.status === "number" ? r.status : r.kind === "timeout" ? 504 : 502;
+    return { ok: false, httpStatus, error: { type: r.type ?? r.kind, code: r.code ?? null, message: r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
+  }
+
+  /**
+   * The Live API path of connect (gpt-live-*). There is no ephemeral secret, so the gate is the caller's own started,
+   * not ended, not failed session, started within the last AiLiveClient.CONNECT_WINDOW_S seconds. The server starts
+   * the Live session with the saved API key (never sent to the browser) and returns only the SDP answer. Same failure
+   * logging as Realtime: one failed row, model_unavailable for an invalid or unsupported model.
+   */
+  private static async connectLive(args: { db: AiToolsDb; viewer: Viewer; session: AiToolUsageRow; sdp: string; scope?: ServiceLineScope; env?: Env; fetchImpl?: AiRealtimeFetch; now?: () => Date }): Promise<AiVoiceConnectResult> {
+    const { db, viewer, session, sdp } = args;
+    const now = args.now ?? (() => new Date());
+    const deny = (httpStatus: number, message: string): AiVoiceConnectResult => ({ ok: false, httpStatus, error: { type: null, code: null, message, modelUnavailable: false } });
+    if ((now().getTime() - new Date(session.createdAt).getTime()) / 1000 > AiLiveClient.CONNECT_WINDOW_S) {
+      await AiVoiceChatService.logFailure(db, viewer, session, "connect_failed", { status: 409, type: "connect_window_expired", api: "live" }, args.now);
+      return deny(409, AiToolsCopy.VOICE_SESSION_GONE);
+    }
+    if (!sdp.trim() || sdp.length > AiRealtimeClient.SDP_MAX) {
+      await AiVoiceChatService.logFailure(db, viewer, session, "connect_failed", { status: 400, type: "bad_request", message: "missing or oversized offer", api: "live" }, args.now);
+      return deny(400, AiToolsCopy.VOICE_CONNECT_FAILED);
+    }
+    const env = args.env ?? process.env;
+    const row = await AiSettingsService.row(db).catch(() => null);
+    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    if (!saved || !args.scope) {
+      await AiVoiceChatService.logFailure(db, viewer, session, "connect_failed", { status: 503, type: saved ? "no_scope" : "ai_off", api: "live" }, args.now);
+      return deny(503, AiToolsCopy.VOICE_CONNECT_FAILED);
+    }
+    const projects = await AiToolsService.projects(db, args.scope);
+    const model = session.model ?? "";
+    // The same instructions as the Realtime adapter (admin rules or built-in, plus tool contract, patient line, projects).
+    const base = AiVoiceChat.instructions(projects, await AiModelService.voiceInstructions(db));
+    const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel: saved.model, backendInstructions: base, tools: [AiVoiceChat.TOOL] }, sdp, args.fetchImpl);
+    if (r.ok) {
+      console.info("AI tools: voice live session started", { sessionId: session.suggestionId, model, backendModel: saved.model, liveSessionId: r.liveSessionId });
+      return { ok: true, sdp: r.sdp };
+    }
+    const code: AiVoiceErrorCode = r.modelUnavailable ? "model_unavailable" : "connect_failed";
+    await AiVoiceChatService.logFailure(db, viewer, session, code, { status: r.status ?? null, type: r.type ?? r.kind, errorCode: r.code ?? null, message: r.message ?? null, source: "server", api: "live" }, args.now, [saved.apiKey]);
     const httpStatus = typeof r.status === "number" ? r.status : r.kind === "timeout" ? 504 : 502;
     return { ok: false, httpStatus, error: { type: r.type ?? r.kind, code: r.code ?? null, message: r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
   }
@@ -208,7 +262,7 @@ export class AiVoiceChatService {
    * started session. A second End is ignored (returns the stored length); the 0048 unique index refuses a racing
    * duplicate insert.
    */
-  static async end(args: { db: AiToolsDb; viewer: Viewer | null; sessionId: unknown; now?: () => Date }): Promise<AiVoiceEndResult> {
+  static async end(args: { db: AiToolsDb; viewer: Viewer | null; sessionId: unknown; backendUsage?: unknown; now?: () => Date }): Promise<AiVoiceEndResult> {
     const { db, viewer } = args;
     const now = args.now ?? (() => new Date());
     if (!viewer?.isAdmin) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
@@ -221,9 +275,15 @@ export class AiVoiceChatService {
     const at = now();
     const seconds = AiVoiceChat.seconds(session.createdAt, at);
     const price = await AiVoiceChatService.price(db, session.model ?? "");
+    const live = AiModelKinds.voiceApi(session.model ?? "") === "live";
+    // Live: duration pricing (per-minute price times seconds, billed per second). Realtime: the admin per-minute price.
+    const costUsd = live ? AiLiveClient.cost(seconds, AiLiveClient.pricePerMinute(price?.priceUnit, price?.inputPrice)) : AiVoiceChat.cost(seconds, price?.priceUnit, price?.inputPrice);
+    // Backend Responses usage is billed separately by OpenAI, so it is logged on its own line, never folded into the session row.
+    const backend = live ? AiLiveClient.cleanUsage(args.backendUsage) : null;
+    if (backend) console.info("AI tools: voice live backend usage", { sessionId: session.suggestionId, model: session.model ?? null, ...backend });
     try {
       await db.aiUsageLog.create({
-        data: { id: randomUUID(), suggestionId: session.suggestionId, userEmail: viewer.email, projectId: null, feature: FEATURE, event: "session_ended", provider: session.provider, model: session.model, inputLength: 0, outputLength: null, numberCheckPassed: null, suggestedText: null, usageSeconds: seconds, costUsd: AiVoiceChat.cost(seconds, price?.priceUnit, price?.inputPrice), createdAt: at },
+        data: { id: randomUUID(), suggestionId: session.suggestionId, userEmail: viewer.email, projectId: null, feature: FEATURE, event: "session_ended", provider: session.provider, model: session.model, inputLength: 0, outputLength: null, numberCheckPassed: null, suggestedText: null, usageSeconds: seconds, costUsd, createdAt: at },
       });
     } catch (e) {
       // Ended in parallel (the unique index refused the second row): report what is stored.
