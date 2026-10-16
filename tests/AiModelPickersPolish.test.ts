@@ -53,7 +53,7 @@ describe("one list error, at the top of the AI settings card", () => {
     const { OpenAiModelListProvider } = await import("@/components/useOpenAiModelList");
     const { AiModelsPanel, AiFeaturesPanel } = await import("@/components/AiModelsPanel");
     const v = { feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE", ownModel: true, model: null };
-    const html = renderToStaticMarkup(createElement(OpenAiModelListProvider, { initial: FAILED, children: null }, createElement(AiModelsPanel, { models: [], dbReady: true }), createElement(AiFeaturesPanel, { features: [v as never], dbReady: true })));
+    const html = renderToStaticMarkup(createElement(OpenAiModelListProvider, { initial: FAILED }, createElement("div", null, createElement(AiModelsPanel, { models: [], dbReady: true }), createElement(AiFeaturesPanel, { features: [v as never], dbReady: true }))));
     expect(html).not.toContain("ai-openai-list-failed");
     expect(html).toContain('id="ai-feature-voice_chat-model-manual-input"');
   });

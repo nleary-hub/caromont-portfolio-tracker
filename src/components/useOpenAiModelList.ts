@@ -20,7 +20,7 @@ function useLocalList(initial: OpenAiListState, shared: boolean): OpenAiModelLis
  * One OpenAI model list for the whole Admin > AI settings page: the Models panel and every picker read and load the
  * same state, so a failed load is reported once (at the top of the AI settings card).
  */
-export function OpenAiModelListProvider({ initial = null, children }: { initial?: OpenAiListState; children: ReactNode }) {
+export function OpenAiModelListProvider({ initial = null, children }: { initial?: OpenAiListState; children?: ReactNode }) {
   const value = useLocalList(initial, true);
   return createElement(Shared.Provider, { value }, children);
 }
