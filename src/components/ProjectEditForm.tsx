@@ -63,6 +63,8 @@ export interface ProjectEditFormProps {
   inforPreviously?: ReactNode;
   /** Edit: sections after the form fields (Update notes, History), read-only. */
   trailing?: ReactNode;
+  /** Edit: Hide from dashboard / Hide from report, in the Admin section above Delete. */
+  adminExtra?: ReactNode;
   /** Edit: the changed fields. New: every field (and the checklist). */
   onSubmit: ProjectFormSubmit;
   /** Edit mode: Milestones autosave ("Saves as you go"), outside the Save footer. */
@@ -107,6 +109,7 @@ export function ProjectEditForm({
   adminDelete,
   inforPreviously,
   trailing,
+  adminExtra,
   onSubmit,
   saveMilestones,
   onSaved,
@@ -511,7 +514,10 @@ export function ProjectEditForm({
 
         {adminDelete && (
           <div className="border-t border-line pt-4">
-            <Section title="Admin">{adminDelete}</Section>
+            <Section title="Admin">
+              {adminExtra}
+              {adminDelete}
+            </Section>
           </div>
         )}
       </div>

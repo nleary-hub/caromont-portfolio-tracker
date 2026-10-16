@@ -870,6 +870,7 @@ export function ProjectDashboard({
                   key={`edit-${selected.id}`}
                   inforPreviously={parts.previously}
                   trailing={parts.trailing}
+                  adminExtra={parts.admin}
                   mode="edit"
                   {...(line ? { departments: line.departments } : {})}
                   original={admin.formValues[selected.id]}
@@ -1052,6 +1053,8 @@ export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInf
 export interface DrawerFormParts {
   previously: ReactNode;
   trailing: ReactNode;
+  /** Admin controls (Hide from dashboard, Hide from report), shown in the form's Admin section above Delete. */
+  admin: ReactNode;
 }
 
 /**
@@ -1104,10 +1107,8 @@ export function ProjectDrawer({
         <UpdateNotesSection key={`notes-${row.id}`} timeline={history.timeline} />
         {/* People and History are siblings: their project-specific keys must have distinct namespaces. */}
         <ProjectHistorySection key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />
-        {/* Editing: Hide from dashboard / Hide from report sit after History, above Delete. */}
-        {editing && adminControls}
       </>
-    ) : editing ? adminControls : null;
+    ) : null;
   const closeButton = (
     <button type="button" onClick={onClose} aria-label="Close" className="pb-ghost size-7 rounded-[6px] border border-line text-xs text-muted hover:text-fg">
       ✕
@@ -1145,7 +1146,7 @@ export function ProjectDrawer({
       </div>
       {form ? (
         <>
-          {form({ previously: <PreviouslyLine text={history.timeline?.previously} />, trailing })}
+          {form({ previously: <PreviouslyLine text={history.timeline?.previously} />, trailing, admin: adminControls })}
         </>
       ) : row ? (
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-5" data-testid="drawer-readonly">

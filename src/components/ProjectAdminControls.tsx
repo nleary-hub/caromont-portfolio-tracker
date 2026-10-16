@@ -101,7 +101,7 @@ export function ProjectAdminControls({
       </label>
       <p className="text-muted type-caption">
         Only you see these controls. Hidden and deleted projects are left out of every count, flag, and export that
-        others see. Undo from Audit. Delete project is in Edit.
+        others see. Undo from Audit. Delete project is below.
       </p>
       {errorLine}
     </section>

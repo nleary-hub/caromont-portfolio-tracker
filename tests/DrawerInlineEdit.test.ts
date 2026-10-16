@@ -30,7 +30,7 @@ describe("Project drawer: one drawer, single click", () => {
     expect(dash).toMatch(/trailing=\{parts\.trailing\}/);
     expect(dash).toMatch(/<UpdateNotesSection/);
     expect(dash).toMatch(/<ProjectHistorySection/);
-    expect(dash).toMatch(/\{editing && adminControls\}/);
+    expect(dash).toMatch(/adminExtra=\{parts\.admin\}/);
   });
 
   it("no Discard prompt on a clean form: dirty resets on unmount and after a save", () => {
