@@ -31,6 +31,14 @@ export interface TemplateChange {
   changedBy: string;
 }
 
+/** Tags every history row written inside MilestoneTemplateService.batch (one AI apply). */
+export interface TemplateBatchMeta {
+  applyId: string;
+  source: "ai";
+}
+
+const BATCH_META = Symbol("templateBatchMeta");
+
 export class TemplateValidationError extends Error {
   constructor(message: string) {
     super(message);
@@ -61,6 +69,28 @@ export class MilestoneTemplateService {
     itemDeleted: "item_deleted",
     itemsReordered: "items_reordered",
   } as const;
+
+  /**
+   * Runs several of the writes below as ONE transaction (all or nothing, history rows included). `fn` gets a client whose
+   * $transaction joins the outer one, so the existing methods are reused unchanged; every history row they write carries
+   * `meta` in its newValue. Only the Template AI apply uses this; every other caller is unchanged.
+   */
+  static async batch<T>(db: PrismaClient, meta: TemplateBatchMeta, fn: (db: PrismaClient) => Promise<T>): Promise<T> {
+    return db.$transaction(async (tx) => {
+      const joined: PrismaClient = new Proxy(tx as object, {
+        get: (t, k) => (k === "$transaction" ? (f: (c: unknown) => Promise<unknown>) => f(joined) : k === BATCH_META ? meta : Reflect.get(t, k)),
+      }) as PrismaClient;
+      return fn(joined);
+    });
+  }
+
+  /** newValue as stored: unchanged outside a batch; inside one, an object that also carries applyId and source. */
+  static tagged(newValue: unknown, meta: TemplateBatchMeta | undefined): unknown {
+    if (!meta) return newValue;
+    if (newValue === null || newValue === undefined) return { ...meta };
+    if (typeof newValue === "object" && !Array.isArray(newValue)) return { ...(newValue as object), ...meta };
+    return { value: newValue, ...meta };
+  }
 
   /** All templates in order, each with its steps in order. */
   static async list(db: Reader = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<TemplateDto[]> {
@@ -244,7 +274,7 @@ export class MilestoneTemplateService {
         templateId,
         action,
         oldValue: (oldValue ?? undefined) as Prisma.InputJsonValue | undefined,
-        newValue: (newValue ?? undefined) as Prisma.InputJsonValue | undefined,
+        newValue: (MilestoneTemplateService.tagged(newValue, (tx as unknown as Record<symbol, TemplateBatchMeta | undefined>)[BATCH_META]) ?? undefined) as Prisma.InputJsonValue | undefined,
         changedBy: admin.email,
       },
     });

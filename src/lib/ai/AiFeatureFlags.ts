@@ -15,8 +15,11 @@ export type AiInputFeature = "dictation";
 /** Live features: a spoken conversation about projects whose edits route through the review layer (step 10). */
 export type AiLiveFeature = "voice_chat";
 
+/** The Template AI assistant on Admin > Milestone templates (draft a template, edit one with AI). */
+export type AiTemplateFeature = "template_ai";
+
 /** Every feature with a toggle on Admin > AI settings. */
-export type AiToggleFeature = AiReviewFeature | AiToolFeature | AiInputFeature | AiLiveFeature;
+export type AiToggleFeature = AiReviewFeature | AiToolFeature | AiInputFeature | AiLiveFeature | AiTemplateFeature;
 
 /**
  * Per-feature kill switches for the review-then-apply layer. Every feature is ON by default; setting its environment
@@ -35,6 +38,7 @@ export class AiFeatureFlags {
     meeting_brief: "AI_FEATURE_MEETING_BRIEF",
     related_links: "AI_FEATURE_RELATED_LINKS",
     voice_chat: "AI_FEATURE_VOICE_CHAT",
+    template_ai: "AI_FEATURE_TEMPLATE_AI",
   };
 
   /** Review-layer features (the edit form). */
@@ -44,7 +48,7 @@ export class AiFeatureFlags {
   static readonly TOOL_FEATURES: readonly AiToolFeature[] = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "request_to_project", "meeting_brief", "related_links"];
 
   /** Everything with a toggle on the settings page, in display order. */
-  static readonly ALL: readonly AiToggleFeature[] = [...AiFeatureFlags.FEATURES, ...AiFeatureFlags.TOOL_FEATURES, "dictation", "voice_chat"];
+  static readonly ALL: readonly AiToggleFeature[] = [...AiFeatureFlags.FEATURES, ...AiFeatureFlags.TOOL_FEATURES, "dictation", "voice_chat", "template_ai"];
 
   /**
    * Features with their own model setting, because they need a different model type than the text features (CTO,

@@ -3,7 +3,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AiBulkEdit, type AiBulkSummary } from "@/lib/ai/AiBulkEdit";
 import { AiCopy } from "@/lib/ai/AiCopy";
-import { AiFeatureFlags, type AiLiveFeature, type AiToolFeature } from "@/lib/ai/AiFeatureFlags";
+import { AiFeatureFlags, type AiLiveFeature, type AiTemplateFeature, type AiToolFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiProviderClient, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiProviders } from "@/lib/ai/AiProviders";
@@ -153,7 +153,7 @@ export class AiToolsService {
   static async call(args: {
     db: AiToolsDb;
     viewer: Viewer | null;
-    feature: AiToolFeature;
+    feature: AiToolFeature | AiTemplateFeature;
     input: string;
     build: (input: string) => { system: string; user: string; maxTokens: number };
     projectId?: string | null;
