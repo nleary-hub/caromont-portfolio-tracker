@@ -88,6 +88,8 @@ export class ProjectFormModel {
   static readonly DISCARD_PROMPT = "Discard changes?";
   /** Edit drawer auto-save: wait after the last change, then save through the normal form save. */
   static readonly AUTOSAVE_MS = 800;
+  /** Edit drawer: choosing Cancelled asks first (it saves and closes the drawer). */
+  static readonly CANCEL_CONFIRM = "Cancel this project?";
   static readonly AUTOSAVE_IDLE = "Changes save automatically";
   static readonly AUTOSAVE_SAVING = "Saving…";
   static readonly AUTOSAVE_SAVED = "Saved";

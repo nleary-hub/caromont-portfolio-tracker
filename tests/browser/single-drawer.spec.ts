@@ -49,6 +49,9 @@ test("non-admins get the same drawer, read-only, with History", async ({ page })
   await expect(panel.getByTestId("edit-form")).toHaveCount(0);
   await expect(panel.getByTestId("project-history")).toHaveCount(1);
   await expect(panel.getByTestId("drawer-note")).toHaveText("Alpha unique note");
+  // Plain text: no character counter in the read-only drawer.
+  await expect(panel.getByTestId("drawer-note-counter")).toHaveCount(0);
+  await expect(panel.getByText("/ 2,000")).toHaveCount(0);
   await expect(panel.getByText("% complete")).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Edit" })).toHaveCount(0);
 });

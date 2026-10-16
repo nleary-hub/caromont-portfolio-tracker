@@ -21,7 +21,7 @@ import { GroupedTableStyle, NAME_WRAP } from "./DashboardTable";
 import { MainNav } from "./MainNav";
 import { TopBarFrame } from "./TopBarFrame";
 import { useTopBarFit } from "./TopBarFitContext";
-import { ProjectDrawer } from "./ProjectDashboard";
+import { ProjectDashboardCopy, ProjectDrawer } from "./ProjectDashboard";
 import type { HistoryLoader } from "./ProjectHistory";
 
 const CELL = "border-b border-line px-3 py-[10px] align-top";
@@ -114,6 +114,19 @@ export function ClosedProjectsView({
     window.setTimeout(() => setRows((rs) => rs.filter((x) => x.id !== row.id)), RowFade.MS);
     setToast({ text: C.restoreToast(r.name, r.statusLabel), link: { href: "/", label: C.VIEW_ON_DASHBOARD } });
   };
+
+  // A click on the page outside the read-only drawer closes it (same rules as the dashboard drawer).
+  const drawerOpen = selectedId !== null;
+  useEffect(() => {
+    if (!drawerOpen || confirmId) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target instanceof Element ? e.target : null;
+      if (!t || !t.closest("main") || t.closest(ProjectDashboardCopy.OUTSIDE_IGNORE)) return;
+      setSelectedId(null);
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [drawerOpen, confirmId]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {

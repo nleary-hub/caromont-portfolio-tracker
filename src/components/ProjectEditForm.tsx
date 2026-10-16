@@ -5,6 +5,7 @@ import { CompletionRules } from "@/lib/projects/CompletionRules";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { LongTextCounter } from "@/lib/projects/LongTextCounter";
 import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
+import { createPortal } from "react-dom";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
@@ -258,6 +259,14 @@ export function ProjectEditForm({
   }, []);
   useImperativeHandle(handleRef, () => ({ flush: runSave }), [runSave]);
   const formDirty = ProjectFormModel.isDirty(values, original);
+  // Cancelled (edit): "Cancel this project?" first. Yes saves at once (the drawer closes with its toast); No keeps the old status.
+  const [confirmCancel, setConfirmCancel] = useState(false);
+  const saveNow = useRef(false);
+  useEffect(() => {
+    if (!saveNow.current) return;
+    saveNow.current = false;
+    void runSave();
+  }, [values, runSave]);
   useEffect(() => {
     if (isNew || !formDirty) return;
     if (timer.current) clearTimeout(timer.current);
@@ -359,6 +368,11 @@ export function ProjectEditForm({
               className={INPUT}
               value={values.status}
               onChange={(e) => {
+                if (!isNew && e.target.value === "Cancelled" && values.status !== "Cancelled") {
+                  setConfirmCancel(true);
+                  return;
+                }
+                setConfirmCancel(false);
                 if (values.status === "Complete" && e.target.value !== "Complete") setResumeCompletedOn(values.completedOn);
                 const next = ProjectFormModel.withStatus(values, e.target.value, original, today, { resume: resumeCompletedOn });
                 setValues(next);
@@ -373,6 +387,17 @@ export function ProjectEditForm({
                   </option>
                 ))}
             </select>
+            )}
+            {confirmCancel && (
+              <CancelProjectDialog
+                onKeep={() => setConfirmCancel(false)}
+                onConfirm={() => {
+                  setConfirmCancel(false);
+                  saveNow.current = true;
+                  setValues(ProjectFormModel.withStatus(values, "Cancelled", original, today, { resume: resumeCompletedOn }));
+                  setServerErrors((prev) => ({ ...prev, status: undefined }));
+                }}
+              />
             )}
           </Field>
           {/* The dates row: Start date first, then Completion date while the status is Complete (same width each). */}
@@ -653,6 +678,45 @@ function AutosaveStatus({ state, error }: { state: AutosaveState; error: string 
     <span className="min-w-0 flex-1 truncate text-muted type-table" role="status" aria-live="polite" data-testid="autosave-status" data-state={state}>
       {state === "saving" ? ProjectFormModel.AUTOSAVE_SAVING : state === "saved" ? ProjectFormModel.AUTOSAVE_SAVED : ProjectFormModel.AUTOSAVE_IDLE}
     </span>
+  );
+}
+
+/**
+ * "Cancel this project?" (edit drawer, status set to Cancelled). The app's modal style (LayoutResetDialog), in a
+ * portal; "Keep project" (outlined, focused first) or Escape or a backdrop click keeps the status and saves nothing,
+ * "Cancel project" (red, right) saves the status through the normal form save.
+ */
+function CancelProjectDialog({ onKeep, onConfirm }: { onKeep: () => void; onConfirm: () => void }) {
+  if (typeof document === "undefined") return null;
+  return createPortal(
+    <div data-cancel-dialog className="fixed inset-0 z-50 grid place-items-center bg-black/50" onMouseDown={(e) => e.target === e.currentTarget && onKeep()}>
+      <div
+        role="alertdialog"
+        aria-modal="true"
+        aria-labelledby="cancel-project-title"
+        data-testid="cancel-confirm"
+        className="flex w-[440px] flex-col gap-3 rounded-card border border-line bg-card px-5 py-4 shadow-[0_12px_32px_rgba(0,0,0,.45)]"
+        onKeyDown={(e) => {
+          if (e.key !== "Escape") return;
+          // Escape answers the dialog only; it must not also close the drawer.
+          e.stopPropagation();
+          onKeep();
+        }}
+      >
+        <h2 id="cancel-project-title" className="type-heading">
+          {ProjectFormModel.CANCEL_CONFIRM}
+        </h2>
+        <div className="flex justify-end gap-2">
+          <button type="button" autoFocus onClick={onKeep} className="h-7 rounded-control border border-line px-3 text-muted type-table-strong hover:text-fg">
+            Keep project
+          </button>
+          <button type="button" onClick={onConfirm} className="h-7 rounded-control bg-(--status-off-track-dark-bg) px-3 text-danger type-table-strong">
+            Cancel project
+          </button>
+        </div>
+      </div>
+    </div>,
+    document.body,
   );
 }
 

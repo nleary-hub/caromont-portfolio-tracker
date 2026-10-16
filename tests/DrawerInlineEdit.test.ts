@@ -63,3 +63,22 @@ describe("Project drawer: one drawer, single click", () => {
     expect(dash).not.toMatch(/% complete<\/dt>/);
   });
 });
+
+describe("Project drawer: #74 decisions", () => {
+  it("Cancelled asks \"Cancel this project?\" first; the form's Admin section draws one Admin heading", () => {
+    expect(ProjectFormModel.CANCEL_CONFIRM).toBe("Cancel this project?");
+    // In-app dialog, never the browser's confirm().
+    expect(form).not.toMatch(/window\.confirm|\bconfirm\(/);
+    expect(form).toMatch(/role="alertdialog"/);
+    // App modal style: portal, Keep project outlined and focused first, Cancel project red on the right.
+    expect(form).toMatch(/createPortal\(/);
+    expect(form).toMatch(/autoFocus onClick=\{onKeep\} className="[^"]*border border-line[^"]*">\s*Keep project\s*<\/button>\s*<button type="button" onClick=\{onConfirm\} className="[^"]*text-danger[^"]*">\s*Cancel project/);
+    expect(form).toMatch(/e\.target\.value === "Cancelled" && values\.status !== "Cancelled"\) \{\s*setConfirmCancel\(true\);\s*return;/);
+    expect(dash).toMatch(/<ProjectAdminControls\s+heading=\{false\}/);
+    expect(read("src/components/ProjectAdminControls.tsx")).toMatch(/\{heading && <div[^>]*>Admin<\/div>\}/);
+  });
+
+  it("the Closed and Cancelled pages close the read-only drawer on an outside click", () => {
+    expect(closed).toMatch(/t\.closest\(ProjectDashboardCopy\.OUTSIDE_IGNORE\)\) return;\s*setSelectedId\(null\);/);
+  });
+});

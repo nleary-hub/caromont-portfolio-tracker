@@ -58,3 +58,71 @@ test("a failed save keeps the drawer open and shows the error (auto-save, Escape
   await expect(panel(page).locator("h2")).toHaveText("Alpha fictional project");
   await expect(status).toHaveText("Fictional save failure. Try again.");
 });
+
+test("one click on another row flushes the pending save and switches in that same click", async ({ page }) => {
+  await page.goto("/?save=slow");
+  await open(page, 0);
+  await panel(page).locator("#pf-note").fill("Fictional pending note");
+  await open(page, 2);
+  await expect(panel(page).locator("h2")).toHaveText("Bravo fictional project", { timeout: 5000 });
+  expect(await saves(page)).toEqual([{ id: "fictional-0", changes: { note: "Fictional pending note" } }]);
+  // Buttons and menus outside the drawer do not close it.
+  await page.locator('button[data-sort="name"]').first().click();
+  await expect(panel(page)).toHaveCount(1);
+});
+
+test("choosing Cancelled asks first; Keep project reverts the status and saves nothing", async ({ page }) => {
+  await page.goto("/");
+  await open(page, 1);
+  await panel(page).locator("#pf-status").selectOption("Cancelled");
+  const dialog = page.getByRole("alertdialog", { name: "Cancel this project?" });
+  await expect(dialog).toBeVisible();
+  await expect(dialog.getByRole("button", { name: "Keep project", exact: true })).toBeFocused();
+  await dialog.getByRole("button", { name: "Keep project", exact: true }).click();
+  await expect(dialog).toHaveCount(0);
+  await expect(panel(page).locator("#pf-status")).toHaveValue("OnTrack");
+  await page.waitForTimeout(1200);
+  expect(await saves(page)).toEqual([]);
+  await expect(panel(page)).toHaveCount(1);
+});
+
+test("choosing Cancelled and confirming saves the status and closes with the toast", async ({ page }) => {
+  await page.goto("/");
+  await open(page, 1);
+  await panel(page).locator("#pf-status").selectOption("Cancelled");
+  await page.getByRole("alertdialog", { name: "Cancel this project?" }).getByRole("button", { name: "Cancel project", exact: true }).click();
+  await expect(panel(page)).toHaveCount(0);
+  expect(await saves(page)).toEqual([{ id: "fictional-1", changes: { status: "Cancelled" } }]);
+  await expect(page.getByText(/Cancelled/).last()).toBeVisible();
+});
+
+test("Cancelled page: an outside click closes the read-only drawer", async ({ page }) => {
+  await page.goto("/?page=cancelled");
+  await page.locator('tr[data-row-key="fictional-1"]').click({ position: { x: 120, y: 15 } });
+  const drawer = page.getByRole("complementary", { name: "Project detail", exact: true });
+  await expect(drawer).toHaveAttribute("data-mode", "view");
+  await page.locator("main h1, main h2").first().click({ force: true });
+  await expect(drawer).toHaveCount(0);
+});
+
+test("Escape in the Cancelled dialog keeps the project and leaves the drawer open, saving nothing", async ({ page }) => {
+  await page.goto("/");
+  await open(page, 1);
+  await panel(page).locator("#pf-status").selectOption("Cancelled");
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("alertdialog")).toHaveCount(0);
+  await expect(panel(page)).toHaveCount(1);
+  await expect(panel(page).locator("#pf-status")).toHaveValue("OnTrack");
+  await page.waitForTimeout(1200);
+  expect(await saves(page)).toEqual([]);
+});
+
+test("typing a whole sentence auto-saves once (one save, so one history entry), not once per keystroke", async ({ page }) => {
+  await page.goto("/");
+  await open(page, 1);
+  await panel(page).locator("#pf-note").click();
+  await page.keyboard.type("Fictional typed update", { delay: 40 });
+  await expect(panel(page).getByTestId("autosave-status")).toHaveAttribute("data-state", "saved");
+  await page.waitForTimeout(1200);
+  expect(await saves(page)).toEqual([{ id: "fictional-1", changes: { note: "Alpha unique noteFictional typed update" } }]);
+});
