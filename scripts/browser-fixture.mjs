@@ -17,7 +17,8 @@ await build({ entryPoints: ["tests/browser/fixture.tsx"], outfile: path.join(out
       const src = await readFile(args.path, "utf8");
       if (!/^\s*["']use server["']/.test(src)) return undefined;
       const names = [...src.matchAll(/^export\s+(?:async\s+)?(?:function|const|let)\s+(\w+)/gm)].map(m => m[1]);
-      return { contents: names.map(n => `export const ${n} = async () => null;`).join("\n"), loader: "js" };
+      // A fixture may supply in-memory fakes on globalThis.__fixtureActions (fictional data only); otherwise null.
+      return { contents: names.map(n => `export const ${n} = async (...a) => globalThis.__fixtureActions?.${n} ? globalThis.__fixtureActions.${n}(...a) : null;`).join("\n"), loader: "js" };
     });
     builder.onResolve({ filter: /^next\/(dynamic|link)$/ }, args => ({ path: args.path, namespace: "next-harness" }));
     builder.onLoad({ filter: /.*/, namespace: "next-harness" }, args => ({
