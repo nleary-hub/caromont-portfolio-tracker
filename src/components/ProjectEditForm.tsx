@@ -339,6 +339,16 @@ export function ProjectEditForm({
   return (
     <>
       <div ref={bodyRef} className="flex min-h-0 flex-1 flex-col gap-5 overflow-y-auto px-6 pt-1 pb-5" data-testid="edit-form">
+        {/* Edit mode only (a new project starts not MFI). Top of the drawer; same auto-save as the other form fields. */}
+        {!isNew && <MfiCheckbox checked={values.isMfi === "true"} onChange={(on) => setValues((prev) => ({ ...prev, isMfi: on ? "true" : "false" }))} />}
+
+        {/* People first: where the pre-#73 drawer showed owner, requester and contracts lead (top of the panel). */}
+        {people && (
+          <Section title="People" caption="Saves as you pick">
+            {people}
+          </Section>
+        )}
+
         <Section title="Project">
           <Field field="name" label="Name" errors={shown("name")}>
             <input
@@ -626,12 +636,6 @@ export function ProjectEditForm({
           </Field>
         </Section>
 
-        {people && (
-          <Section title="People" caption="Saves as you pick">
-            {people}
-          </Section>
-        )}
-
         {dependencies && (
           <Section title={DependencyCopy.TITLE} caption={DependencyCopy.CAPTION}>
             {dependencies}
@@ -640,8 +644,6 @@ export function ProjectEditForm({
 
         {trailing}
 
-        {/* Edit mode only (a new project starts not MFI). Above the Admin box, so Delete project stays the last control. */}
-        {!isNew && <MfiCheckbox checked={values.isMfi === "true"} onChange={(on) => setValues((prev) => ({ ...prev, isMfi: on ? "true" : "false" }))} />}
 
         {adminDelete && (
           <div className="border-t border-line pt-4">
