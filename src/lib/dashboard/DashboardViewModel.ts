@@ -19,7 +19,7 @@ export interface DashboardRow {
   owner: string | null;
   physicianChampion: string | null;
   requesterNotApplicable: boolean;
-  /** Major Facility Investment (migration 0051): the MFI chip. Absent = not MFI. */
+  /** Major Facility Investment (migration 0052): the MFI chip. Absent = not MFI. */
   isMfi?: boolean;
   /** One of AppConfig.CONTRACTS_LEADS, or null ("To assign"). */
   contractsLead: string | null;

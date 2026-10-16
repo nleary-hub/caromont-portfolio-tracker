@@ -910,7 +910,7 @@ export function ProjectDashboard({
                   dependencies={
                     admin.dependencyActions ? (
                       <>
-                        <DependenciesEditor key={`deps-${selected.id}-${depsVersion}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount({ id: selected.id, n })} />
+                        <DependenciesEditor key={`deps-${selected.id}-${depsVersion}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))} />
                         {aiPlacements && "related_links" in aiPlacements && (
                           <section aria-labelledby="ai-related-title" className="mt-3 flex flex-col gap-2" data-testid="ai-related-section">
                             <h4 id="ai-related-title" className="text-muted type-label">
@@ -1151,7 +1151,7 @@ export function ProjectDrawer({
       data-mode={editing ? "edit" : "view"}
       data-enter={entering || undefined}
       onAnimationEnd={(e) => e.target === e.currentTarget && onEntered?.()}
-      className="pb-drawer fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col overflow-hidden rounded-card border border-line bg-card shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
+      className="pb-drawer fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col overflow-clip rounded-card border border-line bg-card shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
     >
       <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
         <div className="min-w-0">

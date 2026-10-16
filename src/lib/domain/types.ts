@@ -45,7 +45,7 @@ export interface ProjectRecord {
   deletedBy: string | null;
   hiddenFromDashboard: boolean;
   hiddenFromReport: boolean;
-  /** Major Facility Investment (migration 0051). Absent on rows read without it (treated as false). */
+  /** Major Facility Investment (migration 0052). Absent on rows read without it (treated as false). */
   isMfi?: boolean;
   /** Start date (DB DATE, America/New_York day; migration 0026). Absent on rows read without it. Drawer only. */
   startDate?: Date | null;

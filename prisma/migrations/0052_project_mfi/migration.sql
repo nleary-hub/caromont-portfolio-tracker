@@ -1,4 +1,4 @@
--- 0051_project_mfi: Major Facility Investment (MFI) flag on projects (Nick, Oct 15, 2026).
+-- 0052_project_mfi: Major Facility Investment (MFI) flag on projects (Nick, Oct 15, 2026).
 --
 -- Add-only: one new NOT NULL column with a default of false, so every existing project reads as not MFI.
 -- No change to any existing column, row, table or trigger. Idempotent (ADD COLUMN IF NOT EXISTS).

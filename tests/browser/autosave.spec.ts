@@ -2,6 +2,11 @@ import { test, expect, type Page } from "@playwright/test";
 
 const open = (page: Page, i: number) => page.locator(`tr[data-row-key="fictional-${i}"]`).click({ position: { x: 120, y: 15 } });
 const saves = (page: Page) => page.evaluate(() => (window as unknown as { __formSaves?: { id: string; changes: Record<string, string> }[] }).__formSaves ?? []);
+// Status is the app's custom dropdown (PickerSelect), not a native select.
+const pickStatus = async (page: Page, label: string) => {
+  await page.locator("#pf-status").click();
+  await page.getByRole("listbox", { name: "Status" }).getByRole("option", { name: label, exact: true }).click();
+};
 const panel = (page: Page) => page.getByRole("complementary", { name: "Project detail", exact: true });
 
 test("typing auto-saves once after the pause, through the form save, with only the changed field", async ({ page }) => {
@@ -49,14 +54,14 @@ test("a failed save keeps the drawer open and shows the error (auto-save, Escape
   await panel(page).locator("#pf-note").fill("Fictional failing note");
   const status = panel(page).getByTestId("autosave-status");
   await expect(status).toHaveAttribute("data-state", "error");
-  await expect(status).toHaveText("Fictional save failure. Try again.");
+  await expect(status).toHaveText("Couldn't save your change. Check your connection and try again.");
   await page.keyboard.press("Escape");
   await expect(panel(page)).toHaveCount(1);
   await page.getByText("3 of 3 projects", { exact: true }).last().click();
   await expect(panel(page)).toHaveCount(1);
   await open(page, 2);
   await expect(panel(page).locator("h2")).toHaveText("Alpha fictional project");
-  await expect(status).toHaveText("Fictional save failure. Try again.");
+  await expect(status).toHaveText("Couldn't save your change. Check your connection and try again.");
 });
 
 test("one click on another row flushes the pending save and switches in that same click", async ({ page }) => {
@@ -74,13 +79,13 @@ test("one click on another row flushes the pending save and switches in that sam
 test("choosing Cancelled asks first; Keep project reverts the status and saves nothing", async ({ page }) => {
   await page.goto("/");
   await open(page, 1);
-  await panel(page).locator("#pf-status").selectOption("Cancelled");
+  await pickStatus(page, "Cancelled");
   const dialog = page.getByRole("alertdialog", { name: "Cancel this project?" });
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("button", { name: "Keep project", exact: true })).toBeFocused();
   await dialog.getByRole("button", { name: "Keep project", exact: true }).click();
   await expect(dialog).toHaveCount(0);
-  await expect(panel(page).locator("#pf-status")).toHaveValue("OnTrack");
+  await expect(panel(page).locator("#pf-status")).toHaveText("On track");
   await page.waitForTimeout(1200);
   expect(await saves(page)).toEqual([]);
   await expect(panel(page)).toHaveCount(1);
@@ -89,7 +94,7 @@ test("choosing Cancelled asks first; Keep project reverts the status and saves n
 test("choosing Cancelled and confirming saves the status and closes with the toast", async ({ page }) => {
   await page.goto("/");
   await open(page, 1);
-  await panel(page).locator("#pf-status").selectOption("Cancelled");
+  await pickStatus(page, "Cancelled");
   await page.getByRole("alertdialog", { name: "Cancel this project?" }).getByRole("button", { name: "Cancel project", exact: true }).click();
   await expect(panel(page)).toHaveCount(0);
   expect(await saves(page)).toEqual([{ id: "fictional-1", changes: { status: "Cancelled" } }]);
@@ -108,11 +113,11 @@ test("Cancelled page: an outside click closes the read-only drawer", async ({ pa
 test("Escape in the Cancelled dialog keeps the project and leaves the drawer open, saving nothing", async ({ page }) => {
   await page.goto("/");
   await open(page, 1);
-  await panel(page).locator("#pf-status").selectOption("Cancelled");
+  await pickStatus(page, "Cancelled");
   await page.keyboard.press("Escape");
   await expect(page.getByRole("alertdialog")).toHaveCount(0);
   await expect(panel(page)).toHaveCount(1);
-  await expect(panel(page).locator("#pf-status")).toHaveValue("OnTrack");
+  await expect(panel(page).locator("#pf-status")).toHaveText("On track");
   await page.waitForTimeout(1200);
   expect(await saves(page)).toEqual([]);
 });

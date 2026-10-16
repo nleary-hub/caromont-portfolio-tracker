@@ -115,7 +115,7 @@ model Project {
   /// (rows, counts, flags, history). Only ProjectService admin methods write these; every change is audited.
   hiddenFromDashboard       Boolean       @default(false)
   hiddenFromReport          Boolean       @default(false)
-  /// Major Facility Investment (migration 0051). Admin-set in the drawer; audited in ProjectHistory ("isMfi").
+  /// Major Facility Investment (migration 0052). Admin-set in the drawer; audited in ProjectHistory ("isMfi").
   isMfi                     Boolean       @default(false)
   /// DEPRECATED (unused since view settings replaced the "closed projects drop off after one report"
   /// rule). Kept so existing data is not destroyed; nothing reads or writes it.

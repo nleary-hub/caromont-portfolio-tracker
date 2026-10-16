@@ -73,7 +73,7 @@ describe("Project drawer: #74 decisions", () => {
     // App modal style: portal, Keep project outlined and focused first, Cancel project red on the right.
     expect(form).toMatch(/createPortal\(/);
     expect(form).toMatch(/autoFocus onClick=\{onKeep\} className="[^"]*border border-line[^"]*">\s*Keep project\s*<\/button>\s*<button type="button" onClick=\{onConfirm\} className="[^"]*text-danger[^"]*">\s*Cancel project/);
-    expect(form).toMatch(/e\.target\.value === "Cancelled" && values\.status !== "Cancelled"\) \{\s*setConfirmCancel\(true\);\s*return;/);
+    expect(form).toMatch(/picked === "Cancelled" && values\.status !== "Cancelled"\) \{\s*setConfirmCancel\(true\);\s*return;/);
     expect(dash).toMatch(/<ProjectAdminControls\s+heading=\{false\}/);
     expect(read("src/components/ProjectAdminControls.tsx")).toMatch(/\{heading && <div[^>]*>Admin<\/div>\}/);
   });

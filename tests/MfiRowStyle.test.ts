@@ -107,7 +107,7 @@ describe("MFI report row style", () => {
   it("frozen outputs are unchanged: handoff fixture hash, stored PDFs are never re-rendered", () => {
     expect(sha("tests/fixtures/handoff-sample.json")).toBe("e11651176fe3c6893d520cd1780b68fc88a7c8b25bf49fcc1fe327e617280b8e");
     expect(readFileSync(path.join(root, "src/lib/report/StoredPdf.ts"), "utf8")).toMatch(/won't rebuild it/);
-    const sql = readFileSync(path.join(root, "prisma/migrations/0051_project_mfi/migration.sql"), "utf8");
+    const sql = readFileSync(path.join(root, "prisma/migrations/0052_project_mfi/migration.sql"), "utf8");
     const statements = sql.split("\n").filter((l) => l.trim() && !l.startsWith("--"));
     expect(statements).toEqual(['ALTER TABLE "Project" ADD COLUMN IF NOT EXISTS "isMfi" BOOLEAN NOT NULL DEFAULT false;']);
   });

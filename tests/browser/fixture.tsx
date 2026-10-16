@@ -10,6 +10,7 @@ import type { DashboardRow } from "../../src/lib/dashboard/DashboardViewModel";
 import { ClosedProjectsView } from "../../src/components/ClosedProjectsView";
 import { ClosedPageModel } from "../../src/lib/closed/ClosedPageModel";
 import { ServiceAreaInfo } from "../../src/lib/domain/ServiceAreaInfo";
+import { TemplatesFixture } from "./templates-fixture";
 import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
@@ -86,7 +87,9 @@ const aiView = { baseUrl: "", azureEndpoint: "", azureDeployment: "", encryption
 const closedPage = new URLSearchParams(window.location.search).get("page") === "cancelled";
 const cancelledRows = rows.map(r => ({ ...r, status: "Cancelled", statusLabel: "Cancelled", fiscalYear: "FY27", closedOn: "2026-09-20" }));
 const fixtureHistory = async (id: string) => ({ title: "History (1)", previously: null, notes: [], steps: [], entries: [{ key: `history-${id}`, meta: "Fictional author", text: `History for ${id}`, hollow: false }] });
-createRoot(document.getElementById("root")!).render(closedPage ? (
+createRoot(document.getElementById("root")!).render(new URLSearchParams(window.location.search).has("templates") ? (
+  <TemplatesFixture />
+) : closedPage ? (
   <ClosedProjectsView kind={ClosedPageModel.CANCELLED} rows={cancelledRows as never} today="2026-10-04"
     initialView={{ fy: "FY27", departments: ["Cath"] } as never} options={["Cath"] as never} list={ServiceAreaInfo.LEGACY}
     restore={null} historyAction={fixtureHistory as never} lineSlot={null} adminSlot={null} loadError={null} />

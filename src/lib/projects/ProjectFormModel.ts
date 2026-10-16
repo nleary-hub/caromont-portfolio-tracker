@@ -30,7 +30,7 @@ export interface ProjectFormValues {
   completedOn: string;
   /** YYYY-MM-DD (America/New_York day). New project: pre-filled with today. */
   startDate: string;
-  /** Major Facility Investment checkbox: "true" or "false" (migration 0051). Admin only. */
+  /** Major Facility Investment checkbox: "true" or "false" (migration 0052). Admin only. */
   isMfi: string;
 }
 
@@ -105,6 +105,8 @@ export class ProjectFormModel {
   /** App chip text (the PDF badge adds a diamond). */
   static readonly MFI_CHIP = "MFI";
   static readonly AUTOSAVE_BLOCKED = "Fix the highlighted fields to save.";
+  /** A save that failed for any reason other than field validation (network, server). */
+  static readonly AUTOSAVE_FAILED = "Couldn't save your change. Check your connection and try again.";
 
   static readonly LABELS: Readonly<Record<FormField, string>> = {
     name: "Name",

@@ -20,7 +20,10 @@ import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { FieldErrors } from "@/lib/validation/ProjectValidator";
 import { StartDate } from "@/lib/projects/StartDate";
 import { MilestonesEditor } from "./MilestonesEditor";
-import { AiNoteAssistant, AiUndoLine, type AiNoteActions } from "./AiNoteAssistant";
+import { DueDatePopover } from "./DueDatePopover";
+import { DueDatePopoverModel } from "@/lib/projects/DueDatePopoverModel";
+import { PickerSelect } from "./PickerSelect";
+import { AiAlert, AiNoteAssistant, AiUndoLine, type AiNoteActions } from "./AiNoteAssistant";
 import { AiReviewPanel, type AiReviewActions } from "./AiReviewPanel";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
@@ -98,6 +101,8 @@ export interface ProjectEditFormHandle {
 export type AutosaveState = "idle" | "saving" | "saved" | "error";
 
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
+// The Start date trigger and its open field share one look (the #72 "Pick a date" style), in every state.
+const START_DATE_FIELD = `${INPUT} block tabular-nums placeholder:text-muted`;
 const TEXTAREA = "block w-full min-w-0 resize-none rounded-control border border-line bg-input px-2.5 py-2 text-fg type-table focus:border-accent focus:outline-none";
 
 /**
@@ -241,12 +246,15 @@ export function ProjectEditForm({
           latest.current.onSaved(result.id);
           return true;
         }
-        setFormError(result.error);
-        if (result.fieldErrors) setServerErrors(result.fieldErrors);
+        // Field errors are validation ("Fix the highlighted fields to save."); anything else reads as a failed save.
+        if (result.fieldErrors && Object.keys(result.fieldErrors).length) {
+          setServerErrors(result.fieldErrors);
+          setFormError(ProjectFormModel.AUTOSAVE_BLOCKED);
+        } else setFormError(ProjectFormModel.AUTOSAVE_FAILED);
         setSaveState("error");
         return false;
       } catch {
-        setFormError("Could not save the change.");
+        setFormError(ProjectFormModel.AUTOSAVE_FAILED);
         setSaveState("error");
         return false;
       }
@@ -262,6 +270,7 @@ export function ProjectEditForm({
   const formDirty = ProjectFormModel.isDirty(values, original);
   // Cancelled (edit): "Cancel this project?" first. Yes saves at once (the drawer closes with its toast); No keeps the old status.
   const [confirmCancel, setConfirmCancel] = useState(false);
+  const [editingStart, setEditingStart] = useState(false);
   const saveNow = useRef(false);
   useEffect(() => {
     if (!saveNow.current) return;
@@ -343,15 +352,24 @@ export function ProjectEditForm({
             />
           </Field>
           <Field field="serviceArea" label="Department" errors={shown("serviceArea")}>
-            <select id="pf-serviceArea" className={INPUT} value={values.serviceArea} onChange={(e) => set("serviceArea", e.target.value)} onBlur={() => touch("serviceArea")}>
-              {(isNew || values.serviceArea === "") && <option value="">{isNew ? "Select a department" : ServiceAreaInfo.UNASSIGNED}</option>}
-              {PickList.withCurrent(ServiceAreaInfo.all(departments), (originalProp.serviceArea || null) as DepartmentKey | null).map((a) => (
-                <option key={a} value={a}>
-                  {ServiceAreaInfo.fullName(a, departments)}
-                </option>
-              ))}
-              {!isNew && values.serviceArea !== "" && <option value="">{ServiceAreaInfo.UNASSIGNED}</option>}
-            </select>
+            <PickerSelect
+              id="pf-serviceArea"
+              label="Department"
+              testId="department-picker"
+              value={values.serviceArea}
+              options={[
+                ...(isNew || values.serviceArea === "" ? [{ value: "", label: isNew ? "Select a department" : ServiceAreaInfo.UNASSIGNED }] : []),
+                ...PickList.withCurrent(ServiceAreaInfo.all(departments), (originalProp.serviceArea || null) as DepartmentKey | null).map((a) => ({
+                  value: a,
+                  label: ServiceAreaInfo.fullName(a, departments),
+                })),
+                ...(!isNew && values.serviceArea !== "" ? [{ value: "", label: ServiceAreaInfo.UNASSIGNED }] : []),
+              ]}
+              onChange={(v) => {
+                set("serviceArea", v);
+                touch("serviceArea");
+              }}
+            />
           </Field>
           <Field field="status" label="Status" errors={shown("status")}>
             {storedComplete ? (
@@ -364,30 +382,26 @@ export function ProjectEditForm({
                 </p>
               </>
             ) : (
-            <select
+            <PickerSelect
               id="pf-status"
-              className={INPUT}
+              label="Status"
+              testId="status-picker"
               value={values.status}
-              onChange={(e) => {
-                if (!isNew && e.target.value === "Cancelled" && values.status !== "Cancelled") {
+              options={ProjectStatusInfo.all()
+                .filter((s) => s !== "Complete")
+                .map((s) => ({ value: s, label: ProjectStatusInfo.label(s) }))}
+              onChange={(picked) => {
+                if (!isNew && picked === "Cancelled" && values.status !== "Cancelled") {
                   setConfirmCancel(true);
                   return;
                 }
                 setConfirmCancel(false);
-                if (values.status === "Complete" && e.target.value !== "Complete") setResumeCompletedOn(values.completedOn);
-                const next = ProjectFormModel.withStatus(values, e.target.value, original, today, { resume: resumeCompletedOn });
+                if (values.status === "Complete" && picked !== "Complete") setResumeCompletedOn(values.completedOn);
+                const next = ProjectFormModel.withStatus(values, picked, original, today, { resume: resumeCompletedOn });
                 setValues(next);
                 setServerErrors((prev) => ({ ...prev, status: undefined, completedOn: undefined, startDate: undefined }));
               }}
-            >
-              {ProjectStatusInfo.all()
-                .filter((s) => s !== "Complete")
-                .map((s) => (
-                  <option key={s} value={s}>
-                    {ProjectStatusInfo.label(s)}
-                  </option>
-                ))}
-            </select>
+            />
             )}
             {confirmCancel && (
               <CancelProjectDialog
@@ -410,18 +424,30 @@ export function ProjectEditForm({
               errors={shown("startDate")}
               tag={ProjectFormModel.showsStartDateDefault(values, original, startDateIsDefault) ? <StartDateDefaultTag /> : null}
             >
-              <input
-                id="pf-startDate"
-                type="date"
-                className={INPUT}
-                value={values.startDate}
-                max={today}
-                onChange={(e) => {
-                  set("startDate", e.target.value);
-                  touch("startDate");
-                }}
-                onBlur={() => touch("startDate")}
-              />
+              {/* The milestone due date popover (#72): same YYYY-MM-DD value, saved with the form (no new write path). */}
+              {editingStart ? (
+                <DueDatePopover
+                  saved={values.startDate}
+                  today={today}
+                  label={StartDate.LABEL}
+                  onSave={(d) => {
+                    set("startDate", d);
+                    touch("startDate");
+                  }}
+                  onClose={() => setEditingStart(false)}
+                  fieldClassName={START_DATE_FIELD}
+                />
+              ) : (
+                <button
+                  type="button"
+                  id="pf-startDate"
+                  className={`${START_DATE_FIELD} text-left`}
+                  onClick={() => setEditingStart(true)}
+                  data-testid="start-date-trigger"
+                >
+                  {values.startDate ? DueDatePopoverModel.display(values.startDate) : <span className="text-muted">Pick a date</span>}
+                </button>
+              )}
             </Field>
             {ProjectFormModel.showsCompletedOn(values) && (
               <Field field="completedOn" label={CompletionCopy.FIELD_LABEL} labelRow20 errors={shown("completedOn")}>
@@ -674,9 +700,12 @@ export function ProjectEditForm({
 function AutosaveStatus({ state, error }: { state: AutosaveState; error: string | null }) {
   if (state === "error")
     return (
-      <span className="min-w-0 flex-1 text-danger type-table" role="alert" data-testid="autosave-status" data-state="error">
-        {error}
-      </span>
+      // The app's red alert box (the same one AI errors use).
+      <div className="min-w-0 flex-1" data-testid="autosave-status" data-state="error">
+        <AiAlert tone="danger" testId="autosave-error">
+          {error}
+        </AiAlert>
+      </div>
     );
   return (
     <span className="min-w-0 flex-1 truncate text-muted type-table" role="status" aria-live="polite" data-testid="autosave-status" data-state={state}>
