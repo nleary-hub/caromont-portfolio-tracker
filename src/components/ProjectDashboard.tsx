@@ -53,6 +53,7 @@ import { StartDateDefaultTag } from "./StartDateDefaultTag";
 import { StartDate } from "@/lib/projects/StartDate";
 import { DashboardAmbient, DrawerSpotlight, SummaryHeartbeat } from "./DashboardAmbient";
 import { AccountMenu } from "./AccountMenu";
+import { MfiCheckbox, MfiChip } from "./MfiChip";
 import type { AiPlacementNotes, AiRowShortcut } from "./AiPlacements";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 
@@ -1162,7 +1163,10 @@ export function ProjectDrawer({
               {editing && headerTag}
             </div>
           )}
-          <h2 className="mt-1 type-heading text-base">{row ? row.name : "New project"}</h2>
+          <h2 className="mt-1 type-heading text-base">
+            {row ? row.name : "New project"}
+            {row?.isMfi && <MfiChip />}
+          </h2>
         </div>
         {row && headerAction ? (
           <div className="flex shrink-0 items-center gap-1.5">
@@ -1295,6 +1299,8 @@ function ReadOnlyDetails({
           {row.note ?? <span className="text-muted">No note</span>}
         </p>
       </div>
+      {/* Read-only for everyone but admins (admins edit it in the form). */}
+      <MfiCheckbox checked={Boolean(row.isMfi)} />
     </>
   );
 }

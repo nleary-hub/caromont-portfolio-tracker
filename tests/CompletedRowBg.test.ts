@@ -18,7 +18,9 @@ describe("Report table rows: completed row background", () => {
   });
 
   it("the report row renderer uses the row background condition", () => {
-    expect(src("src/lib/report/pdf/ReportDocument.tsx")).toContain("ReportColorScheme.rowBackground(");
+    expect(src("src/lib/report/pdf/ReportDocument.tsx")).toContain("ReportColorScheme.rowStyle(");
+    // rowStyle is rowBackground for every row that is not MFI.
+    expect(src("src/lib/report/ReportColorScheme.ts")).toMatch(/if \(!row.isMfi\) return \{ background: ReportColorScheme.rowBackground\(row\)/);
   });
 
   it("stored PDFs are served as stored, not re-rendered", () => {

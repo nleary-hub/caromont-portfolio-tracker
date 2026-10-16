@@ -593,8 +593,9 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
           {cell.lines.map((l, i) => (
             <Line key={i} x={cell.x} y={i * G.TABLE_LH} w={cell.w} text={l} size={S.table} weight={600} lh={G.TABLE_LH} />
           ))}
+          {cell.mfi && <MfiBadge x={cell.x + cell.mfi.x} y={cell.mfi.line * G.TABLE_LH + (G.TABLE_LH - ReportLayout.MFI_BADGE.h) / 2} w={cell.mfi.w} />}
           {cell.meta.map((run, ri) => (
-            <MetaText key={`m${ri}`} run={run} x={cell.x} y={cell.lines.length * G.TABLE_LH} w={cell.w} />
+            <MetaText key={`m${ri}`} run={run} x={cell.x} y={(cell.mfi && cell.mfi.line === cell.lines.length ? cell.lines.length + 1 : cell.lines.length) * G.TABLE_LH} w={cell.w} />
           ))}
         </>
       );
@@ -696,14 +697,38 @@ function Cell({ cell, row }: { cell: RowCell; row: RowLayout }) {
   }
 }
 
+/** Pt an MFI row's outline box reaches into each side margin. */
+const MFI_BLEED = 4;
+
 function Row({ row, y }: { row: RowLayout; y: number }) {
   const S = G.SIZE;
   const top = y + G.ROW_PAD;
   const statusCell = row.cells.find((c) => c.kind === "status");
-  const bg = ReportColorScheme.rowBackground({ status: statusCell?.kind === "status" ? statusCell.pill.status : null });
+  const projectCell = row.cells.find((c) => c.kind === "project");
+  const { background: bg, outline } = ReportColorScheme.rowStyle({
+    status: statusCell?.kind === "status" ? statusCell.pill.status : null,
+    isMfi: projectCell?.kind === "project" && Boolean(projectCell.mfi),
+  });
   return (
     <View style={{ position: "absolute", left: 0, top, width: G.CONTENT_W, height: row.height - G.ROW_PAD }}>
-      {bg && <View style={{ position: "absolute", left: 0, top: 0, width: G.CONTENT_W, height: row.height - G.ROW_PAD, backgroundColor: bg }} />}
+      {bg && !outline && <View style={{ position: "absolute", left: 0, top: 0, width: G.CONTENT_W, height: row.height - G.ROW_PAD, backgroundColor: bg }} />}
+      {outline && (
+        // MFI rows: inset outline (CSS box-shadow: inset 0 0 0 2px), the border drawn inside the row box. The box
+        // reaches MFI_BLEED into the side margins and above the text so the outline never crosses a glyph.
+        <View
+          style={{
+            position: "absolute",
+            left: -MFI_BLEED,
+            top: -G.ROW_PAD / 2,
+            width: G.CONTENT_W + 2 * MFI_BLEED,
+            height: row.height - G.ROW_PAD / 2,
+            borderWidth: ReportColorScheme.MFI_OUTLINE_W,
+            borderColor: outline,
+            borderStyle: "solid",
+            ...(bg ? { backgroundColor: bg } : {}),
+          }}
+        />
+      )}
       {row.cells.map((c) => (
         <Cell key={c.kind} cell={c} row={row} />
       ))}
@@ -971,9 +996,62 @@ function KeyPage({ k, h, top, summary, summaryOnly = false }: { k: KeyModel; h: 
   return <>{els}</>;
 }
 
+/** "◆ MFI": full pill, 1.5px purple border and text, transparent fill. The diamond is drawn (Inter has no U+25C6). */
+export function MfiBadge({ x, y, w, position = "absolute" }: { x: number; y: number; w: number; position?: "absolute" | "relative" }) {
+  const b = ReportLayout.MFI_BADGE;
+  const c = ReportColorScheme.mfiOutline;
+  return (
+    <View
+      style={{
+        position,
+        ...(position === "absolute" ? { left: x, top: y } : {}),
+        width: w,
+        height: b.h,
+        borderRadius: b.h / 2,
+        borderWidth: b.border,
+        borderColor: c,
+        borderStyle: "solid",
+        flexDirection: "row",
+        alignItems: "center",
+        justifyContent: "center",
+      }}
+    >
+      <Svg width={b.diamond} height={b.diamond} viewBox="0 0 10 10">
+        <Path d="M5 0L10 5L5 10L0 5Z" fill={c} />
+      </Svg>
+      <Text style={{ marginLeft: b.gap, fontFamily: F, fontSize: b.size, fontWeight: b.weight, color: c, lineHeight: 1 }}>{b.text}</Text>
+    </View>
+  );
+}
+
+/** Badge width of the first MFI row in the report, or null when the report has none (the MFI legend is then not drawn). */
+export function mfiBadgeWidth(layout: DocumentLayout): number | null {
+  for (const p of layout.pages)
+    for (const b of p.blocks) {
+      if (b.kind !== "row") continue;
+      const cell = b.row.cells.find((c) => c.kind === "project");
+      if (cell?.kind === "project" && cell.mfi) return cell.mfi.w;
+    }
+  return null;
+}
+
+/** Bottom legend, only on reports with an MFI row: "Legend: green = Completed · [◆ MFI] = Major Facility Investment". */
+function MfiLegend({ y, badgeW }: { y: number; badgeW: number }) {
+  const t = { fontFamily: F, fontSize: G.SIZE.small, color: C.MUTED, lineHeight: 1 } as const;
+  return (
+    <View style={{ position: "absolute", left: 0, top: y, width: G.CONTENT_W, flexDirection: "row", alignItems: "center" }}>
+      <Text style={{ ...t, fontWeight: 600 }}>Legend: </Text>
+      <Text style={t}>green = Completed {"\u00b7"} </Text>
+      <MfiBadge x={0} y={0} w={badgeW} position="relative" />
+      <Text style={{ ...t, marginLeft: 3 }}>= Major Facility Investment</Text>
+    </View>
+  );
+}
+
 function PageView({ layout, page, colors }: { layout: DocumentLayout; page: PageLayout; colors: ResolvedReportColors }) {
   const h = layout.header;
   const footY = G.CONTENT_H - G.FOOTER_H;
+  const mfiW = page.kind === "report" ? mfiBadgeWidth(layout) : null;
   return (
     <Page size={{ width: G.PAGE_W, height: G.PAGE_H }} style={{ backgroundColor: C.BG }}>
       <View style={{ position: "absolute", left: G.MARGIN, top: G.MARGIN, width: G.CONTENT_W, height: G.CONTENT_H }}>
@@ -1000,6 +1078,8 @@ function PageView({ layout, page, colors }: { layout: DocumentLayout; page: Page
           lh={G.SMALL_LH}
           align="right"
         />
+        {/* Below the footer, in the bottom margin, so paging is the same as without MFI rows. */}
+        {mfiW !== null && <MfiLegend y={G.CONTENT_H + 4} badgeW={mfiW} />}
       </View>
     </Page>
   );

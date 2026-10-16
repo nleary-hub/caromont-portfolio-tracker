@@ -305,6 +305,8 @@ export type RowCell =
       stale: boolean;
       /** Meta line under the name: REQ number in a fixed slot, then "Updated <date>". Empty = no meta line. */
       meta: MetaRun[];
+      /** MFI rows only: the "◆ MFI" badge after the name (x in the cell, name line index). Absent on every other row. */
+      mfi?: { x: number; line: number; w: number };
     }
   | {
       kind: "owner";
@@ -593,6 +595,13 @@ export class ReportLayout {
 
   /** Milestone owner type (spec: 7.5 pt on a 9 pt line, #15171C; Unassigned italic #855500). */
   static readonly MS_OWNER = { size: 7.5, lh: 9, weight: 500, maxLines: 2 } as const;
+  /** "◆ MFI" badge (mockup 9px text, 1.5px border, at 0.75 pt per px; Inter Bold is the heaviest embedded weight). */
+  static readonly MFI_BADGE = { text: "MFI", size: 6.75, weight: 700, h: 9, padX: 3, diamond: 4, gap: 1.5, border: 1.125, before: 4 } as const;
+
+  static mfiBadgeWidth(m: Measurer): number {
+    const b = ReportLayout.MFI_BADGE;
+    return b.padX + b.diamond + b.gap + m.width(b.text, b.size, b.weight) + b.padX + 2 * b.border;
+  }
 
   /**
    * The Milestone owner cell's lines: physician names as "Dr. A. Lastname"; other names on up to two lines, else
@@ -823,8 +832,17 @@ export class ReportLayout {
           const stale = Boolean(row.stale);
           const showInfor = ViewSettings.isColumnVisible(settings, "inforNumber");
           const meta = ReportLayout.metaLine(m, showInfor, row.inforRequestNumber ?? null, updated, stale);
-          projectH = lines.length * g.TABLE_LH + (meta.length ? g.SMALL_LH : 0);
-          cells.push({ kind: "project", x: col.x, w: inner, lines, updated, stale, meta });
+          let mfi: { x: number; line: number; w: number } | undefined;
+          if (row.isMfi) {
+            // After the last name line when it fits, otherwise on a line of its own under the name.
+            const w = ReportLayout.mfiBadgeWidth(m);
+            const last = lines.length - 1;
+            const end = m.width(lines[last] ?? "", S.table, 600) + ReportLayout.MFI_BADGE.before;
+            mfi = end + w <= inner ? { x: end, line: last, w } : { x: 0, line: lines.length, w };
+          }
+          const nameLines = mfi && mfi.line === lines.length ? lines.length + 1 : lines.length;
+          projectH = nameLines * g.TABLE_LH + (meta.length ? g.SMALL_LH : 0);
+          cells.push({ kind: "project", x: col.x, w: inner, lines, updated, stale, meta, ...(mfi ? { mfi } : {}) });
           break;
         }
         case "owner": {

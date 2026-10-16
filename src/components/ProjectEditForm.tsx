@@ -1,5 +1,6 @@
 "use client";
 
+import { MfiCheckbox } from "./MfiChip";
 import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { CompletionRules } from "@/lib/projects/CompletionRules";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
@@ -621,6 +622,9 @@ export function ProjectEditForm({
             </Section>
           </div>
         )}
+
+        {/* Edit mode only (a new project starts not MFI). Saves through the drawer auto-save with the other fields. */}
+        {!isNew && <MfiCheckbox checked={values.isMfi === "true"} onChange={(on) => setValues((prev) => ({ ...prev, isMfi: on ? "true" : "false" }))} />}
       </div>
 
       {!isNew ? (

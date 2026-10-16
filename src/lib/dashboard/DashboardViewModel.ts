@@ -19,6 +19,8 @@ export interface DashboardRow {
   owner: string | null;
   physicianChampion: string | null;
   requesterNotApplicable: boolean;
+  /** Major Facility Investment (migration 0051): the MFI chip. Absent = not MFI. */
+  isMfi?: boolean;
   /** One of AppConfig.CONTRACTS_LEADS, or null ("To assign"). */
   contractsLead: string | null;
   status: ProjectStatus;
@@ -150,6 +152,7 @@ export class DashboardViewModel {
       owner: p.owner,
       physicianChampion: p.physicianChampion,
       requesterNotApplicable: p.requesterNotApplicable,
+      ...(p.isMfi ? { isMfi: true } : {}),
       contractsLead: p.contractsLead ?? null,
       status: p.status,
       statusLabel: ProjectStatusInfo.label(p.status),

@@ -321,6 +321,7 @@ export class FakeDb {
             deletedBy: null,
             hiddenFromDashboard: false,
             hiddenFromReport: false,
+            isMfi: false,
             createdAt: now,
             updatedAt: now,
             ...syncDept(data),

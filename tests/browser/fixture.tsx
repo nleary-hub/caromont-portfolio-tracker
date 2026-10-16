@@ -20,6 +20,8 @@ const rows: DashboardRow[] = ["Zulu", "Alpha", "Bravo"].map((name, i) => ({
   dueDate: "2026-12-01", targetCompletion: null, percentComplete: i * 10,
   note: `${name} unique note`, inforRequestNumber: 100 + i, includeInReport: true,
   changed: false, overdue: false, updatedOn: "2026-10-03", stale: false,
+  // ?mfi=1: Alpha is a fictional Major Facility Investment (MFI chip, checked MFI box).
+  ...(name === "Alpha" && new URLSearchParams(window.location.search).has("mfi") ? { isMfi: true } : {}),
 }));
 const noop = async () => null;
 // Fictional dependencies: Zulu is blocked by Bravo, and Alpha is blocked by Zulu (so Zulu blocked by Alpha is a loop).

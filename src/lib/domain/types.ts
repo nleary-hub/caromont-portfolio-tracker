@@ -45,6 +45,8 @@ export interface ProjectRecord {
   deletedBy: string | null;
   hiddenFromDashboard: boolean;
   hiddenFromReport: boolean;
+  /** Major Facility Investment (migration 0051). Absent on rows read without it (treated as false). */
+  isMfi?: boolean;
   /** Start date (DB DATE, America/New_York day; migration 0026). Absent on rows read without it. Drawer only. */
   startDate?: Date | null;
   /** True while startDate is the import default (drawer "Default" tag). */
@@ -122,6 +124,8 @@ export interface ReportRow {
    * chip even though Complete is hidden in the report. Present only when true.
    */
   completedInPeriod?: true;
+  /** Major Facility Investment. Only on MFI rows, so every other row (and every stored snapshot) is exactly as before. */
+  isMfi?: true;
 }
 
 /** One row of a "Completed this period" block, as stored in ReportSnapshot.completedJson. */
