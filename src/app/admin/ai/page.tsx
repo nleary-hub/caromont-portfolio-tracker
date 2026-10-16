@@ -5,6 +5,7 @@ import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AiFeaturesPanel, AiModelsPanel } from "@/components/AiModelsPanel";
 import { AiPriceRefresh } from "@/components/AiPriceRefresh";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
+import { OpenAiModelListProvider } from "@/components/useOpenAiModelList";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
@@ -76,6 +77,8 @@ export default async function AiSettingsPage() {
         </p>
       )}
 
+      {/* One shared OpenAI model list for the settings card, the Models panel and the feature pickers. */}
+      <OpenAiModelListProvider>
       <section className={`${section} relative z-20`} aria-labelledby="ai-settings-heading">
         <h2 id="ai-settings-heading" className="type-heading">
           {AiCopy.SWITCH_LABEL}
@@ -104,6 +107,7 @@ export default async function AiSettingsPage() {
         <p className="text-muted type-caption">{AiCopy.FEATURES_INTRO}</p>
         <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} />
       </section>
+      </OpenAiModelListProvider>
 
       <section className="flex flex-col gap-2" aria-labelledby="ai-history-heading">
         <h2 id="ai-history-heading" className="type-heading">

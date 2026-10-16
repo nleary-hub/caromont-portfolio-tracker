@@ -3,6 +3,7 @@
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
 import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiModelEnabled, setAiModelPrices } from "@/app/actions/aiAdmin";
+import { ModelField } from "@/components/AiModelPicker";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
 import { AiModelKinds, type AiModelKind } from "@/lib/ai/AiModelKinds";
@@ -34,7 +35,7 @@ export function AiToggle({ checked, onChange, labelledBy, describedBy, disabled,
 /** Admin > AI settings: the model list (add, on/off with the in-use warning, prices). */
 export function AiModelsPanel({ models, dbReady, initialList = null }: { models: AiModelView[]; dbReady: boolean; initialList?: OpenAiListState }) {
   const [newId, setNewId] = useState("");
-  const { list, loading: listing, load: loadList } = useOpenAiModelList(initialList);
+  const { list, loading: listing, load: loadList, shared } = useOpenAiModelList(initialList);
   /** The list failed to load: the typed id is saved unchecked (still off), with the note shown. */
   const manual = list?.ok === false;
   const [addResult, setAddResult] = useState<AiAdminResult | null>(null);
@@ -88,6 +89,7 @@ export function AiModelsPanel({ models, dbReady, initialList = null }: { models:
         disabled={!dbReady || locked}
         have={new Set(models.map((m) => m.id))}
         onLoad={loadList}
+        sharedError={shared}
         onAdd={(id) =>
           startAdd(async () => {
             const r = await addAiModel(id);
@@ -146,7 +148,7 @@ export type { OpenAiListState };
  * OpenAI's model list for the saved key, by type. Adding one saves it off; nothing is turned on here. When the list
  * can't load, the note says so and the Add box below saves the typed id without the check.
  */
-export function OpenAiModelList({ state, loading, disabled, have, onLoad, onAdd }: { state: OpenAiListState; loading: boolean; disabled: boolean; have: ReadonlySet<string>; onLoad: () => void; onAdd: (id: string) => void }) {
+export function OpenAiModelList({ state, loading, disabled, have, onLoad, onAdd, sharedError = false }: { state: OpenAiListState; loading: boolean; disabled: boolean; have: ReadonlySet<string>; onLoad: () => void; onAdd: (id: string) => void; sharedError?: boolean }) {
   return (
     <div className="flex flex-col gap-2" data-testid="ai-openai-list">
       <div className="flex items-center gap-3">
@@ -155,10 +157,10 @@ export function OpenAiModelList({ state, loading, disabled, have, onLoad, onAdd 
         </button>
         <span className="text-muted type-caption">{C.MODEL_LIST_HELP}</span>
       </div>
-      {state && !state.ok && (
+      {state && !state.ok && !sharedError && (
         <div id="ai-openai-list-error">
           <AiAlert tone="danger" testId="ai-openai-list-failed">
-            {C.MODEL_LIST_FAILED}
+            {C.MODEL_PICKER_LIST_FAILED}
           </AiAlert>
         </div>
       )}
@@ -296,7 +298,6 @@ export function AiFeaturesPanel({ features, dbReady, modelOptions = {}, initialL
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const openAi = useOpenAiModelList(initialList);
-  const [typed, setTyped] = useState<Record<string, string>>({});
   const choose = (feature: string, model: string) =>
     start(async () => {
       const r = await setAiFeatureModel(feature, model);
@@ -308,71 +309,41 @@ export function AiFeaturesPanel({ features, dbReady, modelOptions = {}, initialL
         const labelId = `ai-feature-${f.feature}-label`;
         const helpId = `ai-feature-${f.feature}-help`;
         return (
-          <div key={f.feature} className="flex items-start gap-3 rounded-control border border-line bg-input/60 px-3 py-2.5">
-            <AiToggle checked={f.enabled} labelledBy={labelId} describedBy={helpId} disabled={!dbReady || pending} testId={`ai-feature-toggle-${f.feature}`} onChange={(v) => start(async () => {
-              const r = await setAiFeatureEnabled(f.feature, v);
-              setError(r.ok ? null : r.error);
-            })} />
-            <div className="min-w-0 flex-1">
-              <span id={labelId} className="type-table-strong text-fg">
-                {f.label}
-              </span>
-              <p id={helpId} className="mt-0.5 text-muted type-caption">
-                {f.killedByEnv ? C.featureKilled(f.envName) : f.enabled ? C.FEATURE_ON_HELP : C.FEATURE_OFF_HELP}
-              </p>
-              {f.ownModel && (
-                <div className="mt-2 flex flex-col gap-1">
-                  <label htmlFor={`ai-feature-${f.feature}-model`} className="text-muted type-caption">
-                    {AiToolsCopy.modelLabel(f.feature)}
-                  </label>
-                  <select
-                    id={`ai-feature-${f.feature}-model`}
-                    className={`${INPUT} max-w-[16rem]`}
-                    value={f.model ?? ""}
-                    disabled={!dbReady || pending}
-                    aria-describedby={`ai-feature-${f.feature}-model-help`}
-                    data-testid={`ai-feature-model-${f.feature}`}
-                    onChange={(e) => choose(f.feature, e.target.value)}
-                  >
-                    <option value="">{AiToolsCopy.DICTATION_MODEL_NONE}</option>
-                    {(() => {
-                      const kind = AiModelKinds.forFeature(f.feature);
-                      const on = modelOptions[kind] ?? [];
-                      const listed = openAi.list?.ok ? openAi.list.models.filter((m) => m.kind === kind).map((m) => m.id) : [];
-                      return [...new Set([...(f.model ? [f.model] : []), ...on, ...listed])].map((m) => (
-                        <option key={m} value={m}>
-                          {on.includes(m) || m === f.model ? m : `${m} (${C.MODEL_PICKER_OFF.toLowerCase()})`}
-                        </option>
-                      ));
-                    })()}
-                  </select>
-                  <div className="flex items-center gap-2">
-                    <button type="button" className={GHOST} onClick={openAi.load} disabled={!dbReady || openAi.loading} data-testid={`ai-feature-${f.feature}-load-list`}>
-                      {openAi.loading ? C.MODEL_LIST_LOADING : C.MODEL_LIST_LOAD}
-                    </button>
-                  </div>
-                  {openAi.list?.ok === false && (
-                    <div className="flex flex-col gap-1" data-testid={`ai-feature-${f.feature}-manual`}>
-                      <AiAlert tone="danger" testId={`ai-feature-${f.feature}-list-failed`}>
-                        {C.MODEL_PICKER_LIST_FAILED}
-                      </AiAlert>
-                      <label htmlFor={`ai-feature-${f.feature}-manual-input`} className="text-muted type-caption">
-                        {C.MODEL_PICKER_MANUAL_LABEL}
-                      </label>
-                      <div className="flex items-center gap-2">
-                        <input id={`ai-feature-${f.feature}-manual-input`} className={`${INPUT} max-w-[16rem]`} value={typed[f.feature] ?? ""} onChange={(e) => setTyped((t) => ({ ...t, [f.feature]: e.target.value }))} placeholder={C.MODEL_ADD_PLACEHOLDER} maxLength={100} autoComplete="off" spellCheck={false} disabled={!dbReady || pending} />
-                        <button type="button" className={GHOST} disabled={!dbReady || pending || !(typed[f.feature] ?? "").trim()} onClick={() => choose(f.feature, (typed[f.feature] ?? "").trim())} data-testid={`ai-feature-${f.feature}-manual-use`}>
-                          {C.MODEL_PICKER_USE}
-                        </button>
-                      </div>
-                    </div>
-                  )}
-                  <p id={`ai-feature-${f.feature}-model-help`} className="text-muted type-caption">
-                    {AiToolsCopy.modelHelp(f.feature)}
-                  </p>
-                </div>
-              )}
+          <div key={f.feature} className="flex flex-col gap-3 rounded-control border border-line bg-input/60 px-3 py-2.5">
+            <div className="flex items-start gap-3">
+              <AiToggle checked={f.enabled} labelledBy={labelId} describedBy={helpId} disabled={!dbReady || pending} testId={`ai-feature-toggle-${f.feature}`} onChange={(v) => start(async () => {
+                const r = await setAiFeatureEnabled(f.feature, v);
+                setError(r.ok ? null : r.error);
+              })} />
+              <div className="min-w-0 flex-1">
+                <span id={labelId} className="type-table-strong text-fg">
+                  {f.label}
+                </span>
+                <p id={helpId} className="mt-0.5 text-muted type-caption">
+                  {f.killedByEnv ? C.featureKilled(f.envName) : f.enabled ? C.FEATURE_ON_HELP : C.FEATURE_OFF_HELP}
+                </p>
+              </div>
             </div>
+            {/* The model field sits under the whole row, full width like the writing assistant's fields (no indent). */}
+            {f.ownModel && (
+              <div className="grid grid-cols-2 gap-3">
+                <ModelField
+                  id={`ai-feature-${f.feature}-model`}
+                  name={null}
+                  label={AiToolsCopy.modelLabel(f.feature)}
+                  help={AiToolsCopy.modelHelp(f.feature)}
+                  kind={AiModelKinds.forFeature(f.feature)}
+                  noneLabel={AiToolsCopy.DICTATION_MODEL_NONE}
+                  value={f.model ?? ""}
+                  disabled={!dbReady || pending}
+                  options={modelOptions[AiModelKinds.forFeature(f.feature)] ?? []}
+                  list={openAi.list}
+                  listLoading={openAi.loading}
+                  onLoadList={openAi.load}
+                  onCommit={(m) => choose(f.feature, m)}
+                />
+              </div>
+            )}
           </div>
         );
       })}
