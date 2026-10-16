@@ -69,6 +69,8 @@ test("no change means no save and no indicator; Esc reverts; Shift+Enter adds a 
 });
 
 test("Tab saves, then goes to the status chip, then to the next row's update line; Shift+Tab goes back", async ({ page }) => {
+  // Row order matters here: turn "As it will print" off (it is on by default) so fictional-0 is the first row.
+  await page.addInitScript(() => localStorage.setItem("pt:v1:dashboard:print-order:fictional@example.org", "0"));
   await page.goto("/");
   await row(page, 0).getByTestId("inline-update").click();
   await row(page, 0).getByTestId("inline-update-input").fill("Morgan Ellsworth signed off");

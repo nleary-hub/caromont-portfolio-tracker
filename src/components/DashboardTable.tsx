@@ -21,6 +21,7 @@ import type { DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { PeopleStack, type PeopleLine } from "@/lib/dashboard/PeopleStack";
 import { DueFlags, MilestoneUpdateStack, type DueFlagKind, type DueFlagsCell, type MilestoneUpdateLine } from "@/lib/dashboard/StackedCells";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { PrintOrder } from "@/lib/dashboard/PrintOrder";
 import { StatusPill } from "./StatusPill";
 import { InlineErrorRow, InlineSaveIndicator, InlineStatusChip, InlineUpdateLine, useInlineRow, type InlineEditControl, type InlineRow } from "./InlineRowEdit";
 import { StatusShape } from "./StatusShape";
@@ -58,6 +59,13 @@ export interface DashboardTableProps {
   onReview?: (row: DashboardRow) => void;
   /** Rendered instead of the plain empty text (filters: "No projects match these filters" + Clear all filters). */
   empty?: ReactNode;
+  /**
+   * "As it will print" on: rows in the PDF's order and area grouping (PrintOrder, imported from the report code),
+   * header sorting off with a tooltip, no drag handles. Absent or false: the normal sort and manual order.
+   */
+  printOrder?: boolean;
+  /** Rows the report leaves out: a muted "Not in report" tag (the row stays listed). */
+  notInReport?: ReadonlySet<string>;
   /** Admins: edit the latest update line and the status chip in place (saveProjectForm). Absent = read only. */
   inlineEdit?: InlineEditControl;
 }
@@ -173,7 +181,7 @@ class TableMeasure {
  * flexible column. Admins resize from each header's right edge, drag headers (Project stays first) and drag
  * rows within their department; everyone else sees the same layout with no handles or grips.
  */
-export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiToggle, rowMenu, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, empty, inlineEdit }: DashboardTableProps) {
+export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiToggle, rowMenu, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, empty, printOrder = false, notInReport, inlineEdit }: DashboardTableProps) {
   const value = layout?.value ?? LineLayout.defaults();
   const effective = value.columns ? LineLayout.orderedSettings("dashboard", settings, value.columns.order) : settings;
   const baseOrder = value.columns?.order ?? LineLayout.orderFromSettings("dashboard", settings);
@@ -181,16 +189,16 @@ export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiTo
   const dataKeys = columns.filter((c) => !c.structural).map((c) => c.key as LayoutKey);
   const shares = value.columns?.shares ?? null;
   const editable = Boolean(layout?.canEdit);
-  const sort = layout?.sort ?? null;
+  const sort = printOrder ? null : (layout?.sort ?? null);
   const manual = sort === null;
-  const showGrips = editable && manual;
+  const showGrips = editable && manual && !printOrder;
   const people = DashboardColumnModel.peopleVisibility(settings);
   const stack = DashboardColumnModel.milestoneUpdateVisibility(settings);
   const dueFlags = DashboardColumnModel.dueFlagsVisibility(settings);
   const chips = ViewSettings.chipsShown(settings) && dueFlags.flags;
   // Manual order first, so ties under a header sort keep it (stable sort). Groups and their order never change.
   const ordered = RowOrder.apply(rows, value.rows);
-  const groups = DashboardGroups.group(ordered, DashboardQuery.comparator(sort), departments);
+  const groups = printOrder ? PrintOrder.groups(rows, departments) : DashboardGroups.group(ordered, DashboardQuery.comparator(sort), departments);
   const span = columns.length;
 
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -476,7 +484,7 @@ export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiTo
                   style={dragging ? { opacity: 0.9, transform: `translateX(${colDrag.dx}px)`, filter: GroupedTableStyle.LIFT_SHADOW, zIndex: 6 } : undefined}
                   className={`sticky top-0 z-[3] h-9 border-b border-line bg-card px-3 text-left uppercase tracking-[.04em] text-muted type-label ${movable ? "cursor-grab select-none focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-(--color-accent)" : ""} ${dragging ? "cursor-grabbing" : ""}`}
                 >
-                  <HeaderLabel column={c.key} header={c.header} sort={sort} onSort={onSort} chips={chips} />
+                  <HeaderLabel column={c.key} header={c.header} sort={sort} onSort={onSort} chips={chips} sortLocked={printOrder} />
                   {editable && (
                     <span
                       role="separator"
@@ -542,6 +550,7 @@ export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiTo
                   chips={chips}
                   search={search}
                   hit={hit}
+                  notInReport={Boolean(notInReport?.has(r.id))}
                   inlineEdit={inlineEdit}
                   onReview={onReview && r.editable && r.changed ? () => onReview(r) : undefined}
                   renderMeta={renderMeta}
@@ -685,8 +694,10 @@ function ProjectRow({
   onReview,
   onMultiToggle,
   rowMenu,
+  notInReport = false,
   inlineEdit,
 }: {
+  notInReport?: boolean;
   inlineEdit?: InlineEditControl;
   row: DashboardRow;
   columns: readonly DashboardColumn[];
@@ -745,6 +756,11 @@ function ProjectRow({
                 <div data-part="project-name" className={NAME_WRAP}>
                   <Highlight text={row.name} query={search} />
                   {row.isMfi && <MfiChip />}
+                  {notInReport && (
+                    <span data-testid="not-in-report" className="ml-1.5 inline-flex shrink-0 items-center rounded-full border border-line px-1.5 align-middle text-[10px] leading-[14px] font-semibold text-muted">
+                      {PrintOrder.NOT_IN_REPORT}
+                    </span>
+                  )}
                 </div>
                 {renderMeta(row)}
                 {changedCue && (
@@ -981,9 +997,37 @@ function ClockIcon() {
  * caller through data). Project carries a second button for Updated; Due and Milestone owner each have one. The
  * resize handle sits outside these buttons and never sorts. Flags is not sortable.
  */
-function HeaderLabel({ column, header, sort, onSort, chips }: { column: string; header: string; sort: DashboardSortState; onSort?: (key: DashboardSortKey) => void; chips: boolean }) {
+function HeaderLabel({ column, header, sort, onSort, chips, sortLocked = false }: { column: string; header: string; sort: DashboardSortState; onSort?: (key: DashboardSortKey) => void; chips: boolean; sortLocked?: boolean }) {
   const keys = HeaderSort.keysOf(column);
   if (!onSort || keys.length === 0) return <span className="block truncate">{header}</span>;
+  if (sortLocked)
+    // "As it will print" on: the header reads as plain text, and hovering or focusing it explains how to sort.
+    return (
+      <span className="group/ps relative flex min-w-0 items-center gap-2" data-sort-locked="true">
+        {keys.map((k, i) => (
+          <button
+            key={k}
+            type="button"
+            data-sort={k}
+            aria-disabled="true"
+            aria-describedby={`ps-tip-${column}`}
+            onPointerDown={(e) => e.stopPropagation()}
+            onClick={(e) => e.stopPropagation()}
+            className={`flex min-w-0 cursor-not-allowed items-center uppercase tracking-[.04em] focus-visible:outline-2 focus-visible:outline-(--color-accent) ${i > 0 ? "text-[11px]" : ""}`}
+          >
+            <span className={column === "milestoneOwner" ? "truncate tracking-[.01em]" : "truncate"}>{HeaderSort.label(column, k, header, chips)}</span>
+          </button>
+        ))}
+        <span
+          id={`ps-tip-${column}`}
+          role="tooltip"
+          data-testid="sort-locked-tip"
+          className="pointer-events-none absolute top-[calc(100%+6px)] left-0 z-[7] hidden whitespace-nowrap rounded-control border border-line bg-(--dark-input) px-2 py-1 text-[12px] leading-4 font-normal normal-case tracking-normal text-fg shadow-lg group-focus-within/ps:block group-hover/ps:block"
+        >
+          {PrintOrder.SORT_DISABLED_TOOLTIP}
+        </span>
+      </span>
+    );
   return (
     <span className="flex min-w-0 items-center gap-2">
       {keys.map((k, i) => {

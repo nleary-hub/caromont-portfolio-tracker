@@ -37,6 +37,8 @@ test("rapid switching and late history responses leave only the final project", 
 });
 
 test("spotlight follows sorting and filtering while the same project stays open", async ({ page }) => {
+  // Header sorting needs "As it will print" off (it is on by default).
+  await page.addInitScript(() => localStorage.setItem("pt:v1:dashboard:print-order:fictional@example.org", "0"));
   await page.goto("/");
   await page.locator('tr[data-row-key="fictional-0"]').click({ position: { x: 120, y: 15 } });
   const aligned = () => page.evaluate(() => {
