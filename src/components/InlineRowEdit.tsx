@@ -99,7 +99,6 @@ export function useInlineRow(row: DashboardRow, control: InlineEditControl | und
         inflight.current = null;
       }
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- control.save and row.id identify the row; refs carry the rest
     [control, row.id],
   );
 
