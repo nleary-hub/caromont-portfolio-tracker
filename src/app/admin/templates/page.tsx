@@ -7,6 +7,10 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
+import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
+import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
+import type { AiModelDb } from "@/lib/services/AiModelService";
+import type { AiSettingsDb } from "@/lib/services/AiSettingsService";
 import { MilestoneTemplateService, type TemplateChange } from "@/lib/services/MilestoneTemplateService";
 
 export const metadata: Metadata = { title: "Milestone templates" };
@@ -46,6 +50,16 @@ class TemplateAuditFormat {
   }
 }
 
+/** The Template AI button state: undefined = hidden (feature or AI off), null = ready, a note = paused. */
+async function templateAiNote(): Promise<string | null | undefined> {
+  try {
+    const note = (await AiToolsReadiness.notes(Db.client as unknown as AiModelDb & AiSettingsDb, ["template_ai"])).template_ai ?? null;
+    return note === AiToolsCopy.FEATURE_OFF_NOTE || note === AiToolsCopy.AI_OFF_NOTE ? undefined : note;
+  } catch {
+    return undefined;
+  }
+}
+
 /** Admin-only milestone templates. Non-admins get a 404 so the route is not revealed. */
 export default async function AdminTemplatesPage() {
   const viewer = await CurrentViewer.get();
@@ -54,6 +68,8 @@ export default async function AdminTemplatesPage() {
   // Templates of the admin's active service line.
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
   const templates = configured ? await MilestoneTemplateService.listOrEmpty(undefined, scope) : [];
+  // Template AI: hidden when the feature or AI is off; paused with the model-off note when no model is on.
+  const aiNote = configured ? await templateAiNote() : undefined;
   const history = configured ? await MilestoneTemplateService.history(viewer, 20, undefined, scope).catch(() => []) : [];
 
   return (
@@ -73,7 +89,7 @@ export default async function AdminTemplatesPage() {
       </div>
       {!configured && <p className="text-danger type-caption">DATABASE_URL is not configured.</p>}
 
-      <TemplatesEditor key={scope.id} initial={templates} />
+      <TemplatesEditor key={scope.id} initial={templates} aiNote={aiNote} readOnly={!configured} />
 
       <section className="flex flex-col gap-2">
         <h2 className="type-heading">Recent changes</h2>

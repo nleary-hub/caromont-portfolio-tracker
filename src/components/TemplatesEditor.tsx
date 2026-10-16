@@ -12,6 +12,9 @@ import {
   reorderTemplates,
   type TemplateActionResult,
 } from "@/app/actions/milestoneTemplates";
+import { AiTemplateButton, AiTemplateDrawer } from "@/components/AiTemplateDrawer";
+import { AiTemplateCopy } from "@/lib/ai/AiTemplateCopy";
+import type { AiTemplateMode } from "@/lib/ai/AiTemplateModel";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
 import { MilestoneEditorModel } from "@/lib/projects/MilestoneEditorModel";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
@@ -34,7 +37,19 @@ class ListOrder {
  * through an admin-checked, audited server action. Templates are copied into projects when applied, so
  * nothing here changes an existing project.
  */
-export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
+export function TemplatesEditor({
+  initial,
+  aiNote,
+  readOnly = false,
+}: {
+  initial: TemplateDto[];
+  /** Template AI: undefined = off (no buttons), null = ready, a note = paused (no model). */
+  aiNote?: string | null;
+  /** Read-only: the AI buttons are hidden. */
+  readOnly?: boolean;
+}) {
+  const [ai, setAi] = useState<AiTemplateMode | null>(null);
+  const showAi = !readOnly && aiNote !== undefined;
   const [templates, setTemplates] = useState(initial);
   const [selectedId, setSelectedId] = useState<string | null>(
     initial[0]?.id ?? null,
@@ -159,7 +174,31 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
         >
           + New template
         </button>
+        {showAi && (
+          <span className="ml-2">
+            <AiTemplateButton
+              label={AiTemplateCopy.DRAFT_BUTTON}
+              note={aiNote ?? null}
+              onClick={() => setAi("draft")}
+              testId="ai-template-draft"
+            />
+          </span>
+        )}
       </div>
+      {ai && (
+        <AiTemplateDrawer
+          key={`${ai}-${ai === "edit" ? selected?.id : ""}`}
+          mode={ai}
+          template={ai === "edit" ? selected : null}
+          onClose={() => setAi(null)}
+          onApplied={(next, id) => {
+            setTemplates(next);
+            setSelectedId(id);
+            setStatus({ text: "Saved", error: false });
+            setAi(null);
+          }}
+        />
+      )}
       <div className="grid grid-cols-[300px_1fr] items-start gap-4">
         <section
           aria-label="Templates"
@@ -237,6 +276,15 @@ export function TemplatesEditor({ initial }: { initial: TemplateDto[] }) {
                 <span className="flex-1 text-muted type-caption">
                   Click the name to rename
                 </span>
+                {showAi && (
+                  <AiTemplateButton
+                    label={AiTemplateCopy.EDIT_BUTTON}
+                    note={aiNote ?? null}
+                    compact
+                    onClick={() => setAi("edit")}
+                    testId="ai-template-edit"
+                  />
+                )}
                 {!confirmDelete && (
                   <button
                     type="button"
