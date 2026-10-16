@@ -38,7 +38,9 @@ class TemplateAuditFormat {
     if (v === null || v === undefined) return "";
     if (Array.isArray(v)) return v.join(", ");
     if (typeof v === "object") {
-      const o = v as { name?: unknown; items?: unknown };
+      // Template AI rows carry applyId and source; a list or text value is under "value".
+      const o = v as { name?: unknown; items?: unknown; value?: unknown };
+      if ("value" in o) return TemplateAuditFormat.value(o.value);
       const items = Array.isArray(o.items) ? ` (${o.items.length} steps)` : "";
       return `${typeof o.name === "string" ? o.name : ""}${items}`;
     }

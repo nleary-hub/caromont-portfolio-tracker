@@ -99,7 +99,9 @@ export class AiTemplateService {
     if (!ops) return { ok: false, message: C.TEMPLATE_CHANGED };
     let templateId: string;
     try {
-      templateId = await AiTemplateService.execute(ops, current?.id ?? null, viewer, args.templateDb, scope);
+      // One transaction for the whole apply (CTO, PR #75): all or nothing, history rows included, each tagged with applyId.
+      const meta = { applyId: randomUUID(), source: "ai" as const };
+      templateId = await MilestoneTemplateService.batch(args.templateDb, meta, (tx) => AiTemplateService.execute(ops, current?.id ?? null, viewer, tx, scope));
     } catch (e) {
       console.error("Template AI: apply failed", (e as Error)?.name);
       return { ok: false, message: C.APPLY_FAILED };

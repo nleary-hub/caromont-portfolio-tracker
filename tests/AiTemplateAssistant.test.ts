@@ -228,6 +228,53 @@ describe("Template AI: service (toggle, model, usage log, apply through Mileston
     expect(await AiTemplateService.apply({ db, templateDb: tdb, viewer: ADMIN, scope: SCOPE, proposalId: r.proposalId, templateId: tpl.id, desired, env: { ...ENV, AI_FEATURE_TEMPLATE_AI: "off" } })).toEqual({ ok: false, message: AiToolsCopy.FEATURE_OFF });
   });
 
+  it("one apply is one transaction: a failure partway through rolls back every write, history included", async () => {
+    const db = await toolsSetup();
+    const tpl = await seed();
+    const before = JSON.stringify([fake.state.templateHistory, await MilestoneTemplateService.list(tdb, SCOPE)]);
+    const r = await AiTemplateService.propose({ db, viewer: ADMIN, mode: "edit", input: "x", current: tpl, env: ENV, fetchImpl: new MockProvider(reply(EDIT)).fetch });
+    if (!r.ok) throw new Error(r.message);
+    const spy = vi.spyOn(MilestoneTemplateService, "addItem").mockRejectedValueOnce(new Error("boom"));
+    const a = await AiTemplateService.apply({ db, templateDb: tdb, viewer: ADMIN, scope: SCOPE, proposalId: r.proposalId, templateId: tpl.id, desired: AiTemplateModel.desired(tpl, r.rows, new Set(AiTemplateModel.allKeys(r.rows))), env: ENV });
+    spy.mockRestore();
+    expect(a).toEqual({ ok: false, message: C.APPLY_FAILED });
+    expect(JSON.stringify([fake.state.templateHistory, await MilestoneTemplateService.list(tdb, SCOPE)])).toBe(before);
+    expect(db.usage.filter((u) => u.suggestionId === r.proposalId).map((u) => u.event)).toEqual(["proposed"]);
+  });
+
+  it("every history row of one apply shares one applyId and has source 'ai'; a second apply gets a new applyId", async () => {
+    const db = await toolsSetup();
+    const tpl = await seed();
+    const start = fake.state.templateHistory.length;
+    const r = await AiTemplateService.propose({ db, viewer: ADMIN, mode: "edit", input: "x", current: tpl, env: ENV, fetchImpl: new MockProvider(reply(EDIT)).fetch });
+    if (!r.ok) throw new Error(r.message);
+    await AiTemplateService.apply({ db, templateDb: tdb, viewer: ADMIN, scope: SCOPE, proposalId: r.proposalId, templateId: tpl.id, desired: AiTemplateModel.desired(tpl, r.rows, new Set(AiTemplateModel.allKeys(r.rows))), env: ENV });
+    const rows = fake.state.templateHistory.slice(start).map((h) => h.newValue as { applyId?: string; source?: string; value?: unknown });
+    expect(rows).toHaveLength(5);
+    expect(rows.every((v) => v.source === "ai")).toBe(true);
+    expect(new Set(rows.map((v) => v.applyId)).size).toBe(1);
+    expect(rows[0].applyId).toMatch(/^[0-9a-f-]{36}$/);
+    expect(Array.isArray(rows[4].value)).toBe(true); // the reorder list is kept under "value"
+    const mid = fake.state.templateHistory.length;
+    const cur = (await MilestoneTemplateService.list(tdb, SCOPE))[0];
+    const r2 = await AiTemplateService.propose({ db, viewer: ADMIN, mode: "edit", input: "x", current: cur, env: ENV, fetchImpl: new MockProvider(reply({ name: "Clinic opening v2", steps: cur.items.map((it, i) => ({ from: `S${i + 1}`, name: it.name })) })).fetch });
+    if (!r2.ok) throw new Error(r2.message);
+    await AiTemplateService.apply({ db, templateDb: tdb, viewer: ADMIN, scope: SCOPE, proposalId: r2.proposalId, templateId: cur.id, desired: AiTemplateModel.desired(cur, r2.rows, new Set(["name"])), env: ENV });
+    const second = fake.state.templateHistory.slice(mid).map((h) => (h.newValue as { applyId: string }).applyId);
+    expect(second).toHaveLength(1);
+    expect(second[0]).not.toBe(rows[0].applyId);
+  });
+
+  it("non-AI edits are unchanged: no applyId or source, the same values as before", async () => {
+    const tpl = await seed();
+    const start = fake.state.templateHistory.length;
+    await MilestoneTemplateService.rename(tpl.id, "Clinic opening v2", ADMIN, tdb, SCOPE);
+    await MilestoneTemplateService.removeItem(tpl.items[0].id, ADMIN, tdb, SCOPE);
+    await MilestoneTemplateService.reorderItems(tpl.id, [tpl.items[2].id, tpl.items[1].id, tpl.items[3].id], ADMIN, tdb, SCOPE);
+    expect(fake.state.templateHistory.slice(start).map((h) => h.newValue ?? null)).toEqual([{ name: "Clinic opening v2" }, null, ["Staff hired", "Equipment ordered", "Go-live"]]);
+    expect(fake.state.templateHistory.slice(0, start).every((h) => JSON.stringify(h.newValue ?? null).indexOf("applyId") < 0)).toBe(true);
+  });
+
   it("template changes never touch milestones already on projects", async () => {
     const db = await toolsSetup();
     const tpl = await seed();
