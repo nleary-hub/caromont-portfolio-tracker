@@ -960,6 +960,7 @@ export function ProjectDashboard({
                       requesterSuggestions={admin.requesterSuggestions}
                       contractsLead={selected.contractsLead}
                       serviceArea={selected.serviceArea}
+                      {...(line ? { contractsLeads: line.contractsLeads } : {})}
                       ownerSuggestions={admin.ownerSuggestions}
                       saveAction={admin.setPeopleFieldAction}
                     />

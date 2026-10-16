@@ -85,7 +85,7 @@ test("keyboard focus is visible on drawer input, select and textarea, including 
     expect(styles).toMatchObject({ outline: "solid", width: "2px", color: "rgb(76, 141, 255)" });
     return styles;
   };
-  expect((await checkFocus(".pb-drawer input")).border).toBe("rgb(76, 141, 255)");
+  expect((await checkFocus(".pb-drawer #pf-name")).border).toBe("rgb(76, 141, 255)");
   expect((await checkFocus(".pb-drawer select")).border).toBe("rgb(76, 141, 255)");
   // The drawer opens straight into the edit form (no Edit click).
   await expect(page.locator(".pb-drawer").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
