@@ -35,19 +35,21 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
 
   const stop = async (message: string | null = null) => {
     if (timer.current) clearTimeout(timer.current);
-    conn.current?.close();
+    const c = conn.current;
     conn.current = null;
     const id = session.current;
     session.current = null;
     setPhase("idle");
     setError(message);
-    if (id) await endAiVoiceChat(id);
+    const usage = c?.backendUsage() ?? null;
+    await c?.close();
+    if (id) await endAiVoiceChat(id, c?.backendUsage() ?? usage);
   };
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
-    conn.current?.close();
-    if (session.current) void endAiVoiceChat(session.current);
+    void conn.current?.close();
+    if (session.current) void endAiVoiceChat(session.current, conn.current?.backendUsage() ?? null);
   }, []);
 
   const begin = async () => {

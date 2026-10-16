@@ -31,6 +31,7 @@ export function ModelField({
   label = C.MODEL_LABEL,
   help = C.MODEL_HELP,
   kind = "chat",
+  placeholder = C.MODEL_ADD_PLACEHOLDER,
   noneLabel,
   list = null,
   listLoading = false,
@@ -48,6 +49,8 @@ export function ModelField({
   label?: string;
   help?: string;
   kind?: AiModelKind;
+  /** Placeholder of the typed model ID field (a voice example for voice chat, not a chat model). */
+  placeholder?: string;
   /** An empty first choice (for example "None") that clears the model. */
   noneLabel?: string;
   list?: OpenAiListState;
@@ -126,7 +129,7 @@ export function ModelField({
           <button type="button" className={GHOST} onClick={onLoadList} disabled={disabled || listLoading} data-testid={`${id}-load-list`}>
             {listLoading ? C.MODEL_LIST_LOADING : C.MODEL_LIST_LOAD}
           </button>
-          {list?.ok && <span className="text-muted type-caption">{`${listed.length} ${AiModelKinds.label(kind).toLowerCase()} models listed`}</span>}
+          {list?.ok && <span className="text-muted type-caption">{C.modelsListed(listed.length, AiModelKinds.label(kind))}</span>}
         </div>
       )}
       {manual && (
@@ -146,7 +149,7 @@ export function ModelField({
                 commitTyped();
               }
             }}
-            placeholder={C.MODEL_ADD_PLACEHOLDER}
+            placeholder={placeholder}
             maxLength={100}
             autoComplete="off"
             spellCheck={false}

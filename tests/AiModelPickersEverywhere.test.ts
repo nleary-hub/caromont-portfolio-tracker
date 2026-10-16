@@ -57,15 +57,15 @@ describe("server validation: any enabled ai_models row", () => {
     { id: "gpt-example-realtime", enabled: true, kind: null },
     { id: "gpt-example-live", enabled: true, kind: "realtime" },
   ];
-  it("chat accepts enabled chat rows and manually added ids; never off, transcription or realtime rows", async () => {
+  it("chat accepts enabled chat rows; never unknown ids, off, transcription or realtime rows (#70 follow-up)", async () => {
     const db = { aiModel: { findMany: async () => rows } };
-    expect(await AiModelService.enabledIds(db, "chat")).toEqual(["acme-chat-example", "gpt-example-mini"]);
+    expect(await AiModelService.enabledIds(db, "chat")).toEqual(["gpt-example-mini"]);
   });
 
-  it("save accepts a manually added enabled model and refuses an off one; nothing is turned on", async () => {
+  it("save accepts an enabled chat model and refuses an off one; nothing is turned on", async () => {
     const db = new FakeAiDb();
     const allowed = await AiModelService.enabledIds({ aiModel: { findMany: async () => rows } }, "chat");
-    expect(await AiSettingsService.save(db, Factory.ADMIN, { allowedModels: allowed, fields: { ...FIELDS, enabled: true, model: "acme-chat-example" }, newKey: KEY }, ENV)).toEqual({ ok: true });
+    expect(await AiSettingsService.save(db, Factory.ADMIN, { allowedModels: allowed, fields: { ...FIELDS, enabled: true, model: "gpt-example-mini" }, newKey: KEY }, ENV)).toEqual({ ok: true });
     const off = await AiSettingsService.save(db, Factory.ADMIN, { allowedModels: allowed, fields: { ...FIELDS, enabled: true, model: "gpt-example-off" } }, ENV);
     expect(off).toMatchObject({ ok: false, fieldErrors: { model: AiCopy.MODEL_NOT_ALLOWED } });
     expect(rows.find((r) => r.id === "gpt-example-off")!.enabled).toBe(false);
@@ -112,16 +112,18 @@ describe("pickers read OpenAI's list, with manual entry when it fails", () => {
     expect(html).not.toContain(AiCopy.MODEL_PICKER_LIST_FAILED);
   });
 
-  it("the test connection section has its own picker, starting empty, and posts no form field", async () => {
+  it("the test connection picker preselects the saved writing-assistant model, starts empty without one, and posts no form field (#70 follow-up)", async () => {
     const { AiSettingsForm } = await import("@/components/AiSettingsForm");
     const view = { ...AiSettingsService.view(null), provider: "openai" as const, model: "gpt-example-mini", key: { set: true, readable: true, last4: "WXYZ", setAt: null, setBy: null } };
     const html = renderToStaticMarkup(createElement(AiSettingsForm, { view: view as never, keySavedLine: null, dbReady: true, modelOptions: ["gpt-example-mini"], initialList: LIST }));
     const test = html.slice(html.indexOf('data-testid="ai-test"'));
     expect(test).toContain('data-testid="ai-test-model-picker"');
     expect(test).toContain(AiCopy.TEST_MODEL_LABEL);
-    expect(test).toContain(AiCopy.MODEL_PICKER_PLACEHOLDER);
+    expect(test).toContain('<span class="text-fg">gpt-example-mini</span>');
     expect(test).not.toContain('name="model"');
     expect(test).toContain('data-testid="ai-test-model-load-list"');
+    const empty = renderToStaticMarkup(createElement(AiSettingsForm, { view: { ...view, model: "" } as never, keySavedLine: null, dbReady: true, modelOptions: ["gpt-example-mini"], initialList: LIST }));
+    expect(empty.slice(empty.indexOf('data-testid="ai-test"'))).toContain(AiCopy.MODEL_PICKER_PLACEHOLDER);
   });
 });
 
@@ -155,8 +157,8 @@ describe("voice chat picker: OpenAI's realtime list, no built-in voice model", (
 });
 
 describe("voice invalid_model copy", () => {
-  it("says the selected model doesn't support live voice", async () => {
+  it("says OpenAI rejected the selected voice model", async () => {
     const { AiToolsCopy } = await import("@/lib/ai/AiToolsCopy");
-    expect(AiToolsCopy.VOICE_MODEL_UNAVAILABLE).toBe("The selected voice model doesn't support live voice. An admin can choose a realtime model in AI settings.");
+    expect(AiToolsCopy.VOICE_MODEL_UNAVAILABLE).toBe("OpenAI rejected the selected voice model. An admin can choose a gpt-realtime or gpt-live model in AI settings.");
   });
 });

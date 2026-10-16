@@ -7,6 +7,7 @@ import { AiModelKinds, type AiListedModel, type AiModelKind } from "@/lib/ai/AiM
 import type { FetchLike } from "@/lib/ai/AiProviderClient";
 import type { AiSettingsHistoryRow, AiSettingsRow } from "@/lib/services/AiSettingsService";
 import { AiSettingsService } from "@/lib/services/AiSettingsService";
+import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 
 type Env = Record<string, string | undefined>;
 type Price = number | string | { toString(): string } | null;
@@ -40,6 +41,8 @@ export interface AiFeatureRow {
   updatedBy: string;
   /** 0043: the feature's own model (dictation only). Absent before 0043 runs. */
   model?: string | null;
+  /** 0050: voice chat instructions (voice_chat only). Null or absent = the built-in rules. */
+  instructions?: string | null;
 }
 
 /** Client-safe model row for the settings page. */
@@ -70,6 +73,8 @@ export interface AiFeatureView {
   ownModel?: true;
   /** The chosen model for an own-model feature ("" = none chosen yet). */
   model?: string;
+  /** Voice chat only: the admin instructions ("" = the built-in rules). */
+  instructions?: string;
 }
 
 /** The narrow slice of Prisma these services use (tests pass an in-memory fake). */
@@ -114,21 +119,12 @@ export class AiModelService {
 
   /** The ids an admin turned on, optionally only those of one kind. */
   static enabledOf(rows: readonly (Pick<AiModelRow, "id" | "enabled"> & { kind?: string | null })[], kind?: AiModelKind): string[] {
-    return rows.filter((r) => r.enabled && AiModelService.fits(AiModelKinds.of(r), kind)).map((r) => r.id);
-  }
-
-  /**
-   * A row fits a kind when it has that kind. For chat (the main model, writing assistant and test connection), any
-   * enabled row that isn't a transcription or realtime model fits, including manually added ids no pattern recognizes.
-   */
-  static fits(rowKind: AiModelKind | null, kind?: AiModelKind): boolean {
-    if (!kind) return true;
-    return kind === "chat" ? rowKind === "chat" || rowKind === null : rowKind === kind;
+    return rows.filter((r) => r.enabled && AiModelKinds.fits(r, kind)).map((r) => r.id);
   }
 
   /** Enabled model views of one kind, for a picker. */
   static optionsOf(views: readonly AiModelView[], kind: AiModelKind): string[] {
-    return views.filter((v) => v.enabled && AiModelService.fits(v.kind ?? null, kind)).map((v) => v.id);
+    return views.filter((v) => v.enabled && AiModelKinds.fits(v, kind)).map((v) => v.id);
   }
 
   /** OpenAI's /v1/models body to [{ id, kind }], sorted by id, chat/transcription/realtime only. */
@@ -188,7 +184,8 @@ export class AiModelService {
         killedByEnv: !AiFeatureFlags.isOn(feature, env),
         envName: AiFeatureFlags.FLAGS[feature],
       };
-      return AiFeatureFlags.OWN_MODEL.includes(feature) ? { ...view, ownModel: true, model: row?.model ?? "" } : view;
+      const own: AiFeatureView = AiFeatureFlags.OWN_MODEL.includes(feature) ? { ...view, ownModel: true, model: row?.model ?? "" } : view;
+      return feature === "voice_chat" ? { ...own, instructions: row?.instructions ?? "" } : own;
     });
   }
 
@@ -383,13 +380,43 @@ export class AiModelService {
         const row = await tx.aiModel.findUnique({ where: { id: model } });
         if (!row?.enabled) return { ok: false, error: AiCopy.MODEL_NOT_ALLOWED };
         // The type filter, enforced here too: dictation takes transcription models, voice chat realtime ones.
-        if (AiModelKinds.of(row) !== AiModelKinds.forFeature(feature)) return { ok: false, error: AiCopy.MODEL_WRONG_KIND };
+        if (!AiModelKinds.fits(row, AiModelKinds.forFeature(feature))) return { ok: false, error: AiCopy.MODEL_WRONG_KIND };
       }
       const before = ((await tx.aiFeatureSetting.findMany()).find((r) => r.feature === feature)?.model ?? "") || null;
       if ((before ?? "") === model) return { ok: true };
       await tx.aiFeatureSetting.upsert({ where: { feature }, create: { feature, enabled: true, model: model || null, updatedAt: now, updatedBy: admin.email }, update: { model: model || null, updatedAt: now, updatedBy: admin.email } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiFeatureModel", "changed", before, model || null, admin, now)] });
       return { ok: true };
+    });
+  }
+
+  /** Voice chat instructions as saved ("" = none, use the built-in rules). Unreadable table = none. */
+  static async voiceInstructions(db: unknown): Promise<string> {
+    try {
+      const f = (db as Partial<AiModelDb>)?.aiFeatureSetting;
+      if (!f) return "";
+      return ((await f.findMany()).find((r) => r.feature === "voice_chat")?.instructions ?? "").trim();
+    } catch {
+      return "";
+    }
+  }
+
+  /**
+   * Saves the voice chat instructions. Admin only; at most AiVoiceChat.INSTRUCTIONS_MAX characters after trimming;
+   * "" clears them (back to the built-in rules). One history row with lengths only, never the text.
+   */
+  static async setVoiceInstructions(db: AiModelDb, admin: Viewer, raw: unknown, now: Date = new Date()): Promise<AiAdminResult> {
+    AdminPolicy.assertAdmin(admin);
+    if (typeof raw !== "string") return { ok: false, error: AiCopy.SAVE_FAILED };
+    const text = raw.replace(/\r\n/g, "\n").trim();
+    if (text.length > AiVoiceChat.INSTRUCTIONS_MAX) return { ok: false, error: AiCopy.VOICE_INSTRUCTIONS_TOO_LONG };
+    return db.$transaction(async (tx) => {
+      const before = ((await tx.aiFeatureSetting.findMany()).find((r) => r.feature === "voice_chat")?.instructions ?? "").trim();
+      if (before === text) return { ok: true };
+      await tx.aiFeatureSetting.upsert({ where: { feature: "voice_chat" }, create: { feature: "voice_chat", enabled: true, instructions: text || null, updatedAt: now, updatedBy: admin.email }, update: { instructions: text || null, updatedAt: now, updatedBy: admin.email } });
+      const len = (t: string) => (t ? `${t.length} characters` : null);
+      await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiVoiceInstructions", "changed", len(before), len(text), admin, now)] });
+      return { ok: true, message: AiCopy.VOICE_INSTRUCTIONS_SAVED };
     });
   }
 

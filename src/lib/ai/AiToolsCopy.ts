@@ -195,7 +195,7 @@ export class AiToolsCopy {
   static readonly VOICE_PRIVACY = "Audio goes straight to the AI provider and is never saved here. Only minutes and cost are logged.";
   static readonly VOICE_NO_MIC = "The microphone isn't available. Check this site's microphone permission in your browser.";
   static readonly VOICE_START_FAILED = "Voice chat couldn't start. Try again in a moment.";
-  static readonly VOICE_MODEL_UNAVAILABLE = "The selected voice model doesn't support live voice. An admin can choose a realtime model in AI settings.";
+  static readonly VOICE_MODEL_UNAVAILABLE = "OpenAI rejected the selected voice model. An admin can choose a gpt-realtime or gpt-live model in AI settings.";
   static readonly VOICE_TOKEN_FAILED = "OpenAI didn't open a voice session. Try again in a moment. If it keeps happening, an admin can check the API key in AI settings.";
   static readonly VOICE_MIC_DENIED = "Microphone access is blocked for this site. Allow it in your browser, then try again.";
   static readonly VOICE_CONNECT_FAILED = "The voice connection couldn't be set up. Check your network, then try again.";
@@ -204,7 +204,8 @@ export class AiToolsCopy {
   static readonly VOICE_TIME_UP = "The chat reached its 15-minute limit. Start again to keep talking.";
   static readonly VOICE_SESSION_GONE = "This voice chat has ended. Start a new one.";
   static readonly VOICE_MODEL_LABEL = "Voice chat model";
-  static readonly VOICE_MODEL_HELP = "Voice chat needs a realtime model. Click Show OpenAI models to see the realtime ones your saved API key can use. Only models turned on under Models can be saved.";
+  static readonly VOICE_BACKEND_MODEL_OFF = "Live voice models use the writing assistant model to answer. An admin needs to choose that model and turn it on in AI settings.";
+  static readonly VOICE_MODEL_HELP = "Voice chat needs a gpt-realtime or gpt-live model. Click Show OpenAI models to see the ones your saved API key can use. Only models turned on under Models can be saved.";
 
   /** Own-model features (step 6, step 10): the model picker's label and help on Admin > AI settings. */
   static modelLabel(feature: string): string {
