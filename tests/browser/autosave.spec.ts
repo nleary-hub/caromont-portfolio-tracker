@@ -65,6 +65,8 @@ test("a failed save keeps the drawer open and shows the error (auto-save, Escape
 });
 
 test("one click on another row flushes the pending save and switches in that same click", async ({ page }) => {
+  // Header sorting needs "As it will print" off (it is on by default).
+  await page.addInitScript(() => localStorage.setItem("pt:v1:dashboard:print-order:fictional@example.org", "0"));
   await page.goto("/?save=slow");
   await open(page, 0);
   await panel(page).locator("#pf-note").fill("Fictional pending note");

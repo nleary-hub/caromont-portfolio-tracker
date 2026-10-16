@@ -40,6 +40,7 @@ import { DashboardTable, DueFlagPill, type DashboardLayoutControl } from "./Dash
 import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
 import { ClosedPagesCopy } from "@/lib/closed/ClosedPagesCopy";
 import { ClosedPageModel } from "@/lib/closed/ClosedPageModel";
+import { PrintOrder } from "@/lib/dashboard/PrintOrder";
 import { DashboardQuery, type DashboardQueryState, type DashboardSortKey } from "@/lib/dashboard/DashboardQuery";
 import { DueFilterSelect, MarkAllReviewedButton, MultiFilterSelect, QueryCopy, ReviewConfirmDialog, SortChip, statusOptions } from "./DashboardQueryControls";
 import type { ReviewActionResult } from "@/app/actions/review";
@@ -331,6 +332,10 @@ export function ProjectDashboard({
     return persistLayout({ ...lineLayout, rows: rowsNext }, () => admin.saveRowOrderAction(area, ids));
   };
   const resetRows = () => (admin ? persistLayout({ ...lineLayout, rows: {} }, () => admin.resetRowOrderAction()) : Promise.resolve("Not authorized."));
+  const notInReport = useMemo(() => {
+    const hidden = new Set(admin?.hiddenFromReportIds ?? []);
+    return new Set(rows.filter((r) => PrintOrder.notInReport(r, hidden, settings?.report)).map((r) => r.id));
+  }, [rows, admin?.hiddenFromReportIds, settings?.report]);
   const layoutControl: DashboardLayoutControl = {
     value: lineLayout,
     canEdit: Boolean(admin),
@@ -345,11 +350,18 @@ export function ProjectDashboard({
   const deptOptions = useMemo(() => DashboardPrefs.options(line), [line]);
   const [departments, setDepartmentsState] = useState<DepartmentKey[]>(() => DepartmentFilter.all(deptOptions));
   const [hiddenTiles, setHiddenTilesState] = useState<DashboardTile[]>([]);
+  // "As it will print" (per user and line, localStorage): on by default, the dashboard in the PDF's order.
+  const [printOrder, setPrintOrderState] = useState<boolean>(PrintOrder.DEFAULT_ON);
+  const setPrintOrder = (on: boolean) => {
+    setPrintOrderState(on);
+    PrintOrder.write(DashboardPrefsBrowser.storage(), userEmail, on, line);
+  };
   useEffect(() => {
     const storage = DashboardPrefsBrowser.storage();
     // eslint-disable-next-line react-hooks/set-state-in-effect -- one-time read of browser-only storage after hydration
     setDepartmentsState(DashboardPrefs.readDepartments(storage, userEmail, line));
     setHiddenTilesState(DashboardPrefs.readHiddenTiles(storage, userEmail, line));
+    setPrintOrderState(PrintOrder.read(storage, userEmail, line));
     const saved = DashboardQuery.read(storage, userEmail, line);
     setQState(saved);
     setQueryInput(saved.search);
@@ -729,7 +741,7 @@ export function ProjectDashboard({
               {layoutError}
             </span>
           )}
-          <SortChip text={DashboardQuery.sortChip(sort)} onManual={() => setQ({ ...q, sort: null })} />
+          {!printOrder && <SortChip text={DashboardQuery.sortChip(sort)} onManual={() => setQ({ ...q, sort: null })} />}
           {aiPlacements && <AiToolbarMenu notes={aiPlacements} selected={rows.filter((r) => multiIds.has(r.id)).map((r) => ({ id: r.id, name: r.name }))} visible={visible.map((r) => ({ id: r.id, name: r.name }))} />}
           {review && <MarkAllReviewedButton count={reviewable.length} onClick={() => setConfirmBulk(true)} />}
           {admin && (
@@ -741,6 +753,7 @@ export function ProjectDashboard({
               + New project
             </button>
           )}
+          <PrintOrderSwitch on={printOrder} onChange={setPrintOrder} />
           <TileVisibilityButton
             tiles={DashboardPrefs.availableTiles(Boolean(completedFiscalYear))}
             hidden={hiddenTiles}
@@ -789,6 +802,8 @@ export function ProjectDashboard({
               renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
               layout={layoutControl}
               departments={line?.departments}
+              printOrder={printOrder}
+              notInReport={notInReport}
             />
           </div>
           <div className="flex justify-between border-t border-line px-3 py-2.5 text-muted type-caption">
@@ -1346,6 +1361,20 @@ function BlockedByTag({ n }: { n: number }) {
   return (
     <span data-testid="blocked-by-tag" className="rounded-[4px] bg-(--status-at-risk-dark-bg) px-1.5 text-[11px] leading-4 font-medium text-(--status-at-risk-dark-fg)">
       {DependencyCopy.count(n)}
+    </span>
+  );
+}
+
+/** "As it will print" compact switch in the filter bar (the app's .acct-switch), just left of the tiles button. */
+function PrintOrderSwitch({ on, onChange }: { on: boolean; onChange: (on: boolean) => void }) {
+  return (
+    <span className="ml-2 flex h-7 shrink-0 items-center gap-2 whitespace-nowrap text-fg type-caption" data-testid="print-order">
+      <button type="button" role="switch" aria-checked={on} aria-labelledby="print-order-label" onClick={() => onChange(!on)} className="acct-switch" data-testid="print-order-switch">
+        <span aria-hidden className="acct-thumb" />
+      </button>
+      <span id="print-order-label" className="cursor-pointer select-none" onClick={() => onChange(!on)}>
+        {PrintOrder.LABEL}
+      </span>
     </span>
   );
 }

@@ -10,6 +10,7 @@ import type { DashboardRow } from "../../src/lib/dashboard/DashboardViewModel";
 import { ClosedProjectsView } from "../../src/components/ClosedProjectsView";
 import { ClosedPageModel } from "../../src/lib/closed/ClosedPageModel";
 import { ServiceAreaInfo } from "../../src/lib/domain/ServiceAreaInfo";
+import { SampleReportData } from "../../src/lib/report/SampleReportData";
 import { TemplatesFixture } from "./templates-fixture";
 import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
 
@@ -24,6 +25,12 @@ const rows: DashboardRow[] = ["Zulu", "Alpha", "Bravo"].map((name, i) => ({
   // ?mfi=1: Alpha is a fictional Major Facility Investment (MFI chip, checked MFI box).
   ...(name === "Alpha" && new URLSearchParams(window.location.search).has("mfi") ? { isMfi: true } : {}),
 }));
+// ?sample=1: the fictional PDF sample rows (SampleReportData), shuffled; window.__pdfOrder is the PDF's own order.
+if (new URLSearchParams(window.location.search).has("sample")) {
+  const sample = SampleReportData.rows();
+  (window as unknown as { __pdfOrder?: string[] }).__pdfOrder = sample.map(r => r.projectId);
+  rows.splice(0, rows.length, ...[...sample].reverse().map(r => ({ ...r, id: r.projectId, includeInReport: true, updatedOn: r.updatedOn ?? "2026-09-29" }) as unknown as DashboardRow));
+}
 const noop = async () => null;
 // Fictional dependencies: Zulu is blocked by Bravo, and Alpha is blocked by Zulu (so Zulu blocked by Alpha is a loop).
 let edges: DependencyEdge[] = [{ projectId: "fictional-0", blockedById: "fictional-2" }, { projectId: "fictional-1", blockedById: "fictional-0" }];
@@ -35,7 +42,7 @@ const depView = (id: string) => {
 const counts = { NotStarted: 0, OnTrack: 3, AtRisk: 0, OffTrack: 0, OnHold: 0, Complete: 0, Cancelled: 0 };
 const admin: AdminDashboardProps = {
   viewSettings: { dashboard: ViewSettings.defaults("dashboard"), report: ViewSettings.defaults("report") },
-  pickerCounts: { dashboard: counts, report: counts }, hiddenFromReportIds: [],
+  pickerCounts: { dashboard: counts, report: counts }, hiddenFromReportIds: new URLSearchParams(window.location.search).has("sample") ? ["sample-3"] : [],
   saveViewSettingsAction: noop, setProjectHiddenAction: noop, deleteProjectAction: noop,
   ownerSuggestions: ["Fictional Owner"], requesterSuggestions: ["Fictional Requester"],
   milestoneOwnerOptions: ["Fictional Contracts Lead", "Fictional Owner", "Fictional Requester"],
