@@ -4,7 +4,7 @@ import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { CompletionRules } from "@/lib/projects/CompletionRules";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
 import { LongTextCounter } from "@/lib/projects/LongTextCounter";
-import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useImperativeHandle, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type Ref } from "react";
 import { InforNumber } from "@/lib/domain/InforNumber";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
@@ -77,6 +77,8 @@ export interface ProjectEditFormProps {
   confirmDiscard: boolean;
   onKeepEditing: () => void;
   onDiscard: () => void;
+  /** Edit mode: lets the drawer flush the pending auto-save (close, Escape, outside click, another row). */
+  handleRef?: Ref<ProjectEditFormHandle>;
   /** Writing assistant for the update note: passed only when AI is on and configured and the viewer can edit. */
   ai?: AiNoteActions;
   /** With ai: the model is turned off under Models, so Draft and Fit show paused with the model-off note. */
@@ -84,6 +86,14 @@ export interface ProjectEditFormProps {
   /** Revise with AI (review-then-apply layer): passed only when AI is on, its kill switch is on and the viewer can edit. */
   aiReview?: AiReviewActions;
 }
+
+/** Edit mode: the drawer flushes a pending auto-save before it closes or switches project. */
+export interface ProjectEditFormHandle {
+  /** Saves any pending change now. Resolves true when nothing is left unsaved, false when the save failed. */
+  flush: () => Promise<boolean>;
+}
+
+export type AutosaveState = "idle" | "saving" | "saved" | "error";
 
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
 const TEXTAREA = "block w-full min-w-0 resize-none rounded-control border border-line bg-input px-2.5 py-2 text-fg type-table focus:border-accent focus:outline-none";
@@ -121,6 +131,7 @@ export function ProjectEditForm({
   ai,
   aiPaused = false,
   aiReview,
+  handleRef,
 }: ProjectEditFormProps) {
   const isNew = mode === "new";
   // Snapshot at open: a People autosave refreshes the page data but must not reset the form.
@@ -190,6 +201,71 @@ export function ProjectEditForm({
   if (clientErrors.milestones?.length || serverErrors.milestones?.length) allErrors.milestones = [...(clientErrors.milestones ?? []), ...(serverErrors.milestones ?? [])];
   const blocked = ProjectFormModel.hasErrors(allErrors);
   const visiblyBlocked = ProjectFormModel.ORDER.some((f) => shown(f).length > 0) || milestoneMessages.length > 0 || Object.keys(msStepErrors).length > 0;
+
+  // Edit mode auto-save: debounced, through the same onSubmit (saveProjectForm: validation, history, Changed).
+  const [saveState, setSaveState] = useState<AutosaveState>("idle");
+  // The latest render's state and callbacks, so the timer and a flush never use stale values.
+  const latest = useRef({ values, original, blocked, allErrors, onSubmit, onSaved });
+  useLayoutEffect(() => {
+    latest.current = { values, original, blocked, allErrors, onSubmit, onSaved };
+  });
+  const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const inflight = useRef<Promise<boolean> | null>(null);
+  const runSave = useCallback(async (): Promise<boolean> => {
+    if (timer.current) {
+      clearTimeout(timer.current);
+      timer.current = null;
+    }
+    while (inflight.current) await inflight.current;
+    const { values: v, original: o, blocked: b, allErrors: errs } = latest.current;
+    const changes = ProjectFormModel.changes(v, o);
+    if (Object.keys(changes).length === 0) return true;
+    if (b) {
+      setAttempted(true);
+      setSaveState("error");
+      const first = ProjectFormModel.firstErrorField(errs);
+      if (first) bodyRef.current?.querySelector<HTMLElement>(`[data-field="${first}"]`)?.scrollIntoView({ block: "center", behavior: "smooth" });
+      return false;
+    }
+    setSaveState("saving");
+    setFormError(null);
+    const run = (async () => {
+      try {
+        const result = await latest.current.onSubmit(changes, null);
+        if (result.ok) {
+          latest.current = { ...latest.current, original: v };
+          setOriginal(v);
+          setSaveState("saved");
+          latest.current.onSaved(result.id);
+          return true;
+        }
+        setFormError(result.error);
+        if (result.fieldErrors) setServerErrors(result.fieldErrors);
+        setSaveState("error");
+        return false;
+      } catch {
+        setFormError("Could not save the change.");
+        setSaveState("error");
+        return false;
+      }
+    })();
+    inflight.current = run;
+    try {
+      return await run;
+    } finally {
+      inflight.current = null;
+    }
+  }, []);
+  useImperativeHandle(handleRef, () => ({ flush: runSave }), [runSave]);
+  const formDirty = ProjectFormModel.isDirty(values, original);
+  useEffect(() => {
+    if (isNew || !formDirty) return;
+    if (timer.current) clearTimeout(timer.current);
+    timer.current = setTimeout(() => void runSave(), ProjectFormModel.AUTOSAVE_MS);
+    return () => {
+      if (timer.current) clearTimeout(timer.current);
+    };
+  }, [isNew, formDirty, values, runSave]);
 
   const set = (f: FormField, v: string) => {
     setValues((prev) => ({ ...prev, [f]: v }));
@@ -522,6 +598,11 @@ export function ProjectEditForm({
         )}
       </div>
 
+      {!isNew ? (
+        <footer className="flex shrink-0 items-center gap-2 border-t border-line px-6 py-3" data-testid="autosave-footer">
+          <AutosaveStatus state={saveState} error={formError ?? (saveState === "error" ? ProjectFormModel.AUTOSAVE_BLOCKED : null)} />
+        </footer>
+      ) : (
       <footer className="flex shrink-0 items-center gap-2 border-t border-line px-6 py-3">
         {confirmDiscard ? (
           <>
@@ -555,7 +636,23 @@ export function ProjectEditForm({
           </>
         )}
       </footer>
+      )}
     </>
+  );
+}
+
+/** Saving, Saved or the error, in the drawer footer (edit mode). */
+function AutosaveStatus({ state, error }: { state: AutosaveState; error: string | null }) {
+  if (state === "error")
+    return (
+      <span className="min-w-0 flex-1 text-danger type-table" role="alert" data-testid="autosave-status" data-state="error">
+        {error}
+      </span>
+    );
+  return (
+    <span className="min-w-0 flex-1 truncate text-muted type-table" role="status" aria-live="polite" data-testid="autosave-status" data-state={state}>
+      {state === "saving" ? ProjectFormModel.AUTOSAVE_SAVING : state === "saved" ? ProjectFormModel.AUTOSAVE_SAVED : ProjectFormModel.AUTOSAVE_IDLE}
+    </span>
   );
 }
 

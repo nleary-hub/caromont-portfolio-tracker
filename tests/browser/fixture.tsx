@@ -43,7 +43,15 @@ const admin: AdminDashboardProps = {
     (w.__milestoneSaves ??= []).push(JSON.parse(JSON.stringify(edit)));
     return { ok: true, steps: edit.drafts.map((d, i) => ({ id: d.id ?? `fictional-new-${i}`, name: d.name, dueDate: d.dueDate || null, done: d.done, doneAt: null, checkedBy: null, checkedAt: null, position: i, sourceTemplateId: d.sourceTemplateId, owner: d.owner ?? null })) };
   },
-  saveProjectFormAction: async () => ({ ok: true, id: "fictional-0" }),
+  // Every form save is recorded on window.__formSaves. ?save=fail: the save fails; ?save=slow: it takes 1.5 s.
+  saveProjectFormAction: async (id, changes) => {
+    const w = window as unknown as { __formSaves?: unknown[] };
+    (w.__formSaves ??= []).push({ id, changes: JSON.parse(JSON.stringify(changes)) });
+    const mode = new URLSearchParams(window.location.search).get("save");
+    if (mode === "slow") await new Promise(resolve => setTimeout(resolve, 1500));
+    if (mode === "fail") return { ok: false, error: "Fictional save failure. Try again." };
+    return { ok: true, id };
+  },
   createProjectAction: async () => ({ ok: true, id: "fictional-new" }),
   saveColumnLayoutAction: noop, saveRowOrderAction: noop, resetRowOrderAction: noop,
   dependencyActions: {

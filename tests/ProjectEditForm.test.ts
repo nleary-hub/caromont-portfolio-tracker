@@ -188,6 +188,20 @@ describe("ProjectService.saveForm", () => {
     expect(entries[0].rows).toHaveLength(4);
   });
 
+  it("auto-save writes history: the debounced payload goes through saveForm as one history entry per save", async () => {
+    const p = await ProjectService.create({ ...base, percentComplete: 30 }, actor, fake.asClient());
+    const original = ProjectFormModel.fromSource(p as never);
+    // Two debounced saves, as the drawer sends them (only the changed fields each time).
+    const first = { ...original, note: "Fictional first autosave" };
+    await ProjectService.saveForm(p.id, ProjectFormModel.toInput(ProjectFormModel.changes(first, original)), Factory.ADMIN, fake.asClient());
+    const second = { ...first, name: "Fictional renamed project" };
+    await ProjectService.saveForm(p.id, ProjectFormModel.toInput(ProjectFormModel.changes(second, first)), Factory.ADMIN, fake.asClient());
+    const rows = fake.state.history.filter((r) => r.field !== "created");
+    expect(rows.map((r) => r.field)).toEqual(["note", "name"]);
+    expect(rows.every((r) => r.changedBy === Factory.ADMIN.email)).toBe(true);
+    expect(fake.state.history.filter((r) => r.field === "percentComplete")).toHaveLength(0);
+  });
+
   it("a drawer save leaves a stored % complete untouched and writes no history row for it", async () => {
     const p = await ProjectService.create({ ...base, percentComplete: 60 }, actor, fake.asClient());
     const original = ProjectFormModel.fromSource(p as never);

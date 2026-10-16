@@ -86,6 +86,12 @@ export class ProjectFormModel {
   static readonly INFOR_DIGITS = 5;
   static readonly ACCOMPLISHMENT_HINT = "Add an accomplishment for the report";
   static readonly DISCARD_PROMPT = "Discard changes?";
+  /** Edit drawer auto-save: wait after the last change, then save through the normal form save. */
+  static readonly AUTOSAVE_MS = 800;
+  static readonly AUTOSAVE_IDLE = "Changes save automatically";
+  static readonly AUTOSAVE_SAVING = "Saving…";
+  static readonly AUTOSAVE_SAVED = "Saved";
+  static readonly AUTOSAVE_BLOCKED = "Fix the highlighted fields to save.";
 
   static readonly LABELS: Readonly<Record<FormField, string>> = {
     name: "Name",
