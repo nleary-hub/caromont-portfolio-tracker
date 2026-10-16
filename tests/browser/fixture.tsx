@@ -79,12 +79,14 @@ createRoot(document.getElementById("root")!).render(aiMode ? (
 ) : (
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}
     today="2026-10-04" userEmail="fictional@example.org" userName="Fictional Reviewer"
-    latestReport={null} loadError={null} serviceLine={ServiceLine.SEED} admin={admin}
+    latestReport={null} loadError={null} serviceLine={ServiceLine.SEED}
+    // ?viewer=readonly: the same dashboard for a non-admin (the drawer shows the fields read-only).
+    admin={new URLSearchParams(window.location.search).get("viewer") === "readonly" ? undefined : admin}
     completedFiscalYear={new URLSearchParams(window.location.search).has("fy") ? { label: "FY27", start: "2026-07-01", count: 4 } : undefined}
     signOutAction={async () => {}} historyAction={async id => {
       // A late result must never reintroduce a previous project's history.
       await new Promise(resolve => setTimeout(resolve, id === "fictional-0" ? 120 : 20));
-      return { title: "History (1)", previously: null, notes: [], steps: [], entries: [{ key: `history-${id}`, meta: "Fictional author",
+      return { title: "History (1)", previously: id === "fictional-1" ? "Previously REQ-00042" : null, notes: [], steps: [], entries: [{ key: `history-${id}`, meta: "Fictional author",
         text: `History for ${id}`, hollow: false }] };
     }} />
 ));

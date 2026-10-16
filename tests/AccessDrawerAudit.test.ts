@@ -174,7 +174,8 @@ const { ProjectDrawer } = (await import("@/components/ProjectDashboard")) as unk
 describe("Edit drawer: the details view's People editor stays out of edit mode", () => {
   const row = { id: "p1", name: "Project 02", serviceArea: null, status: "OffTrack", owner: "Luis Ortega", physicianChampion: null, contractsLead: null, inforRequestNumber: null, nextMilestone: null, dueDate: null, overdue: false, flags: [] } as never;
   const people = createElement("section", { "aria-label": "Edit project", "data-testid": "details-people" }, "Owner Requester Contracts lead Department");
-  const render = (form: ReactNode) => renderToStaticMarkup(createElement(ProjectDrawer, { row, today: "2026-09-27", onClose: () => {}, peopleEditor: people, adminControls: null, form }));
+  const render = (form: ReactNode) =>
+    renderToStaticMarkup(createElement(ProjectDrawer, { row, today: "2026-09-27", onClose: () => {}, peopleEditor: people, adminControls: null, ...(form ? { form: () => form } : {}) }));
 
   it("details view shows its People editor", () => {
     expect(render(null)).toContain('data-testid="details-people"');
@@ -183,13 +184,13 @@ describe("Edit drawer: the details view's People editor stays out of edit mode",
   it("edit mode has no leaked block: only the header and the form", () => {
     const html = render(createElement("div", { "data-testid": "edit-form" }, "form"));
     expect(html).not.toContain("details-people");
-    expect(html).toMatch(/<aside aria-label="Edit project"[^>]*><div class="flex shrink-0[^"]*">[\s\S]*?<\/div><div data-testid="edit-form">form<\/div><\/aside>$/);
+    expect(html).toMatch(/<aside aria-label="Project detail" data-mode="edit"[^>]*><div class="flex shrink-0[^"]*">[\s\S]*?<\/div><div data-testid="edit-form">form<\/div><\/aside>$/);
   });
 
-  it("the two drawers are separate elements (distinct keys), so switching to Edit never reuses the details DOM", () => {
+  it("there is one drawer element: the form or the read-only fields go inside the same <aside>", () => {
     const drawer = src("src/components/ProjectDashboard.tsx");
-    expect(drawer).toMatch(/<aside\s+key="drawer-form"/);
-    expect(drawer).toMatch(/<aside\s+key="drawer-detail"/);
+    expect(drawer).not.toMatch(/key="drawer-form"|key="drawer-detail"/);
+    expect(render(null)).toMatch(/^<aside aria-label="Project detail" data-mode="view"/);
   });
 
   it("the form's People section uses the same Section label as Project and Progress, and has no Department", () => {

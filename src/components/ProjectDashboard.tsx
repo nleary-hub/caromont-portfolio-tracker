@@ -558,7 +558,7 @@ export function ProjectDashboard({
       return;
     }
     leaveForm();
-    setMode(created ? "view" : openMode(id));
+    setMode(openMode(id));
     if (created && id) {
       // Show the new project whatever the current filter, then scroll its row into view.
       clearAll();
@@ -788,7 +788,7 @@ export function ProjectDashboard({
           onClose={requestClose}
           peopleEditor={null}
           adminControls={null}
-          form={
+          form={() => (
             <ProjectEditForm
               key="new"
               mode="new"
@@ -820,7 +820,7 @@ export function ProjectDashboard({
               onKeepEditing={() => setConfirmDiscard(false)}
               onDiscard={discard}
             />
-          }
+          )}
         />
       ) : (
         selected && (
@@ -832,8 +832,7 @@ export function ProjectDashboard({
             departments={line?.departments}
             today={today}
             onClose={requestClose}
-            headerTag={mode === "edit" && blockedCount?.id === selected.id && blockedCount.n > 0 ? <BlockedByTag n={blockedCount.n} /> : null}
-            onEdit={admin && mode === "view" && admin.formValues[selected.id] ? () => setMode("edit") : undefined}
+            headerTag={blockedCount?.id === selected.id && blockedCount.n > 0 ? <BlockedByTag n={blockedCount.n} /> : null}
             {...(aiPlacements && "meeting_brief" in aiPlacements ? { headerAction: <AiBriefButton note={aiPlacements.meeting_brief ?? null} projectName={selected.name} /> } : {})}
             peopleEditor={
               admin ? (
@@ -865,9 +864,12 @@ export function ProjectDashboard({
               ) : null
             }
             form={
-              admin && mode === "edit" && admin.formValues[selected.id] ? (
+              admin && admin.formValues[selected.id]
+                ? (parts) => (
                 <ProjectEditForm
                   key={`edit-${selected.id}`}
+                  inforPreviously={parts.previously}
+                  trailing={parts.trailing}
                   mode="edit"
                   {...(line ? { departments: line.departments } : {})}
                   original={admin.formValues[selected.id]}
@@ -951,7 +953,8 @@ export function ProjectDashboard({
                   onKeepEditing={() => setConfirmDiscard(false)}
                   onDiscard={discard}
                 />
-              ) : null
+                  )
+                : undefined
             }
           />
         )
@@ -1045,11 +1048,21 @@ export function ProjectMetaLine({ row, showInfor }: { row: DashboardRow; showInf
   );
 }
 
+/** What the drawer hands the edit form: the "Previously" Infor line and the read-only sections after the fields. */
+export interface DrawerFormParts {
+  previously: ReactNode;
+  trailing: ReactNode;
+}
+
+/**
+ * The one project panel. Admins on the dashboard get the edit form in place (`form`); everyone else (and the
+ * Closed pages) get the same panel with the fields read-only. History, Update notes and the admin controls
+ * load in both.
+ */
 export function ProjectDrawer({
   row,
   today,
   onClose,
-  onEdit,
   peopleEditor,
   adminControls,
   form,
@@ -1060,95 +1073,68 @@ export function ProjectDrawer({
   entering = false,
   onEntered,
 }: {
-  /** True on the render that opens the panel: it slides in once (not again when switching between detail and edit). */
+  /** True on the render that opens the panel: it slides in once. */
   entering?: boolean;
   onEntered?: () => void;
-  /** A secondary action in the header, right of the title (Restore to active on the Cancelled page). */
+  /** A secondary action in the header, right of the title (Brief; Restore to active on the Cancelled page). */
   headerAction?: ReactNode;
   /** Small tag next to the edit header caption ("Blocked by 2"). */
   headerTag?: ReactNode;
   /** Null for the New project form. */
   row: DashboardRow | null;
-  /** Loads the History section and the "Previously" Infor numbers (detail view only). */
+  /** Loads the History section and the "Previously" Infor numbers. */
   historyAction?: HistoryLoader;
   /** The line's departments (the department's short name in the header and detail). */
   departments?: DepartmentList;
   today: string;
   onClose: () => void;
-  /** Admins only: shows the Edit button left of close. */
-  onEdit?: () => void;
-  /** Admin edit form (edit or New project). When set, the drawer shows it with a pinned footer. */
-  form?: ReactNode;
-  /** Admin-only edit panel (owner, requester, department), shown at the top. Null for non-admins. */
+  /** Admin edit form (edit or New project), built with the drawer's History parts. Absent: read-only fields. */
+  form?: (parts: DrawerFormParts) => ReactNode;
+  /** Admin-only people editor at the top of the read-only fields. Null otherwise. */
   peopleEditor: ReactNode;
-  /** Rendered only for admins. */
+  /** Admin-only controls (Hide from dashboard, Hide from report). Null for non-admins. */
   adminControls: ReactNode;
 }) {
-  const history = useProjectTimeline(row?.id ?? "", row, row && !form ? historyAction : undefined);
+  const history = useProjectTimeline(row?.id ?? "", row, row ? historyAction : undefined);
+  const editing = Boolean(form);
+  const trailing =
+    row && historyAction ? (
+      <>
+        {!editing && <MilestoneStepsSection timeline={history.timeline} />}
+        <UpdateNotesSection key={`notes-${row.id}`} timeline={history.timeline} />
+        {/* People and History are siblings: their project-specific keys must have distinct namespaces. */}
+        <ProjectHistorySection key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />
+        {/* Editing: Hide from dashboard / Hide from report sit after History, above Delete. */}
+        {editing && adminControls}
+      </>
+    ) : editing ? adminControls : null;
   const closeButton = (
-    <button
-      type="button"
-      onClick={onClose}
-      aria-label="Close"
-      className="pb-ghost size-7 rounded-[6px] border border-line text-xs text-muted hover:text-fg"
-    >
+    <button type="button" onClick={onClose} aria-label="Close" className="pb-ghost size-7 rounded-[6px] border border-line text-xs text-muted hover:text-fg">
       ✕
     </button>
   );
-  if (form || !row) {
-    // Edit form: header, scrolling fields, footer pinned to the drawer bottom.
-    return (
-      <aside
-        key="drawer-form"
-        aria-label={row ? "Edit project" : "New project"}
-        data-enter={entering || undefined}
-        onAnimationEnd={(e) => e.target === e.currentTarget && onEntered?.()}
-        className="pb-drawer fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col overflow-hidden rounded-card border border-line bg-card shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
-      >
-        <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
-          <div className="min-w-0">
-            {row && (
-              <div className="flex items-center gap-2 text-muted type-caption">
-                <span>{ServiceAreaInfo.label(row.serviceArea, departments)} · Edit project</span>
-                {headerTag}
-              </div>
-            )}
-            <h2 className="mt-1 type-heading text-base">{row ? row.name : "New project"}</h2>
-          </div>
-          {row && headerAction ? (
-            <div className="flex shrink-0 items-center gap-1.5">
-              {headerAction}
-              {closeButton}
-            </div>
-          ) : (
-            closeButton
-          )}
-        </div>
-        {form}
-      </aside>
-    );
-  }
-  const daysOverdue = row.overdue && row.dueDate ? DateFormat.daysBetween(row.dueDate, today) : 0;
   return (
     <aside
-      key="drawer-detail"
-      aria-label="Project detail"
+      aria-label={row ? "Project detail" : "New project"}
+      data-mode={editing ? "edit" : "view"}
       data-enter={entering || undefined}
       onAnimationEnd={(e) => e.target === e.currentTarget && onEntered?.()}
-      className="pb-drawer fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col gap-4 overflow-y-auto rounded-card border border-line bg-card px-6 py-5 shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
+      className="pb-drawer fixed top-[208px] right-6 bottom-6 z-20 flex w-[440px] flex-col overflow-hidden rounded-card border border-line bg-card shadow-[-16px_0_40px_rgba(0,0,0,.45)]"
     >
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <div className="text-muted type-caption">{ServiceAreaInfo.label(row.serviceArea, departments)} · Project detail</div>
-          <h2 className="mt-1 type-heading text-base">{row.name}</h2>
+      <div className="flex shrink-0 items-start justify-between gap-3 px-6 pt-5 pb-4">
+        <div className="min-w-0">
+          {row && (
+            <div className="flex items-center gap-2 text-muted type-caption">
+              <span>
+                {ServiceAreaInfo.label(row.serviceArea, departments)} · {editing ? "Edit project" : "Project detail"}
+              </span>
+              {editing && headerTag}
+            </div>
+          )}
+          <h2 className="mt-1 type-heading text-base">{row ? row.name : "New project"}</h2>
         </div>
-        {onEdit || headerAction ? (
+        {row && headerAction ? (
           <div className="flex shrink-0 items-center gap-1.5">
-            {onEdit && (
-              <button type="button" onClick={onEdit} className="pb-ghost h-7 rounded-[6px] px-2.5 text-muted type-table-strong hover:bg-input hover:text-fg">
-                Edit
-              </button>
-            )}
             {/* Brief sits directly left of the close button (placement spec 4). */}
             {headerAction}
             {closeButton}
@@ -1157,6 +1143,39 @@ export function ProjectDrawer({
           closeButton
         )}
       </div>
+      {form ? (
+        <>
+          {form({ previously: <PreviouslyLine text={history.timeline?.previously} />, trailing })}
+        </>
+      ) : row ? (
+        <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-5" data-testid="drawer-readonly">
+          <ReadOnlyDetails row={row} today={today} departments={departments} peopleEditor={peopleEditor} previously={history.timeline?.previously} />
+          {trailing}
+          {/* Admin controls at the bottom of the side panel, below History. */}
+          {adminControls}
+        </div>
+      ) : null}
+    </aside>
+  );
+}
+
+/** The read-only fields (non-admins and the Closed pages): what the detail panel showed. */
+function ReadOnlyDetails({
+  row,
+  today,
+  departments,
+  peopleEditor,
+  previously,
+}: {
+  row: DashboardRow;
+  today: string;
+  departments?: DepartmentList;
+  peopleEditor: ReactNode;
+  previously: string | null | undefined;
+}) {
+  const daysOverdue = row.overdue && row.dueDate ? DateFormat.daysBetween(row.dueDate, today) : 0;
+  return (
+    <>
       <div className="flex gap-1.5">
         <StatusPill status={row.status} />
         {(row.changed || row.overdue) && <Flags changed={row.changed} overdue={row.overdue} />}
@@ -1186,7 +1205,7 @@ export function ProjectDrawer({
         <dt className="text-muted">Infor number</dt>
         <dd>
           <span className="font-mono">{InforNumber.format(row.inforRequestNumber) ?? "–"}</span>
-          <PreviouslyLine text={history.timeline?.previously} />
+          <PreviouslyLine text={previously} />
         </dd>
         <dt className="text-muted">Next milestone</dt>
         <dd>
@@ -1235,8 +1254,6 @@ export function ProjectDrawer({
         </dd>
         <dt className="text-muted">Target completion</dt>
         <dd>{DateFormat.long(row.targetCompletion) ?? "–"}</dd>
-        <dt className="text-muted">% complete</dt>
-        <dd>{row.percentComplete ?? "–"}</dd>
         <dt className="text-muted">In report</dt>
         <dd>{row.includeInReport ? "Yes" : "No"}</dd>
       </dl>
@@ -1252,14 +1269,7 @@ export function ProjectDrawer({
           {row.note ?? <span className="text-muted">No note</span>}
         </p>
       </div>
-      {historyAction && <MilestoneStepsSection timeline={history.timeline} />}
-      {historyAction && <UpdateNotesSection key={`notes-${row.id}`} timeline={history.timeline} />}
-      {/* People and History are siblings: their project-specific keys must have distinct namespaces. */}
-      {historyAction && <ProjectHistorySection key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />}
-      {/* Admin controls at the bottom of the side panel, below History. */}
-      {adminControls}
-
-    </aside>
+    </>
   );
 }
 

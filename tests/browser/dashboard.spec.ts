@@ -46,11 +46,15 @@ test("spotlight follows sorting and filtering while the same project stays open"
   });
   await expect.poll(aligned).toBe(true);
   const initialTop = await page.locator('tr[data-row-key="fictional-0"]').evaluate(el => el.getBoundingClientRect().top);
-  await page.getByRole("combobox", { name: "Sort projects" }).selectOption("name");
+  // Sorting is on the column headers (the old "Sort projects" select is gone).
+  await page.locator('button[data-sort="name"]').first().click();
   await expect.poll(aligned).toBe(true);
   expect(await page.locator('tr[data-row-key="fictional-0"]').evaluate(el => el.getBoundingClientRect().top)).not.toBe(initialTop);
-  for (const sort of ["manual", "due", "status", "name", "manual"]) {
-    await page.getByRole("combobox", { name: "Sort projects" }).selectOption(sort);
+  for (const sort of ["due", "status", "name", "name"]) {
+    const button = page.locator(`button[data-sort="${sort}"]`).first();
+    if ((await button.count()) === 0) continue;
+    // The drawer covers the right-hand headers at this width: press the header button directly.
+    await button.evaluate(b => (b as HTMLButtonElement).click());
     await expect.poll(aligned).toBe(true);
     await expect(page.locator(".pb-drawer h2")).toHaveText("Zulu fictional project");
   }

@@ -112,7 +112,6 @@ export class ProjectFormModel {
     "inforRequestNumber",
     "nextMilestone",
     "dueDate",
-    "percentComplete",
     "note",
     "accomplishment",
     "description",
@@ -164,10 +163,8 @@ export class ProjectFormModel {
     if (v.inforRequestNumber !== undefined) out.inforRequestNumber = text(v.inforRequestNumber)?.trim() || null;
     if (v.nextMilestone !== undefined) out.nextMilestone = text(v.nextMilestone);
     if (v.dueDate !== undefined) out.dueDate = text(v.dueDate) || null;
-    if (v.percentComplete !== undefined) {
-      const t = String(v.percentComplete).trim();
-      out.percentComplete = t === "" ? null : (Number(t) as number);
-    }
+    // % complete is hidden in the drawer (CSV import and export still carry it): a drawer save never writes it,
+    // so a stored value is never nulled and no history row is written for it.
     if (v.note !== undefined) out.note = text(v.note);
     if (v.accomplishment !== undefined) out.accomplishment = text(v.accomplishment);
     if (v.description !== undefined) out.description = text(v.description);
@@ -177,10 +174,20 @@ export class ProjectFormModel {
     return out;
   }
 
-  /** Only the fields that differ from the original (what a save sends). */
+  /** Kept in the form values (stored data) but never shown in the drawer and never sent by a drawer save. */
+  static readonly HIDDEN_FIELDS: readonly FormField[] = ["percentComplete"];
+
+  /** Only the fields that differ from the original (what a save sends). Hidden fields are never included. */
   static changes(values: ProjectFormValues, original: ProjectFormValues): Partial<ProjectFormValues> {
     const out: Partial<ProjectFormValues> = {};
-    for (const f of Object.keys(values) as FormField[]) if (values[f] !== original[f]) out[f] = values[f];
+    for (const f of Object.keys(values) as FormField[]) if (!ProjectFormModel.HIDDEN_FIELDS.includes(f) && values[f] !== original[f]) out[f] = values[f];
+    return out;
+  }
+
+  /** New project: every field the drawer sends (the hidden ones left out). */
+  static visibleValues(values: ProjectFormValues): Partial<ProjectFormValues> {
+    const out: Partial<ProjectFormValues> = { ...values };
+    for (const f of ProjectFormModel.HIDDEN_FIELDS) delete out[f];
     return out;
   }
 
@@ -263,8 +270,7 @@ export class ProjectFormModel {
     if (ProjectStatusInfo.isValid(status) && !ProjectStatusInfo.milestoneOptional(status) && values.nextMilestone.trim() === "") {
       add("nextMilestone", "Next milestone is required for this status");
     }
-    const pct = values.percentComplete.trim();
-    if (pct !== "" && !(/^[0-9]{1,3}$/.test(pct) && Number(pct) <= 100)) add("percentComplete", "Enter a whole number from 0 to 100");
+    // % complete is hidden in the drawer and never sent, so it is not checked here.
     for (const [field, limit] of Object.entries(ProjectFormModel.HARD_LIMITS) as [FormField, number][]) {
       const edited = isNew || values[field] !== original[field];
       if (edited && values[field].trim().length > limit) add(field, `${ProjectFormModel.LABELS[field]} must be at most ${limit} characters`);

@@ -180,11 +180,27 @@ describe("ProjectService.saveForm", () => {
     );
     expect(fake.transactions - txBefore).toBe(1);
     const rows = fake.state.history.filter((r) => r.field !== "created");
-    expect(rows.map((r) => r.field).sort()).toEqual(["inforRequestNumber", "name", "note", "percentComplete", "status"]);
+    // % complete is hidden in the drawer: toInput drops it, so it is never written from the form.
+    expect(rows.map((r) => r.field).sort()).toEqual(["inforRequestNumber", "name", "note", "status"]);
     const entries = HistoryEntries.group(rows as never);
     expect(entries).toHaveLength(1);
     expect(entries[0].changedBy).toBe(Factory.ADMIN.email);
-    expect(entries[0].rows).toHaveLength(5);
+    expect(entries[0].rows).toHaveLength(4);
+  });
+
+  it("a drawer save leaves a stored % complete untouched and writes no history row for it", async () => {
+    const p = await ProjectService.create({ ...base, percentComplete: 60 }, actor, fake.asClient());
+    const original = ProjectFormModel.fromSource(p as never);
+    expect(original.percentComplete).toBe("60");
+    // Even a form whose hidden value differs (blank) sends nothing for it.
+    const changes = ProjectFormModel.changes({ ...original, percentComplete: "", note: "Bids came in high" }, original);
+    expect(changes).toEqual({ note: "Bids came in high" });
+    expect("percentComplete" in ProjectFormModel.visibleValues(ProjectFormModel.empty("2026-10-15"))).toBe(false);
+    await ProjectService.saveForm(p.id, ProjectFormModel.toInput({ ...changes, percentComplete: "" }), Factory.ADMIN, fake.asClient());
+    const stored = fake.state.projects.find((x) => x.id === p.id) as unknown as { percentComplete: number | null };
+    expect(stored.percentComplete).toBe(60);
+    expect(fake.state.history.filter((r) => r.field === "percentComplete")).toHaveLength(0);
+    expect(fake.state.history.filter((r) => r.field === "note")).toHaveLength(1);
   });
 
   it("a save with no changes writes nothing", async () => {
