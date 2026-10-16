@@ -59,14 +59,14 @@ describe("Admin edit panel", () => {
     const db = fake.asClient();
     const p = await ProjectService.create({ name: "P", serviceArea: "Cath", status: "OnTrack", nextMilestone: "M1" }, actor, db);
     expect(p.owner).toBeNull();
-    await ProjectService.setPeopleField(p.id, "owner", " Nicole Smith ", Factory.ADMIN, db);
+    await ProjectService.setPeopleField(p.id, "owner", " Noor Haddad ", Factory.ADMIN, db);
     await ProjectService.setPeopleField(p.id, "physicianChampion", "Dr. Sample A", Factory.ADMIN, db);
     await ProjectService.setPeopleField(p.id, "serviceArea", "EP", Factory.ADMIN, db);
-    await ProjectService.setPeopleField(p.id, "owner", "Nicole Smith", Factory.ADMIN, db); // unchanged: no-op
-    expect(fake.state.projects[0]).toMatchObject({ owner: "Nicole Smith", physicianChampion: "Dr. Sample A", serviceArea: "EP" });
+    await ProjectService.setPeopleField(p.id, "owner", "Noor Haddad", Factory.ADMIN, db); // unchanged: no-op
+    expect(fake.state.projects[0]).toMatchObject({ owner: "Noor Haddad", physicianChampion: "Dr. Sample A", serviceArea: "EP" });
     const fields = fake.state.history.filter((h) => h.projectId === p.id && h.field !== "created").map((h) => [h.field, h.newValue, h.changedBy]);
     expect(fields).toEqual([
-      ["owner", "Nicole Smith", Factory.ADMIN.email],
+      ["owner", "Noor Haddad", Factory.ADMIN.email],
       ["physicianChampion", "Dr. Sample A", Factory.ADMIN.email],
       ["serviceArea", "EP", Factory.ADMIN.email],
     ]);
@@ -115,7 +115,7 @@ describe("CSV: optional owner, department header, blank status", () => {
   it("imports without an owner column; blank status is On track; department is read as service_area (blank = Unassigned); owner_suggested is never read", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
-    const file = csv("department,name,status,next_milestone,owner_suggested", "Cath,Alpha,,Kickoff,Nicole Smith", ",Beta,,Kickoff,Nick Leary");
+    const file = csv("department,name,status,next_milestone,owner_suggested", "Cath,Alpha,,Kickoff,Noor Haddad", ",Beta,,Kickoff,Nick Leary");
     const preview = await ImportService.previewCreate(file, db);
     expect(preview.fileErrors).toEqual([]);
     expect(preview.fileWarnings.join(" ")).toMatch(/owner_suggested.*not imported/);

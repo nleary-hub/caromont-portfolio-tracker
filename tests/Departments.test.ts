@@ -342,8 +342,8 @@ describe("People (contracts leads) and Report contents", () => {
   });
 
   it("copy: remove confirm, empty state, and the Report contents pointer", () => {
-    expect(ContractsLeadRules.removeTitle("Jeff Krause")).toBe("Remove Jeff Krause from contracts leads?");
-    expect(ContractsLeadRules.removeBody("Jeff Krause", 2)).toBe("2 projects list Jeff Krause as contracts lead. They keep that name, but new projects won't offer it.");
+    expect(ContractsLeadRules.removeTitle("Jesse Okafor")).toBe("Remove Jesse Okafor from contracts leads?");
+    expect(ContractsLeadRules.removeBody("Jesse Okafor", 2)).toBe("2 projects list Jesse Okafor as contracts lead. They keep that name, but new projects won't offer it.");
     expect(ContractsLeadRules.EMPTY).toBe("No contracts leads yet. Add the people who handle contracts for this service line.");
     expect(ReportSettingsCopy.pointerText()).toBe("Contracts leads are now on the People page");
     expect(ReportSettingsCopy.POINTER_LINK).toBe("People");

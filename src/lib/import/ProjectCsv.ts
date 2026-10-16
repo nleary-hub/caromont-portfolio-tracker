@@ -119,7 +119,7 @@ export class ProjectCsv {
       service_area: "Cath",
       owner: "Example Owner A",
       requester: "Dr. Example A",
-      contracts_lead: "Shea Waldron",
+      contracts_lead: "Sam Delacroix",
       status: "On track",
       next_milestone: "Vendor kickoff call",
       due_date: "2026-10-15",

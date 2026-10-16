@@ -80,7 +80,7 @@ describe("PR #23 review fixes", () => {
 
   it("Figma Bro: People Remove uses the same solid red danger button", async () => {
     const { PeopleAdmin } = await import("@/components/PeopleAdmin");
-    const html = renderToStaticMarkup(createElement(PeopleAdmin, { lineShort: "CVPSL", leads: [{ name: "Jeff Krause", projects: 2 }] as never, initial: { remove: "Jeff Krause" } }));
+    const html = renderToStaticMarkup(createElement(PeopleAdmin, { lineShort: "CVPSL", leads: [{ name: "Jesse Okafor", projects: 2 }] as never, initial: { remove: "Jesse Okafor" } }));
     const btn = html.match(/<button[^>]*>Remove<\/button>/)?.[0] ?? "";
     expect(btn).toContain(AdminButtonStyles.DANGER);
     expect(btn).not.toContain('disabled=""');

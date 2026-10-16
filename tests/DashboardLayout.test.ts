@@ -94,10 +94,10 @@ describe("People cell display rules", () => {
   const texts = (row: Parameters<typeof PeopleStack.lines>[0], show = ALL) => PeopleStack.lines(row, show).map((l) => [l.kind, `${l.label} ${l.text}`, l.muted]);
 
   it("labeled Owner, Requester, Contracts lines in PDF order; blank reads To assign (muted)", () => {
-    expect(texts({ owner: "Nick Leary", physicianChampion: "Dr. A", contractsLead: "Shea Waldron" })).toEqual([
+    expect(texts({ owner: "Nick Leary", physicianChampion: "Dr. A", contractsLead: "Sam Delacroix" })).toEqual([
       ["owner", "Owner: Nick Leary", false],
       ["requester", "Requester: Dr. A", false],
-      ["contracts", "Contracts: Shea Waldron", false],
+      ["contracts", "Contracts: Sam Delacroix", false],
     ]);
     expect(texts({ owner: null, physicianChampion: " ", contractsLead: null })).toEqual([
       ["owner", "Owner: To assign", true],
@@ -113,13 +113,13 @@ describe("People cell display rules", () => {
   });
 
   it("owner is primary (label 400, name 600); requester and contracts are 400 secondary; every line wraps at word boundaries, never truncated", () => {
-    const html = renderToStaticMarkup(createElement(PeopleCell, { lines: PeopleStack.lines({ owner: "Owner A", physicianChampion: "Dr. Very Long Name", contractsLead: "Jeff Krause" }, ALL) }));
+    const html = renderToStaticMarkup(createElement(PeopleCell, { lines: PeopleStack.lines({ owner: "Owner A", physicianChampion: "Dr. Very Long Name", contractsLead: "Jesse Okafor" }, ALL) }));
     expect(html).toContain('<span class="font-normal text-fg">Owner: </span>');
     expect(html).toContain('<span title="Owner A" class="font-semibold text-fg">Owner A</span>');
     expect(html).toContain('<span class="font-normal text-muted">Requester: </span>');
     expect(html).toContain('<span title="Dr. Very Long Name" class="font-normal text-muted">Dr. Very Long Name</span>');
     expect(html).toContain('<span class="font-normal text-muted">Contracts: </span>');
-    expect(html).toContain('<span title="Jeff Krause" class="font-normal text-muted">Jeff Krause</span>');
+    expect(html).toContain('<span title="Jesse Okafor" class="font-normal text-muted">Jesse Okafor</span>');
     expect(html).not.toContain("font-medium");
     expect(html).not.toMatch(/truncate|ellipsis|whitespace-nowrap/);
     expect(html.match(/class="min-w-0 whitespace-normal break-words"/g)).toHaveLength(3);

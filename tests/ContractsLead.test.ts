@@ -109,19 +109,19 @@ describe("ContractsLead", () => {
 
   it("report: third line under owner and requester; To assign when blank; hidden column removes it", () => {
     const settings = ViewSettings.defaults("report");
-    const row: ReportRow = { ...SampleReportData.rows()[0], contractsLead: "Jeff Krause" };
+    const row: ReportRow = { ...SampleReportData.rows()[0], contractsLead: "Jesse Okafor" };
     const cell = (s: typeof settings, r = row) =>
       ReportLayout.rowLayout(m, r, s, SampleReportData.REPORT_DATE).cells.find((c): c is OwnerCell => c.kind === "owner")!;
     const shown = cell(settings);
     expect(shown.contracts?.lines[0].prefix).toBe("Contracts: ");
-    expect(shown.contracts?.lines.map((l) => l.text).join(" ")).toBe("Jeff Krause");
+    expect(shown.contracts?.lines.map((l) => l.text).join(" ")).toBe("Jesse Okafor");
     const blank = cell(settings, { ...row, contractsLead: null });
     expect(blank.contracts?.missing).toBe(true);
     expect(blank.contracts?.lines.map((l) => l.text).join(" ")).toBe("To assign");
     // Requester Not applicable: its line is dropped and the Contracts line moves up under the owner.
     const na = cell(settings, { ...row, physicianChampion: null, requesterNotApplicable: true });
     expect(na.champion).toBeNull();
-    expect(na.contracts?.lines[0].text).toBe("Jeff Krause");
+    expect(na.contracts?.lines[0].text).toBe("Jesse Okafor");
     const hidden = ViewSettings.normalize("report", { ...settings, hiddenColumns: ["contractsLead"] });
     expect(cell(hidden).contracts).toBeNull();
     const hRow = ReportLayout.rowLayout(m, row, hidden, SampleReportData.REPORT_DATE).height;
@@ -137,7 +137,7 @@ describe("ContractsLead", () => {
     expect(ownerColumn.w - ReportGeometry.CELL_PAD_R - longest).toBeGreaterThan(8);
     const people = ReportLayout.rowLayout(
       m,
-      { ...row, owner: "Nicole Smith", physicianChampion: "Mellisa Gonzales", contractsLead: "Mellisa Gonzales" },
+      { ...row, owner: "Noor Haddad", physicianChampion: "Morgan Ellsworth", contractsLead: "Morgan Ellsworth" },
       settings,
       SampleReportData.REPORT_DATE,
     ).cells.find((x): x is OwnerCell => x.kind === "owner")!;
@@ -148,8 +148,8 @@ describe("ContractsLead", () => {
       expect(c.contracts?.lines, String(lead)).toHaveLength(1);
       expect(c.contracts?.lines[0].text).toBe(lead ?? "To assign");
     }
-    const narrow = ReportLayout.contractsLine(m, "Mellisa Gonzales", 66);
-    expect(narrow.lines.map((l) => l.text).join(" ")).toBe("Mellisa Gonzales");
+    const narrow = ReportLayout.contractsLine(m, "Morgan Ellsworth", 66);
+    expect(narrow.lines.map((l) => l.text).join(" ")).toBe("Morgan Ellsworth");
     for (const l of narrow.lines) expect(l.text).not.toContain("\u2026");
   });
 });

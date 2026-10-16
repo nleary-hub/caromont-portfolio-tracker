@@ -24,12 +24,12 @@ describe("People labels", () => {
   it("PDF: labels sit before the names, the owner name wraps after its label at 600 (never cut), the label is never cut", () => {
     const S = ReportGeometry.SIZE;
     const base = SampleReportData.rows()[0];
-    const c = cell({ ...base, owner: "Owner D", physicianChampion: "Dr. Sample K", contractsLead: "Mellisa Gonzales" });
+    const c = cell({ ...base, owner: "Owner D", physicianChampion: "Dr. Sample K", contractsLead: "Morgan Ellsworth" });
     expect(c.ownerLabelW).toBeCloseTo(m.width("Owner: ", S.table, 400), 5);
     expect(c.championLabelW).toBeCloseTo(m.width("Requester: ", S.small, 400), 5);
     expect(c.owner).toBe("Owner D");
     expect(c.champion).toBe("Dr. Sample K");
-    expect(c.contracts?.lines).toEqual([{ prefix: "Contracts: ", text: "Mellisa Gonzales" }]);
+    expect(c.contracts?.lines).toEqual([{ prefix: "Contracts: ", text: "Morgan Ellsworth" }]);
     expect(ReportLayout.OWNER_NAME_WEIGHT).toBe(600);
     expect(ReportLayout.CONTRACTS_PREFIX_WEIGHT).toBe(400);
     const long = cell({ ...base, owner: "Bartholomew Featherstonehaugh-Worthington" });
