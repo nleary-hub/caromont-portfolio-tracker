@@ -438,7 +438,7 @@ export class ProjectService {
    */
   static async saveForm(
     id: string,
-    values: Partial<ProjectInput>,
+    values: Partial<ProjectInput> & { isMfi?: boolean },
     admin: Viewer,
     db: PrismaClient = Db.client,
     milestones?: MilestoneEdit | null,
@@ -479,6 +479,11 @@ export class ProjectService {
       }
       if (startErrors.length) throw new ProjectValidationError({ startDate: startErrors });
       project = await ProjectService.applyCompletion(tx, existing, project, checklist, actor, at);
+      // MFI flag (migration 0052): its own column write and history row, same timestamp and author as the save.
+      if (typeof values.isMfi === "boolean" && values.isMfi !== Boolean(existing.isMfi)) {
+        project = ProjectRows.fromDb(await tx.project.update({ where: { id }, data: { isMfi: values.isMfi, updatedBy: actor.changedBy } }));
+        await ProjectService.writeHistory(tx, id, [{ field: "isMfi", oldValue: String(Boolean(existing.isMfi)), newValue: String(values.isMfi) }], actor, at);
+      }
       return startDate === undefined ? project : ProjectService.applyStartDate(tx, id, startDate, actor, at);
     });
   }

@@ -30,9 +30,14 @@ export interface ProjectFormValues {
   completedOn: string;
   /** YYYY-MM-DD (America/New_York day). New project: pre-filled with today. */
   startDate: string;
+  /** Major Facility Investment checkbox: "true" or "false" (migration 0052). Admin only. */
+  isMfi: string;
 }
 
-export type FormField = keyof ProjectFormValues;
+/** Fields with text inputs and field errors (the MFI checkbox has neither). */
+export type FormField = Exclude<keyof ProjectFormValues, "isMfi">;
+
+const ProjectFormModel_MFI_LABEL = "Major Facility Investment (MFI)";
 
 /** The stored fields the form reads (a DB project or an admin form snapshot). */
 export interface ProjectFormSource {
@@ -49,6 +54,8 @@ export interface ProjectFormSource {
   completedOn: Date | string | null;
   /** Absent on sources read without it (the form then starts blank). */
   startDate?: Date | string | null;
+  /** Absent on sources read without it (unchecked). */
+  isMfi?: boolean;
 }
 
 export interface FieldCounter {
@@ -93,6 +100,9 @@ export class ProjectFormModel {
   static readonly AUTOSAVE_IDLE = "Changes save automatically";
   static readonly AUTOSAVE_SAVING = "Saving…";
   static readonly AUTOSAVE_SAVED = "Saved";
+  static readonly MFI_LABEL = ProjectFormModel_MFI_LABEL;
+  /** App chip text (the PDF badge adds a diamond). */
+  static readonly MFI_CHIP = "MFI";
   static readonly AUTOSAVE_BLOCKED = "Fix the highlighted fields to save.";
   /** A save that failed for any reason other than field validation (network, server). */
   static readonly AUTOSAVE_FAILED = "Couldn't save your change. Check your connection and try again.";
@@ -142,6 +152,7 @@ export class ProjectFormModel {
       description: "",
       completedOn: "",
       startDate: today,
+      isMfi: "false",
     };
   }
 
@@ -160,12 +171,13 @@ export class ProjectFormModel {
       description: p.description ?? "",
       completedOn: date(p.completedOn),
       startDate: date(p.startDate ?? null),
+      isMfi: p.isMfi ? "true" : "false",
     };
   }
 
   /** Server side: form strings to validator input (blank = null; the validator trims and checks). */
-  static toInput(v: Partial<ProjectFormValues>): Partial<ProjectInput> {
-    const out: Partial<ProjectInput> = {};
+  static toInput(v: Partial<ProjectFormValues>): Partial<ProjectInput> & { isMfi?: boolean } {
+    const out: Partial<ProjectInput> & { isMfi?: boolean } = {};
     const text = (s: string | undefined) => (s === undefined ? undefined : String(s));
     if (v.name !== undefined) out.name = String(v.name);
     if (v.serviceArea !== undefined) out.serviceArea = text(v.serviceArea) || null;
@@ -181,6 +193,7 @@ export class ProjectFormModel {
     if (v.completedOn !== undefined) out.completedOn = text(v.completedOn) || null;
     // Blank stays "" so the server reports "Start date is required." (it is never the import default from a form).
     if (v.startDate !== undefined) out.startDate = String(v.startDate).trim();
+    if (v.isMfi !== undefined) out.isMfi = String(v.isMfi) === "true";
     return out;
   }
 
@@ -190,7 +203,7 @@ export class ProjectFormModel {
   /** Only the fields that differ from the original (what a save sends). Hidden fields are never included. */
   static changes(values: ProjectFormValues, original: ProjectFormValues): Partial<ProjectFormValues> {
     const out: Partial<ProjectFormValues> = {};
-    for (const f of Object.keys(values) as FormField[]) if (!ProjectFormModel.HIDDEN_FIELDS.includes(f) && values[f] !== original[f]) out[f] = values[f];
+    for (const f of Object.keys(values) as (keyof ProjectFormValues)[]) if (!(ProjectFormModel.HIDDEN_FIELDS as readonly string[]).includes(f) && values[f] !== original[f]) out[f] = values[f];
     return out;
   }
 

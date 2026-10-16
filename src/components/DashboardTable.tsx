@@ -1,5 +1,6 @@
 "use client";
 
+import { MfiChip } from "./MfiChip";
 import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import {
@@ -731,6 +732,7 @@ function ProjectRow({
                 {/* The full name wraps between words (a single over-long word breaks anywhere, no hyphens); the row grows. */}
                 <div data-part="project-name" className={NAME_WRAP}>
                   <Highlight text={row.name} query={search} />
+                  {row.isMfi && <MfiChip />}
                 </div>
                 {renderMeta(row)}
                 {changedCue && (

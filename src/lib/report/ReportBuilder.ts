@@ -273,6 +273,8 @@ export class ReportBuilder {
       stale: details.stale ?? false,
       // Only on rows completed during the period, so every other row's JSON is exactly as before.
       ...(details.completedInPeriod ? { completedInPeriod: true as const } : {}),
+      // Only on MFI rows, so every other row's JSON is exactly as before.
+      ...(project.isMfi ? { isMfi: true as const } : {}),
     };
   }
 
