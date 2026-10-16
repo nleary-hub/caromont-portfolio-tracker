@@ -13,7 +13,7 @@ export class AiTemplateCopy {
   static readonly PROMPT_LABEL = "What should the AI do?";
   static readonly DRAFT = "Draft";
   static readonly PROPOSE = "Suggest changes";
-  static readonly LOADING = "The AI is working on it";
+  static readonly LOADING = "Working on your suggestions…";
   static readonly REVIEW_HELP = "Review each change. Nothing is saved until you apply.";
   static readonly DEFAULT_NAME = "New template";
 
@@ -48,14 +48,14 @@ export class AiTemplateCopy {
     return `Same name as #${pos}. It can't be applied.`;
   }
   static issueTooMany(max: number): string {
-    return `A template can have at most ${max} milestones. Skip some lines first.`;
+    return `A template can have at most ${max} milestones. Skip some milestones first.`;
   }
-  static readonly INVALID_FLAGGED = "Flagged lines can't be applied. Skip them or try again.";
-  static readonly FINAL_INVALID = "These choices would leave a blank, too long or duplicate name. Change your choices and try again.";
+  static readonly INVALID_FLAGGED = "Flagged milestones can't be applied. Skip them or try again.";
+  static readonly FINAL_INVALID = "These choices would leave a name blank, too long or duplicated. Change your choices and try again.";
 
   // Errors (red alert box).
   static readonly EMPTY_DRAFT = "The AI didn't suggest any milestones. Nothing was changed. Try describing the template another way.";
   static readonly NO_CHANGES = "The AI found no changes to suggest. Nothing was changed.";
   static readonly TEMPLATE_CHANGED = "This template changed since the AI read it. Nothing was saved. Close and try again.";
-  static readonly APPLY_FAILED = "The changes couldn't be saved. Reload the page to see what was stored.";
+  static readonly APPLY_FAILED = "The changes couldn't be saved. Nothing was changed. Try again.";
 }

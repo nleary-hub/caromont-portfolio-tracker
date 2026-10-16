@@ -57,6 +57,10 @@ test("read-only hides both AI buttons; model off pauses them", async ({ page }) 
   await open(page, "&readonly=1");
   await expect(page.getByTestId("ai-template-draft")).toHaveCount(0);
   await expect(page.getByTestId("ai-template-edit")).toHaveCount(0);
+  for (const name of ["+ New template", "Delete template", "Add"]) await expect(page.getByRole("button", { name, exact: true })).toHaveCount(0);
+  await expect(page.locator("[data-handle-id]")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^(Rename|Delete) step / })).toHaveCount(0);
+  await expect(page.getByLabel("New step name")).toHaveCount(0);
   await open(page, "&model=off");
   await expect(page.getByTestId("ai-template-draft")).toHaveAttribute("aria-disabled", "true");
   await page.getByTestId("ai-template-draft").click({ force: true });

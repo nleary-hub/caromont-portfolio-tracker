@@ -162,6 +162,7 @@ export function TemplatesEditor({
   return (
     <div className="flex flex-col gap-4" data-testid="templates-editor">
       <div className="flex items-center justify-end">
+        {!readOnly && (
         <button
           type="button"
           onClick={() =>
@@ -174,6 +175,7 @@ export function TemplatesEditor({
         >
           + New template
         </button>
+        )}
         {showAi && (
           <span className="ml-2">
             <AiTemplateButton
@@ -217,7 +219,7 @@ export function TemplatesEditor({
                 }}
                 className={`flex items-center gap-2 rounded-control px-2 py-2.5 ${t.id === selectedId ? "bg-row-selected shadow-[inset_2px_0_0_var(--dark-accent)]" : "hover:bg-input"}`}
               >
-                {handle(
+                {!readOnly && handle(
                   t.id,
                   t.name,
                   (key) => keyMove("templates", i, templates.length, key, t.id),
@@ -245,9 +247,11 @@ export function TemplatesEditor({
               </li>
             ))}
           </ol>
-          <p className="px-2.5 pt-2 pb-1 text-muted type-caption">
-            Drag to set the order of the Apply template list.
-          </p>
+          {!readOnly && (
+            <p className="px-2.5 pt-2 pb-1 text-muted type-caption">
+              Drag to set the order of the Apply template list.
+            </p>
+          )}
         </section>
 
         <section
@@ -264,6 +268,7 @@ export function TemplatesEditor({
                   key={`name-${selected.id}-${selected.name}`}
                   defaultValue={selected.name}
                   maxLength={MilestoneRules.TEMPLATE_NAME_MAX}
+                  readOnly={readOnly}
                   className={`${INPUT} max-w-[320px] type-heading`}
                   onBlur={(e) =>
                     e.target.value.trim() !== selected.name &&
@@ -274,7 +279,7 @@ export function TemplatesEditor({
                   }
                 />
                 <span className="flex-1 text-muted type-caption">
-                  Click the name to rename
+                  {readOnly ? "" : "Click the name to rename"}
                 </span>
                 {showAi && (
                   <AiTemplateButton
@@ -285,7 +290,7 @@ export function TemplatesEditor({
                     testId="ai-template-edit"
                   />
                 )}
-                {!confirmDelete && (
+                {!readOnly && !confirmDelete && (
                   <button
                     type="button"
                     onClick={() => setConfirmDelete(true)}
@@ -351,7 +356,7 @@ export function TemplatesEditor({
                     }}
                     className="flex h-9 items-center gap-2.5 border-b border-line px-2.5"
                   >
-                    {handle(
+                    {!readOnly && handle(
                       it.id,
                       it.name,
                       (key) =>
@@ -367,6 +372,7 @@ export function TemplatesEditor({
                       defaultValue={it.name}
                       maxLength={MilestoneRules.TEMPLATE_STEP_MAX}
                       aria-label={`Step ${i + 1} name`}
+                      readOnly={readOnly}
                       className="h-7 min-w-0 flex-1 rounded-control border border-transparent bg-transparent px-1.5 text-fg type-table hover:border-line focus:border-accent focus:bg-input focus:outline-none"
                       onFocus={(e) =>
                         setRenaming({
@@ -390,7 +396,7 @@ export function TemplatesEditor({
                         (e.target as HTMLInputElement).blur()
                       }
                     />
-                    {renaming?.id === it.id ? (
+                    {readOnly ? null : renaming?.id === it.id ? (
                       <span
                         className="shrink-0 tabular-nums text-muted type-caption"
                         data-testid="template-rename-counter"
@@ -409,17 +415,18 @@ export function TemplatesEditor({
                         Edit
                       </button>
                     )}
-                    <button
+                    {!readOnly && <button
                       type="button"
                       aria-label={`Delete step ${it.name}`}
                       onClick={() => run(deleteTemplateItem(it.id))}
                       className="flex h-[22px] w-6 shrink-0 items-center justify-center rounded-control text-muted hover:bg-input hover:text-danger"
                     >
                       &times;
-                    </button>
+                    </button>}
                   </li>
                 ))}
               </ol>
+              {!readOnly && (
               <div className="flex items-center gap-2">
                 <input
                   value={newStep}
@@ -453,11 +460,14 @@ export function TemplatesEditor({
                   Add
                 </button>
               </div>
+              )}
+              {!readOnly && (
               <p className="text-muted type-caption">
                 Drag &#x22EE;&#x22EE; to reorder (or focus it and use the arrow
                 keys). Changes save automatically and are recorded in the change
                 log.
               </p>
+              )}
             </>
           )}
           {status && (

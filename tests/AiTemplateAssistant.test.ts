@@ -325,6 +325,28 @@ describe("Template AI: review UI", () => {
     expect(html({ aiNote: AiToolsCopy.MODEL_OFF_NOTE })).toContain('aria-disabled="true"');
   });
 
+  it("read-only is truly read-only: no New template, Delete template, drag handles, Edit, delete step or add field", () => {
+    const ro = renderToStaticMarkup(createElement(TemplatesEditor, { initial: [TPL], aiNote: null, readOnly: true }));
+    const rw = renderToStaticMarkup(createElement(TemplatesEditor, { initial: [TPL], aiNote: null }));
+    for (const s of ["+ New template", "Delete template", "Reorder ", "Rename step ", "Delete step ", "Add a milestone and press Enter"]) {
+      expect(rw).toContain(s);
+      expect(ro).not.toContain(s);
+    }
+    expect(ro).toContain("Site lease signed");
+    expect(ro).toMatch(/aria-label="Step 1 name"[^>]*readOnly=""|readOnly=""[^>]*aria-label="Step 1 name"/);
+  });
+
+  it("history: AI rows use only existing action values, keep every existing newValue key, and add applyId and source; no CHECK narrows newValue", () => {
+    const meta = { applyId: "00000000-0000-4000-8000-000000000001", source: "ai" as const };
+    expect(MilestoneTemplateService.tagged({ name: "A", position: 2 }, meta)).toEqual({ name: "A", position: 2, ...meta });
+    expect(MilestoneTemplateService.tagged(["A", "B"], meta)).toEqual({ value: ["A", "B"], ...meta });
+    expect(MilestoneTemplateService.tagged(null, meta)).toEqual(meta);
+    expect(MilestoneTemplateService.tagged({ name: "A" }, undefined)).toEqual({ name: "A" });
+    const sql = readFileSync("prisma/migrations/0015_milestone_checklist/migration.sql", "utf8");
+    expect(sql).toContain('"newValue" JSONB,');
+    expect(sql).not.toMatch(/CHECK\s*\([^)]*newValue/);
+  });
+
   it("no em dashes in the copy", () => {
     expect(readFileSync("src/lib/ai/AiTemplateCopy.ts", "utf8")).not.toMatch(/\u2014/);
   });
