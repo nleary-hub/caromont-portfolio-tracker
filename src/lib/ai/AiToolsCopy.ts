@@ -18,6 +18,7 @@ export class AiToolsCopy {
     meeting_brief: "Pre-meeting brief",
     related_links: "Related-project links",
     voice_chat: "Voice chat",
+    template_ai: "Template AI assistant",
   };
 
 
