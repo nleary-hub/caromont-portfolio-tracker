@@ -3,9 +3,9 @@
 import { useActionState, useState, useTransition } from "react";
 import { clearAiKey, saveAiSettings, testAiConnection, type AiSettingsFormState, type AiTestResult } from "@/app/actions/ai";
 import { AiAlert } from "@/components/AiNoteAssistant";
+import { ModelField, Field } from "@/components/AiModelPicker";
 import { useOpenAiModelList, type OpenAiListState } from "@/components/useOpenAiModelList";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
-import { AiModelKinds } from "@/lib/ai/AiModelKinds";
 import { AiProviders, type AiProviderId } from "@/lib/ai/AiProviders";
 import type { AiSettingsView } from "@/lib/services/AiSettingsService";
 
@@ -54,6 +54,12 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
 
   return (
     <div className="flex flex-col gap-4">
+      {/* OpenAI's model list failed: said once here for every picker on the page; each picker keeps its typed-ID field. */}
+      {openAi.list?.ok === false && (
+        <AiAlert tone="danger" testId="ai-model-list-failed">
+          {C.MODEL_PICKER_LIST_FAILED}
+        </AiAlert>
+      )}
       <form action={action} className="flex flex-col gap-4" data-testid="ai-settings-form">
         <input type="hidden" name="enabled" value={enabled ? "true" : "false"} />
         {/* On/off */}
@@ -224,136 +230,4 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
   );
 }
 
-/**
- * A model picker. Options: the chat models on under Models, plus the chat models OpenAI lists for the saved key (Show
- * OpenAI models, the same /v1/models source as the Models panel, #63). Listed models that are off say so: picking one
- * is allowed, but saving or testing it is refused until an admin turns it on (nothing is turned on here). When the list
- * can't load, a text box takes a typed model ID. `name` posts the choice in a form; `onChange` reports it.
- */
-export function ModelField({
-  value,
-  error,
-  disabled,
-  options = [],
-  defaultOpen = false,
-  id = "ai-model",
-  name = "model",
-  label = C.MODEL_LABEL,
-  help = C.MODEL_HELP,
-  list = null,
-  listLoading = false,
-  onLoadList,
-  onChange,
-}: {
-  value: string;
-  error?: string;
-  disabled?: boolean;
-  options?: readonly string[];
-  defaultOpen?: boolean;
-  id?: string;
-  name?: string | null;
-  label?: string;
-  help?: string;
-  list?: OpenAiListState;
-  listLoading?: boolean;
-  onLoadList?: () => void;
-  onChange?: (model: string) => void;
-}) {
-  const [model, setModel] = useState(value);
-  const [open, setOpen] = useState(defaultOpen);
-  const on = new Set(options);
-  const listed = list?.ok ? list.models.filter((m) => m.kind === "chat").map((m) => m.id) : [];
-  const all = [...new Set([...options, ...listed])];
-  const manual = list?.ok === false;
-  const set = (m: string) => {
-    setModel(m);
-    onChange?.(m);
-  };
-  const pick = (m: string) => {
-    set(m);
-    setOpen(false);
-  };
-  const listId = `${id}-list`;
-  return (
-    <Field id={id} label={label} error={error} help={help}>
-      {name && <input type="hidden" name={name} value={model} />}
-      <div className="relative">
-        <button
-          type="button"
-          id={id}
-          role="combobox"
-          aria-invalid={Boolean(error) || undefined}
-          className={`${INPUT} flex items-center justify-between text-left`}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={listId}
-          aria-describedby={error ? `${id}-error` : `${id}-help`}
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setOpen(false);
-          }}
-          data-testid={`${id}-picker`}
-        >
-          <span className={model ? "text-fg" : "text-muted"}>{model || C.MODEL_PICKER_PLACEHOLDER}</span>
-          <span aria-hidden className="text-muted">▾</span>
-        </button>
-        {open && (
-          <ul id={listId} role="listbox" aria-label={label} className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-control border border-line bg-input py-1 shadow-[0_12px_32px_rgba(0,0,0,.55)]" data-testid={`${id}-list`} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
-            {all.length === 0 && <li className="px-2.5 py-1.5 text-muted type-caption">{C.MODEL_PICKER_EMPTY}</li>}
-            {all.map((m) => (
-              <li key={m} role="option" aria-selected={m === model}>
-                <button type="button" className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left type-table hover:bg-input ${m === model ? "text-accent" : "text-fg"} ${FOCUS}`} onClick={() => pick(m)}>
-                  <span className="min-w-0 truncate">{m}</span>
-                  {!on.has(m) && <span className="shrink-0 text-muted type-caption">{C.MODEL_PICKER_OFF}</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      {onLoadList && (
-        <div className="flex items-center gap-2">
-          <button type="button" className={GHOST} onClick={onLoadList} disabled={disabled || listLoading} data-testid={`${id}-load-list`}>
-            {listLoading ? C.MODEL_LIST_LOADING : C.MODEL_LIST_LOAD}
-          </button>
-          {list?.ok && <span className="text-muted type-caption">{`${listed.length} ${AiModelKinds.label("chat").toLowerCase()} models listed`}</span>}
-        </div>
-      )}
-      {manual && (
-        <div className="flex flex-col gap-1" data-testid={`${id}-manual`}>
-          <AiAlert tone="danger" testId={`${id}-list-failed`}>
-            {C.MODEL_PICKER_LIST_FAILED}
-          </AiAlert>
-          <label htmlFor={`${id}-manual-input`} className="text-muted type-caption">
-            {C.MODEL_PICKER_MANUAL_LABEL}
-          </label>
-          <input id={`${id}-manual-input`} className={INPUT} value={model} onChange={(e) => set(e.target.value)} placeholder={C.MODEL_ADD_PLACEHOLDER} maxLength={100} autoComplete="off" spellCheck={false} disabled={disabled} />
-        </div>
-      )}
-    </Field>
-  );
-}
-
-function Field({ id, label, error, help, children }: { id: string; label: string; error?: string; help?: string; children: React.ReactNode }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-1">
-      <label htmlFor={id} className="text-muted type-caption">
-        {label}
-      </label>
-      {children}
-      {/* Error: the red alert box from the editor (#50); help: the grey hint. Both carry the id the input's aria-describedby names. */}
-      {error ? (
-        <div id={`${id}-error`}>
-          <AiAlert tone="danger" testId={`${id}-error`}>
-            {error}
-          </AiAlert>
-        </div>
-      ) : help ? (
-        <p id={`${id}-help`} className="text-muted type-caption">
-          {help}
-        </p>
-      ) : null}
-    </div>
-  );
-}
+export { ModelField };

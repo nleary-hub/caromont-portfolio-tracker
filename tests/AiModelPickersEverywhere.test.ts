@@ -103,12 +103,13 @@ describe("pickers read OpenAI's list, with manual entry when it fails", () => {
     expect(html).toContain('name="model"');
   });
 
-  it("list failure shows the manual-entry box", async () => {
+  it("list failure shows the plain typed-ID field (the error itself is shown once, at the top of the card)", async () => {
     const { ModelField } = await import("@/components/AiSettingsForm");
     const html = renderToStaticMarkup(createElement(ModelField, { value: "", list: { ok: false, error: AiCopy.MODEL_CHECK_FAILED }, onLoadList: () => {} }));
     expect(html).toContain('data-testid="ai-model-manual"');
     expect(html).toContain('id="ai-model-manual-input"');
     expect(html).toContain(AiCopy.MODEL_PICKER_MANUAL_LABEL);
+    expect(html).not.toContain(AiCopy.MODEL_PICKER_LIST_FAILED);
   });
 
   it("the test connection section has its own picker, starting empty, and posts no form field", async () => {
@@ -137,17 +138,19 @@ describe("voice chat picker: OpenAI's realtime list, no built-in voice model", (
     for (const f of walk(path.join(ROOT, "src")).filter((f) => !f.includes(`${path.sep}generated${path.sep}`))) expect(readFileSync(f, "utf8"), f).not.toMatch(/gpt-live-1/);
   });
 
-  it("the voice picker lists OpenAI's realtime models (off ones marked) and falls back to a typed ID", async () => {
+  it("the voice picker is the custom dropdown with OpenAI's realtime models (off ones greyed whole) and a typed-ID field on failure", async () => {
     const { AiFeaturesPanel } = await import("@/components/AiModelsPanel");
     const v = { feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE", ownModel: true, model: null };
     const list = { ok: true as const, models: [{ id: "gpt-example-realtime", kind: "realtime" as const }, { id: "gpt-example-realtime-mini", kind: "realtime" as const }, { id: "gpt-example-mini", kind: "chat" as const }] };
     const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: [v as never], dbReady: true, modelOptions: { realtime: ["gpt-example-realtime"] }, initialList: list }));
-    expect(html).toContain('<option value="gpt-example-realtime">gpt-example-realtime</option>');
-    expect(html).toContain(`<option value="gpt-example-realtime-mini">gpt-example-realtime-mini (${AiCopy.MODEL_PICKER_OFF.toLowerCase()})</option>`);
-    expect(html).not.toContain('value="gpt-example-mini"');
+    expect(html).not.toContain("<select");
+    expect(html).toContain('data-testid="ai-feature-voice_chat-model-picker"');
+    expect(html).toContain('role="combobox"');
     const failed = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: [v as never], dbReady: true, initialList: { ok: false, error: AiCopy.MODEL_CHECK_FAILED } }));
-    expect(failed).toContain('id="ai-feature-voice_chat-manual-input"');
-    expect(failed).toContain(AiCopy.MODEL_PICKER_USE);
+    expect(failed).toContain('id="ai-feature-voice_chat-model-manual-input"');
+    expect(failed).toContain(AiCopy.MODEL_PICKER_MANUAL_LABEL);
+    expect(failed).not.toContain(AiCopy.MODEL_PICKER_LIST_FAILED);
+    expect(failed).not.toMatch(/<button[^>]*manual-use/);
   });
 });
 

@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { AiSettingsForm } from "../../src/components/AiSettingsForm";
 import { AiFeaturesPanel } from "../../src/components/AiModelsPanel";
+import { OpenAiModelListProvider } from "../../src/components/useOpenAiModelList";
 import { ProjectDashboard, type AdminDashboardProps } from "../../src/components/ProjectDashboard";
 import { ServiceLine } from "../../src/lib/domain/ServiceLine";
 import { ViewSettings } from "../../src/lib/domain/ViewSettings";
@@ -60,10 +61,12 @@ const aiList = aiMode === "failed" ? { ok: false as const, error: "fictional fai
   { id: "gpt-example-realtime", kind: "realtime" as const }, { id: "gpt-example-realtime-mini", kind: "realtime" as const }, { id: "gpt-example-transcribe", kind: "transcription" as const }] };
 const aiView = { baseUrl: "", azureEndpoint: "", azureDeployment: "", encryption: { ready: true, problem: null }, modelOff: false, enabled: true, ready: true, provider: "openai" as const, model: "gpt-example-mini", key: { set: true, readable: true, last4: "WXYZ", setAt: null, setBy: null } };
 createRoot(document.getElementById("root")!).render(aiMode ? (
+  <OpenAiModelListProvider initial={aiList}>
   <main className="pb-page mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-6">
-    <section className="relative z-20 flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiSettingsForm view={aiView as never} keySavedLine={null} dbReady modelOptions={["gpt-example-mini"]} initialList={aiList} /></section>
-    <section className="flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiFeaturesPanel dbReady features={[{ feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE_CHAT", ownModel: true, model: null } as never]} modelOptions={{ realtime: ["gpt-example-realtime"] }} initialList={aiList} /></section>
+    <section className="relative z-20 flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiSettingsForm view={aiView as never} keySavedLine={null} dbReady modelOptions={["gpt-example-mini"]} /></section>
+    <section className="flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiFeaturesPanel dbReady features={[{ feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE_CHAT", ownModel: true, model: null } as never]} modelOptions={{ realtime: ["gpt-example-realtime"] }} /></section>
   </main>
+  </OpenAiModelListProvider>
 ) : (
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}
     today="2026-10-04" userEmail="fictional@example.org" userName="Fictional Reviewer"

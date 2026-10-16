@@ -21,15 +21,14 @@ export class AiCopy {
   static readonly PROVIDER_PLACEHOLDER = "Select a provider";
   static readonly MODEL_LABEL = "Model name";
   /** Placeholder copy for Writing Bot to finalize (step 3b: admins choose the models). */
-  static readonly MODEL_HELP = "Choose a chat model. Show OpenAI models lists the ones for the saved API key. A model must be on under Models below to be saved.";
+  static readonly MODEL_HELP = "Choose a chat model. Click Show OpenAI models to see every model your saved API key can use. Only models turned on under Models can be saved.";
   /** Save or call with a model that isn't turned on under Models. Placeholder for Writing Bot. */
   static readonly MODEL_NOT_ALLOWED = "That model is turned off. An admin can choose one that's on in AI settings.";
   static readonly MODEL_PICKER_EMPTY = "No models are on. Turn one on under Models.";
   static readonly MODEL_PICKER_PLACEHOLDER = "Choose a model";
   static readonly MODEL_PICKER_OFF = "Off under Models";
-  static readonly MODEL_PICKER_USE = "Use this model";
   static readonly MODEL_PICKER_MANUAL_LABEL = "Or type a model ID";
-  static readonly MODEL_PICKER_LIST_FAILED = "Couldn't load OpenAI's model list. Type a model ID instead. It must be on under Models to be used.";
+  static readonly MODEL_PICKER_LIST_FAILED = "Couldn't load OpenAI's model list. You can still type a model ID under each picker. Only models turned on under Models can be used.";
   static readonly TEST_MODEL_LABEL = "Model to test";
   static readonly TEST_PICK_MODEL = "Pick a model to test first.";
 
@@ -56,7 +55,6 @@ export class AiCopy {
   static readonly MODEL_LIST_LOADING = "Loading…";
   static readonly MODEL_LIST_HELP = "Models OpenAI lists for the saved API key. Adding one doesn't turn it on.";
   static readonly MODEL_LIST_EMPTY = "OpenAI listed no chat, transcription or realtime models for this key.";
-  static readonly MODEL_LIST_FAILED = "Couldn't load OpenAI's model list. You can still type a model ID below. It's saved without checking and starts off. If OpenAI doesn't have that model, calls to it will fail.";
   static readonly MODEL_ADD_MANUAL_HELP = "The model list didn't load, so this ID is saved without checking. It starts off.";
   static readonly MODEL_LIST_ADDED = "Added";
   static readonly MODEL_KIND_LABEL = "Type";
