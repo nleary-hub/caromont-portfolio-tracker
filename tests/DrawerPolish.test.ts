@@ -45,3 +45,35 @@ describe("drawer polish: auto-save error copy", () => {
     expect(form).toMatch(/<AiAlert tone="danger" testId="autosave-error">/);
   });
 });
+
+describe("Figma review of #76", () => {
+  it("the date field is our own text field, never a native date input", () => {
+    const pop = src("src/components/DueDatePopover.tsx");
+    expect(pop).not.toContain('type="date"');
+    expect(pop).toContain('type="text"');
+    expect(form).toMatch(/fieldClassName=\{START_DATE_FIELD\}/);
+    expect(form).toMatch(/className=\{`\$\{START_DATE_FIELD\} text-left`\}/);
+  });
+  it("parses typed dates to the same YYYY-MM-DD", async () => {
+    const { DueDatePopoverModel: M } = await import("@/lib/projects/DueDatePopoverModel");
+    expect(M.parseTyped("12152026")).toBe("2026-12-15");
+    expect(M.parseTyped("12/15/2026")).toBe("2026-12-15");
+    expect(M.parseTyped("2026-12-15")).toBe("2026-12-15");
+    expect(M.parseTyped("Dec 15, 2026")).toBe("2026-12-15");
+    expect(M.parseTyped("")).toBe("");
+    expect(M.parseTyped("12/15")).toBeNull();
+    expect(M.parseTyped("02/30/2026")).toBeNull();
+    expect(M.display("2026-10-15")).toBe("Oct 15, 2026");
+  });
+  it("today is the device's real local date, not a passed-in page date", async () => {
+    const { DueDatePopoverModel: M } = await import("@/lib/projects/DueDatePopoverModel");
+    expect(M.localToday(new Date(2026, 9, 15, 23, 30))).toBe("2026-10-15");
+    expect(M.localToday(new Date(2026, 9, 15, 0, 5))).toBe("2026-10-15");
+    const pop = src("src/components/DueDatePopover.tsx");
+    expect(pop).toMatch(/d === now \? "text-accent ring-1 ring-inset ring-accent"/);
+    expect(pop).not.toMatch(/d === today/);
+  });
+  it("the project drawer clips instead of hiding overflow, so it can never scroll sideways", () => {
+    expect(src("src/components/ProjectDashboard.tsx")).toMatch(/pb-drawer fixed[^"]*overflow-clip/);
+  });
+});

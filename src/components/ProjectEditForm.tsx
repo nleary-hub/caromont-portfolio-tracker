@@ -20,8 +20,8 @@ import type { FieldErrors } from "@/lib/validation/ProjectValidator";
 import { StartDate } from "@/lib/projects/StartDate";
 import { MilestonesEditor } from "./MilestonesEditor";
 import { DueDatePopover } from "./DueDatePopover";
+import { DueDatePopoverModel } from "@/lib/projects/DueDatePopoverModel";
 import { PickerSelect } from "./PickerSelect";
-import { DateFormat } from "@/lib/dashboard/DashboardViewModel";
 import { AiAlert, AiNoteAssistant, AiUndoLine, type AiNoteActions } from "./AiNoteAssistant";
 import { AiReviewPanel, type AiReviewActions } from "./AiReviewPanel";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
@@ -100,6 +100,8 @@ export interface ProjectEditFormHandle {
 export type AutosaveState = "idle" | "saving" | "saved" | "error";
 
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
+// The Start date trigger and its open field share one look (the #72 "Pick a date" style), in every state.
+const START_DATE_FIELD = `${INPUT} block tabular-nums placeholder:text-muted`;
 const TEXTAREA = "block w-full min-w-0 resize-none rounded-control border border-line bg-input px-2.5 py-2 text-fg type-table focus:border-accent focus:outline-none";
 
 /**
@@ -432,16 +434,17 @@ export function ProjectEditForm({
                     touch("startDate");
                   }}
                   onClose={() => setEditingStart(false)}
+                  fieldClassName={START_DATE_FIELD}
                 />
               ) : (
                 <button
                   type="button"
                   id="pf-startDate"
-                  className={`${INPUT} text-left tabular-nums`}
+                  className={`${START_DATE_FIELD} text-left`}
                   onClick={() => setEditingStart(true)}
                   data-testid="start-date-trigger"
                 >
-                  {values.startDate ? DateFormat.long(values.startDate) : <span className="text-muted">Pick a date</span>}
+                  {values.startDate ? DueDatePopoverModel.display(values.startDate) : <span className="text-muted">Pick a date</span>}
                 </button>
               )}
             </Field>
