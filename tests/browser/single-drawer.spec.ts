@@ -29,12 +29,12 @@ test("switching rows on a clean form never asks to discard", async ({ page }) =>
   }
 });
 
-test("a saved form is clean again: no discard prompt after Save", async ({ page }) => {
+test("a saved form is clean again: no discard prompt after the auto-save", async ({ page }) => {
   await page.goto("/");
   await click(page, 0);
   const panel = page.getByRole("complementary", { name: "Project detail" });
   await panel.locator("#pf-note").fill("Fictional saved note");
-  await panel.getByRole("button", { name: "Save", exact: true }).click();
+  await expect(panel.getByTestId("autosave-status")).toHaveAttribute("data-state", "saved");
   await click(page, 2);
   await expect(page.getByText("Discard changes?")).toHaveCount(0);
   await expect(panel.locator("h2")).toHaveText("Bravo fictional project");
@@ -49,6 +49,9 @@ test("non-admins get the same drawer, read-only, with History", async ({ page })
   await expect(panel.getByTestId("edit-form")).toHaveCount(0);
   await expect(panel.getByTestId("project-history")).toHaveCount(1);
   await expect(panel.getByTestId("drawer-note")).toHaveText("Alpha unique note");
+  // Plain text: no character counter in the read-only drawer.
+  await expect(panel.getByTestId("drawer-note-counter")).toHaveCount(0);
+  await expect(panel.getByText("/ 2,000")).toHaveCount(0);
   await expect(panel.getByText("% complete")).toHaveCount(0);
   await expect(panel.getByRole("button", { name: "Edit" })).toHaveCount(0);
 });

@@ -7,6 +7,9 @@ import { ServiceLine } from "../../src/lib/domain/ServiceLine";
 import { ViewSettings } from "../../src/lib/domain/ViewSettings";
 import { ProjectFormModel } from "../../src/lib/projects/ProjectFormModel";
 import type { DashboardRow } from "../../src/lib/dashboard/DashboardViewModel";
+import { ClosedProjectsView } from "../../src/components/ClosedProjectsView";
+import { ClosedPageModel } from "../../src/lib/closed/ClosedPageModel";
+import { ServiceAreaInfo } from "../../src/lib/domain/ServiceAreaInfo";
 import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
@@ -43,7 +46,15 @@ const admin: AdminDashboardProps = {
     (w.__milestoneSaves ??= []).push(JSON.parse(JSON.stringify(edit)));
     return { ok: true, steps: edit.drafts.map((d, i) => ({ id: d.id ?? `fictional-new-${i}`, name: d.name, dueDate: d.dueDate || null, done: d.done, doneAt: null, checkedBy: null, checkedAt: null, position: i, sourceTemplateId: d.sourceTemplateId, owner: d.owner ?? null })) };
   },
-  saveProjectFormAction: async () => ({ ok: true, id: "fictional-0" }),
+  // Every form save is recorded on window.__formSaves. ?save=fail: the save fails; ?save=slow: it takes 1.5 s.
+  saveProjectFormAction: async (id, changes) => {
+    const w = window as unknown as { __formSaves?: unknown[] };
+    (w.__formSaves ??= []).push({ id, changes: JSON.parse(JSON.stringify(changes)) });
+    const mode = new URLSearchParams(window.location.search).get("save");
+    if (mode === "slow") await new Promise(resolve => setTimeout(resolve, 1500));
+    if (mode === "fail") return { ok: false, error: "Fictional save failure. Try again." };
+    return { ok: true, id };
+  },
   createProjectAction: async () => ({ ok: true, id: "fictional-new" }),
   saveColumnLayoutAction: noop, saveRowOrderAction: noop, resetRowOrderAction: noop,
   dependencyActions: {
@@ -69,7 +80,15 @@ const aiList = aiMode === "failed" ? { ok: false as const, error: "fictional fai
 const vi = new URLSearchParams(window.location.search).get("vi");
 const voiceText = vi === "over" ? "Keep answers short and friendly for the fictional example team. ".repeat(66) : vi === "filled" ? "Keep answers short and friendly for the fictional example team.\nMention the next milestone first, then the due date." : "";
 const aiView = { baseUrl: "", azureEndpoint: "", azureDeployment: "", encryption: { ready: true, problem: null }, modelOff: false, enabled: true, ready: true, provider: "openai" as const, model: "gpt-example-mini", key: { set: true, readable: true, last4: "WXYZ", setAt: null, setBy: null } };
-createRoot(document.getElementById("root")!).render(aiMode ? (
+// ?page=cancelled: the Cancelled page with fictional cancelled projects (read-only drawer).
+const closedPage = new URLSearchParams(window.location.search).get("page") === "cancelled";
+const cancelledRows = rows.map(r => ({ ...r, status: "Cancelled", statusLabel: "Cancelled", fiscalYear: "FY27", closedOn: "2026-09-20" }));
+const fixtureHistory = async (id: string) => ({ title: "History (1)", previously: null, notes: [], steps: [], entries: [{ key: `history-${id}`, meta: "Fictional author", text: `History for ${id}`, hollow: false }] });
+createRoot(document.getElementById("root")!).render(closedPage ? (
+  <ClosedProjectsView kind={ClosedPageModel.CANCELLED} rows={cancelledRows as never} today="2026-10-04"
+    initialView={{ fy: "FY27", departments: ["Cath"] } as never} options={["Cath"] as never} list={ServiceAreaInfo.LEGACY}
+    restore={null} historyAction={fixtureHistory as never} lineSlot={null} adminSlot={null} loadError={null} />
+) : aiMode ? (
   <OpenAiModelListProvider initial={aiList}>
   <main className="pb-page mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-6">
     <section className="relative z-20 flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiSettingsForm view={aiView as never} keySavedLine={null} dbReady modelOptions={["gpt-example-mini"]} /></section>

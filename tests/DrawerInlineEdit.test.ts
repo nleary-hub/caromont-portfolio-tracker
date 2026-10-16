@@ -9,6 +9,21 @@ const table = read("src/components/DashboardTable.tsx");
 const closed = read("src/components/ClosedProjectsView.tsx");
 const form = read("src/components/ProjectEditForm.tsx");
 
+describe("Project drawer: auto-save replaces Save and the Discard prompt (edit mode)", () => {
+  it("auto-save goes through the form's onSubmit (saveProjectForm), debounced, with a visible state", () => {
+    expect(form).toMatch(/await latest\.current\.onSubmit\(changes, null\)/);
+    expect(form).toMatch(/setTimeout\(\(\) => void runSave\(\), ProjectFormModel\.AUTOSAVE_MS\)/);
+    expect(form).toMatch(/data-testid="autosave-status"/);
+    expect(dash).toMatch(/onSubmit=\{\(changes, milestones\) => submitForm\(selected\.id, selected\.name, changes, milestones\)\}/);
+    expect(ProjectFormModel.AUTOSAVE_MS).toBeGreaterThan(0);
+  });
+
+  it("close, Escape, outside click and another row flush first; a failed flush keeps the drawer open", () => {
+    expect(dash).toMatch(/void editForm\.flush\(\)\.then\(\(ok\) => \{\s*if \(ok\) action\(\);/);
+    expect(dash).toMatch(/document\.addEventListener\("mousedown", onDown\)/);
+  });
+});
+
 describe("Project drawer: one drawer, single click", () => {
   it("a row click always opens (no toggle-close on the selected row), on the dashboard and the Closed pages", () => {
     expect(table).toMatch(/onMultiToggle\(row\.id\) : onSelect\(row\.id\)\)/);
@@ -40,11 +55,30 @@ describe("Project drawer: one drawer, single click", () => {
     const v = ProjectFormModel.empty("2026-10-15");
     expect(ProjectFormModel.isDirty(v, v)).toBe(false);
     expect(ProjectFormModel.isDirty({ ...v, percentComplete: "40" }, v)).toBe(false);
-    expect(dash).toMatch(/if \(mode !== "view" && dirtyRef\.current\)/);
+    expect(dash).toMatch(/if \(mode === "new" && dirtyRef\.current\)/);
   });
 
   it("% complete is not shown in the drawer or the form", () => {
     expect(form).not.toMatch(/pf-percentComplete/);
     expect(dash).not.toMatch(/% complete<\/dt>/);
+  });
+});
+
+describe("Project drawer: #74 decisions", () => {
+  it("Cancelled asks \"Cancel this project?\" first; the form's Admin section draws one Admin heading", () => {
+    expect(ProjectFormModel.CANCEL_CONFIRM).toBe("Cancel this project?");
+    // In-app dialog, never the browser's confirm().
+    expect(form).not.toMatch(/window\.confirm|\bconfirm\(/);
+    expect(form).toMatch(/role="alertdialog"/);
+    // App modal style: portal, Keep project outlined and focused first, Cancel project red on the right.
+    expect(form).toMatch(/createPortal\(/);
+    expect(form).toMatch(/autoFocus onClick=\{onKeep\} className="[^"]*border border-line[^"]*">\s*Keep project\s*<\/button>\s*<button type="button" onClick=\{onConfirm\} className="[^"]*text-danger[^"]*">\s*Cancel project/);
+    expect(form).toMatch(/e\.target\.value === "Cancelled" && values\.status !== "Cancelled"\) \{\s*setConfirmCancel\(true\);\s*return;/);
+    expect(dash).toMatch(/<ProjectAdminControls\s+heading=\{false\}/);
+    expect(read("src/components/ProjectAdminControls.tsx")).toMatch(/\{heading && <div[^>]*>Admin<\/div>\}/);
+  });
+
+  it("the Closed and Cancelled pages close the read-only drawer on an outside click", () => {
+    expect(closed).toMatch(/t\.closest\(ProjectDashboardCopy\.OUTSIDE_IGNORE\)\) return;\s*setSelectedId\(null\);/);
   });
 });

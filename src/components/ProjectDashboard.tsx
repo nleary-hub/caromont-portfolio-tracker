@@ -6,8 +6,6 @@ import dynamic from "next/dynamic";
 import Link from "next/link";
 import { Fragment, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { ViewContext } from "@/generated/prisma/enums";
-import { AppConfig } from "@/lib/config/AppConfig";
-import { LongTextCounter } from "@/lib/projects/LongTextCounter";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
@@ -26,7 +24,7 @@ import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
-import type { ProjectFormSubmit } from "./ProjectEditForm";
+import type { ProjectEditFormHandle, ProjectFormSubmit } from "./ProjectEditForm";
 import { DependenciesEditor, type DependencyActions } from "./DependenciesEditor";
 import { DependencyCopy } from "@/lib/projects/DependencyCopy";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
@@ -295,6 +293,7 @@ export function ProjectDashboard({
   const [mode, setMode] = useState<DrawerMode>(() => openMode(initialProjectId ?? null));
   const [confirmDiscard, setConfirmDiscard] = useState(false);
   const dirtyRef = useRef(false);
+  const formRef = useRef<ProjectEditFormHandle>(null);
   const pendingRef = useRef<(() => void) | null>(null);
   const [flashId, setFlashId] = useState<string | null>(null);
   const scrollToRef = useRef<string | null>(null);
@@ -506,9 +505,19 @@ export function ProjectDashboard({
     dirtyRef.current = dirty;
   }, []);
 
-  /** Run `action` now, or first ask "Discard changes?" when the edit form has unsaved changes. */
+  /**
+   * Run `action` (close, another row, New project). Editing a project: first flush the pending auto-save; when it
+   * fails the drawer stays open on the error. New project: ask "Discard changes?" when the form has entries.
+   */
   const guard = (action: () => void) => {
-    if (mode !== "view" && dirtyRef.current) {
+    const editForm = mode === "edit" ? formRef.current : null;
+    if (editForm) {
+      void editForm.flush().then((ok) => {
+        if (ok) action();
+      });
+      return;
+    }
+    if (mode === "new" && dirtyRef.current) {
       pendingRef.current = action;
       setConfirmDiscard(true);
       return;
@@ -592,6 +601,20 @@ export function ProjectDashboard({
       else requestClose();
     };
   });
+
+  // A click on the page outside the drawer closes it (after the pending save). Rows select on their own, controls
+  // (buttons, fields, links, column headers) do their own job, and menus and pickers render outside <main>
+  // (portals), so none of those count as outside.
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onDown = (e: MouseEvent) => {
+      const t = e.target instanceof Element ? e.target : null;
+      if (!t || !t.closest("main") || t.closest(ProjectDashboardCopy.OUTSIDE_IGNORE)) return;
+      escRef.current();
+    };
+    document.addEventListener("mousedown", onDown);
+    return () => document.removeEventListener("mousedown", onDown);
+  }, [drawerOpen]);
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
@@ -854,6 +877,7 @@ export function ProjectDashboard({
             adminControls={
               admin ? (
                 <ProjectAdminControls
+                  heading={false}
                   projectId={selected.id}
                   projectName={selected.name}
                   hiddenFromReport={admin.hiddenFromReportIds.includes(selected.id)}
@@ -868,6 +892,7 @@ export function ProjectDashboard({
                 ? (parts) => (
                 <ProjectEditForm
                   key={`edit-${selected.id}`}
+                  handleRef={formRef}
                   inforPreviously={parts.previously}
                   trailing={parts.trailing}
                   adminExtra={parts.admin}
@@ -1062,6 +1087,11 @@ export interface DrawerFormParts {
  * Closed pages) get the same panel with the fields read-only. History, Update notes and the admin controls
  * load in both.
  */
+/** Drawer outside-click rules (also used by the Closed and Cancelled pages). */
+export const ProjectDashboardCopy = {
+  OUTSIDE_IGNORE: 'aside.pb-drawer, tr[data-row-key], thead, button, a, input, select, textarea, label, [role="button"], [role="menuitem"], [role="option"]',
+} as const;
+
 export function ProjectDrawer({
   row,
   today,
@@ -1259,14 +1289,9 @@ function ReadOnlyDetails({
         <dd>{row.includeInReport ? "Yes" : "No"}</dd>
       </dl>
       <div>
-        <div className="mb-1.5 flex items-baseline gap-2 uppercase tracking-[.04em] text-muted type-label">
-          Note
-          {/* Same counter text as the edit screen: "1,240 / 2,000". */}
-          <span className="normal-case tracking-normal type-caption" aria-label={LongTextCounter.label(row.note?.length ?? 0, AppConfig.NOTE_MAX_LENGTH)} data-testid="drawer-note-counter">
-            {LongTextCounter.text(row.note?.length ?? 0, AppConfig.NOTE_MAX_LENGTH)}
-          </span>
-        </div>
-        <p className="rounded-[6px] border border-line bg-input px-3 py-2.5 break-words whitespace-pre-wrap type-body" data-testid="drawer-note">
+        {/* Read-only: the note as plain text, no counter and no input-style box. */}
+        <div className="mb-1.5 uppercase tracking-[.04em] text-muted type-label">Note</div>
+        <p className="break-words whitespace-pre-wrap type-body" data-testid="drawer-note">
           {row.note ?? <span className="text-muted">No note</span>}
         </p>
       </div>

@@ -188,6 +188,43 @@ describe("ProjectService.saveForm", () => {
     expect(entries[0].rows).toHaveLength(4);
   });
 
+  it("auto-save writes history: the debounced payload goes through saveForm as one history entry per save", async () => {
+    const p = await ProjectService.create({ ...base, percentComplete: 30 }, actor, fake.asClient());
+    const original = ProjectFormModel.fromSource(p as never);
+    const txBefore = fake.transactions;
+    // Two debounced saves, as the drawer sends them (only the changed fields each time).
+    const first = { ...original, note: "Fictional first autosave" };
+    await ProjectService.saveForm(p.id, ProjectFormModel.toInput(ProjectFormModel.changes(first, original)), Factory.ADMIN, fake.asClient());
+    const second = { ...first, name: "Fictional renamed project" };
+    await ProjectService.saveForm(p.id, ProjectFormModel.toInput(ProjectFormModel.changes(second, first)), Factory.ADMIN, fake.asClient());
+    const rows = fake.state.history.filter((r) => r.field !== "created");
+    // One history row per save (each save carries one changed field here), never one per keystroke.
+    expect(rows.map((r) => r.field)).toEqual(["note", "name"]);
+    // Each save is one transaction (one history entry).
+    expect(fake.transactions - txBefore).toBe(2);
+    expect(rows.every((r) => r.changedBy === Factory.ADMIN.email)).toBe(true);
+    expect(fake.state.history.filter((r) => r.field === "percentComplete")).toHaveLength(0);
+  });
+
+  it("confirming Cancelled writes the status through the normal form save (one history row, the project is Cancelled)", async () => {
+    const p = await ProjectService.create(base, actor, fake.asClient());
+    const original = ProjectFormModel.fromSource(p as never);
+    const confirmed = ProjectFormModel.withStatus(original, "Cancelled", original, "2026-10-15");
+    const changes = ProjectFormModel.changes(confirmed, original);
+    expect(changes.status).toBe("Cancelled");
+    await ProjectService.saveForm(p.id, ProjectFormModel.toInput(changes), Factory.ADMIN, fake.asClient());
+    const stored = fake.state.projects.find((x) => x.id === p.id) as unknown as { status: string };
+    expect(stored.status).toBe("Cancelled");
+    expect(fake.state.history.filter((r) => r.field === "status")).toHaveLength(1);
+  });
+
+  it("Keep project writes nothing: the form is unchanged, so there is no payload and no save", async () => {
+    const p = await ProjectService.create(base, actor, fake.asClient());
+    const original = ProjectFormModel.fromSource(p as never);
+    expect(ProjectFormModel.changes(original, original)).toEqual({});
+    expect(ProjectFormModel.isDirty(original, original)).toBe(false);
+  });
+
   it("a drawer save leaves a stored % complete untouched and writes no history row for it", async () => {
     const p = await ProjectService.create({ ...base, percentComplete: 60 }, actor, fake.asClient());
     const original = ProjectFormModel.fromSource(p as never);

@@ -89,7 +89,8 @@ test("keyboard focus is visible on drawer input, select and textarea, including 
   await expect(page.locator(".pb-drawer").getByRole("button", { name: "Edit", exact: true })).toHaveCount(0);
   await checkFocus(".pb-drawer textarea");
   await page.locator(".pb-drawer #pf-name").fill("");
-  await expect(page.locator(".pb-drawer").getByRole("button", { name: "Save", exact: true })).toHaveAttribute("aria-disabled", "true");
+  // Auto-save: an invalid field blocks the save and the footer shows the error.
+  await expect(page.locator(".pb-drawer").getByTestId("autosave-status")).toHaveAttribute("data-state", "error");
   const invalid = await checkFocus('.pb-drawer [data-invalid] input');
   expect(invalid.border).toBe("rgb(255, 138, 138)");
 });

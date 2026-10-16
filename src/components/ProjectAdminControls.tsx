@@ -20,6 +20,8 @@ export interface ProjectAdminControlsProps {
    * confirmation (the edit form's Admin section, which draws its own header).
    */
   part?: "visibility" | "delete";
+  /** False inside the edit form's Admin section, which already draws the "Admin" heading. */
+  heading?: boolean;
 }
 
 export function ProjectAdminControls({
@@ -30,6 +32,7 @@ export function ProjectAdminControls({
   deleteAction,
   onGone,
   part = "visibility",
+  heading = true,
 }: ProjectAdminControlsProps) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -80,7 +83,7 @@ export function ProjectAdminControls({
 
   return (
     <section aria-label="Admin controls" className="flex flex-col gap-2 rounded-[6px] border border-line bg-input px-3 py-2.5">
-      <div className="uppercase tracking-[.04em] text-muted type-label">Admin</div>
+      {heading && <div className="uppercase tracking-[.04em] text-muted type-label">Admin</div>}
       <label className="flex items-center gap-2 type-table">
         <input
           type="checkbox"
