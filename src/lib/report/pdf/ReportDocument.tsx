@@ -758,7 +758,7 @@ function Row({ row, y }: { row: RowLayout; y: number }) {
   );
 }
 
-/** "Contracts Shea Waldron": prefix at weight 500, name regular, both in the requester's small gray. */
+/** "Contracts Sample C": prefix at weight 500, name regular, both in the requester's small gray. */
 /** "Owner: Name": label regular and name 600, both primary; "To assign" regular in the secondary gray. */
 function OwnerText({ name, more, missing, labelW, x, y, w }: { name: string; more: readonly string[]; missing: boolean; labelW: number; x: number; y: number; w: number }) {
   const S = G.SIZE;

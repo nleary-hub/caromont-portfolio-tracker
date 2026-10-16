@@ -220,7 +220,7 @@ export class CompletedBlockStyle {
 }
 
 /**
- * "Contracts: Shea Waldron" under owner and requester, in the requester small gray style (label and name at
+ * "Contracts: Sample C" under owner and requester, in the requester small gray style (label and name at
  * weight 400). Blank reads "Contracts: To assign". If the line is wider than the owner column it wraps the
  * name (no shrinking, no clipping); line 1 always starts with the label.
  */

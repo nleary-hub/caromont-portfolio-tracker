@@ -101,7 +101,6 @@ export class ProjectFormModel {
   static readonly AUTOSAVE_SAVING = "Saving…";
   static readonly AUTOSAVE_SAVED = "Saved";
   static readonly MFI_LABEL = ProjectFormModel_MFI_LABEL;
-  static readonly MFI_HELP = "Usually capital over $200k.";
   /** App chip text (the PDF badge adds a diamond). */
   static readonly MFI_CHIP = "MFI";
   static readonly AUTOSAVE_BLOCKED = "Fix the highlighted fields to save.";

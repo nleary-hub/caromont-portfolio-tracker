@@ -21,7 +21,7 @@ export function MfiChip() {
 }
 
 /**
- * Drawer "Major Facility Investment (MFI)" checkbox, at the bottom below a divider. Admins edit it (drawer
+ * Drawer "Major Facility Investment (MFI)" checkbox, below a divider and above the Admin box. Admins edit it (drawer
  * auto-save through saveProjectForm, which writes history); everyone else sees it disabled.
  */
 export function MfiCheckbox({ checked, onChange }: { checked: boolean; onChange?: (checked: boolean) => void }) {
@@ -35,14 +35,10 @@ export function MfiCheckbox({ checked, onChange }: { checked: boolean; onChange?
           className="size-4 accent-[#6B4FB0]"
           checked={checked}
           disabled={readOnly}
-          aria-describedby="mfi-help"
           onChange={(e) => onChange?.(e.target.checked)}
         />
         <span>{ProjectFormModel.MFI_LABEL}</span>
       </label>
-      <p id="mfi-help" className="mt-1 ml-6 text-muted type-caption">
-        {ProjectFormModel.MFI_HELP}
-      </p>
     </div>
   );
 }

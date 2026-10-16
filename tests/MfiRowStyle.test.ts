@@ -135,7 +135,7 @@ describe("MFI drawer checkbox and chip", () => {
     await expect(ProjectService.saveForm(p.id, { isMfi: true }, { email: "viewer@example.org", isAdmin: false }, fake.asClient())).rejects.toThrow(AdminRequiredError);
   });
 
-  it("read-only checkbox is disabled; the admin one is editable; both carry the help line", () => {
+  it("read-only checkbox is disabled; the admin one is editable; both have the label and no help line", () => {
     const ro = renderToStaticMarkup(createElement(MfiCheckbox, { checked: true }));
     expect(ro).toMatch(/disabled=""/);
     expect(ro).toContain('data-readonly="true"');
@@ -143,7 +143,9 @@ describe("MFI drawer checkbox and chip", () => {
     expect(rw).not.toMatch(/disabled/);
     for (const html of [ro, rw]) {
       expect(html).toContain("Major Facility Investment (MFI)");
-      expect(html).toContain("Usually capital over $200k.");
+      // No help line: the label says it all, and there is no dollar figure.
+      expect(html).not.toContain("mfi-help");
+      expect(html).not.toMatch(/200k|\$200/);
     }
   });
 

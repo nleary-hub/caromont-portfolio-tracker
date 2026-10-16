@@ -640,6 +640,9 @@ export function ProjectEditForm({
 
         {trailing}
 
+        {/* Edit mode only (a new project starts not MFI). Above the Admin box, so Delete project stays the last control. */}
+        {!isNew && <MfiCheckbox checked={values.isMfi === "true"} onChange={(on) => setValues((prev) => ({ ...prev, isMfi: on ? "true" : "false" }))} />}
+
         {adminDelete && (
           <div className="border-t border-line pt-4">
             <Section title="Admin">
@@ -649,8 +652,6 @@ export function ProjectEditForm({
           </div>
         )}
 
-        {/* Edit mode only (a new project starts not MFI). Saves through the drawer auto-save with the other fields. */}
-        {!isNew && <MfiCheckbox checked={values.isMfi === "true"} onChange={(on) => setValues((prev) => ({ ...prev, isMfi: on ? "true" : "false" }))} />}
       </div>
 
       {!isNew ? (

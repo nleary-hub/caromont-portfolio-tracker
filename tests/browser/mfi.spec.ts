@@ -17,14 +17,23 @@ test("list: the MFI chip sits right after the project name, only on MFI projects
   if (shots) await page.locator("table").first().screenshot({ path: `${shots}/app-list-chip.png` });
 });
 
-test("drawer (admin): chip by the title, checkbox at the bottom auto-saves through the form save", async ({ page }) => {
+test("drawer (admin): chip by the title, checkbox above the Admin box auto-saves through the form save", async ({ page }) => {
   await page.goto("/?mfi=1");
   await row(page, 1).click({ position: { x: 120, y: 15 } });
   await expect(panel(page).getByRole("heading", { level: 2 }).getByTestId("mfi-chip")).toBeVisible();
   const box = panel(page).getByTestId("mfi-checkbox");
   await expect(box).toBeChecked();
   await expect(box).toBeEnabled();
-  await expect(panel(page).getByText("Usually capital over $200k.")).toBeVisible();
+  await expect(panel(page).getByTestId("mfi-field")).toHaveText("Major Facility Investment (MFI)");
+  await expect(panel(page).getByText(/200k/)).toHaveCount(0);
+  // Above the Admin box: Delete project stays the last control in the drawer body.
+  const order = await panel(page).evaluate((el) => {
+    const mfi = el.querySelector('[data-testid="mfi-field"]')!;
+    const del = [...el.querySelectorAll("button")].find((b) => b.textContent?.trim() === "Delete project")!;
+    const last = [...el.querySelectorAll("button, input, select, textarea")].filter((c) => !c.closest("footer") && !c.closest("[data-testid=autosave-footer]")).at(-1);
+    return { mfiBeforeDelete: Boolean(mfi.compareDocumentPosition(del) & Node.DOCUMENT_POSITION_FOLLOWING), deleteIsLast: last === del };
+  });
+  expect(order).toEqual({ mfiBeforeDelete: true, deleteIsLast: true });
   if (shots) {
     await panel(page).getByTestId("mfi-field").scrollIntoViewIfNeeded();
     await page.screenshot({ path: `${shots}/app-drawer-bottom.png` });
