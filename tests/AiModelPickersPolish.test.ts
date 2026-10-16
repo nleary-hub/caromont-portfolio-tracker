@@ -15,7 +15,7 @@ const VIEW = { baseUrl: "", azureEndpoint: "", azureDeployment: "", encryption: 
 describe("copy", () => {
   it("exact strings, one list-failed string, no Use this model, no em dashes", () => {
     expect(AiCopy.MODEL_HELP).toBe("Choose a chat model. Click Show OpenAI models to see every model your saved API key can use. Only models turned on under Models can be saved.");
-    expect(AiToolsCopy.VOICE_MODEL_HELP).toBe("Voice chat needs a realtime model. Click Show OpenAI models to see the realtime ones your saved API key can use. Only models turned on under Models can be saved.");
+    expect(AiToolsCopy.VOICE_MODEL_HELP).toBe("Voice chat needs a gpt-realtime or gpt-live model. Click Show OpenAI models to see the ones your saved API key can use. Only models turned on under Models can be saved.");
     expect(AiCopy.MODEL_PICKER_LIST_FAILED).toBe("Couldn't load OpenAI's model list. You can still type a model ID under each picker. Only models turned on under Models can be used.");
     expect("MODEL_LIST_FAILED" in AiCopy).toBe(false);
     expect("MODEL_PICKER_USE" in AiCopy).toBe(false);

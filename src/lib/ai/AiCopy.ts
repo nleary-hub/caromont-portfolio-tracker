@@ -42,13 +42,13 @@ export class AiCopy {
   static readonly MODEL_CHOSEN_OFF = "Chosen, but off";
   static readonly MODEL_ADD_LABEL = "Add an OpenAI model";
   static readonly VOICE_INSTRUCTIONS_LABEL = "Voice chat instructions";
-  static readonly VOICE_INSTRUCTIONS_HELP = "Optional. Replaces the built-in voice chat rules. The project list, the suggest-changes rule and the no patient details rule are always added. Up to 4,000 characters.";
+  static readonly VOICE_INSTRUCTIONS_HELP = "Optional. Replaces the built-in voice chat rules. The project list, the rule for suggesting changes and the rule against patient details are always added. Up to 4,000 characters.";
   static readonly VOICE_INSTRUCTIONS_TOO_LONG = "Voice chat instructions can be up to 4,000 characters.";
   static readonly VOICE_INSTRUCTIONS_SAVED = "Voice chat instructions saved.";
   static readonly VOICE_INSTRUCTIONS_SAVE = "Save instructions";
   static readonly MODEL_ADD_PLACEHOLDER = "For example gpt-example-mini";
   /** Typed-ID placeholder for the voice chat model (a realtime example, not a chat model). */
-  static readonly VOICE_MODEL_PLACEHOLDER = "For example gpt-example-realtime";
+  static readonly VOICE_MODEL_PLACEHOLDER = "For example, gpt-example-realtime";
   static readonly MODEL_ADD_HELP = "Checked against OpenAI's model list with the saved API key. It starts off.";
   static readonly MODEL_ADD = "Add model";
   static readonly MODEL_ADDING = "Checking…";

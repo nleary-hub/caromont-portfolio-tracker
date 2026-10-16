@@ -40,6 +40,8 @@ async function setup(model: string, opts: { instructions?: string; price?: { pri
   return db;
 }
 
+vi.mock("@/app/actions/aiAdmin", () => ({ listOpenAiModels: vi.fn(), addAiModel: vi.fn(), setAiFeatureEnabled: vi.fn(), setAiFeatureModel: vi.fn(), setAiModelEnabled: vi.fn(), setAiModelPrices: vi.fn(), setAiVoiceInstructions: vi.fn() }));
+
 afterEach(() => vi.restoreAllMocks());
 
 describe("explicit model kind mapping (replaces the substring guess)", () => {
@@ -299,7 +301,34 @@ describe("voice chat instructions (Admin > AI settings)", () => {
 
 describe("voice chat typed-ID placeholder", () => {
   it("is a realtime example, not a chat model", () => {
-    expect(AiCopy.VOICE_MODEL_PLACEHOLDER).toBe("For example gpt-example-realtime");
+    expect(AiCopy.VOICE_MODEL_PLACEHOLDER).toBe("For example, gpt-example-realtime");
     expect(readFileSync(path.join(process.cwd(), "src/components/AiModelsPanel.tsx"), "utf8")).toContain("placeholder: C.VOICE_MODEL_PLACEHOLDER");
+  });
+});
+
+describe("voice chat instructions field (UI)", () => {
+  async function render(instructions: string) {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { AiFeaturesPanel } = await import("@/components/AiModelsPanel");
+    return renderToStaticMarkup(createElement(AiFeaturesPanel, { dbReady: true, features: [{ feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE_CHAT", ownModel: true, model: "", instructions }] as never, modelOptions: { realtime: [] } }));
+  }
+
+  it("is a 4-row textarea under the voice model field, in the same column, with a visible counter and help", async () => {
+    const html = await render("");
+    expect(html).toMatch(/<textarea[^>]*rows="4"/);
+    expect(html.indexOf("ai-feature-voice_chat-model-picker")).toBeLessThan(html.indexOf("ai-voice-instructions-input"));
+    expect(html).toContain("col-start-1");
+    expect(html).toContain("0 / 4,000");
+    expect(html).toContain(AiCopy.VOICE_INSTRUCTIONS_HELP);
+    expect(html).not.toContain('data-testid="ai-voice-instructions-over"');
+  });
+
+  it("over the cap shows the red alert, a red counter and disables Save", async () => {
+    const html = await render("z".repeat(4001));
+    expect(html).toContain('data-testid="ai-voice-instructions-over"');
+    expect(html).toContain(AiCopy.VOICE_INSTRUCTIONS_TOO_LONG);
+    expect(html).toContain("4,001 / 4,000");
+    expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-testid="ai-voice-instructions-save"/);
   });
 });
