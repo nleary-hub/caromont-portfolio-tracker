@@ -1,5 +1,6 @@
 "use client";
 
+import { MfiCheckbox } from "./MfiChip";
 import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { CompletionRules } from "@/lib/projects/CompletionRules";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
@@ -639,6 +640,9 @@ export function ProjectEditForm({
 
         {trailing}
 
+        {/* Edit mode only (a new project starts not MFI). Above the Admin box, so Delete project stays the last control. */}
+        {!isNew && <MfiCheckbox checked={values.isMfi === "true"} onChange={(on) => setValues((prev) => ({ ...prev, isMfi: on ? "true" : "false" }))} />}
+
         {adminDelete && (
           <div className="border-t border-line pt-4">
             <Section title="Admin">
@@ -647,6 +651,7 @@ export function ProjectEditForm({
             </Section>
           </div>
         )}
+
       </div>
 
       {!isNew ? (

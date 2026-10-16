@@ -102,6 +102,21 @@ export class ReportColorScheme {
     return null;
   }
 
+  /** MFI (Major Facility Investment) row outline and badge color, and the fill of a completed MFI row (new PDFs only). */
+  static readonly mfiOutline = "#6B4FB0";
+  static readonly mfiCompletedRowBg = "#E6E0F7";
+  /** Inset outline width in pt (the mockup's 2px at 0.75 pt per px). */
+  static readonly MFI_OUTLINE_W = 1.5;
+
+  /**
+   * Full row style. MFI rows get the inset outline; a completed MFI row gets the lavender fill instead of the
+   * completed green (MFI wins). Rows that are not MFI are exactly rowBackground().
+   */
+  static rowStyle(row: { status: string | null; isMfi?: boolean }): { background: string | null; outline: string | null } {
+    if (!row.isMfi) return { background: ReportColorScheme.rowBackground(row), outline: null };
+    return { background: row.status === "Complete" ? ReportColorScheme.mfiCompletedRowBg : null, outline: ReportColorScheme.mfiOutline };
+  }
+
   static readonly PRESETS: Record<ReportColorPreset, { label: string; bar: BarPalette; band: BandPalette }> = {
     navy: {
       label: "Navy solid",
