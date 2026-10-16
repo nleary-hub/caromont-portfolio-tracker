@@ -256,7 +256,7 @@ export function AiTemplatePanel({
             <p className="text-muted type-caption">{C.REVIEW_HELP}</p>
             <ol className="flex flex-col" data-testid="ai-template-diff">
               {rows.map((r) => (
-                <AiTemplateDiffRow key={r.key} row={r} choice={r.issue ? "skip" : (choices[r.key] ?? null)} onChoose={(c) => setChoices((m) => ({ ...m, [r.key]: c }))} />
+                <AiTemplateDiffRow key={r.key} row={r} choice={r.issue ? null : (choices[r.key] ?? null)} onChoose={(c) => setChoices((m) => ({ ...m, [r.key]: c }))} />
               ))}
             </ol>
           </>
