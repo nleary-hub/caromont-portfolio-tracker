@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { ClientErrorReporter } from "@/components/ClientErrorReporter";
 
 export const metadata: Metadata = {
   title: "Service Line Portfolio",
@@ -10,7 +11,10 @@ export const metadata: Metadata = {
 export default function RootLayout({ children }: Readonly<{ children: React.ReactNode }>) {
   return (
     <html lang="en" className="dark h-full">
-      <body className="min-h-full bg-bg text-fg">{children}</body>
+      <body className="min-h-full bg-bg text-fg">
+        <ClientErrorReporter />
+        {children}
+      </body>
     </html>
   );
 }

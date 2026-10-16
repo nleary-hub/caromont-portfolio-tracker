@@ -101,9 +101,10 @@ describe("UI polish Option B", () => {
     expect(css).toMatch(/\.pb-ecg \{[^}]*bottom: 0;[^}]*height: 40px;/);
   });
 
-  it("the side panel's Edit and close controls are outlined buttons", () => {
+  it("the side panel's close control is an outlined button (there is no Edit button: admins edit in place)", () => {
     const src = read("src/components/ProjectDashboard.tsx");
-    expect(src).toMatch(/onClick=\{onEdit\} className="pb-ghost /);
+    expect(src).toMatch(/onClick=\{onClose\} aria-label="Close" className="pb-ghost /);
+    expect(src).not.toMatch(/onClick=\{onEdit\}/);
     expect(css).toMatch(/\.pb-drawer \.pb-ghost \{\s*border: 1px solid rgba\(255, 255, 255, 0\.12\);\s*background: rgba\(255, 255, 255, 0\.04\)/);
   });
 

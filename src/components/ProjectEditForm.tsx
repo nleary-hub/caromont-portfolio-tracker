@@ -59,6 +59,12 @@ export interface ProjectEditFormProps {
   people: ReactNode;
   /** Delete project with its confirmation. Null for a new project. */
   adminDelete: ReactNode;
+  /** Edit: the "Previously" line under the Infor number (from the History timeline). */
+  inforPreviously?: ReactNode;
+  /** Edit: sections after the form fields (Update notes, History), read-only. */
+  trailing?: ReactNode;
+  /** Edit: Hide from dashboard / Hide from report, in the Admin section above Delete. */
+  adminExtra?: ReactNode;
   /** Edit: the changed fields. New: every field (and the checklist). */
   onSubmit: ProjectFormSubmit;
   /** Edit mode: Milestones autosave ("Saves as you go"), outside the Save footer. */
@@ -101,6 +107,9 @@ export function ProjectEditForm({
   aiNextStep,
   people,
   adminDelete,
+  inforPreviously,
+  trailing,
+  adminExtra,
   onSubmit,
   saveMilestones,
   onSaved,
@@ -115,7 +124,8 @@ export function ProjectEditForm({
 }: ProjectEditFormProps) {
   const isNew = mode === "new";
   // Snapshot at open: a People autosave refreshes the page data but must not reset the form.
-  const [original] = useState<ProjectFormValues>(originalProp);
+  // After a save the snapshot moves to the saved values, so a clean form never reads as unsaved.
+  const [original, setOriginal] = useState<ProjectFormValues>(originalProp);
   const [values, setValues] = useState<ProjectFormValues>(originalProp);
   const [touched, setTouched] = useState<Partial<Record<FormField, boolean>>>({});
   const [attempted, setAttempted] = useState(false);
@@ -149,6 +159,8 @@ export function ProjectEditForm({
   // was on screen (including a removed date), never an older stored one.
   const [resumeCompletedOn, setResumeCompletedOn] = useState<string | undefined>(undefined);
   useEffect(() => onDirtyChange(dirty), [dirty, onDirtyChange]);
+  // A form that goes away is never "unsaved": the next project must not inherit this one's dirty flag.
+  useEffect(() => () => onDirtyChange(false), [onDirtyChange]);
 
   // The next milestone the checklist yields (first step not done, else the last step) stands in for the old
   // Next milestone field in the "required for this status" check.
@@ -203,11 +215,16 @@ export function ProjectEditForm({
     setSaving(true);
     setFormError(null);
     try {
-      const changes = isNew ? values : ProjectFormModel.changes(values, original);
+      const changes = isNew ? ProjectFormModel.visibleValues(values) : ProjectFormModel.changes(values, original);
       const checklist = isNew ? MilestoneEditorModel.edit(ms, msOriginal) : null;
       const result = await onSubmit(changes, checklist);
       if (result.ok) {
         setAiUndo(null);
+        if (!isNew) {
+          setOriginal(values);
+          setTouched({});
+          setAttempted(false);
+        }
         return onSaved(result.id);
       }
       setFormError(result.error);
@@ -361,6 +378,7 @@ export function ProjectEditForm({
                 onBlur={() => touch("inforRequestNumber")}
               />
             </div>
+            {inforPreviously}
           </Field>
         </Section>
 
@@ -391,19 +409,7 @@ export function ProjectEditForm({
             ownerOptions={ownerOptions}
           />
           {aiNextStep}
-          <div className="grid grid-cols-2 gap-3">
-            <Field field="percentComplete" label="% complete" errors={shown("percentComplete")}>
-              <input
-                id="pf-percentComplete"
-                className={INPUT}
-                inputMode="numeric"
-                maxLength={3}
-                value={values.percentComplete}
-                onChange={(e) => set("percentComplete", e.target.value.replace(/\D+/g, ""))}
-                onBlur={() => touch("percentComplete")}
-              />
-            </Field>
-          </div>
+          {/* % complete is hidden (the stored value is kept and never sent; CSV import and export still carry it). */}
         </Section>
 
         <Section title="Notes">
@@ -504,9 +510,14 @@ export function ProjectEditForm({
           </Section>
         )}
 
+        {trailing}
+
         {adminDelete && (
           <div className="border-t border-line pt-4">
-            <Section title="Admin">{adminDelete}</Section>
+            <Section title="Admin">
+              {adminExtra}
+              {adminDelete}
+            </Section>
           </div>
         )}
       </div>

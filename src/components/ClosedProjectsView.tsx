@@ -217,7 +217,7 @@ export function ClosedProjectsView({
                       row={r}
                       today={today}
                       selected={r.id === selectedId}
-                      onSelect={() => setSelectedId(r.id === selectedId ? null : r.id)}
+                      onSelect={() => setSelectedId(r.id)}
                       menu={canRestore ? <RestoreMenu name={r.name} initialOpen={demo?.menuOpenFor === r.id} onRestore={() => setConfirmId(r.id)} /> : null}
                     />
                   ))}

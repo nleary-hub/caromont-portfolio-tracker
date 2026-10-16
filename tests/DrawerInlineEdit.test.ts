@@ -1,22 +1,50 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { ProjectFormModel } from "@/lib/projects/ProjectFormModel";
 
-const src = readFileSync(path.resolve(__dirname, "..", "src/components/ProjectDashboard.tsx"), "utf8");
+const read = (f: string) => readFileSync(path.resolve(__dirname, "..", f), "utf8");
+const dash = read("src/components/ProjectDashboard.tsx");
+const table = read("src/components/DashboardTable.tsx");
+const closed = read("src/components/ClosedProjectsView.tsx");
+const form = read("src/components/ProjectEditForm.tsx");
 
-describe("Project drawer: inline edit without an Edit click", () => {
-  it("opens an admin's project drawer straight into the edit form", () => {
-    expect(src).toMatch(/const openMode = \(id: string \| null\): DrawerMode => \(id && admin\?\.formValues\[id\] \? "edit" : "view"\)/);
-    expect(src).toMatch(/useState<DrawerMode>\(\(\) => openMode\(initialProjectId \?\? null\)\)/);
-    expect(src).toMatch(/leaveForm\(\);\s*setMode\(openMode\(id\)\);\s*setSelectedId\(id\);/);
+describe("Project drawer: one drawer, single click", () => {
+  it("a row click always opens (no toggle-close on the selected row), on the dashboard and the Closed pages", () => {
+    expect(table).toMatch(/onMultiToggle\(row\.id\) : onSelect\(row\.id\)\)/);
+    expect(table).not.toMatch(/onSelect\(selected \? null : row\.id\)/);
+    expect(closed).toMatch(/onSelect=\{\(\) => setSelectedId\(r\.id\)\}/);
   });
 
-  it("stays editable after Save and Cancel closes through the discard guard", () => {
-    expect(src).toMatch(/setMode\(created \? "view" : openMode\(id\)\)/);
-    expect(src).toMatch(/onCancel=\{requestClose\}/);
+  it("there is one drawer panel: one <aside>, read-only fields when there is no form", () => {
+    const fn = dash.slice(dash.indexOf("export function ProjectDrawer("), dash.indexOf("function ReadOnlyDetails("));
+    expect(fn.match(/<aside/g)).toHaveLength(1);
+    expect(dash).not.toMatch(/key="drawer-detail"|key="drawer-form"|onEdit=/);
+    expect(fn).toMatch(/\{form \? \(/);
   });
 
-  it("keeps the Edit button only for view mode (non-admins never get it)", () => {
-    expect(src).toMatch(/onEdit=\{admin && mode === "view" && admin\.formValues\[selected\.id\] \? \(\) => setMode\("edit"\) : undefined\}/);
+  it("admins open straight into the form, with History, Update notes, Previously and Hide from report", () => {
+    expect(dash).toMatch(/const openMode = \(id: string \| null\): DrawerMode => \(id && admin\?\.formValues\[id\] \? "edit" : "view"\)/);
+    expect(dash).toMatch(/useProjectTimeline\(row\?\.id \?\? "", row, row \? historyAction : undefined\)/);
+    expect(dash).toMatch(/inforPreviously=\{parts\.previously\}/);
+    expect(dash).toMatch(/trailing=\{parts\.trailing\}/);
+    expect(dash).toMatch(/<UpdateNotesSection/);
+    expect(dash).toMatch(/<ProjectHistorySection/);
+    expect(dash).toMatch(/adminExtra=\{parts\.admin\}/);
+  });
+
+  it("no Discard prompt on a clean form: dirty resets on unmount and after a save", () => {
+    expect(form).toMatch(/useEffect\(\(\) => \(\) => onDirtyChange\(false\), \[onDirtyChange\]\)/);
+    expect(form).toMatch(/setOriginal\(values\)/);
+    // A form opened on stored values has no changes (the hidden % complete never counts).
+    const v = ProjectFormModel.empty("2026-10-15");
+    expect(ProjectFormModel.isDirty(v, v)).toBe(false);
+    expect(ProjectFormModel.isDirty({ ...v, percentComplete: "40" }, v)).toBe(false);
+    expect(dash).toMatch(/if \(mode !== "view" && dirtyRef\.current\)/);
+  });
+
+  it("% complete is not shown in the drawer or the form", () => {
+    expect(form).not.toMatch(/pf-percentComplete/);
+    expect(dash).not.toMatch(/% complete<\/dt>/);
   });
 });
