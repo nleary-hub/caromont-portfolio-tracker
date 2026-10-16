@@ -39,7 +39,13 @@ const admin: AdminDashboardProps = {
   saveViewSettingsAction: noop, setProjectHiddenAction: noop, deleteProjectAction: noop,
   ownerSuggestions: ["Fictional Owner"], requesterSuggestions: ["Fictional Requester"],
   milestoneOwnerOptions: ["Fictional Contracts Lead", "Fictional Owner", "Fictional Requester"],
-  setPeopleFieldAction: noop, menuItems: [],
+  // Every people pick is recorded on window.__peopleSaves (field and value) so tests can read the save.
+  setPeopleFieldAction: async (projectId: string, field: string, value: string) => {
+    const w = window as unknown as { __peopleSaves?: unknown[] };
+    (w.__peopleSaves ??= []).push({ projectId, field, value });
+    return null;
+  },
+  menuItems: [],
   formValues: Object.fromEntries(rows.map(row => [row.id, ProjectFormModel.fromSource({ ...row,
     accomplishment: null, description: null, completedOn: null })])),
   // Fictional checklist on Zulu; every save is recorded on window.__milestoneSaves so tests can read the exact payload.
@@ -108,6 +114,8 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}
     today="2026-10-04" userEmail="fictional@example.org" userName="Fictional Reviewer"
     latestReport={null} loadError={null} serviceLine={ServiceLine.SEED}
+    // ?line=1: a fictional active line with its own contracts-lead pick-list.
+    {...(new URLSearchParams(window.location.search).has("line") ? { line: { ...ServiceLine.defaultScope(), owners: ["Fictional Owner"], requesters: ["Fictional Requester"], contractsLeads: ["Fictional Lead One", "Fictional Lead Two"] } } : {})}
     // ?viewer=readonly: the same dashboard for a non-admin (the drawer shows the fields read-only).
     admin={new URLSearchParams(window.location.search).get("viewer") === "readonly" ? undefined : admin}
     completedFiscalYear={new URLSearchParams(window.location.search).has("fy") ? { label: "FY27", start: "2026-07-01", count: 4 } : undefined}
