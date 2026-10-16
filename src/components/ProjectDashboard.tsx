@@ -40,6 +40,7 @@ import { DashboardTable, DueFlagPill, type DashboardLayoutControl } from "./Dash
 import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
 import { ClosedPagesCopy } from "@/lib/closed/ClosedPagesCopy";
 import { ClosedPageModel } from "@/lib/closed/ClosedPageModel";
+import type { InlineEditControl } from "./InlineRowEdit";
 import { DashboardQuery, type DashboardQueryState, type DashboardSortKey } from "@/lib/dashboard/DashboardQuery";
 import { DueFilterSelect, MarkAllReviewedButton, MultiFilterSelect, QueryCopy, ReviewConfirmDialog, SortChip, statusOptions } from "./DashboardQueryControls";
 import type { ReviewActionResult } from "@/app/actions/review";
@@ -476,6 +477,13 @@ export function ProjectDashboard({
       },
     );
 
+  // Inline row update (admins): the same submitForm as the drawer, so saveProjectForm writes history and audit rows.
+  const inlineEdit = useMemo<InlineEditControl | undefined>(
+    () => (admin ? { values: admin.formValues, today, save: (id, changes) => submitForm(id, rows.find((r) => r.id === id)?.name ?? "", changes, null) } : undefined),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- submitForm reads admin; rows only name a cancelled project
+    [admin, today, rows],
+  );
+
   /** Optimistic: apply locally, persist, roll back on failure. */
   const saveSettings = async (context: ViewContext, value: ViewSettingsValue): Promise<string | null> => {
     if (!admin || !settings) return "Not authorized.";
@@ -789,6 +797,7 @@ export function ProjectDashboard({
               renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
               layout={layoutControl}
               departments={line?.departments}
+              inlineEdit={inlineEdit}
             />
           </div>
           <div className="flex justify-between border-t border-line px-3 py-2.5 text-muted type-caption">

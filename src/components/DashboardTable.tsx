@@ -22,6 +22,7 @@ import { PeopleStack, type PeopleLine } from "@/lib/dashboard/PeopleStack";
 import { DueFlags, MilestoneUpdateStack, type DueFlagKind, type DueFlagsCell, type MilestoneUpdateLine } from "@/lib/dashboard/StackedCells";
 import type { ViewSettingsValue } from "@/lib/domain/ViewSettings";
 import { StatusPill } from "./StatusPill";
+import { InlineErrorRow, InlineSaveIndicator, InlineStatusChip, InlineUpdateLine, useInlineRow, type InlineEditControl, type InlineRow } from "./InlineRowEdit";
 import { StatusShape } from "./StatusShape";
 
 export interface DashboardTableProps {
@@ -57,6 +58,8 @@ export interface DashboardTableProps {
   onReview?: (row: DashboardRow) => void;
   /** Rendered instead of the plain empty text (filters: "No projects match these filters" + Clear all filters). */
   empty?: ReactNode;
+  /** Admins: edit the latest update line and the status chip in place (saveProjectForm). Absent = read only. */
+  inlineEdit?: InlineEditControl;
 }
 
 /** Layout input of the table: the line's layout, who may change it, the active sort, and where changes go. */
@@ -170,7 +173,7 @@ class TableMeasure {
  * flexible column. Admins resize from each header's right edge, drag headers (Project stays first) and drag
  * rows within their department; everyone else sees the same layout with no handles or grips.
  */
-export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiToggle, rowMenu, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, empty }: DashboardTableProps) {
+export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiToggle, rowMenu, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, empty, inlineEdit }: DashboardTableProps) {
   const value = layout?.value ?? LineLayout.defaults();
   const effective = value.columns ? LineLayout.orderedSettings("dashboard", settings, value.columns.order) : settings;
   const baseOrder = value.columns?.order ?? LineLayout.orderFromSettings("dashboard", settings);
@@ -539,6 +542,7 @@ export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiTo
                   chips={chips}
                   search={search}
                   hit={hit}
+                  inlineEdit={inlineEdit}
                   onReview={onReview && r.editable && r.changed ? () => onReview(r) : undefined}
                   renderMeta={renderMeta}
                   style={drag.style}
@@ -681,7 +685,9 @@ function ProjectRow({
   onReview,
   onMultiToggle,
   rowMenu,
+  inlineEdit,
 }: {
+  inlineEdit?: InlineEditControl;
   row: DashboardRow;
   columns: readonly DashboardColumn[];
   people: PeopleVisibility;
@@ -706,14 +712,18 @@ function ProjectRow({
   // Chips hidden: a Changed row keeps a quiet cue (2px lilac inset rule and "• Changed" under the meta line).
   const changedCue = !chips && row.changed;
   const projectShadow = selected ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : changedCue ? "shadow-[inset_2px_0_0_#B9A3FF]" : "";
+  const inline = useInlineRow(row, inlineEdit);
+  const shown = inline.display;
   return (
+    <>
     <tr
+      data-inline-editable={inline.editable || undefined}
       data-row-key={row.id}
       data-lifted={lifted || undefined}
       // One click always opens (never toggles closed): a click on the already selected row keeps its drawer open.
       onClick={(e) => (onMultiToggle && (e.metaKey || e.ctrlKey) ? onMultiToggle(row.id) : onSelect(row.id))}
       style={style}
-      className={`pb-row cursor-pointer ${lifted ? "" : "hover:[&>td]:bg-row-selected/60"} ${animate && !lifted ? "transition-transform duration-150 ease-out motion-reduce:transition-none" : ""}`}
+      className={`pb-row group/row cursor-pointer ${lifted ? "" : "hover:[&>td]:bg-row-selected/60"} ${animate && !lifted ? "transition-transform duration-150 ease-out motion-reduce:transition-none" : ""}`}
       aria-selected={selected}
     >
       {columns.map((c) => {
@@ -769,13 +779,23 @@ function ProjectRow({
               </td>
             );
           case "status":
-            return (
+            return inline.editable ? (
+              <td key={c.key} data-col={c.key} className={`${td} relative`}>
+                <InlineStatusChip inline={inline} name={row.name} />
+                <InlineSaveIndicator state={inline.status.state} cell="status" />
+              </td>
+            ) : (
               <td key={c.key} data-col={c.key} className={td}>
                 <StatusPill status={row.status} />
               </td>
             );
           case "milestoneUpdate":
-            return (
+            return inline.editable ? (
+              <td key={c.key} data-col={c.key} className={`${td} relative`}>
+                <MilestoneUpdateCell lines={MilestoneUpdateStack.lines(shown, stack)} update={stack.update ? <InlineUpdate inline={inline} lines={MilestoneUpdateStack.lines(shown, stack)} name={row.name} /> : undefined} />
+                <InlineSaveIndicator state={inline.note.state} cell="update" />
+              </td>
+            ) : (
               <td key={c.key} data-col={c.key} className={td}>
                 <MilestoneUpdateCell lines={MilestoneUpdateStack.lines(row, stack)} />
               </td>
@@ -795,7 +815,14 @@ function ProjectRow({
         }
       })}
     </tr>
+    <InlineErrorRow inline={inline} span={columns.length} />
+    </>
   );
+}
+
+function InlineUpdate({ inline, lines, name }: { inline: InlineRow; lines: readonly MilestoneUpdateLine[]; name: string }) {
+  const line = lines.find((l): l is Extract<MilestoneUpdateLine, { kind: "update" }> => l.kind === "update") ?? null;
+  return <InlineUpdateLine inline={inline} line={line} name={name} />;
 }
 
 /**
@@ -837,8 +864,10 @@ export function PeopleCell({ lines }: { lines: readonly PeopleLine[] }) {
  * two lines, full text as a tooltip), then after a 4px gap the latest update (13/18 regular, secondary, not
  * clamped; unchanged rows read "No change." in the same style). Blank lines render nothing.
  */
-export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdateLine[] }) {
-  if (lines.length === 0) return null;
+export function MilestoneUpdateCell({ lines: all, update }: { lines: readonly MilestoneUpdateLine[]; update?: ReactNode }) {
+  // Inline editing: the update line is replaced by its editor (always present, even for a blank note).
+  const lines = update === undefined ? all : all.filter((l) => l.kind !== "update");
+  if (lines.length === 0 && update === undefined) return null;
   return (
     <div className="flex flex-col text-[13px] leading-[18px]" style={{ gap: MilestoneUpdateStack.LINE_GAP_PX }} data-testid="milestone-update">
       {lines.map((l) =>
@@ -874,6 +903,7 @@ export function MilestoneUpdateCell({ lines }: { lines: readonly MilestoneUpdate
           </div>
         ),
       )}
+      {update}
     </div>
   );
 }

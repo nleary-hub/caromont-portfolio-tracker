@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState, type CSSProperties, type KeyboardEvent, type ReactNode } from "react";
 import { Chevron, FieldControlStyle } from "./FieldControl";
 import { usePopover } from "./DashboardFilterControls";
 
@@ -22,6 +22,9 @@ export function PickerSelect({
   options,
   onChange,
   testId,
+  trigger,
+  onTriggerKeyDown,
+  menuWidth,
 }: {
   /** The trigger's id (the field label points at it). */
   id: string;
@@ -31,12 +34,30 @@ export function PickerSelect({
   options: readonly PickerOption[];
   onChange: (value: string) => void;
   testId?: string;
+  /**
+   * A custom trigger instead of the field box (the dashboard row's status chip). The menu anchors to it. Absent:
+   * the shared field style, exactly as before.
+   */
+  trigger?: { className: string; content: ReactNode; label?: string; target?: string };
+  /** Runs first on every trigger key press (the row's Tab order); call preventDefault to stop the picker's handling. */
+  onTriggerKeyDown?: (e: KeyboardEvent<HTMLButtonElement>, open: boolean) => void;
+  /** Menu width in px with a custom trigger (default 160). */
+  menuWidth?: number;
 }) {
   const { open, setOpen, rootRef } = usePopover();
   const [active, setActive] = useState(-1);
   const current = options.find((o) => o.value === value);
   const listId = `${id}-list`;
+  // Custom trigger (a row chip inside the scrolling table): the menu is fixed to the chip so the table never clips it.
+  const triggerRef = useRef<HTMLButtonElement>(null);
+  const [anchor, setAnchor] = useState<CSSProperties | null>(null);
   const show = () => {
+    if (trigger && triggerRef.current) {
+      const r = triggerRef.current.getBoundingClientRect();
+      const height = options.length * 28 + 8;
+      const below = window.innerHeight - r.bottom > height + 8;
+      setAnchor({ position: "fixed", left: r.left, top: below ? r.bottom + 4 : Math.max(8, r.top - height - 4) });
+    }
     setActive(Math.max(0, options.findIndex((o) => o.value === value)));
     setOpen(true);
   };
@@ -45,18 +66,23 @@ export function PickerSelect({
     if (v !== value) onChange(v);
   };
   return (
-    <div ref={rootRef} className={FieldControlStyle.WRAP} data-testid={testId}>
+    <div ref={rootRef} className={trigger ? "relative inline-flex" : FieldControlStyle.WRAP} data-testid={testId}>
       <button
         type="button"
+        ref={triggerRef}
         id={id}
         role="combobox"
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
         aria-activedescendant={open && active >= 0 ? `${id}-opt-${active}` : undefined}
-        className={`${FieldControlStyle.BOX} h-8 text-left text-fg`}
+        aria-label={trigger?.label}
+        data-inline-target={trigger?.target}
+        className={trigger ? trigger.className : `${FieldControlStyle.BOX} h-8 text-left text-fg`}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={(e) => {
+          onTriggerKeyDown?.(e, open);
+          if (e.defaultPrevented) return;
           if (!open && (e.key === "ArrowDown" || e.key === "Enter" || e.key === " ")) {
             e.preventDefault();
             show();
@@ -72,13 +98,15 @@ export function PickerSelect({
           }
         }}
       >
-        {current?.label ?? ""}
+        {trigger ? trigger.content : (current?.label ?? "")}
       </button>
-      <span aria-hidden="true" className={`pointer-events-none ${FieldControlStyle.CHEVRON_SLOT}`}>
-        <Chevron open={open} />
-      </span>
+      {!trigger && (
+        <span aria-hidden="true" className={`pointer-events-none ${FieldControlStyle.CHEVRON_SLOT}`}>
+          <Chevron open={open} />
+        </span>
+      )}
       {open && (
-        <div className="vp-pop" style={{ left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
+        <div className="vp-pop" style={trigger ? { left: 0, top: "calc(100% + 4px)", ...anchor, width: menuWidth ?? 160, padding: 4, zIndex: 40 } : { left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
           <ul id={listId} role="listbox" aria-label={label} className="vp-list">
             {options.map((o, i) => (
               <li
