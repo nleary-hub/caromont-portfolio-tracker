@@ -30,11 +30,14 @@ export function useInlineRow(row: DashboardRow, control: InlineEditControl | und
   const base = control?.values[row.id];
   const editable = Boolean(control && base);
   const [saved, setSaved] = useState<ProjectFormValues | null>(base ?? null);
+  // Changed / Updated / Stale / Overdue recomputed from a successful save, until the server data refreshes.
+  const [derived, setDerived] = useState<ReturnType<typeof InlineRowEdit.derivedAfterSave> | null>(null);
   // New server values (after a refresh) replace the local copy.
   const [prevBase, setPrevBase] = useState(base);
   if (prevBase !== base) {
     setPrevBase(base);
     setSaved(base ?? null);
+    setDerived(null);
   }
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState("");
@@ -82,6 +85,7 @@ export function useInlineRow(row: DashboardRow, control: InlineEditControl | und
           const next = { ...(savedRef.current as ProjectFormValues), ...changes };
           savedRef.current = next;
           setSaved(next);
+          setDerived(InlineRowEdit.derivedAfterSave({ id: row.id, status: next.status as ProjectStatus, dueDate: next.dueDate || null }, changes, new Date(), control.today));
           failed.current = null;
           setCell(cell, "saved");
           fades.current[cell] = [setTimeout(() => setCell(cell, "fading"), InlineRowEdit.SAVED_FADE_MS), setTimeout(() => setCell(cell, "idle"), InlineRowEdit.SAVED_FADE_MS + 300)];
@@ -124,7 +128,7 @@ export function useInlineRow(row: DashboardRow, control: InlineEditControl | und
   return {
     editable,
     // While saving, and after a failure, the line shows the text being saved.
-    display: editable && saved ? { ...row, note: state.update === "saving" || error?.cell === "update" ? draft : saved.note, status: (status ?? saved.status) as ProjectStatus } : row,
+    display: editable && saved ? { ...row, ...derived, note: state.update === "saving" || error?.cell === "update" ? draft : saved.note, status: (status ?? saved.status) as ProjectStatus } : row,
     note: {
       editing,
       draft,

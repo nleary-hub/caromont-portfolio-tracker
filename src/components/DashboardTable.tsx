@@ -666,7 +666,7 @@ const CELL = "border-b border-line px-3 py-[10px] align-top";
 export const NAME_WRAP = "whitespace-normal [overflow-wrap:anywhere] hyphens-none";
 
 function ProjectRow({
-  row,
+  row: rawRow,
   columns,
   people,
   stack,
@@ -708,12 +708,14 @@ function ProjectRow({
   onMultiToggle?: (id: string) => void;
   rowMenu?: (row: DashboardRow) => ReactNode;
 }) {
+  const inline = useInlineRow(rawRow, inlineEdit);
+  // After an inline save the whole row (Changed cue, "No change.", Updated, flags) reflects it at once.
+  const row = inline.display;
+  const shown = row;
   const td = `${CELL} ${selected ? "bg-row-selected" : lifted ? "bg-card" : ""}`;
   // Chips hidden: a Changed row keeps a quiet cue (2px lilac inset rule and "• Changed" under the meta line).
   const changedCue = !chips && row.changed;
   const projectShadow = selected ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : changedCue ? "shadow-[inset_2px_0_0_#B9A3FF]" : "";
-  const inline = useInlineRow(row, inlineEdit);
-  const shown = inline.display;
   return (
     <>
     <tr

@@ -37,7 +37,9 @@ test("hover shows the update outline and the chip chevron; Enter saves only the 
   await page.evaluate(() => (window as unknown as { __release: () => void }).__release());
   await expect(row(page, 0).getByTestId("inline-indicator-update")).toHaveText("Saved");
   await shot(page, "a-saved");
-  await expect(row(page, 0).getByTestId("inline-update")).toHaveText("No change. Sam Delacroix confirmed the vendor date");
+  // The row reflects the save at once: Changed on, no stale "No change." prefix.
+  await expect(row(page, 0).getByTestId("inline-update")).toHaveText("Sam Delacroix confirmed the vendor date");
+  await expect(row(page, 0).locator('[data-flag="changed"], [data-part="changed-cue"]')).toBeVisible();
   await expect(row(page, 0).getByTestId("inline-indicator-update")).toHaveCount(0, { timeout: 3000 });
   expect(await saves(page)).toEqual([{ id: "fictional-0", changes: { note: "Sam Delacroix confirmed the vendor date" } }]);
   // Nothing else in the row moved.
@@ -138,4 +140,23 @@ test("clicking anywhere else on the row still opens the drawer; read-only viewer
   await expect(page.getByTestId("inline-status")).toHaveCount(0);
   await expect(page.locator('[data-part="chip-chevron"]')).toHaveCount(0);
   await shot(page, "a-readonly");
+});
+
+test("a successful save refreshes the row's derived state at once: Changed on, 'No change.' gone; a failed save does not", async ({ page }) => {
+  await page.goto("/?save=fail");
+  await expect(row(page, 2).getByTestId("inline-update")).toHaveText("No change. Bravo unique note");
+  await expect(row(page, 2).locator('[data-flag="changed"], [data-part="changed-cue"]')).toHaveCount(0);
+  await row(page, 2).getByTestId("inline-update").click();
+  await row(page, 2).getByTestId("inline-update-input").fill("Will not save");
+  await row(page, 2).getByTestId("inline-update-input").press("Escape");
+  await expect(row(page, 2).getByTestId("inline-update")).toHaveText("No change. Bravo unique note");
+  await page.goto("/");
+  // Status save on an unchanged row: the update line loses "No change." and the Changed flag appears.
+  await row(page, 2).getByTestId("inline-status").getByRole("combobox").click();
+  await page.getByRole("listbox", { name: "Status for Bravo fictional project" }).getByRole("option", { name: "At risk" }).click();
+  await expect(row(page, 2).locator('[data-flag="changed"], [data-part="changed-cue"]')).toBeVisible();
+  await expect(row(page, 2).getByTestId("inline-update")).toHaveText("Bravo unique note");
+  await expect(row(page, 2).locator('[data-part="no-change"]')).toHaveCount(0);
+  // Other rows are untouched.
+  await expect(row(page, 1).getByTestId("inline-update")).toHaveText("No change. Alpha unique note");
 });

@@ -1,4 +1,7 @@
+import type { ProjectStatus } from "@/generated/prisma/enums";
+import { DateOnly } from "@/lib/domain/DateOnly";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
+import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ProjectFormModel, type ProjectFormValues } from "@/lib/projects/ProjectFormModel";
 
 /** What an inline save sends: the latest update or the status (with what a status change implies). Never % complete. */
@@ -23,6 +26,26 @@ export class InlineRowEdit {
   static readonly MAX_LINES = 3;
   static readonly LINE_PX = 18;
   static readonly EMPTY_UPDATE = "Add an update";
+
+  /**
+   * The row's derived state right after a successful save (CTO, Oct 16, 2026: a stale "No change." is a data-integrity
+   * bug). The ok response confirms the save wrote public history now (note and status are public update fields), so the
+   * row's flags are recomputed with the report's own rules (ReportBuilder.flags, updatedOn, isStale) over that entry:
+   * Changed comes on (so "No change." goes), "Updated" is today, Stale clears. The next page refresh replaces it.
+   */
+  static derivedAfterSave(
+    row: { id: string; status: ProjectStatus; dueDate: string | null },
+    changes: InlineChanges,
+    savedAt: Date,
+    today: string,
+  ): { changed: boolean; overdue: boolean; updatedOn: string | null; stale: boolean } {
+    const status = (changes.status ?? row.status) as ProjectStatus;
+    const history = Object.keys(changes).map((field) => ({ projectId: row.id, field, changedAt: savedAt }));
+    const project = { id: row.id, status, dueDate: row.dueDate ? DateOnly.toDbDate(row.dueDate) : null, reviewedAt: null };
+    const flags = ReportBuilder.flags(project, history as never, null, today);
+    const updatedOn = ReportBuilder.updatedOn(row.id, history as never);
+    return { ...flags, updatedOn, stale: ReportBuilder.isStale({ status, updatedOn }, today) };
+  }
 
   /** The note change, or null when the text did not change (no save call, no indicator). */
   static noteChanges(saved: string, draft: string): InlineChanges | null {

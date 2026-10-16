@@ -2,6 +2,8 @@ import { readFileSync } from "node:fs";
 import path from "node:path";
 import { beforeEach, describe, expect, it } from "vitest";
 import { InlineRowEdit } from "@/lib/dashboard/InlineRowEdit";
+import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
+import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { ProjectFormModel } from "@/lib/projects/ProjectFormModel";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { FakeDb } from "./helpers/FakeDb";
@@ -45,6 +47,32 @@ describe("Inline row update: what a save sends", () => {
     expect(InlineRowEdit.step(4, 0, false)).toBe(1);
     expect(InlineRowEdit.step(4, 3, false)).toBeNull();
     expect(InlineRowEdit.step(4, 0, true)).toBeNull();
+  });
+});
+
+describe("Inline row update: derived state after a successful save (Q4)", () => {
+  const savedAt = new Date("2026-10-16T19:00:00Z");
+  it("an unchanged row becomes Changed, Updated today and not Stale, so 'No change.' goes away", () => {
+    const d = InlineRowEdit.derivedAfterSave({ id: "p1", status: "OnTrack", dueDate: "2099-01-01" }, { note: "Sam Delacroix confirmed" }, savedAt, "2026-10-16");
+    expect(d).toEqual({ changed: true, overdue: false, updatedOn: "2026-10-16", stale: false });
+    const before = { note: "Old note", changed: false };
+    expect(LatestUpdate.line(before)!.prefix).toBe(LatestUpdate.NO_CHANGE_PREFIX);
+    expect(LatestUpdate.line({ ...before, note: "Sam Delacroix confirmed", changed: d.changed })!.prefix).toBeNull();
+  });
+
+  it("a status save uses the new status for the flags (report rules), and keeps Overdue from the due date", () => {
+    const d = InlineRowEdit.derivedAfterSave({ id: "p1", status: "OnTrack", dueDate: "2026-10-01" }, { status: "AtRisk" }, savedAt, "2026-10-16");
+    expect(d.changed).toBe(true);
+    expect(d.overdue).toBe(true);
+    const hold = InlineRowEdit.derivedAfterSave({ id: "p1", status: "OnTrack", dueDate: "2026-10-01" }, { status: "OnHold" }, savedAt, "2026-10-16");
+    expect(hold.overdue).toBe(ReportBuilder.isOverdue({ status: "OnHold", dueDate: new Date("2026-10-01T00:00:00Z") }, "2026-10-16"));
+  });
+
+  it("the hook applies it only on an ok response, and the next server data replaces it", () => {
+    const hook = read("src/components/InlineRowEdit.tsx");
+    expect(hook).toMatch(/if \(result\?\.ok\) \{[\s\S]*setDerived\(InlineRowEdit\.derivedAfterSave\(/);
+    expect(hook).toMatch(/setSaved\(base \?\? null\);\s*setDerived\(null\);/);
+    expect(read("src/components/DashboardTable.tsx")).toMatch(/const row = inline\.display;/);
   });
 });
 
