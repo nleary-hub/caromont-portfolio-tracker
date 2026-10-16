@@ -8,6 +8,7 @@ import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import { StepCheckedBy } from "@/lib/projects/StepCheckedBy";
 import { CheckedByTooltip } from "./CheckedByTooltip";
 import { AutoGrowTextarea } from "./AutoGrowTextarea";
+import { DueDatePopover } from "./DueDatePopover";
 import { PeopleCombobox } from "./PeopleCombobox";
 import { MilestoneOwnerCopy } from "@/lib/projects/MilestoneOwnerCopy";
 import { OwnerNameLists } from "@/lib/people/OwnerNameLists";
@@ -359,18 +360,12 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
                   )}
                   {!renaming &&
                     (editingDue === s.key && !s.done ? (
-                      <input
-                        type="date"
-                        autoFocus
-                        defaultValue={s.dueDate}
-                        onChange={(e) => {
-                          setEditingDue(null);
-                          void commit(MilestoneEditorModel.update(state, s.key, { dueDate: e.target.value }));
-                        }}
-                        onBlur={() => setEditingDue(null)}
-                        onKeyDown={(e) => e.key === "Escape" && setEditingDue(null)}
-                        aria-label={`Step ${i + 1} due date`}
-                        className="h-7 w-[124px] shrink-0 rounded-control border border-accent bg-input px-1 text-fg type-table focus:outline-none"
+                      <DueDatePopover
+                        saved={s.dueDate}
+                        today={today}
+                        label={`Step ${i + 1} due date`}
+                        onSave={(d) => void commit(MilestoneEditorModel.update(state, s.key, { dueDate: d }))}
+                        onClose={() => setEditingDue(null)}
                       />
                     ) : s.done ? (
                       <span className="shrink-0 whitespace-nowrap tabular-nums type-caption" style={{ color: DONE }} data-testid="done-date">

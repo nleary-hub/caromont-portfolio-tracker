@@ -36,7 +36,13 @@ const admin: AdminDashboardProps = {
   setPeopleFieldAction: noop, menuItems: [],
   formValues: Object.fromEntries(rows.map(row => [row.id, ProjectFormModel.fromSource({ ...row,
     accomplishment: null, description: null, completedOn: null })])),
-  milestoneSteps: {}, templates: [], saveMilestonesAction: async () => ({ ok: true, steps: [] }),
+  // Fictional checklist on Zulu; every save is recorded on window.__milestoneSaves so tests can read the exact payload.
+  milestoneSteps: { "fictional-0": [{ id: "fictional-step-1", name: "Fictional vendor quote", dueDate: "2026-11-12", done: false, doneAt: null, checkedBy: null, checkedAt: null, position: 0, sourceTemplateId: null, owner: null }] },
+  templates: [], saveMilestonesAction: async (_projectId, edit) => {
+    const w = window as unknown as { __milestoneSaves?: unknown[] };
+    (w.__milestoneSaves ??= []).push(JSON.parse(JSON.stringify(edit)));
+    return { ok: true, steps: edit.drafts.map((d, i) => ({ id: d.id ?? `fictional-new-${i}`, name: d.name, dueDate: d.dueDate || null, done: d.done, doneAt: null, checkedBy: null, checkedAt: null, position: i, sourceTemplateId: d.sourceTemplateId, owner: d.owner ?? null })) };
+  },
   saveProjectFormAction: async () => ({ ok: true, id: "fictional-0" }),
   createProjectAction: async () => ({ ok: true, id: "fictional-new" }),
   saveColumnLayoutAction: noop, saveRowOrderAction: noop, resetRowOrderAction: noop,

@@ -46,6 +46,10 @@ export class AiCopy {
   static readonly VOICE_INSTRUCTIONS_TOO_LONG = "Voice chat instructions can be up to 4,000 characters.";
   static readonly VOICE_INSTRUCTIONS_SAVED = "Voice chat instructions saved.";
   static readonly VOICE_INSTRUCTIONS_SAVE = "Save instructions";
+  /** "3 voice models listed", "1 chat model listed". */
+  static modelsListed(n: number, kindLabel: string): string {
+    return `${n} ${kindLabel.toLowerCase()} ${n === 1 ? "model" : "models"} listed`;
+  }
   static readonly MODEL_ADD_PLACEHOLDER = "For example gpt-example-mini";
   /** Typed-ID placeholder for the voice chat model (a realtime example, not a chat model). */
   static readonly VOICE_MODEL_PLACEHOLDER = "For example, gpt-example-realtime";
@@ -61,7 +65,7 @@ export class AiCopy {
   static readonly MODEL_LIST_LOAD = "Show OpenAI models";
   static readonly MODEL_LIST_LOADING = "Loading…";
   static readonly MODEL_LIST_HELP = "Models OpenAI lists for the saved API key. Adding one doesn't turn it on.";
-  static readonly MODEL_LIST_EMPTY = "OpenAI listed no chat, transcription or realtime models for this key.";
+  static readonly MODEL_LIST_EMPTY = "OpenAI listed no chat, transcription or voice models for this key.";
   static readonly MODEL_ADD_MANUAL_HELP = "The model list didn't load, so this ID is saved without checking. It starts off.";
   static readonly MODEL_LIST_ADDED = "Added";
   static readonly MODEL_KIND_LABEL = "Type";

@@ -332,3 +332,13 @@ describe("voice chat instructions field (UI)", () => {
     expect(html).toMatch(/<button[^>]*disabled=""[^>]*data-testid="ai-voice-instructions-save"/);
   });
 });
+
+describe("voice copy", () => {
+  it("the realtime kind is labelled Voice and the count reads voice models", () => {
+    expect(AiModelKinds.label("realtime")).toBe("Voice");
+    expect(AiCopy.modelsListed(3, AiModelKinds.label("realtime"))).toBe("3 voice models listed");
+    expect(AiCopy.modelsListed(1, AiModelKinds.label("realtime"))).toBe("1 voice model listed");
+    expect(AiCopy.modelsListed(2, AiModelKinds.label("chat"))).toBe("2 chat models listed");
+    expect(AiCopy.MODEL_LIST_EMPTY).toBe("OpenAI listed no chat, transcription or voice models for this key.");
+  });
+});

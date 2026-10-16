@@ -129,7 +129,7 @@ export function ModelField({
           <button type="button" className={GHOST} onClick={onLoadList} disabled={disabled || listLoading} data-testid={`${id}-load-list`}>
             {listLoading ? C.MODEL_LIST_LOADING : C.MODEL_LIST_LOAD}
           </button>
-          {list?.ok && <span className="text-muted type-caption">{`${listed.length} ${AiModelKinds.label(kind).toLowerCase()} models listed`}</span>}
+          {list?.ok && <span className="text-muted type-caption">{C.modelsListed(listed.length, AiModelKinds.label(kind))}</span>}
         </div>
       )}
       {manual && (

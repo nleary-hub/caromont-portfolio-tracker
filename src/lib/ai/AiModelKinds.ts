@@ -92,6 +92,6 @@ export class AiModelKinds {
   }
 
   static label(kind: AiModelKind | null): string {
-    return kind === "chat" ? "Chat" : kind === "transcription" ? "Transcription" : kind === "realtime" ? "Realtime" : "Other";
+    return kind === "chat" ? "Chat" : kind === "transcription" ? "Transcription" : kind === "realtime" ? "Voice" : "Other";
   }
 }
