@@ -34,7 +34,7 @@ class Fx {
 describe("PR #22 review fixes: People lines wrap, never truncate (PDF)", () => {
   it("wraps owner and requester at word boundaries in a narrow People column, with no ellipsis", () => {
     const settings = Fx.narrowPeopleStatusLast();
-    const row = Fx.row({ owner: "Kimberly Nguyen-Alvarez", physicianChampion: "Dr. Requester Longname Example", contractsLead: "Mellisa Gonzales" });
+    const row = Fx.row({ owner: "Kimberly Nguyen-Alvarez", physicianChampion: "Dr. Requester Longname Example", contractsLead: "Morgan Ellsworth" });
     const l = ReportLayout.rowLayout(m, row, settings, SampleReportData.REPORT_DATE);
     const owner = Fx.cell(l.cells, "owner");
     expect(owner.w / 72).toBeLessThan(1.1);

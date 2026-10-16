@@ -67,23 +67,23 @@ describe("Writing Bot copy (item 5)", () => {
   });
 
   it("add errors, rename and remove", () => {
-    expect(PeopleListRules.duplicate("owner", "Nicole Smith")).toBe("Nicole Smith is already an owner.");
-    expect(PeopleListRules.duplicate("requester", "Nicole Smith")).toBe("Nicole Smith is already a requester.");
+    expect(PeopleListRules.duplicate("owner", "Noor Haddad")).toBe("Noor Haddad is already an owner.");
+    expect(PeopleListRules.duplicate("requester", "Noor Haddad")).toBe("Noor Haddad is already a requester.");
     expect(PeopleListRules.builtIn("To assign")).toBe('"To assign" is always offered, so it doesn\'t need adding.');
-    expect(PeopleListRules.renameTitle("Jeff Krause")).toBe("Rename Jeff Krause?");
+    expect(PeopleListRules.renameTitle("Jesse Okafor")).toBe("Rename Jesse Okafor?");
     expect(PeopleListRules.RENAME_FIELD).toBe("New name");
     expect(PeopleListRules.RENAME_BUTTON).toBe("Rename");
-    expect(PeopleListRules.renameBody("owner", "Mark Garland", 8)).toBe("8 projects list Mark Garland as owner. They'll show as Changed on the next report. Frozen reports keep the old name.");
-    expect(PeopleListRules.renameBody("owner", "Jeff Krause", 1)).toBe("1 project lists Jeff Krause as owner. It'll show as Changed on the next report. Frozen reports keep the old name.");
-    expect(PeopleListRules.renameBody("requester", "Jeff Krause", 3)).toBe("3 projects list Jeff Krause as requester. They'll show as Changed on the next report. Frozen reports keep the old name.");
-    expect(PeopleListRules.renameBody("requester", "Jeff Krause", 0)).toBe("No projects use this name yet. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("owner", "Parker Lowell", 8)).toBe("8 projects list Parker Lowell as owner. They'll show as Changed on the next report. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("owner", "Jesse Okafor", 1)).toBe("1 project lists Jesse Okafor as owner. It'll show as Changed on the next report. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("requester", "Jesse Okafor", 3)).toBe("3 projects list Jesse Okafor as requester. They'll show as Changed on the next report. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("requester", "Jesse Okafor", 0)).toBe("No projects use this name yet. Frozen reports keep the old name.");
     expect(PeopleListRules.taken("owner")).toBe("Another owner already uses this name.");
-    expect(PeopleListRules.renamedToast("Jeffrey Krause", 4)).toBe("Renamed to Jeffrey Krause. 4 projects updated.");
-    expect(PeopleListRules.removeTitle("owner", "Jeff Krause")).toBe("Remove Jeff Krause from owners?");
-    expect(PeopleListRules.removeTitle("requester", "Jeff Krause")).toBe("Remove Jeff Krause from requesters?");
-    expect(PeopleListRules.removeBody("owner", "Jeff Krause", 3)).toBe("3 projects list Jeff Krause as owner. They keep that name, but new projects won't offer it.");
-    expect(PeopleListRules.removeBody("owner", "Jeff Krause", 1)).toBe("1 project lists Jeff Krause as owner. They keep that name, but new projects won't offer it.");
-    expect(PeopleListRules.removeBody("requester", "Jeff Krause", 0)).toBe("New projects won't offer this name.");
+    expect(PeopleListRules.renamedToast("Jessica Okafor", 4)).toBe("Renamed to Jessica Okafor. 4 projects updated.");
+    expect(PeopleListRules.removeTitle("owner", "Jesse Okafor")).toBe("Remove Jesse Okafor from owners?");
+    expect(PeopleListRules.removeTitle("requester", "Jesse Okafor")).toBe("Remove Jesse Okafor from requesters?");
+    expect(PeopleListRules.removeBody("owner", "Jesse Okafor", 3)).toBe("3 projects list Jesse Okafor as owner. They keep that name, but new projects won't offer it.");
+    expect(PeopleListRules.removeBody("owner", "Jesse Okafor", 1)).toBe("1 project lists Jesse Okafor as owner. They keep that name, but new projects won't offer it.");
+    expect(PeopleListRules.removeBody("requester", "Jesse Okafor", 0)).toBe("New projects won't offer this name.");
     expect(PeopleComboboxModel.NOT_ON_LIST).toBe("Not on list");
   });
 
@@ -105,12 +105,12 @@ describe("PeopleListRules.parse", () => {
     return null;
   };
   it("rejects blanks, built-in options, blocked and duplicate names", () => {
-    const list = ["Nicole Smith", "Nick Leary"];
-    expect(PeopleListRules.parse("owner", "  Jeff   Krause ", list)).toBe("Jeff Krause");
+    const list = ["Noor Haddad", "Nick Leary"];
+    expect(PeopleListRules.parse("owner", "  Jesse   Okafor ", list)).toBe("Jesse Okafor");
     expect(err(() => PeopleListRules.parse("owner", "   ", list))).toBe("Name is required.");
     expect(err(() => PeopleListRules.parse("owner", "x".repeat(201), list))).toBe("Name must be 200 characters or fewer.");
-    expect(err(() => PeopleListRules.parse("owner", "nicole smith", list))).toBe("Nicole Smith is already an owner.");
-    expect(err(() => PeopleListRules.parse("requester", "Nicole Smith", list))).toBe("Nicole Smith is already a requester.");
+    expect(err(() => PeopleListRules.parse("owner", "noor haddad", list))).toBe("Noor Haddad is already an owner.");
+    expect(err(() => PeopleListRules.parse("requester", "Noor Haddad", list))).toBe("Noor Haddad is already a requester.");
     for (const t of ["To assign", "tbd", "Unassigned", "clear (to assign)"]) expect(err(() => PeopleListRules.parse("owner", t, list))).toBe('"To assign" is always offered, so it doesn\'t need adding.');
     expect(err(() => PeopleListRules.parse("requester", "N/A", list))).toBe('"Not applicable" is always offered, so it doesn\'t need adding.');
     expect(err(() => PeopleListRules.parse("owner", "Not applicable", list))).toBe(PeopleListRules.OWNER_NOT_APPLICABLE);
@@ -118,7 +118,7 @@ describe("PeopleListRules.parse", () => {
     expect(err(() => PeopleListRules.parse("requester", "Mark Garland", list))).toBe("That name can't be added to this list.");
     // Rename: the name itself is not a duplicate (a case-only change is allowed); another name is "taken".
     expect(PeopleListRules.parse("owner", "NICK LEARY", list, "Nick Leary")).toBe("NICK LEARY");
-    expect(err(() => PeopleListRules.parse("owner", "nicole smith", list, "Nick Leary"))).toBe("Another owner already uses this name.");
+    expect(err(() => PeopleListRules.parse("owner", "noor haddad", list, "Nick Leary"))).toBe("Another owner already uses this name.");
   });
 });
 
@@ -126,19 +126,19 @@ describe("PeopleService: Owners and Requesters per line", () => {
   it("lists locked rows first with their counts, then names A to Z with case-insensitive counts (deleted projects skipped)", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
-    await T.setLists(fake, ["Nicole Smith", "Jeff Krause"], ["Dr. Adams"]);
-    await T.project(db, "A", "Jeff Krause", "Dr. Adams");
-    await T.project(db, "B", "jeff  krause", "dr. adams");
+    await T.setLists(fake, ["Noor Haddad", "Jesse Okafor"], ["Dr. Adams"]);
+    await T.project(db, "A", "Jesse Okafor", "Dr. Adams");
+    await T.project(db, "B", "jesse  okafor", "dr. adams");
     await T.project(db, "C", null, null);
     await T.project(db, "C2", "To assign", "Not applicable");
     await T.project(db, "D", "Mark Wingard", "Not applicable");
-    const gone = await T.project(db, "E", "Jeff Krause");
+    const gone = await T.project(db, "E", "Jesse Okafor");
     await ProjectService.softDelete(gone.id, ADMIN, db);
     const lists = await PeopleService.lists(await T.scope(db), ADMIN, db);
     expect(lists.owners).toEqual([
       { name: "To assign", projects: 2, locked: true },
-      { name: "Jeff Krause", projects: 2, locked: false },
-      { name: "Nicole Smith", projects: 0, locked: false },
+      { name: "Jesse Okafor", projects: 2, locked: false },
+      { name: "Noor Haddad", projects: 0, locked: false },
     ]);
     expect(lists.requesters).toEqual([
       { name: "Not applicable", projects: 2, locked: true },
@@ -166,51 +166,51 @@ describe("PeopleService: Owners and Requesters per line", () => {
   it("renames the list name and every project of the line using it, with history, in one step", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
-    await T.setLists(fake, ["Jeff Krause", "Nicole Smith"], ["Jeff Krause"]);
-    const a = await T.project(db, "A", "Jeff Krause", "Jeff Krause");
-    const b = await T.project(db, "B", "jeff krause");
-    await T.project(db, "C", "Nicole Smith");
+    await T.setLists(fake, ["Jesse Okafor", "Noor Haddad"], ["Jesse Okafor"]);
+    const a = await T.project(db, "A", "Jesse Okafor", "Jesse Okafor");
+    const b = await T.project(db, "B", "jesse okafor");
+    await T.project(db, "C", "Noor Haddad");
     const onc = fake.addLine();
     const oncScope = ServiceLineAccess.toScope(onc as never);
-    const other = await T.project(db, "O", "Jeff Krause", null, oncScope);
-    const gone = await T.project(db, "E", "Jeff Krause");
+    const other = await T.project(db, "O", "Jesse Okafor", null, oncScope);
+    const gone = await T.project(db, "E", "Jesse Okafor");
     await ProjectService.softDelete(gone.id, ADMIN, db);
     const before = fake.state.history.length;
 
-    expect(await DepartmentForms.renamePerson(ADMIN, "owner", "Jeff Krause", "Nicole Smith", db)).toMatchObject({ ok: false, message: "Another owner already uses this name." });
-    expect(await DepartmentForms.renamePerson(ADMIN, "owner", "Jeff Krause", "Jeff Krause", db)).toMatchObject({ ok: false, message: "Enter a different name." });
-    expect(await DepartmentForms.renamePerson(ADMIN, "owner", "Jeff Krause", " Jeffrey  Krause ", db)).toEqual({ ok: true, message: "Renamed to Jeffrey Krause. 2 projects updated." });
+    expect(await DepartmentForms.renamePerson(ADMIN, "owner", "Jesse Okafor", "Noor Haddad", db)).toMatchObject({ ok: false, message: "Another owner already uses this name." });
+    expect(await DepartmentForms.renamePerson(ADMIN, "owner", "Jesse Okafor", "Jesse Okafor", db)).toMatchObject({ ok: false, message: "Enter a different name." });
+    expect(await DepartmentForms.renamePerson(ADMIN, "owner", "Jesse Okafor", " Jessica  Okafor ", db)).toEqual({ ok: true, message: "Renamed to Jessica Okafor. 2 projects updated." });
 
     const owner = (id: string) => fake.state.projects.find((p) => p.id === id)!.owner;
-    expect([owner(a.id), owner(b.id)]).toEqual(["Jeffrey Krause", "Jeffrey Krause"]);
-    expect(owner(other.id)).toBe("Jeff Krause");
-    expect(owner(gone.id)).toBe("Jeff Krause");
+    expect([owner(a.id), owner(b.id)]).toEqual(["Jessica Okafor", "Jessica Okafor"]);
+    expect(owner(other.id)).toBe("Jesse Okafor");
+    expect(owner(gone.id)).toBe("Jesse Okafor");
     // Requester field untouched by an owner rename.
-    expect(fake.state.projects.find((p) => p.id === a.id)!.physicianChampion).toBe("Jeff Krause");
+    expect(fake.state.projects.find((p) => p.id === a.id)!.physicianChampion).toBe("Jesse Okafor");
     const added = fake.state.history.slice(before);
     expect(added.map((h) => [h.field, h.oldValue, h.newValue])).toEqual([
-      ["owner", "Jeff Krause", "Jeffrey Krause"],
-      ["owner", "jeff krause", "Jeffrey Krause"],
+      ["owner", "Jesse Okafor", "Jessica Okafor"],
+      ["owner", "jesse okafor", "Jessica Okafor"],
     ]);
     const scope = await T.scope(db);
-    expect(scope.owners).toEqual(["Jeffrey Krause", "Nicole Smith"]);
-    expect(scope.requesters).toEqual(["Jeff Krause"]);
-    expect(fake.state.serviceLineHistory.at(-1)).toMatchObject({ action: "owners_changed", oldValue: ["Jeff Krause", "Nicole Smith"], newValue: ["Jeffrey Krause", "Nicole Smith"] });
+    expect(scope.owners).toEqual(["Jessica Okafor", "Noor Haddad"]);
+    expect(scope.requesters).toEqual(["Jesse Okafor"]);
+    expect(fake.state.serviceLineHistory.at(-1)).toMatchObject({ action: "owners_changed", oldValue: ["Jesse Okafor", "Noor Haddad"], newValue: ["Jessica Okafor", "Noor Haddad"] });
 
-    expect(await DepartmentForms.renamePerson(ADMIN, "requester", "Jeff Krause", "Dr. Krause", db)).toEqual({ ok: true, message: "Renamed to Dr. Krause. 1 project updated." });
-    expect(fake.state.projects.find((p) => p.id === a.id)!.physicianChampion).toBe("Dr. Krause");
+    expect(await DepartmentForms.renamePerson(ADMIN, "requester", "Jesse Okafor", "Dr. Okafor", db)).toEqual({ ok: true, message: "Renamed to Dr. Okafor. 1 project updated." });
+    expect(fake.state.projects.find((p) => p.id === a.id)!.physicianChampion).toBe("Dr. Okafor");
   });
 
   it("removes a name from the list only: projects keep it, the combobox shows it as Not on list", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
-    await T.setLists(fake, ["Jeff Krause", "Nicole Smith"]);
-    const a = await T.project(db, "A", "Jeff Krause");
-    expect(await DepartmentForms.removePerson(ADMIN, "owner", "Jeff Krause", db)).toEqual({ ok: true, message: "Jeff Krause removed." });
-    expect((await T.scope(db)).owners).toEqual(["Nicole Smith"]);
-    expect(fake.state.projects.find((p) => p.id === a.id)!.owner).toBe("Jeff Krause");
-    expect(PeopleComboboxModel.offList({ kind: "name", name: "Jeff Krause" }, ["Nicole Smith"])).toBe(true);
-    expect(await DepartmentForms.removePerson(ADMIN, "owner", "Jeff Krause", db)).toMatchObject({ ok: false });
+    await T.setLists(fake, ["Jesse Okafor", "Noor Haddad"]);
+    const a = await T.project(db, "A", "Jesse Okafor");
+    expect(await DepartmentForms.removePerson(ADMIN, "owner", "Jesse Okafor", db)).toEqual({ ok: true, message: "Jesse Okafor removed." });
+    expect((await T.scope(db)).owners).toEqual(["Noor Haddad"]);
+    expect(fake.state.projects.find((p) => p.id === a.id)!.owner).toBe("Jesse Okafor");
+    expect(PeopleComboboxModel.offList({ kind: "name", name: "Jesse Okafor" }, ["Noor Haddad"])).toBe(true);
+    expect(await DepartmentForms.removePerson(ADMIN, "owner", "Jesse Okafor", db)).toMatchObject({ ok: false });
   });
 
   it("a name added from the combobox joins the line's list; blocked and built-in names never do", async () => {
@@ -240,8 +240,8 @@ describe("Pickers read the line's lists", () => {
     expect(page).not.toContain("Assignee.ownerSuggestions(");
     expect(page).not.toContain("Requester.suggestions(");
     // Stored blocked names are still never offered.
-    expect(PeopleDirectory.merge(["Nicole Smith", "Mark Wingard"])).toEqual(["Nicole Smith"]);
-    expect(PeopleDirectory.addCandidate(["Nicole Smith"], "Mark Wingard")).toBeNull();
+    expect(PeopleDirectory.merge(["Noor Haddad", "Mark Wingard"])).toEqual(["Noor Haddad"]);
+    expect(PeopleDirectory.addCandidate(["Noor Haddad"], "Mark Wingard")).toBeNull();
   });
 
   it("the default scope (no database) offers the built-in CVPSL owners and no requesters", () => {
@@ -252,13 +252,13 @@ describe("Pickers read the line's lists", () => {
   it("combobox: an off-list current value gets a gray Not on list tag; listed names and built-ins don't", async () => {
     const { PeopleCombobox } = await import("@/components/PeopleCombobox");
     const render = (value: Parameters<typeof PeopleCombobox>[0]["value"], role: "owner" | "requester" = "owner") =>
-      renderToStaticMarkup(createElement(PeopleCombobox, { role, id: "x", label: "Owner", options: ["Nicole Smith"], value, onPick: () => {} }));
+      renderToStaticMarkup(createElement(PeopleCombobox, { role, id: "x", label: "Owner", options: ["Noor Haddad"], value, onPick: () => {} }));
     const off = render({ kind: "name", name: "Mark Wingard" });
     expect(off).toContain('data-testid="owner-not-on-list"');
     expect(off).toContain(">Not on list</span>");
     expect(off).toContain('value="Mark Wingard"');
     expect(off).toContain("text-muted");
-    expect(render({ kind: "name", name: "nicole smith" })).not.toContain("Not on list");
+    expect(render({ kind: "name", name: "noor haddad" })).not.toContain("Not on list");
     expect(render({ kind: "unset" })).not.toContain("Not on list");
     expect(render({ kind: "name", name: "To assign" })).not.toContain("Not on list");
     expect(render({ kind: "na" }, "requester")).not.toContain("Not on list");
@@ -268,7 +268,7 @@ describe("Pickers read the line's lists", () => {
 describe("Admin > People page", () => {
   const owners = [
     { name: "To assign", projects: 3, locked: true },
-    { name: "Jeff Krause", projects: 4, locked: false },
+    { name: "Jesse Okafor", projects: 4, locked: false },
   ];
   const requesters = [
     { name: "Not applicable", projects: 1, locked: true },
@@ -286,20 +286,20 @@ describe("Admin > People page", () => {
     expect(html).toContain('title="Built-in option. It can&#x27;t be renamed or removed."');
     expect(html).not.toContain('aria-label="Actions for To assign"');
     expect(html).not.toContain('aria-label="Actions for Not applicable"');
-    expect(html).toContain('aria-label="Actions for Jeff Krause"');
+    expect(html).toContain('aria-label="Actions for Jesse Okafor"');
     expect(html).toContain("No requesters yet. Add the people who request projects on this service line.");
     expect(html).toContain("Names offered in the Owner field on projects.");
   });
 
   it("rename dialog deep link shows the spec copy", async () => {
     const { PeopleAdmin } = await import("@/components/PeopleAdmin");
-    const html = renderToStaticMarkup(createElement(PeopleAdmin, { lineShort: "CVPSL", leads: [], owners, requesters, initial: { role: "owner", rename: "Jeff Krause" } }));
-    expect(html).toContain("Rename Jeff Krause?");
+    const html = renderToStaticMarkup(createElement(PeopleAdmin, { lineShort: "CVPSL", leads: [], owners, requesters, initial: { role: "owner", rename: "Jesse Okafor" } }));
+    expect(html).toContain("Rename Jesse Okafor?");
     expect(html).toContain("New name");
-    expect(html).toContain("4 projects list Jeff Krause as owner. They&#x27;ll show as Changed on the next report. Frozen reports keep the old name.");
-    const remove = renderToStaticMarkup(createElement(PeopleAdmin, { lineShort: "CVPSL", leads: [], owners, requesters, initial: { role: "owner", remove: "Jeff Krause" } }));
-    expect(remove).toContain("Remove Jeff Krause from owners?");
-    expect(remove).toContain("4 projects list Jeff Krause as owner. They keep that name, but new projects won&#x27;t offer it.");
+    expect(html).toContain("4 projects list Jesse Okafor as owner. They&#x27;ll show as Changed on the next report. Frozen reports keep the old name.");
+    const remove = renderToStaticMarkup(createElement(PeopleAdmin, { lineShort: "CVPSL", leads: [], owners, requesters, initial: { role: "owner", remove: "Jesse Okafor" } }));
+    expect(remove).toContain("Remove Jesse Okafor from owners?");
+    expect(remove).toContain("4 projects list Jesse Okafor as owner. They keep that name, but new projects won&#x27;t offer it.");
   });
 });
 

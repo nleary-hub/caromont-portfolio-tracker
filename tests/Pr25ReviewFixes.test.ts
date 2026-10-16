@@ -65,10 +65,10 @@ describe("1. Blocked names: neutral copy, no employment status anywhere", () => 
 
 describe("2. Rename dialog body", () => {
   it("count, Changed on the next report, frozen reports; singular and zero forms", () => {
-    expect(PeopleListRules.renameBody("owner", "Mark Garland", 8)).toBe("8 projects list Mark Garland as owner. They'll show as Changed on the next report. Frozen reports keep the old name.");
-    expect(PeopleListRules.renameBody("owner", "Mark Garland", 1)).toBe("1 project lists Mark Garland as owner. It'll show as Changed on the next report. Frozen reports keep the old name.");
-    expect(PeopleListRules.renameBody("owner", "Mark Garland", 0)).toBe("No projects use this name yet. Frozen reports keep the old name.");
-    expect(PeopleListRules.renameBody("owner", "Mark Garland", 0)).not.toContain("Changed");
+    expect(PeopleListRules.renameBody("owner", "Parker Lowell", 8)).toBe("8 projects list Parker Lowell as owner. They'll show as Changed on the next report. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("owner", "Parker Lowell", 1)).toBe("1 project lists Parker Lowell as owner. It'll show as Changed on the next report. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("owner", "Parker Lowell", 0)).toBe("No projects use this name yet. Frozen reports keep the old name.");
+    expect(PeopleListRules.renameBody("owner", "Parker Lowell", 0)).not.toContain("Changed");
   });
 });
 
@@ -103,11 +103,11 @@ describe("3. Contracts leads A to Z on Admin > People and in the drawer picker (
         ownerSuggestions: [],
         requesterSuggestions: [],
         saveAction: async () => null,
-        contractsLeads: ["Shea Waldron", "Amber Hatley", "Jeff Krause"],
+        contractsLeads: ["Sam Delacroix", "Alex Rivera", "Jesse Okafor"],
       }),
     );
     const select = html.slice(html.indexOf('name="contractsLead"'), html.indexOf("</select>", html.indexOf('name="contractsLead"')));
-    expect([...select.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1])).toEqual(["", "Amber Hatley", "Jeff Krause", "Shea Waldron"]);
+    expect([...select.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1])).toEqual(["", "Alex Rivera", "Jesse Okafor", "Sam Delacroix"]);
   });
 });
 
@@ -116,9 +116,9 @@ describe("4. Only an admin's Add 'X' adds the name to the line's list", () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const p = await F.project(db);
-    expect(await ProjectPeopleForms.setField(ADMIN, p.id, "owner", "Jeff Krause", db)).toEqual({ ok: true });
-    expect(fake.state.projects.find((x) => x.id === p.id)!.owner).toBe("Jeff Krause");
-    expect((await F.scope(db)).owners).toContain("Jeff Krause");
+    expect(await ProjectPeopleForms.setField(ADMIN, p.id, "owner", "Jesse Okafor", db)).toEqual({ ok: true });
+    expect(fake.state.projects.find((x) => x.id === p.id)!.owner).toBe("Jesse Okafor");
+    expect((await F.scope(db)).owners).toContain("Jesse Okafor");
     expect(await ProjectPeopleForms.setField(ADMIN, p.id, "physicianChampion", "Dr. Adams", db)).toEqual({ ok: true });
     expect((await F.scope(db)).requesters).toEqual(["Dr. Adams"]);
   });
@@ -128,8 +128,8 @@ describe("4. Only an admin's Add 'X' adds the name to the line's list", () => {
     const db = fake.asClient();
     const p = await F.project(db);
     const before = (await F.scope(db)).owners;
-    expect(await ProjectPeopleForms.setField(EDITOR, p.id, "owner", "Jeff Krause", db)).toEqual({ ok: false, error: "Not authorized." });
-    expect(await ProjectPeopleForms.setField(null, p.id, "owner", "Jeff Krause", db)).toEqual({ ok: false, error: "Not authorized." });
+    expect(await ProjectPeopleForms.setField(EDITOR, p.id, "owner", "Jesse Okafor", db)).toEqual({ ok: false, error: "Not authorized." });
+    expect(await ProjectPeopleForms.setField(null, p.id, "owner", "Jesse Okafor", db)).toEqual({ ok: false, error: "Not authorized." });
     expect(fake.state.projects.find((x) => x.id === p.id)!.owner).toBeNull();
     expect((await F.scope(db)).owners).toEqual(before);
   });
@@ -138,7 +138,7 @@ describe("4. Only an admin's Add 'X' adds the name to the line's list", () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const scope = await F.scope(db);
-    expect(await PeopleService.rememberPerson(scope, "owner", "Jeff Krause", EDITOR, db)).toBe(false);
+    expect(await PeopleService.rememberPerson(scope, "owner", "Jesse Okafor", EDITOR, db)).toBe(false);
     expect(await PeopleService.rememberPerson(scope, "requester", "Dr. Adams", EDITOR, db)).toBe(false);
     expect((await F.scope(db)).owners).toEqual(scope.owners);
     expect((await F.scope(db)).requesters).toEqual([]);
@@ -163,9 +163,9 @@ describe("4. Only an admin's Add 'X' adds the name to the line's list", () => {
 
 describe("5. Duplicate errors use the right article", () => {
   it("an owner, a requester, a contracts lead (stored spelling)", async () => {
-    expect(PeopleListRules.duplicate("owner", "Nicole Smith")).toBe("Nicole Smith is already an owner.");
-    expect(PeopleListRules.duplicate("requester", "Nicole Smith")).toBe("Nicole Smith is already a requester.");
-    expect(ContractsLeadRules.duplicate("Jeff Krause")).toBe("Jeff Krause is already a contracts lead.");
+    expect(PeopleListRules.duplicate("owner", "Noor Haddad")).toBe("Noor Haddad is already an owner.");
+    expect(PeopleListRules.duplicate("requester", "Noor Haddad")).toBe("Noor Haddad is already a requester.");
+    expect(ContractsLeadRules.duplicate("Jesse Okafor")).toBe("Jesse Okafor is already a contracts lead.");
     const fake = new FakeDb();
     const db = fake.asClient();
     await DepartmentForms.addPerson(ADMIN, "requester", "Nicole Smith", db);
@@ -184,7 +184,7 @@ describe("6. Locked rows are as tall as name rows", () => {
         leads: [],
         owners: [
           { name: "To assign", projects: 1, locked: true },
-          { name: "Jeff Krause", projects: 1, locked: false },
+          { name: "Jesse Okafor", projects: 1, locked: false },
         ],
         requesters: [],
       }),

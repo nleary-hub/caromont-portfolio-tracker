@@ -32,7 +32,7 @@ describe("UpdateTimeline (Project detail > History)", () => {
   it("one entry per save, newest first, with the gray meta line; system writes read Tracker", () => {
     const later = new Date("2026-09-28T14:05:00Z");
     const t = UpdateTimeline.build(
-      [row("status", "OnTrack", "OnHold"), row("owner", "Nicole Smith", "Nick Leary"), row("created", null, "{}", { changedAt: later, changedBy: "system (migration 0022)" })],
+      [row("status", "OnTrack", "OnHold"), row("owner", "Noor Haddad", "Nick Leary"), row("created", null, "{}", { changedAt: later, changedBy: "system (migration 0022)" })],
       [],
       null,
     );
@@ -41,15 +41,15 @@ describe("UpdateTimeline (Project detail > History)", () => {
     expect(t.entries.map((e) => [e.meta, e.text, e.hollow])).toEqual([
       ["Sep 28, 2026, 10:05 AM ET · Tracker", "Project created.", true],
       ["Sep 27, 2026, 1:20 AM ET · Nick Leary", "Status changed from On track to On hold.", false],
-      ["Sep 27, 2026, 1:20 AM ET · Nick Leary", "Owner changed from Nicole Smith to Nick Leary.", false],
+      ["Sep 27, 2026, 1:20 AM ET · Nick Leary", "Owner changed from Noor Haddad to Nick Leary.", false],
     ]);
   });
 
   it("names people from the People lists when exactly one matches the email, else from the email, else as saved", () => {
-    const people = ["Nick Leary", "Nicole Smith", "Dr. Raj Patel", "Nate Leary"];
+    const people = ["Nick Leary", "Noor Haddad", "Dr. Raj Patel", "Nate Leary"];
     expect(UpdateTimeline.actor("nick.leary@example.org")).toBe("Nick Leary");
     expect(UpdateTimeline.actor("nleary@example.org")).toBe("nleary@example.org");
-    expect(UpdateTimeline.actor("nsmith@example.org", people)).toBe("Nicole Smith");
+    expect(UpdateTimeline.actor("nhaddad@example.org", people)).toBe("Noor Haddad");
     expect(UpdateTimeline.actor("RAJ.PATEL@example.org", people)).toBe("Dr. Raj Patel");
     expect(UpdateTimeline.actor("nick.leary@example.org", ["NICK LEARY"])).toBe("NICK LEARY");
     // Two list names fit "nleary": not guessed.
@@ -74,10 +74,10 @@ describe("UpdateTimeline (Project detail > History)", () => {
   it("fields: changed, set when blank, cleared when emptied; on-screen labels; values as saved", () => {
     expect(texts([row("owner", null, "Nick Leary")])).toEqual(["Owner set to Nick Leary."]);
     expect(texts([row("owner", "Nick Leary", null)])).toEqual(["Owner cleared (was Nick Leary)."]);
-    expect(texts([row("serviceArea", "Cath", "CVSS"), row("physicianChampion", "dr. patel", "Dr. Patel"), row("contractsLead", null, "Shea Waldron")])).toEqual([
+    expect(texts([row("serviceArea", "Cath", "CVSS"), row("physicianChampion", "dr. patel", "Dr. Patel"), row("contractsLead", null, "Sam Delacroix")])).toEqual([
       "Department changed from Cath to CVSS.",
       "Requester changed from dr. patel to Dr. Patel.",
-      "Contracts lead set to Shea Waldron.",
+      "Contracts lead set to Sam Delacroix.",
     ]);
   });
 
@@ -124,7 +124,7 @@ describe("UpdateTimeline (Project detail > History)", () => {
     expect(texts([row("created", null, "{}")])).toEqual(["Project created."]);
     expect(texts([row("created", null, "{}", { comment: UpdateTimeline.CSV_IMPORT_COMMENT })])).toEqual(["Imported from CSV."]);
     expect(texts([row("serviceArea", "Cath", "CVSS", { comment: DepartmentCopy.deletedToast("Cath", 3, "CVSS") })])).toEqual(["Moved from Cath to CVSS when Cath was deleted."]);
-    expect(texts([row("owner", "Jeff Krause", "Jeffrey Krause", { comment: UpdateTimeline.PEOPLE_RENAME_COMMENT })])).toEqual(["Owner renamed from Jeff Krause to Jeffrey Krause on the People page."]);
+    expect(texts([row("owner", "Jesse Okafor", "Jessica Okafor", { comment: UpdateTimeline.PEOPLE_RENAME_COMMENT })])).toEqual(["Owner renamed from Jesse Okafor to Jessica Okafor on the People page."]);
     expect(UpdateTimeline.CSV_IMPORT_COMMENT).toBe(ImportService.SOURCE_CREATE);
     expect(ProjectService.PEOPLE_RENAME_COMMENT).toBe(UpdateTimeline.PEOPLE_RENAME_COMMENT);
   });

@@ -220,7 +220,7 @@ describe("Recent changes: labels and plain summaries", () => {
     { kind: "serviceLine", field: "serviceLine.deleted", old: { name: "Neuroscience Service Line", shortName: "NSL" }, new: null, change: "Service line deleted", newText: "None" },
     { kind: "serviceLine", field: "serviceLine.restored", old: null, new: { name: "Neuroscience Service Line", shortName: "NSL" }, change: "Service line restored" },
     { kind: "serviceLine", field: "serviceLine.departments_changed", old: [], new: ["Cath", "EP", "Echo"], change: "Service line departments changed", oldText: "None" },
-    { kind: "serviceLine", field: "serviceLine.contracts_leads_changed", old: ["Amber Hatley"], new: ["Amber Hatley", "Dave Dermady", "Jeff Krause"], change: "Contracts leads changed", newText: "Amber Hatley, Dave Dermady, Jeff Krause" },
+    { kind: "serviceLine", field: "serviceLine.contracts_leads_changed", old: ["Alex Rivera"], new: ["Alex Rivera", "Dana Whitlock", "Jesse Okafor"], change: "Contracts leads changed", newText: "Alex Rivera, Dana Whitlock, Jesse Okafor" },
     { kind: "serviceLine", field: "serviceLine.owners_changed", old: ["Dr. Patel"], new: ["Dr. Patel", "Kim Nguyen", "Luis Ortega"], change: "Service line owners changed", newText: "Dr. Patel, Kim Nguyen, Luis Ortega" },
     { kind: "serviceLine", field: "serviceLine.requesters_changed", old: null, new: ["Dr. Requester 1", "Dr. Requester 2"], change: "Service line requesters changed", newText: "Dr. Requester 1, Dr. Requester 2" },
     { kind: "template", field: "template.template_created", old: null, new: { name: "EP lab refresh" }, change: "Milestone template added", newText: "EP lab refresh" },

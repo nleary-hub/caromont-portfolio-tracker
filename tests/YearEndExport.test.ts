@@ -427,7 +427,7 @@ describe("table: wider Final update that wraps in full, and completed rows tinte
 
   it("the whole final update shows (no 2-line cap): a 200-character update wraps onto every line it needs, no ellipsis", () => {
     const m = new TextMeasure();
-    const row = YearEndLayout.row(m, { projectId: "x", name: "Hemodynamic monitoring integration", owner: "Nicole Smith", requester: null, date: "2026-08-12", status: "Complete", finalUpdate: LONG }, true);
+    const row = YearEndLayout.row(m, { projectId: "x", name: "Hemodynamic monitoring integration", owner: "Noor Haddad", requester: null, date: "2026-08-12", status: "Complete", finalUpdate: LONG }, true);
     expect(row.update.length).toBeGreaterThan(2);
     expect(row.update.join(" ")).toBe(LONG);
     expect(row.update.join("")).not.toContain(TextMeasure.ELLIPSIS);

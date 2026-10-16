@@ -66,6 +66,9 @@ export class SampleReportData {
     22: 4999,
   };
 
+  /** Fictional contracts leads for the sample (Morgan Ellsworth is the longest, matching the longest live name). */
+  static readonly CONTRACTS_LEADS: readonly string[] = ["Sam Delacroix", "Jesse Okafor", "Morgan Ellsworth", "Dana Whitlock", "Alex Rivera"];
+
   static rows(): ReportRow[] {
     const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     const rows = SampleReportData.SEEDS.map(([area, name, status, next, due, note, changed, from, updatedOn], i): ReportRow => {
@@ -89,8 +92,8 @@ export class SampleReportData {
         percentComplete: null,
         note: note === "LONG" ? SampleReportData.LONG_NOTE : note,
         inforRequestNumber: SampleReportData.INFOR[i] ?? null,
-        // Cycles the pick-list (Mellisa Gonzales included, the longest name); every fifth row is "To assign".
-        contractsLead: i % 5 === 4 ? null : ServiceLine.CVPSL_CONTRACTS_LEADS[(i + 2) % ServiceLine.CVPSL_CONTRACTS_LEADS.length],
+        // Cycles the pick-list (Morgan Ellsworth included, the longest name); every fifth row is "To assign".
+        contractsLead: i % 5 === 4 ? null : SampleReportData.CONTRACTS_LEADS[(i + 2) % SampleReportData.CONTRACTS_LEADS.length],
         changed,
         overdue,
         updatedOn,
@@ -115,7 +118,7 @@ export class SampleReportData {
         completedInAppOn: "2026-09-23",
         inforRequestNumber: 4871,
         physicianChampion: "Dr. Sample K",
-        contractsLead: "Mellisa Gonzales",
+        contractsLead: "Morgan Ellsworth",
       },
       {
         projectId: "sample-done-2",
@@ -139,7 +142,7 @@ export class SampleReportData {
         completedInAppOn: "2026-09-24",
         inforRequestNumber: 5120,
         physicianChampion: "Dr. Sample F",
-        contractsLead: "Dave Dermady",
+        contractsLead: "Dana Whitlock",
       },
     ];
   }

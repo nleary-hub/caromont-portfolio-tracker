@@ -97,12 +97,12 @@ describe("service line isolation", () => {
   });
 
   it("people: CVPSL keeps its owner seed and contracts leads; a new line starts empty with its own leads", () => {
-    expect(ServiceLineAccess.ownerSeed(CVPSL, ["Nicole Smith", "Nick Leary"])).toEqual(["Nicole Smith", "Nick Leary"]);
-    expect(ServiceLineAccess.ownerSeed(onc, ["Nicole Smith", "Nick Leary"])).toEqual([]);
+    expect(ServiceLineAccess.ownerSeed(CVPSL, ["Noor Haddad", "Nick Leary"])).toEqual(["Noor Haddad", "Nick Leary"]);
+    expect(ServiceLineAccess.ownerSeed(onc, ["Noor Haddad", "Nick Leary"])).toEqual([]);
     expect(ContractsLead.resolve("Pat Contracts", onc.contractsLeads)).toBe("Pat Contracts");
     expect(ContractsLead.resolve("Pat Contracts")).toBeUndefined();
-    expect(ContractsLead.resolve("Shea Waldron", onc.contractsLeads)).toBeUndefined();
-    expect(ContractsLead.invalidMessage("Shea Waldron", [])).toContain("no contracts leads yet");
+    expect(ContractsLead.resolve("Sam Delacroix", onc.contractsLeads)).toBeUndefined();
+    expect(ContractsLead.invalidMessage("Sam Delacroix", [])).toContain("no contracts leads yet");
     expect(ContractsLead.resolve("Shea Waldron")).toBe("Shea Waldron");
   });
 

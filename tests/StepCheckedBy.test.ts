@@ -110,7 +110,7 @@ describe("Saving the checklist stores the session user; the drawer gets the Peop
     const signed = () => fake.state.milestones.find((m) => m.name === "Contract signed")!;
     expect(signed().doneBy).toBe("nleary@example.org");
     expect(signed().checkedAt).toBeInstanceOf(Date);
-    const dto = MilestoneService.toDto(signed() as never, ["Nick Leary", "Nicole Smith"]);
+    const dto = MilestoneService.toDto(signed() as never, ["Nick Leary", "Noor Haddad"]);
     expect(dto.checkedBy).toBe("Nick Leary");
     expect(dto.checkedAt).toBe((signed().checkedAt as Date).toISOString());
     expect(MilestoneService.toDto(signed() as never).checkedBy).toBe("nleary@example.org");
