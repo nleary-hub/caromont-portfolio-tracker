@@ -62,6 +62,10 @@ const admin: AdminDashboardProps = {
     const mode = new URLSearchParams(window.location.search).get("save");
     if (mode === "slow") await new Promise(resolve => setTimeout(resolve, 1500));
     if (mode === "fail") return { ok: false, error: "Fictional save failure. Try again." };
+    // ?save=failonce: the first save fails, later ones succeed (Retry).
+    if (mode === "failonce" && w.__formSaves.length === 1) return { ok: false, error: "Fictional save failure. Try again." };
+    // ?save=hold: saves wait until window.__release() (screenshots of the Saving state).
+    if (mode === "hold") await new Promise(resolve => { (window as unknown as { __release?: () => void }).__release = () => resolve(null); });
     return { ok: true, id };
   },
   createProjectAction: async () => ({ ok: true, id: "fictional-new" }),
