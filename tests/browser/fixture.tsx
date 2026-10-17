@@ -15,6 +15,7 @@ import { SampleReportData } from "../../src/lib/report/SampleReportData";
 import { TemplatesFixture } from "./templates-fixture";
 import { FreezeNowButton } from "../../src/components/FreezeNowButton";
 import { FreezeGuard } from "../../src/lib/report/FreezeGuard";
+import { DriveCheckButton } from "../../src/components/DriveCheckButton";
 import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
@@ -119,6 +120,8 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
         <FreezeNowButton disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />
         <a href="#" className="type-table-strong text-accent">Generate PDF now (draft)</a>
       </div>
+      <DriveCheckButton folder="Fictional Report Folder" help="Saves a small test file to Fictional Report Folder, then removes it. Nothing is frozen or sent."
+        disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />
     </section>
   </main>
 ) : closedPage ? (

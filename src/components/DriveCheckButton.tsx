@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import type { DriveCheckResult } from "@/lib/services/DriveCheckService";
+import { FREEZE_DISABLED_BUTTON, FreezeDisabledNote } from "@/components/FreezeDisabledNote";
 
 const LABEL = "Check Drive";
 const CHECKING = "Checking…";
@@ -10,8 +11,9 @@ const FAILED = "Drive check failed. Try again.";
 /**
  * Admin > Report freeze: next to the Drive folder name. Saves, reads back and removes a small test file in the report
  * folder (no freeze, no email). Secondary button; the result stays inline under it (not a toast).
+ * `disabledNote`: set by the server on preview deployments; the button is disabled and the note shows.
  */
-export function DriveCheckButton({ folder, help, initialResult = null }: { folder: string; help: string; initialResult?: DriveCheckResult | null }) {
+export function DriveCheckButton({ folder, help, initialResult = null, disabledNote = null }: { folder: string; help: string; initialResult?: DriveCheckResult | null; disabledNote?: string | null }) {
   const [result, setResult] = useState<DriveCheckResult | null>(initialResult);
   const [pending, start] = useTransition();
   const check = () =>
@@ -32,13 +34,14 @@ export function DriveCheckButton({ folder, help, initialResult = null }: { folde
         <button
           type="button"
           onClick={check}
-          disabled={pending}
+          disabled={pending || disabledNote !== null}
           aria-busy={pending}
-          className="h-8 rounded-control border border-line bg-card px-3.5 text-muted type-table-strong hover:text-fg disabled:opacity-60"
+          className={`h-8 rounded-control border border-line bg-card px-3.5 text-muted type-table-strong hover:text-fg ${FREEZE_DISABLED_BUTTON}`}
           data-testid="drive-check"
         >
           {pending ? CHECKING : LABEL}
         </button>
+        {disabledNote !== null && <FreezeDisabledNote note={disabledNote} testId="drive-check-disabled-note" />}
       </div>
       <p className="text-muted type-caption">{help}</p>
       {result && !pending && (
