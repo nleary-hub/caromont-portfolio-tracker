@@ -1,10 +1,9 @@
 import { readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { createElement } from "react";
-import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { AiLinksPanel } from "@/components/AiLinksPanel";
+import { AdminMenu } from "@/lib/admin/AdminMenu";
+import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiToolsService } from "@/lib/services/AiToolsService";
 import { A, ADMIN, B, ENV, MEMBER, MockProvider, SCOPE, toolsSetup } from "./helpers/aiTools";
@@ -13,7 +12,7 @@ vi.mock("@/app/actions/aiTools", () => ({ proposeAiRelatedLinks: vi.fn(), confir
 
 const REPLY = JSON.stringify({ links: [{ a: "P2", b: "P1", reason: "Same example vendor" }, { a: "P1", b: "P2", reason: "repeat" }, { a: "P1", b: "P1", reason: "self" }, { a: "P1", b: "P3", reason: "other line" }] });
 
-describe("step 9: related-project links", () => {
+describe("step 9: related-project links (table and service kept; no page or drawer entry point)", () => {
   it("suggests, then links only on confirm (stored once per pair); remove keeps the row", async () => {
     const db = await toolsSetup();
     const r = await AiToolsService.proposeLinks({ db, viewer: ADMIN, scope: SCOPE, input: "", env: ENV, fetchImpl: new MockProvider(REPLY).fetch });
@@ -59,10 +58,15 @@ describe("step 9: related-project links", () => {
     expect((await AiToolsService.proposeLinks({ db, viewer: ADMIN, scope: SCOPE, input: "", env: { ...ENV, AI_FEATURE_RELATED_LINKS: "off" }, fetchImpl: new MockProvider(REPLY).fetch })).ok).toBe(false);
   });
 
-  it("panel lists confirmed links with project links", () => {
-    const html = renderToStaticMarkup(createElement(AiLinksPanel, { disabledNote: null, saved: [{ id: "x", aId: A, aName: "Example Clinic refresh", bId: B, bName: "Sample Lab move", reason: "Same example vendor" }] }));
-    expect(html).toContain(`href="/?project=${B}"`);
-    expect(html).toContain(AiToolsCopy.LINK_REMOVE);
+  it("/ai-tools no longer offers Related-project links; the flag key stays for settings history", () => {
+    const page = readFileSync(path.resolve(__dirname, "../src/app/ai-tools/page.tsx"), "utf8");
+    expect(page).not.toContain("AiLinksPanel");
+    expect(page).not.toContain("listLinks");
+    expect(page).not.toContain('shown("related_links")');
+    expect(page).not.toContain("related-links");
+    expect(AdminMenu.definitions().map((d) => d.href).filter((h) => /related/i.test(h))).toEqual([]);
+    expect(AiFeatureFlags.TOOL_FEATURES).toContain("related_links");
+    expect(AiToolsCopy.FEATURE_LABELS.related_links).toBe("Related-project links");
   });
 
   it("0047 creates the table add-only, with the delete trigger and the toggle seeded on (PGlite)", async () => {

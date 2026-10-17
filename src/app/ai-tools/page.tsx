@@ -3,7 +3,6 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AiBriefPanel } from "@/components/AiBriefPanel";
-import { AiLinksPanel } from "@/components/AiLinksPanel";
 import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
@@ -16,7 +15,7 @@ import { Db } from "@/lib/db/Db";
 import type { AiModelDb } from "@/lib/services/AiModelService";
 import type { AiSettingsDb } from "@/lib/services/AiSettingsService";
 import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
-import { AiToolsService, type AiRelatedLinkView, type AiToolsDb } from "@/lib/services/AiToolsService";
+import { AiToolsService, type AiToolsDb } from "@/lib/services/AiToolsService";
 
 /** The provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
 export const maxDuration = 90;
@@ -25,7 +24,7 @@ export const metadata: Metadata = { title: C.PAGE_TITLE };
 
 /**
  * AI tools (steps 4 to 10). Admins only, like editing: anyone else gets a 404. Every tool proposes; a person applies or
- * rejects each line. Nothing here reads or writes snapshots, PDFs, report_artifacts or handoff.json.
+ * rejects each line. Related-project links are no longer offered here (the table and the flag stay). Nothing here reads or writes snapshots, PDFs, report_artifacts or handoff.json.
  */
 export default async function AiToolsPage() {
   const viewer = await CurrentViewer.get();
@@ -34,7 +33,6 @@ export default async function AiToolsPage() {
   let dictationNote: string | null = C.AI_OFF_NOTE;
   let voiceNote: string | null = C.AI_OFF_NOTE;
   let projects: { id: string; name: string }[] = [];
-  let links: AiRelatedLinkView[] = [];
   if (Db.isConfigured()) {
     try {
       notes = await AiToolsReadiness.notes(Db.client as unknown as AiModelDb & AiSettingsDb, AiFeatureFlags.TOOL_FEATURES);
@@ -42,7 +40,6 @@ export default async function AiToolsPage() {
       voiceNote = await AiToolsReadiness.voiceChatNote(Db.client as unknown as AiModelDb & AiSettingsDb);
       const scope = await ServiceLineAccess.activeFor(viewer);
       projects = (await AiToolsService.projects(Db.client as unknown as AiToolsDb, scope)).map((p) => ({ id: p.id, name: p.name }));
-      links = await AiToolsService.listLinks(Db.client as unknown as AiToolsDb, scope).catch(() => []);
     } catch {
       // Tables not migrated yet (Vercel previews skip migrations): every tool shows disabled.
     }
@@ -117,14 +114,6 @@ export default async function AiToolsPage() {
       </section>
       )}
 
-      {shown("related_links") && (
-      <section className={section} aria-labelledby="ai-tool-links-heading" id="related-links">
-        <h2 id="ai-tool-links-heading" className="type-heading">
-          {C.LINKS_TITLE}
-        </h2>
-        <AiLinksPanel disabledNote={notes.related_links ?? null} saved={links} />
-      </section>
-      )}
       {voiceNote !== C.FEATURE_OFF_NOTE && (
       <section className={section} aria-labelledby="ai-tool-voice-heading" id="voice-chat">
         <h2 id="ai-tool-voice-heading" className="type-heading">

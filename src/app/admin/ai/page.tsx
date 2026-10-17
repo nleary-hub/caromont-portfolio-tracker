@@ -42,7 +42,7 @@ export default async function AiSettingsPage() {
   let view: AiSettingsView = AiSettingsService.view(null);
   let history: AiSettingsHistoryRow[] = [];
   let models: AiModelView[] = [];
-  let features: AiFeatureView[] = AiModelService.featureViews([]);
+  let features: AiFeatureView[] = AiModelService.settingsViews([]);
   let dbReady = Db.isConfigured();
   // Guard (a): on a Vercel preview nothing is decrypted, copied or written; the keys card is read-only.
   const preview = AiKeyCipher.isPreview();
@@ -58,7 +58,7 @@ export default async function AiSettingsPage() {
       view = AiSettingsService.view(row);
       history = await AiSettingsService.history(db);
       models = AiModelService.views(await AiModelService.list(mdb), row);
-      features = AiModelService.featureViews(await mdb.aiFeatureSetting.findMany());
+      features = AiModelService.settingsViews(await mdb.aiFeatureSetting.findMany());
       // The saved model must be one an admin turned on, or the assistant isn't ready (the call would be refused).
       if (view.model && !models.some((m) => m.inUse && m.enabled)) view = { ...view, ready: false, modelOff: true };
       const setters = [...new Set(keyStatuses.map((k) => k.setBy).filter((e): e is string => Boolean(e && e.includes("@"))))];

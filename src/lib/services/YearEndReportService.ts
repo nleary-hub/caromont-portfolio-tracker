@@ -9,6 +9,7 @@ import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import type { HistoryEntryRecord } from "@/lib/domain/types";
+import { FreezeGuard } from "@/lib/report/FreezeGuard";
 import { YearEndRenderer } from "@/lib/report/YearEndRenderer";
 import { YearEndCategories, YearEndCopy, YearEndReportData, type YearEndCategory, type YearEndData } from "@/lib/report/YearEndReportData";
 
@@ -62,7 +63,10 @@ export class YearEndReportService {
     return YearEndReportData.build({ projects, history, fiscalYear: fy.label, today, departments: scope.departments, serviceLineName: scope.name, categories });
   }
 
-  /** Admin only: render and store one year-end report for the line. */
+  /**
+   * Admin only: render and store one year-end report for the line.
+   * Throws FreezeDisabledError on a preview deployment before reading or writing anything (previews share the production database).
+   */
   static async generate(
     viewer: Viewer & { name?: string | null },
     fiscalYear: string,
@@ -71,6 +75,7 @@ export class YearEndReportService {
     now: Date = new Date(),
     categories: readonly YearEndCategory[] = YearEndCategories.ALL,
   ): Promise<YearEndEntry> {
+    FreezeGuard.assertAllowed();
     const name = DisplayName.nameOrNull(viewer.name, viewer.email);
     AdminPolicy.assertAdmin(viewer);
     const data = await YearEndReportService.data(scope, fiscalYear, db, now, categories);

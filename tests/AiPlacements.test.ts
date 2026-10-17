@@ -3,7 +3,6 @@ import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
 import { AiBriefButton, AiBriefCard, AiQuickCapture, AiRowMenu, AiToolbarMenu, type AiPlacementNotes } from "@/components/AiPlacements";
-import { AiLinksPanel } from "@/components/AiLinksPanel";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
 import { AiDictationButton } from "@/components/AiDictationButton";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
@@ -167,23 +166,28 @@ describe("placement 4: Pre-meeting brief", () => {
   });
 });
 
-describe("placement 5: Suggested related projects", () => {
-  const links = (note: string | null) => html(createElement(AiLinksPanel, { inline: true, focus: "Example Clinic refresh", saved: [], disabledNote: note, onLink: async () => ({ ok: true as const }) }));
-  it("ready: Find related ghost button", () => {
-    const h = links(null);
-    expect(h).toContain(C.LINKS_FIND);
-    expectReady(h, "ai-tool-related_links-propose");
+describe("placement 5 removed: no Find related in the drawer (it saved related projects as Blocked by)", () => {
+  const src = () => readFileSync("src/components/ProjectDashboard.tsx", "utf8");
+  it("the drawer renders no AI links panel and no Suggested related projects subsection", () => {
+    expect(src()).not.toContain("AiLinksPanel");
+    expect(src()).not.toContain("related_links");
+    expect(src()).not.toContain("LINKS_SUGGESTED_TITLE");
+    expect(src()).not.toContain("ai-related-section");
   });
-  it("model off: greyed with the note", () => expectPaused(links(OFF), "ai-tool-related_links-propose", OFF));
-  it("Link goes through the normal Dependencies add (history entry), Dismiss rejects", () => {
-    const src = readFileSync("src/components/ProjectDashboard.tsx", "utf8");
-    expect(src).toContain("admin.dependencyActions!.add(selected.id");
-    const review = html(createElement(AiLinksPanel, { inline: true, saved: [], disabledNote: null, onLink: async () => ({ ok: true as const }), initial: { kind: "review", proposalId: "x", links: [{ line: 1, aId: "p1", aName: "Example Clinic refresh", bId: "p2", bName: "Sample Lab move", reason: "Same vendor" }] } as never }));
-    expect(review).toContain(C.LINK_CONFIRM);
-    expect(review).toContain(C.LINK_DISMISS);
+  it("the links panel never writes dependencies: the only dependency write path in the drawer is the Dependencies picker", () => {
+    expect(src()).not.toMatch(/dependencyActions!?\.add\(/);
+    expect(src()).toContain("<DependenciesEditor key={`deps-${selected.id}`} projectId={selected.id} actions={admin.dependencyActions}");
   });
-  it("feature off: no subsection", () => {
-    expect(readFileSync("src/components/ProjectDashboard.tsx", "utf8")).toContain('aiPlacements && "related_links" in aiPlacements && (');
+  it("placement data never offers related_links, even with the feature and model on", async () => {
+    expect(AiPlacementData.FEATURES).not.toContain("related_links" as never);
+    const db = {
+      aiSettings: { findUnique: async () => ({ enabled: true, model: "gpt-example-mini", provider: "openai" }) },
+      aiModel: { findMany: async () => [{ id: "gpt-example-mini", enabled: true, kind: "chat" }] },
+      aiFeatureSetting: { findMany: async () => [{ feature: "related_links", enabled: true }], findUnique: async () => ({ feature: "related_links", enabled: true }) },
+    } as never;
+    const out = await AiPlacementData.load(db, {});
+    expect("meeting_notes" in out).toBe(true);
+    expect("related_links" in out).toBe(false);
   });
 });
 
