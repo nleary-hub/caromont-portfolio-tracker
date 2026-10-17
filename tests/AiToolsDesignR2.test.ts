@@ -15,7 +15,8 @@ describe("AI tools: design review r2", () => {
   it("a tool whose toggle is off is hidden on the page; model off keeps it, paused with the note", () => {
     const page = readFileSync("src/app/ai-tools/page.tsx", "utf8");
     expect(page).toContain("notes[feature] !== C.FEATURE_OFF_NOTE");
-    for (const f of ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "request_to_project", "meeting_brief", "related_links"]) expect(page).toContain(`shown("${f}") && (`);
+    for (const f of ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "request_to_project", "meeting_brief"]) expect(page).toContain(`shown("${f}") && (`);
+    expect(page).not.toContain(`shown("related_links")`);
     const html = renderToStaticMarkup(createElement(AiBriefPanel, { disabledNote: C.MODEL_OFF_NOTE }));
     expect(html).toMatch(/aria-disabled="true" aria-describedby="ai-brief-off"[^>]*data-testid="ai-tool-meeting_brief-propose"/);
     expect(html).toMatch(/<p id="ai-brief-off" class="text-muted type-caption"[^>]*>The AI model is turned off\. An admin can turn one on in AI settings\.<\/p>/);

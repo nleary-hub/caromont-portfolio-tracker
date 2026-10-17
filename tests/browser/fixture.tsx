@@ -16,6 +16,7 @@ import { FreezeNowButton } from "../../src/components/FreezeNowButton";
 import { FreezeGuard } from "../../src/lib/report/FreezeGuard";
 import { DriveCheckButton } from "../../src/components/DriveCheckButton";
 import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
+import { DependencyReviewCopy, DependencyReviewTable } from "../../src/components/DependencyReviewTable";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
 const rows: DashboardRow[] = ["Zulu", "Alpha", "Bravo"].map((name, i) => ({
@@ -82,7 +83,10 @@ const admin: AdminDashboardProps = {
   saveColumnLayoutAction: noop, saveRowOrderAction: noop, resetRowOrderAction: noop,
   dependencyActions: {
     load: async id => depView(id),
+    // Every add is recorded on window.__depAdds so tests can prove nothing but the picker writes dependencies.
     add: async (id, by) => {
+      const w = window as unknown as { __depAdds?: unknown[] };
+      (w.__depAdds ??= []).push({ id, by });
       const problem = DependencyGraph.check(edges, id, by);
       if (problem) return { ok: false, error: DependencyGraph.MESSAGES[problem] };
       edges.push({ projectId: id, blockedById: by });
@@ -107,8 +111,25 @@ const aiView = { baseUrl: "", azureEndpoint: "", azureDeployment: "", encryption
 const closedPage = new URLSearchParams(window.location.search).get("page") === "cancelled";
 const cancelledRows = rows.map(r => ({ ...r, status: "Cancelled", statusLabel: "Cancelled", fiscalYear: "FY27", closedOn: "2026-09-20" }));
 const fixtureHistory = async (id: string) => ({ title: "History (1)", previously: null, notes: [], steps: [], entries: [{ key: `history-${id}`, meta: "Fictional author", text: `History for ${id}`, hollow: false }] });
+// ?deps=1: Admin > Dependencies review (read only) with fictional rows.
+const reviewRows = [
+  { id: "fictional-dep-1", project: "Zulu fictional project", blockedBy: "Bravo fictional project", created: "Oct 14, 2026, 9:12 AM ET", createdBy: "fictional.admin@example.org" },
+  { id: "fictional-dep-2", project: "Alpha fictional project", blockedBy: "Zulu fictional project", created: "Oct 9, 2026, 3:40 PM ET", createdBy: "fictional.admin@example.org" },
+  { id: "fictional-dep-3", project: "Sample Clinic refresh", blockedBy: "Example Lab move", created: "Sep 30, 2026, 11:05 AM ET", createdBy: "sample.reviewer@example.org" },
+];
+// ?links=1: the dashboard with the old related_links placement note passed in (as a stale flag would), to prove the
+// drawer offers no Find related and writes no dependency from it.
+const stalePlacements = new URLSearchParams(window.location.search).has("links") ? { aiPlacements: { related_links: null } as never } : {};
 createRoot(document.getElementById("root")!).render(new URLSearchParams(window.location.search).has("templates") ? (
   <TemplatesFixture />
+) : new URLSearchParams(window.location.search).has("deps") ? (
+  <main className="mx-auto flex max-w-[1100px] flex-col gap-5 px-6 py-6">
+    <div className="flex items-center gap-3">
+      <h1 className="type-title whitespace-nowrap">{DependencyReviewCopy.PAGE_TITLE}</h1>
+    </div>
+    <p className="text-muted type-caption">{DependencyReviewCopy.INTRO}</p>
+    <DependencyReviewTable rows={new URLSearchParams(window.location.search).get("deps") === "empty" ? [] : reviewRows} />
+  </main>
 ) : new URLSearchParams(window.location.search).has("freeze") ? (
   // ?freeze=1: the Report freeze controls as /reports renders them. FreezeGuard.disabled() reads VERCEL_ENV, which the
   // harness server fixes at build time from its own environment (as the server component reads it).
@@ -137,7 +158,7 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
 ) : (
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}
     today="2026-10-04" userEmail="fictional@example.org" userName="Fictional Reviewer"
-    latestReport={null} loadError={null} serviceLine={ServiceLine.SEED}
+    latestReport={null} loadError={null} serviceLine={ServiceLine.SEED} {...stalePlacements}
     // ?line=1: a fictional active line with its own contracts-lead pick-list.
     {...(new URLSearchParams(window.location.search).has("line") ? { line: { ...ServiceLine.defaultScope(), owners: ["Fictional Owner"], requesters: ["Fictional Requester"], contractsLeads: ["Fictional Lead One", "Fictional Lead Two"] } } : {})}
     // ?viewer=readonly: the same dashboard for a non-admin (the drawer shows the fields read-only).

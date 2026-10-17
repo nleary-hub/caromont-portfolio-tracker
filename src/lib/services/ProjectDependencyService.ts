@@ -102,3 +102,37 @@ export class ProjectDependencyService {
     });
   }
 }
+
+/** One row of Admin > Dependencies review (read only). */
+export interface DependencyReviewRow {
+  id: string;
+  project: string;
+  blockedBy: string;
+  createdAt: Date;
+  createdBy: string;
+}
+
+/**
+ * Read-only list of the active line's `project_dependencies` rows, so an admin can review rows the drawer's old
+ * AI "Find related" Link saved as Blocked by. Rows from that bug look like any other row (same createdBy), so nothing
+ * is flagged or removed here. Only rows whose two projects are inside the viewer's department access are listed.
+ */
+export class DependencyReviewService {
+  static async list(viewer: Viewer, scope: Scope, db: DependencyDb = Db.client): Promise<DependencyReviewRow[]> {
+    if (!viewer.isAdmin) return [];
+    const rows = await db.projectDependency.findMany({
+      where: { serviceLineId: scope.id },
+      select: {
+        id: true,
+        createdAt: true,
+        createdBy: true,
+        project: { select: { name: true, departmentId: true } },
+        blockedBy: { select: { name: true, departmentId: true } },
+      },
+      orderBy: [{ createdAt: "desc" }, { id: "asc" }],
+    });
+    return rows
+      .filter((r) => DepartmentAccess.allows(scope, r.project.departmentId) && DepartmentAccess.allows(scope, r.blockedBy.departmentId))
+      .map((r) => ({ id: r.id, project: r.project.name, blockedBy: r.blockedBy.name, createdAt: r.createdAt, createdBy: r.createdBy }));
+  }
+}
