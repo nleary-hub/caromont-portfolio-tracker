@@ -200,7 +200,7 @@ describe("service line isolation", () => {
     // action out of the line-scoped scan while continuing to inspect every other action.
     // The dashboard heartbeat switch (batch task 1) is the signed-in person's own app_user preference, the same on
     // every line, so it is global too.
-    const globallyScopedActions = new Set([join(root, "actions/password.ts"), join(root, "actions/preferences.ts"), join(root, "actions/aiAdmin.ts"), join(root, "actions/aiPrices.ts")]); // aiAdmin, aiPrices: AI settings are app-wide, admin only (like actions/ai.ts settings)
+    const globallyScopedActions = new Set([join(root, "actions/password.ts"), join(root, "actions/preferences.ts"), join(root, "actions/aiAdmin.ts"), join(root, "actions/aiPrices.ts"), join(root, "actions/aiKeys.ts")]); // aiAdmin, aiPrices, aiKeys: AI settings are app-wide, admin only (like actions/ai.ts settings)
     const actions = Lines.files(join(root, "actions")).filter((f) => !/auth|signin/i.test(f) && !globallyScopedActions.has(f));
     const pages = ["page.tsx", "reports/page.tsx", "admin/import/page.tsx", "admin/import/actions.ts", "admin/import/export/route.ts", "admin/templates/page.tsx", "admin/settings/page.tsx", "admin/audit/page.tsx", "admin/service-lines/page.tsx", "admin/departments/page.tsx", "admin/people/page.tsx", "reports/[id]/[file]/route.ts", "reports/year-end/[id]/route.ts"].map((p) => join(root, p));
     const missing = [...actions, ...pages].filter((f) => {
