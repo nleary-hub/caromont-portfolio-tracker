@@ -134,7 +134,6 @@ export function TextModelCell({
   className?: string;
 }) {
   const id = `ai-feature-${feature}-model`;
-  const [open, setOpen] = useState(false);
   const [typed, setTyped] = useState(value);
   // Reset the typed text when the provider or saved model changes (state from props, React's documented pattern).
   const [typedFor, setTypedFor] = useState(`${provider}:${value}`);
@@ -190,57 +189,46 @@ export function TextModelCell({
     );
   }
 
-  const listId = `${id}-list`;
+  // #71's single dropdown style: the same PickerSelect (chevron, 32px height, focus ring) as the Provider picker.
+  // Models that are off stay pickable but greyed whole with "Off under Models" (refused on save until turned on).
+  const pickerOptions: PickerOption[] = all.map((m) => ({ value: m, label: m, testId: `${id}-option-${m}`, ...(off(m) ? { muted: true, hint: C.MODEL_PICKER_OFF } : {}) }));
+  const status = lists.loading(provider) ? C.MODEL_LIST_LOADING : all.length === 0 ? C.MODEL_PICKER_EMPTY : undefined;
+  // Full strength for a saved model or the inherited AI settings model that is on; muted only when off or empty.
+  const strong = Boolean(shown) && !off(shown);
   return (
-    <div className={`relative min-w-0 ${className}`}>
-      <button
-        type="button"
+    <div className={`min-w-0 ${className}`}>
+      <PickerSelect
         id={id}
-        role="combobox"
-        aria-label={C.FEATURE_MODEL_LABEL}
-        aria-haspopup="listbox"
-        aria-expanded={open}
-        aria-controls={listId}
-        title={inherits ? C.FEATURE_MODEL_SAME_AS_ABOVE : undefined}
-        className={`${INPUT} flex items-center justify-between gap-2 text-left`}
+        label={C.FEATURE_MODEL_LABEL}
+        value={value}
+        options={pickerOptions}
+        placeholder={shown || C.MODEL_PICKER_PLACEHOLDER}
+        valueClassName={strong ? "text-fg" : "text-muted"}
+        status={status}
+        menuWidth={260}
+        maxMenuHeight={256}
         disabled={disabled}
-        onClick={() => {
-          if (!open && !list && !lists.loading(provider)) lists.load(provider);
-          setOpen((v) => !v);
+        title={inherits ? C.FEATURE_MODEL_SAME_AS_ABOVE : undefined}
+        triggerData={{ "data-testid": `${id}-picker`, "data-inherits": inherits ? "true" : undefined }}
+        onOpen={() => {
+          if (!list && !lists.loading(provider)) lists.load(provider);
         }}
-        onKeyDown={(e) => {
-          if (e.key === "Escape") setOpen(false);
-        }}
-        data-testid={`${id}-picker`}
-        data-inherits={inherits || undefined}
-      >
-        <span className={`min-w-0 truncate ${value ? "text-fg" : "text-muted"}`}>{shown || C.MODEL_PICKER_PLACEHOLDER}</span>
-        <span aria-hidden className="text-muted">
-          ▾
-        </span>
-      </button>
-      {open && (
-        <ul id={listId} role="listbox" aria-label={C.FEATURE_MODEL_LABEL} className="absolute z-30 mt-1 max-h-64 w-full min-w-[220px] overflow-y-auto rounded-control border border-line bg-input py-1 shadow-[0_12px_32px_rgba(0,0,0,.55)]" data-testid={listId} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
-          {lists.loading(provider) && <li className="px-2.5 py-1.5 text-muted type-caption">{C.MODEL_LIST_LOADING}</li>}
-          {all.length === 0 && !lists.loading(provider) && <li className="px-2.5 py-1.5 text-muted type-caption">{C.MODEL_PICKER_EMPTY}</li>}
-          {all.map((m) => (
-            <li key={m} role="option" aria-selected={m === value} data-off={off(m) || undefined}>
-              <button
-                type="button"
-                className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left type-table hover:bg-input ${off(m) ? "text-muted" : m === value ? "text-accent" : "text-fg"} ${FOCUS}`}
-                onClick={() => {
-                  setOpen(false);
-                  if (m !== value || pending) onPick(m);
-                }}
-                data-testid={`${id}-option-${m}`}
-              >
-                <span className="min-w-0 truncate">{m}</span>
-                {off(m) && <span className="shrink-0 type-caption">{C.MODEL_PICKER_OFF}</span>}
-              </button>
-            </li>
-          ))}
-        </ul>
-      )}
+        onChange={(m) => onPick(m)}
+        testId={`${id}-select`}
+      />
     </div>
   );
+}
+
+/**
+ * The caption under a text feature's Model picker (Figma Bro, Oct 17): "Default" (muted) when the row has no model of
+ * its own and uses the AI settings model, which is on; "Off under Models" when the model it would call is off. None
+ * while a provider change is pending (the row says "Pick a model") or when there is nothing to call yet.
+ */
+export function textModelCaption(args: { value: string; mainModel: string; pending: boolean; options: readonly string[] }): "default" | "off" | null {
+  if (args.pending) return null;
+  const model = args.value || args.mainModel;
+  if (!model) return null;
+  if (!args.options.includes(model)) return "off";
+  return args.value ? null : "default";
 }

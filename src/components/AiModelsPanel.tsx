@@ -3,7 +3,7 @@
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
 import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiFeatureProvider, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions } from "@/app/actions/aiAdmin";
-import { LockedProviderChip, ProviderPickerCell, TextModelCell, useProviderModelLists } from "@/components/AiFeatureProviderPicker";
+import { LockedProviderChip, ProviderPickerCell, TextModelCell, textModelCaption, useProviderModelLists } from "@/components/AiFeatureProviderPicker";
 import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyStates } from "@/lib/ai/AiFeatureProviders";
 import { ModelField } from "@/components/AiModelPicker";
 import { AiAlert } from "@/components/AiNoteAssistant";
@@ -482,6 +482,16 @@ export function AiFeaturesPanel({
             ) : (
               <LockedProviderChip className="col-start-2 row-start-1" feature={f.feature} />
             )}
+            {text && (() => {
+              // Under the Model picker: "Default" when the row uses the AI settings model (shown at full strength), or
+              // "Off under Models" when the model it would call is off (Figma Bro, Oct 17).
+              const cap = textModelCaption({ value: picking ? "" : choice.model, mainModel: shownProvider === "openai" ? mainModel : "", pending: picking, options: chatModels[shownProvider] ?? [] });
+              return cap ? (
+                <p className="col-start-3 row-start-2 -mt-1.5 truncate pb-1.5 pl-2 text-muted type-caption" data-testid={`ai-feature-${f.feature}-model-caption`} data-caption={cap}>
+                  {cap === "default" ? C.FEATURE_MODEL_DEFAULT : C.MODEL_PICKER_OFF}
+                </p>
+              ) : null;
+            })()}
             {text ? (
               <TextModelCell
                 key={`${f.feature}-${shownProvider}`}
