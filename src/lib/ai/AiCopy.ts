@@ -177,6 +177,11 @@ export class AiCopy {
   static readonly ENCRYPTION_INVALID =
     "The server setting AI_SETTINGS_ENCRYPTION_KEY is not a valid 32-byte base64 key, so the API key can't be saved or used. Ask whoever manages the Vercel project to fix it, then redeploy.";
   static readonly PREVIEW_OFF = "AI is off on preview deployments.";
+
+  /** The editor's "AI unavailable" message, or the preview one on a Vercel preview (no key is decrypted there). */
+  static unavailable(env: Record<string, string | undefined> = process.env): string {
+    return env.VERCEL_ENV === "preview" ? AiCopy.PREVIEW_OFF : AiCopy.UNAVAILABLE;
+  }
   static readonly KEY_USE_PROVIDER_KEYS = "The OpenAI key is managed under Provider keys at the top of this page.";
   static readonly KEY_UNREADABLE = "The saved key can't be read with the current encryption key. Paste the key again to replace it.";
   static readonly SAVE = "Save";

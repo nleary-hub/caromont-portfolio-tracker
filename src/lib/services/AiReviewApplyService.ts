@@ -94,9 +94,9 @@ export class AiReviewApplyService {
     }
     const current = typeof args.current === "string" ? args.current.slice(0, AppConfig.NOTE_MAX_LENGTH) : "";
 
-    const row = await AiSettingsService.row(db).catch(() => null);
+    const row = await AiSettingsService.row(db, env).catch(() => null);
     const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
-    if (!saved) return { ok: false, kind: "off", message: AiCopy.UNAVAILABLE };
+    if (!saved) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
     // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
     const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
     if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };

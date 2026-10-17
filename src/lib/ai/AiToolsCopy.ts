@@ -53,6 +53,21 @@ export class AiToolsCopy {
   static readonly VALUE_INVALID = "That value isn't valid for this field. Edit it or reject the line.";
   static readonly FEATURE_OFF = "This AI tool is turned off. Nothing was changed.";
   static readonly AI_OFF = "AI is turned off in AI settings. Nothing was changed.";
+  static readonly PREVIEW_OFF = "AI is off on preview deployments. Nothing was changed.";
+  static readonly PREVIEW_OFF_NOTE = "AI is off on preview deployments.";
+
+  /** A Vercel preview: no key is ever decrypted there, so AI is off with its own message. */
+  static isPreview(env: Record<string, string | undefined> = process.env): boolean {
+    return env.VERCEL_ENV === "preview";
+  }
+
+  static aiOff(env: Record<string, string | undefined> = process.env): string {
+    return AiToolsCopy.isPreview(env) ? AiToolsCopy.PREVIEW_OFF : AiToolsCopy.AI_OFF;
+  }
+
+  static aiOffNote(env: Record<string, string | undefined> = process.env): string {
+    return AiToolsCopy.isPreview(env) ? AiToolsCopy.PREVIEW_OFF_NOTE : AiToolsCopy.AI_OFF_NOTE;
+  }
   static readonly PROVIDER_ERROR = "The AI service didn't respond. Nothing was changed. Try again in a moment.";
   static readonly TIMEOUT = "The AI service took too long to respond. Nothing was changed. Try again in a moment.";
   static readonly PARSE_FAILED = "The AI reply couldn't be read. Nothing was changed. Try again.";

@@ -1,7 +1,8 @@
 import { randomUUID } from "node:crypto";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
-import { AiKeyCopy, AiKeyProviders, type AiKeyActionResult, type AiKeyActionView, type AiKeyProvider, type AiKeyState } from "@/lib/ai/AiKeyProviders";
+import { DisplayName } from "@/lib/auth/DisplayName";
+import { AiKeyCopy, AiKeyProviders, type AiKeyActionResult, type AiKeyActionView, type AiKeyProvider, type AiKeyRowView, type AiKeyState } from "@/lib/ai/AiKeyProviders";
 import { AiKeyTester, type AiKeyTestOutcome } from "@/lib/ai/AiKeyTester";
 import type { AiSettingsHistoryRow, AiSettingsRow } from "@/lib/services/AiSettingsService";
 
@@ -164,6 +165,11 @@ export class AiProviderKeyService {
     });
   }
 
+  /** Every provider with no key (the card before the database is reachable). */
+  static emptyStatuses(): AiProviderKeyStatus[] {
+    return AiKeyProviders.ALL.map((provider) => ({ provider, set: false, last4: "", setAt: null, setBy: null, label: null, baseUrl: null, lastTestedAt: null, state: "none" as const, readable: false }));
+  }
+
   /** The decrypted key of `provider` for a provider call, or null (none saved, unreadable, preview). Server only. */
   static async secret(db: AiProviderKeyDb, provider: AiKeyProvider, env: Env = process.env): Promise<AiProviderKeySecret | null> {
     if (AiKeyCipher.isPreview(env)) return null;
@@ -180,6 +186,25 @@ export class AiProviderKeyService {
     if (!cipher.ok) return null;
     const apiKey = AiKeyCipher.decrypt(row.ciphertext, cipher.key, AiKeyCipher.providerBinding(provider));
     return apiKey ? { provider, apiKey, baseUrl: row.baseUrl } : null;
+  }
+
+  /**
+   * The card's rows for the page, built field by field (no ciphertext can slip through). `names` maps an admin email to
+   * a display name; `featuresUsing` is the live count per provider for the delete dialog.
+   */
+  static rowViews(statuses: readonly AiProviderKeyStatus[], names: ReadonlyMap<string, string>, featuresUsing: Partial<Record<AiKeyProvider, number>> = {}): AiKeyRowView[] {
+    return statuses.map((s) => ({
+      provider: s.provider,
+      set: s.set,
+      last4: s.set ? s.last4 : "",
+      setAt: s.set && s.setAt ? s.setAt.toISOString() : null,
+      setBy: s.set && s.setBy ? (names.get(s.setBy.toLowerCase()) ?? (s.setBy.includes("@") ? DisplayName.fromEmail(s.setBy) : s.setBy)) : null,
+      label: s.provider === "other" ? s.label : null,
+      baseUrl: s.provider === "other" ? s.baseUrl : null,
+      readable: s.readable,
+      featuresUsing: featuresUsing[s.provider] ?? 0,
+      status: { state: s.state, testedAt: s.set && s.lastTestedAt ? s.lastTestedAt.toISOString() : null, message: AiKeyCopy.messageFor(s.provider, s.state) },
+    }));
   }
 
   /** The only shape an action returns: provider, last 4, set date and status. */

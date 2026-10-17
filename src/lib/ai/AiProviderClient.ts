@@ -150,8 +150,8 @@ export class AiProviderClient {
   static readonly REDACTED = "[key hidden]";
 
   /**
-   * Removes the key, and anything key-shaped, from text bound for the UI or logs: the saved key itself; "sk-", "pk-" and
-   * "rk-" style keys (including the provider's own masked echo such as "sk-proj-****abcd" or "bad-****-0000"); Bearer
+   * Removes the key, and anything key-shaped, from text bound for the UI or logs: the saved key itself; "sk-" (and
+   * Anthropic's "sk-ant-"), "pk-", "rk-" and xAI's "xai-" style keys (including the provider's own masked echo such as "sk-proj-****abcd" or "bad-****-0000"); Bearer
    * tokens; whatever follows "API key provided:"; and long tokens (20+ characters) of hex, base64 or mixed letters and
    * digits. So no prefix and no last 4 ever reach the page. Then whitespace is collapsed and the text capped.
    */
@@ -162,7 +162,7 @@ export class AiProviderClient {
     s = s
       .replace(/Bearer\s+\S+/gi, `Bearer ${X}`)
       .replace(/(api[\s_-]?key[^:\n]{0,30}:\s+)(?!\[key hidden\])[^\s,;]*[^\s,;.]/gi, `$1${X}`)
-      .replace(/(?<![A-Za-z0-9])(?:sk|pk|rk)[-_][A-Za-z0-9_*.\u2026-]{3,}/gi, X)
+      .replace(/(?<![A-Za-z0-9])(?:sk|pk|rk|xai)[-_][A-Za-z0-9_*.\u2026-]{3,}/gi, X)
       .replace(/[A-Za-z0-9_.-]*(?:\*{2,}|\u2026|\.{3})[A-Za-z0-9_.*-]*[A-Za-z0-9]/g, (m) => (/[A-Za-z0-9]/.test(m.replace(/[*.\u2026]/g, "")) ? X : m))
       .replace(/(?<![A-Za-z0-9+/=_-])[A-Za-z0-9+/=_-]{20,}(?![A-Za-z0-9+/=_-])/g, (m) => (AiProviderClient.keyShaped(m) ? X : m));
     s = s.replace(/\s+/g, " ").trim();
