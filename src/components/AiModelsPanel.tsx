@@ -431,7 +431,9 @@ export function AiFeaturesPanel({
     });
   // Each list that failed is said once, above the grid (OpenAI's is said at the top of the AI settings card).
   const failed = AiFeatureProviders.ALL.filter((p) => p !== "openai" && lists.list(p)?.ok === false);
-  const ROW = "grid grid-cols-[minmax(0,1fr)_140px_minmax(0,220px)_auto] items-center gap-x-3 px-3";
+  // Fixed Provider, Model and toggle tracks, so every row lines up as one grid and the wide help or instructions under
+  // the Voice chat and Dictation rows can never squeeze the label column.
+  const ROW = "grid grid-cols-[minmax(0,1fr)_140px_220px_32px] items-center gap-x-3 px-3";
   return (
     <div className="flex flex-col gap-2" data-testid="ai-features">
       {failed.map((p) => (
@@ -523,7 +525,7 @@ export function AiFeaturesPanel({
             </div>
             {/* Under the Voice model field's help, in the same column. */}
             {f.feature === "voice_chat" && (
-              <div className="col-start-2 col-span-3 row-start-3 pt-2">
+              <div className="col-start-2 col-span-3 row-start-3 min-w-0 pt-2">
                 <VoiceInstructionsField initial={f.instructions ?? ""} disabled={!dbReady || pending} />
               </div>
             )}
