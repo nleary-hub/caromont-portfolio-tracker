@@ -67,7 +67,6 @@ const AiBriefCard = dynamic(() => import("./AiPlacements").then((m) => m.AiBrief
 const AiQuickCapture = dynamic(() => import("./AiPlacements").then((m) => m.AiQuickCapture));
 const AiRowMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiRowMenu));
 const AiToolbarMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiToolbarMenu));
-const AiLinksPanel = dynamic(() => import("./AiLinksPanel").then((m) => m.AiLinksPanel));
 const AiNextStepPanel = dynamic(() => import("./AiNextStepPanel").then((m) => m.AiNextStepPanel));
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
@@ -268,8 +267,6 @@ export function ProjectDashboard({
   };
   const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
   // AI toolbar menu: rows picked with Ctrl or Cmd click for "Bulk edit selected (N)".
-  // Bumped after Suggested related projects > Link so the Dependencies list reloads.
-  const [depsVersion, setDepsVersion] = useState(0);
   // Row "..." AI shortcuts: open the edit drawer, then focus that field's AI button once the form is there.
   const rowShortcuts: AiRowShortcut[] = [
     ...(admin && aiPlacements && "next_step" in aiPlacements ? [{ key: "next_step" as const, label: AiToolsCopy.NEXT_INLINE, note: aiPlacements.next_step ?? null }] : []),
@@ -941,29 +938,9 @@ export function ProjectDashboard({
                   {...(aiPlacements && "next_step" in aiPlacements ? { aiNextStep: <AiNextStepPanel key={`next-${selected.id}`} inline projects={[{ id: selected.id, name: selected.name }]} initialProject={selected.id} disabledNote={aiPlacements.next_step ?? null} /> } : {})}
                   dependencies={
                     admin.dependencyActions ? (
-                      <>
-                        <DependenciesEditor key={`deps-${selected.id}-${depsVersion}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))} />
-                        {aiPlacements && "related_links" in aiPlacements && (
-                          <section aria-labelledby="ai-related-title" className="mt-3 flex flex-col gap-2" data-testid="ai-related-section">
-                            <h4 id="ai-related-title" className="text-muted type-label">
-                              {AiToolsCopy.LINKS_SUGGESTED_TITLE}
-                            </h4>
-                            <AiLinksPanel
-                              key={`links-${selected.id}`}
-                              inline
-                              focus={selected.name}
-                              saved={[]}
-                              disabledNote={aiPlacements.related_links ?? null}
-                              onLink={async (aId, bId) => {
-                                // Normal edit path: the same add as the Dependencies picker (checks, history entry).
-                                const r = await admin.dependencyActions!.add(selected.id, aId === selected.id ? bId : aId);
-                                if (r.ok) setDepsVersion((v) => v + 1);
-                                return r.ok ? { ok: true as const } : { ok: false as const, error: r.error };
-                              }}
-                            />
-                          </section>
-                        )}
-                      </>
+                      // AI "Find related" is gone from the drawer: it saved related projects as Blocked by. AI blocker
+                      // suggestions come back later with a direction and a reason.
+                      <DependenciesEditor key={`deps-${selected.id}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))} />
                     ) : null
                   }
                   people={

@@ -170,12 +170,12 @@ test("when the inherited model is off under Models, the row says Off under Model
 
 test("Other provider row: typed model-ID field in the 220px Model column, Provider stays 140px", async ({ page }) => {
   await open(page, "&other=ok");
-  const row = page.getByTestId("ai-feature-row-related_links");
+  const row = page.getByTestId("ai-feature-row-meeting_brief");
   await expect(row).toHaveAttribute("data-provider", "other");
-  await expect(page.locator("#ai-feature-related_links-provider")).toHaveText("Other");
-  await expect(page.getByTestId("ai-feature-related_links-model-typed-input")).toHaveValue("gateway-example-chat");
-  expect(Math.round((await page.getByTestId("ai-feature-related_links-provider").boundingBox())!.width)).toBe(140);
-  expect(Math.round((await page.getByTestId("ai-feature-related_links-model-typed-input").boundingBox())!.width)).toBe(220);
+  await expect(page.locator("#ai-feature-meeting_brief-provider")).toHaveText("Other");
+  await expect(page.getByTestId("ai-feature-meeting_brief-model-typed-input")).toHaveValue("gateway-example-chat");
+  expect(Math.round((await page.getByTestId("ai-feature-meeting_brief-provider").boundingBox())!.width)).toBe(140);
+  expect(Math.round((await page.getByTestId("ai-feature-meeting_brief-model-typed-input").boundingBox())!.width)).toBe(220);
   expect((await row.locator("> div").first().boundingBox())?.height).toBe(44);
   await shot(page, "ai-features-grid", "3-other-typed-model-id");
 });

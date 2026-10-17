@@ -62,6 +62,16 @@ export class AiFeatureFlags {
   static readonly ALL: readonly AiToggleFeature[] = [...AiFeatureFlags.WRITING_FEATURES, ...AiFeatureFlags.FEATURES, ...AiFeatureFlags.TOOL_FEATURES, "dictation", "voice_chat", "template_ai"];
 
   /**
+   * Toggles kept in the database, in code and in settings history, but not shown on Admin > AI settings because they
+   * do nothing now. related_links: its page section and drawer entry point were removed (PR 0); AI blocker
+   * suggestions replace it later. A stored value still loads, and saving other toggles never touches it.
+   */
+  static readonly HIDDEN_IN_SETTINGS: readonly AiToggleFeature[] = ["related_links"];
+
+  /** The toggles Admin > AI settings shows, in display order (ALL without HIDDEN_IN_SETTINGS). */
+  static readonly SETTINGS: readonly AiToggleFeature[] = AiFeatureFlags.ALL.filter((f) => !AiFeatureFlags.HIDDEN_IN_SETTINGS.includes(f));
+
+  /**
    * Features with their own model setting, because they need a different model type than the text features (CTO,
    * Oct 15: step 6 adds transcription). The rest use the model chosen in AI settings.
    */

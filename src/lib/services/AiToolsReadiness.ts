@@ -86,7 +86,8 @@ export class AiToolsReadiness {
  * null = ready; a note = shown greyed with it (model off). AI off altogether = nothing (the caller skips this).
  */
 export class AiPlacementData {
-  static readonly FEATURES = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "meeting_brief", "related_links"] as const;
+  /** related_links is not placed anywhere (it saved related projects as Blocked by); its flag key stays for settings history. */
+  static readonly FEATURES = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "meeting_brief"] as const;
 
   static async load(db: AiModelDb & AiSettingsDb, env: Env = process.env): Promise<Partial<Record<(typeof AiPlacementData.FEATURES)[number] | "dictation", string | null>>> {
     const notes = await AiToolsReadiness.notes(db, AiPlacementData.FEATURES, env);

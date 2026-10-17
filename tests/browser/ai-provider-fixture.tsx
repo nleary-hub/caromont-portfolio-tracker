@@ -9,7 +9,7 @@ import { AiToolsCopy } from "../../src/lib/ai/AiToolsCopy";
 // ?aip=1: Admin > AI settings > Features with per-feature provider pickers. Fictional models, no real keys, and a MOCKED
 // provider: listAiProviderModels and setAiFeatureProvider are in-memory fakes (no network, no database).
 // &lost=1: Anthropic's key was removed after Bulk edit was moved to it (the amber Provider key missing tag).
-// &other=ok: the Other provider has a working key and Related links runs on it (the typed model-ID field).
+// &other=ok: the Other provider has a working key and Meeting brief runs on it (the typed model-ID field).
 // &mainoff=1: the AI settings model is turned off under Models (rows that inherit it say "Off under Models").
 // The AI tool buttons below the grid: Next step and Draft run on xAI, which has no saved key (CTO item 4).
 const q = new URLSearchParams(window.location.search);
@@ -61,7 +61,7 @@ export function AiProviderFixture() {
               chatModels={{ openai: ["gpt-example-mini", "gpt-example-pro"], anthropic: ["claude-example-sonnet"], xai: [], other: ["gateway-example-chat"] }}
               choices={{
                 bulk_edit: { provider: "anthropic", model: "claude-example-sonnet" },
-                ...(q.get("other") === "ok" ? { related_links: { provider: "other" as const, model: "gateway-example-chat" } } : {}),
+                ...(q.get("other") === "ok" ? { meeting_brief: { provider: "other" as const, model: "gateway-example-chat" } } : {}),
               }}
               modelOptions={{ realtime: ["gpt-live-example"], transcription: ["gpt-example-transcribe"] }}
               features={[
@@ -71,7 +71,7 @@ export function AiProviderFixture() {
                 feature("meeting_notes", "Meeting notes"),
                 feature("bulk_edit", "Bulk edit"),
                 feature("next_step", "Next step"),
-                ...(q.get("other") === "ok" ? [feature("related_links", "Related links")] : []),
+                ...(q.get("other") === "ok" ? [feature("meeting_brief", "Meeting brief")] : []),
                 feature("voice_chat", "Voice chat", { ownModel: true, model: "gpt-live-example", instructions: "" }),
                 feature("dictation", "Dictation", { ownModel: true, model: "gpt-example-transcribe" }),
               ]}

@@ -218,6 +218,11 @@ export class AiModelService {
     });
   }
 
+  /** featureViews of the toggles Admin > AI settings shows (AiFeatureFlags.SETTINGS; related_links is hidden). */
+  static settingsViews(rows: readonly AiFeatureRow[], env: Env = process.env): AiFeatureView[] {
+    return AiModelService.featureViews(rows, env).filter((v) => AiFeatureFlags.SETTINGS.includes(v.feature));
+  }
+
   static views(rows: readonly AiModelRow[], settings: Pick<AiSettingsRow, "model"> | null): AiModelView[] {
     const selected = (settings?.model ?? "").trim();
     return rows.map((r) => ({
@@ -381,7 +386,7 @@ export class AiModelService {
       if (!enabled && !confirmed) {
         const settings = await tx.aiSettings.findUnique({ where: { id: AiSettingsService.ID } });
         const featureRows = await tx.aiFeatureSetting.findMany();
-        const features = AiModelService.featureViews(featureRows, env);
+        const features = AiModelService.settingsViews(featureRows, env);
         const hit = AiModelService.affectedFeatures(id, settings, features, AiModelService.featureChoices(featureRows));
         if (hit.length) return { ok: false, needsConfirm: true, error: AiCopy.disableWarning(id, hit) };
       }
