@@ -178,6 +178,8 @@ test("Other: Base URL (https only) and an optional Display name above the key", 
   await expect(row(page, "other").getByTestId("key-base-url")).toHaveAttribute("aria-invalid", "true");
   expect(await calls(page)).toEqual([]);
   await row(page, "other").getByTestId("key-input").fill(FAKE2);
+  // Save put focus on the first invalid field; put it back there for the shot after refilling the key.
+  await row(page, "other").getByTestId("key-base-url").focus();
   await shot(page, "9-other-base-url-error");
   await row(page, "other").getByTestId("key-base-url").fill("https://gateway.example.org/v1");
   await row(page, "other").getByTestId("key-save").click();
