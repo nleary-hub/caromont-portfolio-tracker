@@ -74,7 +74,7 @@ export function DependenciesEditor({ projectId, actions, onCount }: { projectId:
         </p>
       ) : (
         <ul className="flex flex-col gap-1" data-testid="blocked-by-list">
-          {view.blockedBy.map((p) => (
+          {view.blockedBy.map(({ project: p }) => (
             <li key={p.id} className="flex h-7 items-center gap-2 rounded-control border border-line bg-input pr-1 pl-2 type-table">
               <span className="min-w-0 flex-1 truncate text-fg" title={p.name}>
                 {p.name}

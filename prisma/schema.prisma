@@ -131,6 +131,8 @@ model Project {
   /// Dependencies (migration 0037): projects this one is blocked by, and projects it blocks. Never in the report.
   blockedBy         ProjectDependency[]       @relation("DependencyProject")
   blocks            ProjectDependency[]       @relation("DependencyBlocker")
+  /// External blockers (migration 0055): vendor, committee, review. Never deleted; resolved rows are kept.
+  externalBlockers  ProjectBlocker[]
   serviceLine       ServiceLine               @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
   department        Department?               @relation(fields: [departmentId], references: [id], onDelete: Restrict)
 
@@ -383,6 +385,9 @@ model ProjectMilestone {
 
   project        Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
   sourceTemplate MilestoneTemplate? @relation(fields: [sourceTemplateId], references: [id], onDelete: SetNull)
+  /// Dependencies and external blockers that point at this step (migration 0055). SetNull if a step is ever deleted.
+  blockingDependencies ProjectDependency[]
+  blockingBlockers     ProjectBlocker[]
 
   @@index([projectId, position])
   @@map("project_milestones")
@@ -475,6 +480,7 @@ model ServiceLine {
   templates        MilestoneTemplate[]
   milestoneOwners  MilestoneOwnerName[]
   dependencies     ProjectDependency[]
+  blockers         ProjectBlocker[]
   templateLog      MilestoneTemplateHistory[]
   history          ServiceLineHistory[]
   activeFor        ServiceLineUserState[]
@@ -914,11 +920,57 @@ model ProjectDependency {
   blockedBy     Project     @relation("DependencyBlocker", fields: [blockedById], references: [id], onDelete: Restrict)
   createdAt     DateTime    @default(now())
   createdBy     String
+  /// 0055: what it's waiting on (optional, 120 characters max, DB check).
+  note               String?
+  /// 0055: the blocked project's milestone this blocker holds up (optional). SetNull if the step is deleted.
+  blockedMilestoneId String?           @db.Uuid
+  blockedMilestone   ProjectMilestone? @relation(fields: [blockedMilestoneId], references: [id], onDelete: SetNull)
+  /// 0055: soft removal. A removed row is kept (and re-used if the same pair is added again); history keeps both.
+  removedAt          DateTime?
+  removedBy          String?
+  /// 0055: last edit (add, re-add, note or milestone change, removal).
+  updatedAt          DateTime?
+  updatedBy          String?
 
   @@unique([projectId, blockedById])
   @@index([blockedById])
   @@index([serviceLineId])
   @@map("project_dependencies")
+}
+
+/// External blockers (migration 0055): something outside the portfolio a project is waiting on (vendor redlines, a
+/// committee date, a review). Written only by ProjectBlockerService, every add, edit and resolve with a ProjectHistory
+/// row in the same transaction. Never deleted (DB trigger); resolving keeps the row with what resolved it. Not read by
+/// FreezeService, snapshots, stored PDFs or handoff.json.
+model ProjectBlocker {
+  id                 String            @id @default(uuid()) @db.Uuid
+  serviceLineId      String            @db.Uuid
+  serviceLine        ServiceLine       @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  projectId          String            @db.Uuid
+  project            Project           @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  /// Required, 200 characters max (DB check).
+  description        String
+  /// Required: the person, group or vendor it's waiting on. 120 characters max (DB check).
+  waitingOn          String
+  /// America/New_York date it was added. Set by the app, never edited.
+  since              DateTime          @db.Date
+  /// Optional follow-up date and owner (a name from the line's people lists).
+  followUpOn         DateTime?         @db.Date
+  followUpOwner      String?
+  blockedMilestoneId String?           @db.Uuid
+  blockedMilestone   ProjectMilestone? @relation(fields: [blockedMilestoneId], references: [id], onDelete: SetNull)
+  /// Set together (DB check), with the required "What resolved it?" text (200 characters max).
+  resolvedAt         DateTime?
+  resolvedBy         String?
+  resolution         String?
+  createdAt          DateTime          @default(now())
+  createdBy          String
+  updatedAt          DateTime?
+  updatedBy          String?
+
+  @@index([projectId])
+  @@index([serviceLineId, resolvedAt])
+  @@map("project_blockers")
 }
 
 /// OpenAI models admins can pick on Admin > AI settings (0039). New rows start disabled; rows are never deleted.

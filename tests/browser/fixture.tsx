@@ -39,7 +39,10 @@ let edges: DependencyEdge[] = [{ projectId: "fictional-0", blockedById: "fiction
 const depView = (id: string) => {
   const listed = new Set(edges.filter(e => e.projectId === id).map(e => e.blockedById));
   const all = rows.map(r => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name));
-  return { ok: true as const, view: { blockedBy: all.filter(r => listed.has(r.id)), options: all.filter(r => r.id !== id && !listed.has(r.id)) } };
+  // Interim (1a data model): the old editor reads blockedBy[].project; the drawer section and its fixture come next.
+  const view = { canEdit: true, blockedBy: all.filter(r => listed.has(r.id)).map(r => ({ project: { ...r, status: "OnTrack" as const }, note: null, milestone: null, since: "2026-10-04" })),
+    blocking: [], blockers: [], resolved: [], options: all.filter(r => r.id !== id && !listed.has(r.id)), milestones: [], people: [], openCount: listed.size, today: "2026-10-04" };
+  return { ok: true as const, view };
 };
 const counts = { NotStarted: 0, OnTrack: 3, AtRisk: 0, OffTrack: 0, OnHold: 0, Complete: 0, Cancelled: 0 };
 const admin: AdminDashboardProps = {
@@ -83,7 +86,7 @@ const admin: AdminDashboardProps = {
     load: async id => depView(id),
     add: async (id, by) => {
       const problem = DependencyGraph.check(edges, id, by);
-      if (problem) return { ok: false, error: DependencyGraph.MESSAGES[problem] };
+      if (problem) return { ok: false as const, error: DependencyGraph.MESSAGES[problem] };
       edges.push({ projectId: id, blockedById: by });
       return depView(id);
     },
