@@ -12,6 +12,7 @@ import { ClosedPageModel } from "../../src/lib/closed/ClosedPageModel";
 import { ServiceAreaInfo } from "../../src/lib/domain/ServiceAreaInfo";
 import { SampleReportData } from "../../src/lib/report/SampleReportData";
 import { TemplatesFixture } from "./templates-fixture";
+import { AiProviderFixture } from "./ai-provider-fixture";
 import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
@@ -106,6 +107,8 @@ const cancelledRows = rows.map(r => ({ ...r, status: "Cancelled", statusLabel: "
 const fixtureHistory = async (id: string) => ({ title: "History (1)", previously: null, notes: [], steps: [], entries: [{ key: `history-${id}`, meta: "Fictional author", text: `History for ${id}`, hollow: false }] });
 createRoot(document.getElementById("root")!).render(new URLSearchParams(window.location.search).has("templates") ? (
   <TemplatesFixture />
+) : new URLSearchParams(window.location.search).has("aip") ? (
+  <AiProviderFixture />
 ) : closedPage ? (
   <ClosedProjectsView kind={ClosedPageModel.CANCELLED} rows={cancelledRows as never} today="2026-10-04"
     initialView={{ fy: "FY27", departments: ["Cath"] } as never} options={["Cath"] as never} list={ServiceAreaInfo.LEGACY}

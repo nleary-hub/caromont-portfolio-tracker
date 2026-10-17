@@ -374,7 +374,7 @@ describe("0054_ai_feature_provider (PGlite)", () => {
     await db.exec(sql);
     await db.exec(sql); // idempotent
     const after = (await db.query<{ feature: string; enabled: boolean; model: string | null; provider: string }>(`SELECT "feature", "enabled", "model", "provider" FROM "ai_feature_settings" ORDER BY "feature"`)).rows;
-    expect(after.map(({ provider: _p, ...r }) => r)).toEqual(before);
+    expect(after.map((r) => ({ feature: r.feature, enabled: r.enabled, model: r.model }))).toEqual(before);
     expect(new Set(after.map((r) => r.provider))).toEqual(new Set(["openai"]));
     await db.exec(`UPDATE "ai_feature_settings" SET "provider" = 'anthropic', "model" = 'claude-example-sonnet' WHERE "feature" = 'meeting_notes'`);
     await expect(db.exec(`UPDATE "ai_feature_settings" SET "provider" = 'anthropic' WHERE "feature" = 'voice_chat'`)).rejects.toThrow();
