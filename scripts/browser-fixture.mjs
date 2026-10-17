@@ -6,10 +6,12 @@ import { createServer } from "node:http";
 import path from "node:path";
 
 const root = process.cwd();
-const output = path.join(root, ".browser-fixture");
+// FIXTURE_PORT: a second harness (e.g. VERCEL_ENV=preview for the freeze guard spec) builds into its own folder.
+const port = Number(process.env.FIXTURE_PORT || 4173);
+const output = path.join(root, port === 4173 ? ".browser-fixture" : `.browser-fixture-${port}`);
 await mkdir(output, { recursive: true });
 await build({ entryPoints: ["tests/browser/fixture.tsx"], outfile: path.join(output, "fixture.js"),
-  bundle: true, platform: "browser", jsx: "automatic", define: { "process.env.NODE_ENV": '"development"' },
+  bundle: true, platform: "browser", jsx: "automatic", define: { "process.env.NODE_ENV": '"development"', "process.env.VERCEL_ENV": JSON.stringify(process.env.VERCEL_ENV ?? "") },
   plugins: [{ name: "next-harness", setup(builder) {
     // "use server" action modules: Next turns these into network stubs in the browser, so the harness does the same
     // (async no-op exports) instead of bundling their server-only imports (database, auth, node:crypto).
@@ -41,4 +43,4 @@ createServer(async (req, res) => {
     if (!route) { res.writeHead(404); res.end(); return; }
     res.setHeader("Content-Type", route[1]); res.end(await readFile(route[0]));
   } catch { res.writeHead(500); res.end(); }
-}).listen(4173, "127.0.0.1", () => console.log("Fictional dashboard fixture: http://127.0.0.1:4173"));
+}).listen(port, "127.0.0.1", () => console.log(`Fictional dashboard fixture: http://127.0.0.1:${port}`));

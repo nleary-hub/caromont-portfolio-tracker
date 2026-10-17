@@ -3,6 +3,7 @@ import type { PrismaClient, ReportArtifact, ReportSnapshot } from "@/generated/p
 import { ReportEnv } from "@/lib/config/ReportEnv";
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
+import { FreezeGuard } from "@/lib/report/FreezeGuard";
 import { HandoffBuilder } from "@/lib/report/HandoffBuilder";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
@@ -68,7 +69,9 @@ export class FreezeService {
     return { outcome: "refused", message: `Nothing to freeze yet. The next freeze is ${nextLabel}.` };
   }
 
+  /** Throws FreezeDisabledError on a preview deployment before reading or writing anything. */
   static async run(options: FreezeOptions, db: PrismaClient = Db.client): Promise<FreezeResult> {
+    FreezeGuard.assertAllowed();
     const now = options.now ?? new Date();
     const frozenPeriods = new Map<string, ReportSnapshot>();
     const due = ReportSchedule.dueFreezeDate(now);
@@ -117,8 +120,10 @@ export class FreezeService {
   /**
    * Render the PDF, write handoff.json and deliver, each only if not done yet. Returns the delivery done now, if any.
    * Throws StoredPdfMissingError when the snapshot's PDF was stored before and is now missing (never re-rendered).
+   * Throws FreezeDisabledError on a preview deployment before writing anything.
    */
   static async complete(snapshot: ReportSnapshot, options: FreezeOptions, db: PrismaClient = Db.client): Promise<DeliveryRecord | null> {
+    FreezeGuard.assertAllowed();
     const env = options.env ?? process.env;
     // Scheduled reports, handoff.json and Drive delivery are for the default line (CVPSL) only.
     const line = await ServiceLineAccess.scheduledReportLine(db);
