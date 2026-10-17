@@ -40,9 +40,11 @@ test("AI settings: no Related-project links toggle; the rows around where it sat
   await expect(page.getByText("Related-project links")).toHaveCount(0);
   await expect(page.getByTestId("ai-feature-toggle-meeting_brief")).toBeVisible();
   await expect(page.getByTestId("ai-feature-toggle-dictation")).toBeVisible();
-  // Every row is followed by the same gap (flex gap-2), including Pre-meeting brief to Dictation where the toggle was.
+  // Every row is followed by the same gap, including Pre-meeting brief to Dictation where the toggle was.
+  // PR B: the rows are one grid (ai-feature-row-*), so measure those instead of the panel's direct children.
   const gaps = await panelEl.evaluate((el) => {
-    const rows = [...el.children].filter((c) => c.querySelector('[role="switch"]')).map((c) => c.getBoundingClientRect());
+    const rows = [...el.querySelectorAll('[data-testid^="ai-feature-row-"]')].filter((c) => c.querySelector('[role="switch"]')).map((c) => c.getBoundingClientRect());
+    if (rows.length < 2) return [];
     return rows.slice(1).map((r, i) => Math.round(r.top - rows[i].bottom));
   });
   expect(new Set(gaps).size).toBe(1);
