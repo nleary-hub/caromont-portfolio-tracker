@@ -182,7 +182,7 @@ describe("disable warning", () => {
   it("disabling the model in use needs confirmation; nothing changes until confirmed", async () => {
     const db = await withKey();
     const r = await AiModelService.setEnabled(db.m, ADMIN, "gpt-6-luna", false, false, ENV);
-    expect(r).toEqual({ ok: false, needsConfirm: true, error: AiCopy.disableWarning("gpt-6-luna", [AiCopy.SWITCH_LABEL, ...AiModelService.featureViews([], ENV).filter((f) => !f.ownModel).map((f) => f.label)]) });
+    expect(r).toEqual({ ok: false, needsConfirm: true, error: AiCopy.disableWarning("gpt-6-luna", [AiCopy.SWITCH_LABEL, ...AiModelService.settingsViews([], ENV).filter((f) => !f.ownModel).map((f) => f.label)]) });
     expect(db.models[0].enabled).toBe(true);
     expect(await AiModelService.setEnabled(db.m, ADMIN, "gpt-6-luna", false, true, ENV)).toEqual({ ok: true });
     expect(db.models[0].enabled).toBe(false);
@@ -390,5 +390,49 @@ describe("models from OpenAI's list, by type (feat/ai-placement-models)", () => 
     expect(await AiModelService.setFeatureModel(db.m, ADMIN, "voice_chat", "gpt-example-realtime")).toEqual({ ok: true });
     const views = AiModelService.views(db.models, null);
     expect(AiModelService.optionsOf(views, "transcription")).toEqual(["gpt-transcribe"]);
+  });
+});
+
+describe("related_links toggle hidden on AI settings (PR 0); key kept in DB, code and history", () => {
+  it("the AI settings UI renders no related_links toggle; every other toggle is still there, in order, with no gap", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { AiFeaturesPanel } = await import("@/components/AiModelsPanel");
+    const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features: AiModelService.settingsViews([], {}), dbReady: true }));
+    expect(html).not.toContain("ai-feature-toggle-related_links");
+    expect(html).not.toContain("Related-project links");
+    const shown = [...html.matchAll(/data-testid="ai-feature-toggle-([a-z_]+)"/g)].map((m) => m[1]);
+    expect(shown).toEqual(AiFeatureFlags.ALL.filter((f) => f !== "related_links"));
+    const page = readFileSync(path.resolve(__dirname, "../src/app/admin/ai/page.tsx"), "utf8");
+    expect(page).toContain("AiModelService.settingsViews(await mdb.aiFeatureSetting.findMany())");
+    expect(page).not.toContain("AiModelService.featureViews(");
+  });
+
+  it("the key stays in the flag list, the type, the env name and the label, so history still reads", () => {
+    expect(AiFeatureFlags.ALL).toContain("related_links");
+    expect(AiFeatureFlags.TOOL_FEATURES).toContain("related_links");
+    expect(AiFeatureFlags.FLAGS.related_links).toBe("AI_FEATURE_RELATED_LINKS");
+    expect(AiFeatureFlags.parseToggle("related_links")).toBe("related_links");
+    expect(AiModelService.featureViews([], {}).map((v) => v.feature)).toContain("related_links");
+    expect(AiCopy.historyChange("aiFeature", "feature_off", null, "related_links")).toBe("Related-project links turned off");
+    expect(AiCopy.historyChange("aiFeature", "feature_on", null, "related_links")).toBe("Related-project links turned on");
+  });
+
+  it("a stored related_links value loads and round-trips: saving other toggles never wipes or changes it", async () => {
+    const db = new FakeAiAdminDb().seed();
+    const at = new Date("2026-10-02T12:00:00Z");
+    db.featureRows.push({ feature: "related_links", enabled: false, updatedAt: at, updatedBy: "fictional.admin@example.org" });
+    expect(AiModelService.settingsViews(db.featureRows, {}).some((v) => v.feature === "related_links")).toBe(false);
+    expect(AiModelService.featureViews(db.featureRows, {}).find((v) => v.feature === "related_links")).toMatchObject({ enabled: false });
+    expect(await AiModelService.featureOn(db.m, "related_links", {})).toBe(false);
+    expect(await AiModelService.setFeature(db.m, ADMIN, "meeting_notes", false)).toEqual({ ok: true });
+    expect(await AiModelService.setFeature(db.m, ADMIN, "bulk_edit", true)).toEqual({ ok: true });
+    expect(await AiModelService.setFeatureModel(db.m, ADMIN, "dictation", "")).toMatchObject({ ok: true });
+    expect(db.featureRows.find((r) => r.feature === "related_links")).toEqual({ feature: "related_links", enabled: false, updatedAt: at, updatedBy: "fictional.admin@example.org" });
+    expect(await AiModelService.featureOn(db.m, "related_links", {})).toBe(false);
+    // The stored key can still be written by the service (history stays consistent); only the UI hides it.
+    expect(await AiModelService.setFeature(db.m, ADMIN, "related_links", true)).toEqual({ ok: true });
+    expect(await AiModelService.featureOn(db.m, "related_links", {})).toBe(true);
+    expect(db.settingsHistory.at(-1)).toMatchObject({ action: "feature_on", newValue: "related_links" });
   });
 });
