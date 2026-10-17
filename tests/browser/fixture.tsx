@@ -13,6 +13,7 @@ import { ServiceAreaInfo } from "../../src/lib/domain/ServiceAreaInfo";
 import { SampleReportData } from "../../src/lib/report/SampleReportData";
 import { TemplatesFixture } from "./templates-fixture";
 import { AiProviderFixture } from "./ai-provider-fixture";
+import { KeysFixture } from "./keys-fixture";
 import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
@@ -109,6 +110,8 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
   <TemplatesFixture />
 ) : new URLSearchParams(window.location.search).has("aip") ? (
   <AiProviderFixture />
+) : new URLSearchParams(window.location.search).has("keys") ? (
+  <KeysFixture />
 ) : closedPage ? (
   <ClosedProjectsView kind={ClosedPageModel.CANCELLED} rows={cancelledRows as never} today="2026-10-04"
     initialView={{ fy: "FY27", departments: ["Cath"] } as never} options={["Cath"] as never} list={ServiceAreaInfo.LEGACY}

@@ -40,6 +40,8 @@ or Docker `postgres:16`.
 | `npm run lint` | ESLint (next/core-web-vitals + TypeScript) |
 | `npm run typecheck` | `prisma generate && tsc --noEmit` |
 | `npm test` | Vitest unit tests |
+| `npm run test:browser` | Playwright on the in-memory fixture (`tests/browser`, fictional data) |
+| `npm run test:e2e` | Playwright on a real `next dev` with the local dev login and an in-memory Postgres, run as a preview (`tests/e2e`, fictional emails, throwaway secrets) |
 | `npm run db:migrate` | `prisma migrate deploy` (run automatically by the Vercel build; see below) |
 | `npm run db:migrate:dev` | `prisma migrate dev` (create new migrations locally) |
 | `npm run db:seed` | Sample data (refuses in production or if projects exist) |
