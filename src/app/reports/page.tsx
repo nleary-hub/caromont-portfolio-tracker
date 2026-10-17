@@ -89,7 +89,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             <a href="/api/reports/preview" download className="type-table-strong text-accent">
               Generate PDF now (draft)
             </a>
-            <YearEndReportButton years={yearEndYears} current={FiscalYear.of(today).label} initialOpen={openYearEnd} />
+            <YearEndReportButton years={yearEndYears} current={FiscalYear.of(today).label} initialOpen={openYearEnd} disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />
           </div>
           {scope.isDefault && <DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} />}
           <form action={setShowKeyPageForm} className="flex flex-wrap items-end gap-4 type-table">

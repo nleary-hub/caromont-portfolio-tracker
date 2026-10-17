@@ -102,6 +102,7 @@ export async function generateYearEndReport(fiscalYear: string, categories?: unk
     revalidatePath("/reports");
     return { ok: true, id: entry.id, fileName: entry.fileName };
   } catch (e) {
+    if (e instanceof FreezeDisabledError) return { ok: false, message: e.message };
     ReportLog.error("year_end.failed", { error: e instanceof Error ? e.message : String(e) });
     return { ok: false, message: YearEndCopy.ERROR };
   }

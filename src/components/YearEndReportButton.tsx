@@ -11,15 +11,31 @@ const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px
 /**
  * Admin "Year-end report" (secondary, next to the report actions): a dialog with the fiscal year (current by
  * default) and Generate PDF. The server stores the file (listed below the archive) and the browser downloads it.
+ * `disabledNote`: set by the server on preview deployments; the button is disabled, the dialog never opens and the note shows.
  */
-export function YearEndReportButton({ years, current, initialOpen = false }: { years: readonly string[]; current: string; initialOpen?: boolean }) {
-  const [open, setOpen] = useState(initialOpen);
+export function YearEndReportButton({
+  years,
+  current,
+  initialOpen = false,
+  disabledNote = null,
+}: {
+  years: readonly string[];
+  current: string;
+  initialOpen?: boolean;
+  disabledNote?: string | null;
+}) {
+  const [open, setOpen] = useState(initialOpen && disabledNote === null);
   return (
     <>
-      <button type="button" className={GHOST} onClick={() => setOpen(true)} aria-haspopup="dialog" data-testid="year-end-button">
+      <button type="button" className={disabledNote !== null ? `${GHOST} disabled:opacity-60` : GHOST} onClick={() => setOpen(true)} disabled={disabledNote !== null} aria-haspopup="dialog" data-testid="year-end-button">
         {YearEndCopy.BUTTON}
       </button>
-      {open && <YearEndDialog years={years} current={current} onClose={() => setOpen(false)} />}
+      {disabledNote !== null && (
+        <span data-testid="year-end-disabled-note" className="type-caption text-muted">
+          {disabledNote}
+        </span>
+      )}
+      {open && disabledNote === null && <YearEndDialog years={years} current={current} onClose={() => setOpen(false)} />}
     </>
   );
 }

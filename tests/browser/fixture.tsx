@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { YearEndReportButton } from "../../src/components/YearEndReportButton";
 import { AiSettingsForm } from "../../src/components/AiSettingsForm";
 import { AiFeaturesPanel } from "../../src/components/AiModelsPanel";
 import { OpenAiModelListProvider } from "../../src/components/useOpenAiModelList";
@@ -131,6 +132,17 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
     <section className="flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiFeaturesPanel dbReady features={[{ feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE_CHAT", ownModel: true, model: null, instructions: voiceText } as never]} modelOptions={{ realtime: ["gpt-live-example", "gpt-example-realtime"] }} /></section>
   </main>
   </OpenAiModelListProvider>
+) : new URLSearchParams(window.location.search).has("yearEnd") ? (
+  // ?yearEnd=1: the year-end report button as /reports renders it (FreezeGuard reads VERCEL_ENV as above). Fictional years.
+  <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
+    <section aria-labelledby="report-year-end-heading" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+      <h2 id="report-year-end-heading" className="type-heading">Report freeze</h2>
+      <div className="flex flex-wrap items-center gap-4">
+        <a href="#" className="type-table-strong text-accent">Generate PDF now (draft)</a>
+        <YearEndReportButton years={["FY27", "FY26"]} current="FY27" disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />
+      </div>
+    </section>
+  </main>
 ) : (
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}
     today="2026-10-04" userEmail="fictional@example.org" userName="Fictional Reviewer"
