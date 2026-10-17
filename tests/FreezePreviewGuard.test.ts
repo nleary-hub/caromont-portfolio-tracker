@@ -21,7 +21,7 @@ const { freezeNow } = await import("@/app/actions/reports");
 const ENV = { SHARE_LINK_SECRET: "x".repeat(48), APP_BASE_URL: "https://tracker.example.org/", REPORT_RECIPIENT_EMAIL: "you@example.org" };
 const FREEZE_TIME = new Date("2026-09-29T21:00:00Z"); // Tue 5:00 PM EDT
 const SECRET = "c".repeat(40);
-const MESSAGE = "Freezing is disabled on preview deployments.";
+const MESSAGE = "Freezing is turned off on preview deployments.";
 
 let fake: FakeDb;
 const opts = (o: Partial<FreezeOptions> = {}): FreezeOptions => ({ trigger: "cron", actor: "cron", env: ENV, now: FREEZE_TIME, fetch: vi.fn(), ...o });

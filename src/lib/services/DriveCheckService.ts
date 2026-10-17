@@ -1,4 +1,5 @@
 import { ReportEnv, type EnvSource } from "@/lib/config/ReportEnv";
+import { FreezeDisabledError, FreezeGuard } from "@/lib/report/FreezeGuard";
 import { DriveError, GoogleDriveClient, type FetchLike } from "@/lib/report/GoogleDriveClient";
 import { ReportLog } from "@/lib/report/ReportLog";
 
@@ -61,7 +62,9 @@ export class DriveCheckService {
     return e instanceof DriveError ? e.message : "Unexpected error. Try again.";
   }
 
+  /** Refused on a preview deployment (FreezeGuard) before any Drive call: previews share production settings. */
   static async run(env: EnvSource = process.env, fetchImpl: FetchLike = fetch, now: () => Date = () => new Date()): Promise<DriveCheckResult> {
+    if (FreezeGuard.disabled()) return { ok: false, step: "setup", message: FreezeDisabledError.MESSAGE, detail: null };
     const drive = ReportEnv.drive(env);
     if (!drive) return { ok: false, step: "setup", message: DriveCheckService.NOT_CONFIGURED, detail: DriveCheckService.NOT_CONFIGURED_DETAIL };
     const client = new GoogleDriveClient(drive, fetchImpl);

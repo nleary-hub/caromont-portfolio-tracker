@@ -2,6 +2,7 @@
 
 import { useActionState } from "react";
 import { freezeNow, type FreezeNowState } from "@/app/actions/reports";
+import { FREEZE_DISABLED_BUTTON, FreezeDisabledNote } from "@/components/FreezeDisabledNote";
 
 /**
  * Admin only (rendered only for admins; the action re-checks). Asks for confirmation first.
@@ -22,16 +23,13 @@ export function FreezeNowButton({ disabledNote = null }: { disabledNote?: string
     >
       <button
         type="submit"
+        data-testid="freeze-now"
         disabled={pending || disabledNote !== null}
-        className="h-8 rounded-control border border-line px-3.5 type-table-strong hover:text-fg disabled:opacity-60"
+        className={`h-8 rounded-control border border-line px-3.5 type-table-strong hover:text-fg ${FREEZE_DISABLED_BUTTON}`}
       >
         {pending ? "Freezing…" : "Freeze now"}
       </button>
-      {disabledNote !== null && (
-        <span data-testid="freeze-disabled-note" className="type-caption text-muted">
-          {disabledNote}
-        </span>
-      )}
+      {disabledNote !== null && <FreezeDisabledNote note={disabledNote} testId="freeze-disabled-note" />}
       {state && (
         <span role="status" className={`type-caption ${state.ok ? "text-muted" : "text-danger"}`}>
           {state.message}
