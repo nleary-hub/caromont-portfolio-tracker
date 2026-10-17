@@ -39,6 +39,17 @@ export class AiToolsCopy {
   static readonly AI_OFF_NOTE = "AI is turned off in AI settings.";
   static readonly MODEL_OFF_NOTE = "The AI model is turned off. An admin can turn one on in AI settings.";
 
+  /** PR B (CTO item 4): the feature's provider has no saved key in Provider keys, so its button is unavailable. */
+  static noKeyNote(provider: string): string {
+    const name = provider === "openai" ? "OpenAI" : provider === "anthropic" ? "Anthropic" : provider === "xai" ? "xAI" : provider === "other" ? "Other provider" : provider;
+    return `No saved ${name} key. An admin can add one in AI settings.`;
+  }
+
+  /** Whether a note is the no-saved-key note (any provider). */
+  static isNoKeyNote(note: string | null | undefined): boolean {
+    return typeof note === "string" && /^No saved .+ key\. An admin can add one in AI settings\.$/.test(note);
+  }
+
   static readonly FIELD_LABELS: Readonly<Record<string, string>> = {
     status: "Status",
     nextMilestone: "Next milestone",
@@ -53,8 +64,8 @@ export class AiToolsCopy {
   static readonly VALUE_INVALID = "That value isn't valid for this field. Edit it or reject the line.";
   static readonly FEATURE_OFF = "This AI tool is turned off. Nothing was changed.";
   static readonly AI_OFF = "AI is turned off in AI settings. Nothing was changed.";
-  static readonly PREVIEW_OFF = "AI is off on preview deployments. Nothing was changed.";
-  static readonly PREVIEW_OFF_NOTE = "AI is off on preview deployments.";
+  static readonly PREVIEW_OFF = "AI is turned off on preview deployments. Nothing was changed.";
+  static readonly PREVIEW_OFF_NOTE = "AI is turned off on preview deployments.";
 
   /** A Vercel preview: no key is ever decrypted there, so AI is off with its own message. */
   static isPreview(env: Record<string, string | undefined> = process.env): boolean {
