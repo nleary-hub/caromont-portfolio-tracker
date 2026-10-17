@@ -13,10 +13,10 @@ type Env = Record<string, string | undefined>;
  */
 export class AiToolsReadiness {
   static async notes(db: AiModelDb & AiSettingsDb, features: readonly AiToggleFeature[], env: Env = process.env): Promise<Record<string, string | null>> {
-    const row = await AiSettingsService.row(db).catch(() => null);
+    const row = await AiSettingsService.row(db, env).catch(() => null);
     const enabled = await AiModelService.enabledIds(db, "chat");
     const model = (row?.model ?? "").trim();
-    const base = !row?.enabled ? AiToolsCopy.AI_OFF_NOTE : !model || !enabled.includes(model) ? AiToolsCopy.MODEL_OFF_NOTE : null;
+    const base = AiToolsCopy.isPreview(env) ? AiToolsCopy.PREVIEW_OFF_NOTE : !row?.enabled ? AiToolsCopy.AI_OFF_NOTE : !model || !enabled.includes(model) ? AiToolsCopy.MODEL_OFF_NOTE : null;
     const out: Record<string, string | null> = {};
     for (const f of features) out[f] = (await AiModelService.featureOn(db, f, env)) ? base : AiToolsCopy.FEATURE_OFF_NOTE;
     return out;
@@ -25,7 +25,8 @@ export class AiToolsReadiness {
   /** Step 6: the Dictate button's note (null = ready). Dictation uses its own model, not the text model. */
   static async dictationNote(db: AiModelDb & AiSettingsDb, env: Env = process.env): Promise<string | null> {
     if (!(await AiModelService.featureOn(db, "dictation", env))) return AiToolsCopy.FEATURE_OFF_NOTE;
-    const row = await AiSettingsService.row(db).catch(() => null);
+    const row = await AiSettingsService.row(db, env).catch(() => null);
+    if (AiToolsCopy.isPreview(env)) return AiToolsCopy.PREVIEW_OFF_NOTE;
     if (!row?.enabled) return AiToolsCopy.AI_OFF_NOTE;
     const model = await AiModelService.featureModel(db, "dictation");
     if (!model) return AiToolsCopy.DICTATION_NO_MODEL;

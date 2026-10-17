@@ -40,6 +40,8 @@ or Docker `postgres:16`.
 | `npm run lint` | ESLint (next/core-web-vitals + TypeScript) |
 | `npm run typecheck` | `prisma generate && tsc --noEmit` |
 | `npm test` | Vitest unit tests |
+| `npm run test:browser` | Playwright on the in-memory fixture (`tests/browser`, fictional data) |
+| `npm run test:e2e` | Playwright on a real `next dev` with the local dev login and an in-memory Postgres, run as a preview (`tests/e2e`, fictional emails, throwaway secrets) |
 | `npm run db:migrate` | `prisma migrate deploy` (run automatically by the Vercel build; see below) |
 | `npm run db:migrate:dev` | `prisma migrate dev` (create new migrations locally) |
 | `npm run db:seed` | Sample data (refuses in production or if projects exist) |
@@ -60,6 +62,7 @@ See `.env.example` for the full annotated list.
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | Enables Google sign-in. See "Google OAuth setup" |
 | `AUTH_DEV_LOGIN` | optional | `true` enables the email-only dev form (never in production) |
 | `AUTH_TRUST_HOST` / `AUTH_URL` | optional | Only needed off Vercel. Do not set them on Vercel |
+| `AI_SETTINGS_ENCRYPTION_KEY` | for AI | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the AI provider keys saved under Admin > AI settings > Provider keys (AES-256-GCM, one binding per provider row). Empty = keys can't be saved or used. Changing it makes saved keys unreadable. Never decrypted on Vercel preview deployments (`VERCEL_ENV=preview`), so AI is off there |
 
 OAuth redirect URI: `https://<domain>/api/auth/callback/google`.
 

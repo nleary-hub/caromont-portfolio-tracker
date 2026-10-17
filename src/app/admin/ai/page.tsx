@@ -4,11 +4,16 @@ import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AiFeaturesPanel, AiModelsPanel } from "@/components/AiModelsPanel";
 import { AiPriceRefresh } from "@/components/AiPriceRefresh";
+import { AiProviderKeysCard } from "@/components/AiProviderKeysCard";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
 import { OpenAiModelListProvider } from "@/components/useOpenAiModelList";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
+import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
+import type { AiKeyRowView } from "@/lib/ai/AiKeyProviders";
+import { LineAccessService } from "@/lib/services/LineAccessService";
+import { AiProviderKeyService, type AiProviderKeyDb, type AiProviderKeyStatus } from "@/lib/services/AiProviderKeyService";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { AiModelService, type AiFeatureView, type AiModelDb, type AiModelView } from "@/lib/services/AiModelService";
@@ -39,10 +44,16 @@ export default async function AiSettingsPage() {
   let models: AiModelView[] = [];
   let features: AiFeatureView[] = AiModelService.settingsViews([]);
   let dbReady = Db.isConfigured();
+  // Guard (a): on a Vercel preview nothing is decrypted, copied or written; the keys card is read-only.
+  const preview = AiKeyCipher.isPreview();
+  let keyStatuses: AiProviderKeyStatus[] = [];
+  const names = new Map<string, string>();
   if (dbReady) {
     try {
       const db = Db.client as unknown as AiSettingsDb;
       const mdb = Db.client as unknown as AiModelDb;
+      // Provider keys first: this copies the legacy OpenAI key into ai_provider_keys once (never on a preview).
+      keyStatuses = await AiProviderKeyService.list(Db.client as unknown as AiProviderKeyDb);
       const row = await AiSettingsService.row(db);
       view = AiSettingsService.view(row);
       history = await AiSettingsService.history(db);
@@ -50,11 +61,19 @@ export default async function AiSettingsPage() {
       features = AiModelService.settingsViews(await mdb.aiFeatureSetting.findMany());
       // The saved model must be one an admin turned on, or the assistant isn't ready (the call would be refused).
       if (view.model && !models.some((m) => m.inUse && m.enabled)) view = { ...view, ready: false, modelOff: true };
+      const setters = [...new Set(keyStatuses.map((k) => k.setBy).filter((e): e is string => Boolean(e && e.includes("@"))))];
+      if (setters.length) {
+        const users = await Db.client.appUser.findMany({ where: { email: { in: setters } } }).catch(() => []);
+        for (const u of users) names.set(u.email.toLowerCase(), LineAccessService.displayName(u));
+      }
     } catch {
       // Tables not migrated yet (Vercel previews skip migrations): show the defaults, saving is disabled.
       dbReady = false;
     }
   }
+  // Every AI feature runs on the OpenAI key today (PR B adds per-feature providers), so only OpenAI has a live count.
+  const openAiUsers = view.enabled && view.provider === "openai" ? features.filter((f) => f.enabled && !f.killedByEnv).length : 0;
+  const keyRows: AiKeyRowView[] = AiProviderKeyService.rowViews(keyStatuses.length ? keyStatuses : AiProviderKeyService.emptyStatuses(), names, { openai: openAiUsers });
   const keySavedLine = view.key.set && view.key.setAt ? AiCopy.keySaved(AiPageFormat.when(view.key.setAt), view.key.setBy ?? "") : null;
   const section = "flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4 backdrop-blur-[20px]";
 
@@ -76,6 +95,10 @@ export default async function AiSettingsPage() {
           {Db.isConfigured() ? AiCopy.DB_MISSING : "DATABASE_URL is not configured; showing the defaults."}
         </p>
       )}
+
+      <section className={section} aria-labelledby="provider-keys-heading">
+        <AiProviderKeysCard rows={keyRows} preview={preview} dbReady={dbReady} encryptionReady={view.encryption.ready} adminName={viewer.name ?? LineAccessService.displayName({ email: viewer.email })} />
+      </section>
 
       {/* One shared OpenAI model list for the settings card, the Models panel and the feature pickers. */}
       <OpenAiModelListProvider>

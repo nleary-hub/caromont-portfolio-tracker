@@ -106,9 +106,9 @@ export class AiWritingService {
     if (!text.trim()) return { ok: false, kind: "empty", message: AiCopy.EMPTY_INPUT };
     if (!(await AiWritingService.canEdit(db, viewer, projectId, scope))) return { ok: false, kind: "not_allowed", message: AiCopy.NOT_ALLOWED };
 
-    const row = await AiSettingsService.row(db).catch(() => null);
+    const row = await AiSettingsService.row(db, env).catch(() => null);
     const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
-    if (!saved) return { ok: false, kind: "off", message: AiCopy.UNAVAILABLE };
+    if (!saved) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
     // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
     const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
     // Allowlist at call time: a saved model outside the list (for example from before the allowlist) is never called.
