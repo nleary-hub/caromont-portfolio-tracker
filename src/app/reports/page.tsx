@@ -5,6 +5,7 @@ import { setShowKeyPageForm } from "@/app/actions/reports";
 import { DriveCheckButton } from "@/components/DriveCheckButton";
 import { DriveCheckService } from "@/lib/services/DriveCheckService";
 import { FreezeNowButton } from "@/components/FreezeNowButton";
+import { FreezeGuard } from "@/lib/report/FreezeGuard";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { NoAccessCard } from "@/components/NoAccessCard";
@@ -84,7 +85,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <section id="report-admin" aria-labelledby="report-freeze-heading" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
           <h2 id="report-freeze-heading" className="type-heading">{AdminMenu.REPORT_FREEZE}</h2>
           <div className="flex flex-wrap items-center gap-4">
-            {scope.isDefault && <FreezeNowButton />}
+            {scope.isDefault && <FreezeNowButton disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />}
             <a href="/api/reports/preview" download className="type-table-strong text-accent">
               Generate PDF now (draft)
             </a>

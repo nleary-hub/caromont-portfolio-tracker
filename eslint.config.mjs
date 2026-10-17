@@ -16,6 +16,7 @@ const eslintConfig = defineConfig([
     "src/generated/**",
     // Generated browser harness and Playwright evidence
     ".browser-fixture/**",
+    ".browser-fixture-*/**",
     "test-results/**",
     "playwright-report/**",
   ]),
