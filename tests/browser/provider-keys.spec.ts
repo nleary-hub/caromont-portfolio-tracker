@@ -47,6 +47,8 @@ test("admin adds a FAKE key: entry, Save disabled while blank, Enter saves and t
   await row(page, "anthropic").getByTestId("key-add").click();
   const input = row(page, "anthropic").getByTestId("key-input");
   await expect(input).toBeFocused();
+  await expect(row(page, "anthropic").getByTestId("key-input-label")).toHaveText("API key");
+  await expect(row(page, "anthropic").getByLabel("API key", { exact: true })).toBeFocused();
   await expect(input).toHaveAttribute("type", "password");
   await expect(row(page, "anthropic").getByTestId("key-save")).toBeDisabled();
   await input.fill(FAKE);
@@ -90,7 +92,8 @@ test("Replace swaps the key at once with the same entry, labeled Replace key", a
   await expect(row(page, "openai").getByTestId("key-mask")).toHaveText("•••• a1B2");
   await expect(row(page, "openai").getByTestId("key-status")).toHaveText("Working · tested 9:41 AM");
   await row(page, "openai").getByTestId("key-replace").click();
-  await expect(row(page, "openai").getByRole("textbox", { name: "Replace key" })).toBeFocused();
+  await expect(row(page, "openai").getByRole("textbox", { name: "API key" })).toBeFocused();
+  await expect(row(page, "openai").getByTestId("key-entry")).toHaveAttribute("data-entry", "replace");
   await row(page, "openai").getByTestId("key-input").fill(FAKE2);
   await row(page, "openai").getByTestId("key-save").click();
   await expect(row(page, "openai").getByTestId("key-mask")).toHaveText("•••• Zz90");
@@ -116,10 +119,13 @@ test("a failed test: amber dot, Test failed, the red box in plain words with Ret
 test("Rotate keeps the old key live while the new one is tested; a failed rotate keeps the old key and shows the error", async ({ page }) => {
   await open(page, "keys=admin&hold=1&rotate=fail");
   await row(page, "openai").getByTestId("key-rotate").click();
-  await expect(row(page, "openai").getByRole("textbox", { name: "Rotate key" })).toBeFocused();
+  await expect(row(page, "openai").getByRole("textbox", { name: "API key" })).toBeFocused();
+  await expect(row(page, "openai").getByTestId("key-entry")).toHaveAttribute("data-entry", "rotate");
   await row(page, "openai").getByTestId("key-input").fill(FAKE2);
   await row(page, "openai").getByTestId("key-input").press("Enter");
-  await expect(row(page, "openai").getByTestId("key-status")).toHaveText("Rotating… old key still active");
+  await expect(row(page, "openai").getByTestId("key-status")).toHaveText("Rotating…");
+  await expect(row(page, "openai").getByTestId("key-rotating-caption")).toHaveText("The old key stays active until this finishes.");
+  await expect(row(page, "openai").getByTestId("key-rotate")).toHaveClass(/opacity-40/);
   await expect(row(page, "openai").getByTestId("key-mask")).toHaveText("•••• a1B2");
   for (const b of ["key-test", "key-replace", "key-rotate", "key-delete"]) await expect(row(page, "openai").getByTestId(b)).toBeDisabled();
   await shot(page, "7-rotating");
@@ -156,7 +162,7 @@ test("Delete on a provider no feature uses yet says 0 features", async ({ page }
   await row(page, "anthropic").getByTestId("key-input").press("Enter");
   await expect(row(page, "anthropic").getByTestId("key-status")).toHaveText(/Working/);
   await row(page, "anthropic").getByTestId("key-delete").click();
-  await expect(page.locator("#delete-key-body")).toHaveText("Features using Anthropic will stop working until you add a key or pick another provider. 0 features use it now.");
+  await expect(page.locator("#delete-key-body")).toHaveText("Features using Anthropic will stop working until you add a key or pick another provider. No features use it now.");
 });
 
 test("Other: Base URL (https only) and an optional Display name above the key", async ({ page }) => {
@@ -167,7 +173,8 @@ test("Other: Base URL (https only) and an optional Display name above the key", 
   await row(page, "other").getByTestId("key-label").fill("Local gateway");
   await row(page, "other").getByTestId("key-input").fill(FAKE2);
   await row(page, "other").getByTestId("key-save").click();
-  await expect(row(page, "other").getByTestId("key-base-url-error")).toHaveText("Enter a full https:// URL");
+  await expect(row(page, "other").getByTestId("key-base-url-error")).toHaveText("Enter a full https:// URL.");
+  await expect(row(page, "other").getByTestId("key-base-url")).toBeFocused();
   await expect(row(page, "other").getByTestId("key-base-url")).toHaveAttribute("aria-invalid", "true");
   expect(await calls(page)).toEqual([]);
   await row(page, "other").getByTestId("key-input").fill(FAKE2);
@@ -181,13 +188,19 @@ test("Other: Base URL (https only) and an optional Display name above the key", 
 
 test("preview: read-only card with the banner; no actions, rows show only status and meta", async ({ page }) => {
   await open(page, "keys=preview");
-  await expect(page.getByTestId("provider-keys-preview")).toHaveText("AI is off on preview deployments. Keys can only be managed in production.");
+  await expect(page.getByTestId("provider-keys-preview")).toHaveText("AI is turned off on preview deployments. Keys can only be managed in production.");
   await expect(page.getByTestId("key-actions")).toHaveCount(0);
   await expect(page.getByRole("button")).toHaveCount(0);
   await expect(row(page, "openai").getByTestId("key-mask")).toHaveText("•••• a1B2");
   await expect(row(page, "openai").getByTestId("key-status")).toHaveText("Working · tested 9:41 AM");
   await expect(row(page, "anthropic").getByTestId("key-set")).toHaveText("Set Oct 16 by Casey Lund");
   await expect(row(page, "xai").getByTestId("key-status")).toHaveText("No key");
+  // Not tested: a hollow grey ring; No key: a solid grey dot.
+  await expect(row(page, "anthropic").getByTestId("key-status")).toHaveText("Not tested");
+  await expect(row(page, "anthropic").getByTestId("key-dot")).toHaveAttribute("data-dot", "hollow");
+  await expect(row(page, "anthropic").getByTestId("key-dot")).toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
+  await expect(row(page, "xai").getByTestId("key-dot")).toHaveAttribute("data-dot", "none");
+  await expect(row(page, "xai").getByTestId("key-dot")).not.toHaveCSS("background-color", "rgba(0, 0, 0, 0)");
   await expect(page.getByTestId("key-error")).toHaveCount(0);
   await shot(page, "6-preview");
 });

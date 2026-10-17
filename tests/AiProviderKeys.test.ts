@@ -183,8 +183,8 @@ describe("guard (a): previews never decrypt", () => {
   });
 
   it("AI features say AI is off on previews", () => {
-    expect(AiToolsCopy.aiOff(PREVIEW)).toBe("AI is off on preview deployments. Nothing was changed.");
-    expect(AiToolsCopy.aiOffNote(PREVIEW)).toBe("AI is off on preview deployments.");
+    expect(AiToolsCopy.aiOff(PREVIEW)).toBe("AI is turned off on preview deployments. Nothing was changed.");
+    expect(AiToolsCopy.aiOffNote(PREVIEW)).toBe("AI is turned off on preview deployments.");
     expect(AiToolsCopy.aiOff(ENV)).toBe(AiToolsCopy.AI_OFF);
   });
 });
@@ -277,7 +277,7 @@ describe("Provider keys: save, test, rotate, delete", () => {
 
   it("Other needs a full https base URL; its display name shows in pickers as 'Other · <name>'", async () => {
     const { db } = ctx;
-    expect(await AiProviderKeyService.save(db, ADMIN, "other", { apiKey: NEW_KEY, baseUrl: "http://gateway.example.org/v1" }, ENV, NOW)).toMatchObject({ ok: false, fieldErrors: { baseUrl: "Enter a full https:// URL" } });
+    expect(await AiProviderKeyService.save(db, ADMIN, "other", { apiKey: NEW_KEY, baseUrl: "http://gateway.example.org/v1" }, ENV, NOW)).toMatchObject({ ok: false, fieldErrors: { baseUrl: "Enter a full https:// URL." } });
     const ok = provider(200);
     expect(await AiProviderKeyService.save(db, ADMIN, "other", { apiKey: NEW_KEY, baseUrl: "https://gateway.example.org/v1/", label: "Local gateway" }, ENV, NOW)).toMatchObject({ ok: true });
     await AiProviderKeyService.test(db, ADMIN, "other", ENV, NOW, ok.fetchImpl);

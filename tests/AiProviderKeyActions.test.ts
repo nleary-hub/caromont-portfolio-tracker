@@ -50,7 +50,7 @@ describe("Provider keys Server Functions", () => {
 
   it("on a preview every action refuses before decrypting", async () => {
     vi.stubEnv("VERCEL_ENV", "preview");
-    expect(await saveProviderKey("openai", KEY)).toEqual({ ok: false, error: "AI is off on preview deployments." });
-    expect(await testProviderKey("openai")).toEqual({ ok: false, error: "AI is off on preview deployments." });
+    expect(await saveProviderKey("openai", KEY)).toEqual({ ok: false, error: "AI is turned off on preview deployments." });
+    expect(await testProviderKey("openai")).toEqual({ ok: false, error: "AI is turned off on preview deployments." });
   });
 });
