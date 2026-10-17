@@ -1,6 +1,7 @@
 import type { DependencyActionResult } from "../../src/app/actions/dependencies";
 import type { DependencyActions } from "../../src/components/DependenciesSection";
 import type { DashboardRow } from "../../src/lib/dashboard/DashboardViewModel";
+import type { RowBlockers } from "../../src/lib/projects/BlockerSignals";
 import { BlockerRules } from "../../src/lib/projects/BlockerRules";
 import { DependencyCopy } from "../../src/lib/projects/DependencyCopy";
 import { DependencyGraph } from "../../src/lib/projects/DependencyGraph";
@@ -35,6 +36,8 @@ export class DepsFixture {
   edges: { projectId: string; blockedById: string; note: string | null; milestoneId: string | null; since: string }[] = [];
   blockers: (Omit<BlockerDto, "milestone"> & { projectId: string; milestoneId: string | null })[] = [];
   seq = 0;
+  /** "Clear it?" prompts this viewer dismissed ("projectId>blockedById"). */
+  dismissed = new Set<string>();
 
   constructor(readonly mode: string) {
     if (mode === "empty") return;
@@ -50,10 +53,27 @@ export class DepsFixture {
     b("dep-2", { description: "Network drop survey", waitingOn: "Example IT Facilities", since: "2026-10-10", followUpOn: "2026-10-24", followUpOwner: "Sam Okafor", milestoneId: "st-2" });
     b("dep-2", { description: "Revised enclosure drawings", waitingOn: "Northbeam Interiors", since: "2026-09-21", resolvedOn: "2026-10-12", resolvedBy: "Jordan Pike", resolution: "Vendor sent revised quote" });
     b("dep-2", { description: "Electrical permit", waitingOn: "Example County permits office", since: "2026-09-15", resolvedOn: "2026-10-01", resolvedBy: "Priya Nandakumar", resolution: "Permit approved" });
+    // 1b: blocked 30+ days (the "Blocked for 30+ days" flag).
+    b("dep-5", { description: "Badge reader firmware", waitingOn: "Example Access Systems", since: "2026-09-08", followUpOn: "2026-10-30", followUpOwner: "Jordan Pike" });
   }
 
-  static rows(): DashboardRow[] {
+  /** 1b dashboard blocker data per row (what BlockerSummaryService.forDashboard returns), from the in-memory state. */
+  rowBlockers(): Record<string, RowBlockers> {
+    const out: Record<string, RowBlockers> = {};
+    const at = (id: string) => (out[id] ??= { blockedBy: [], external: [], blocking: 0 });
+    for (const e of this.edges) {
+      const p = this.name(e.blockedById);
+      at(e.projectId).blockedBy.push({ id: p.id, name: p.name, status: p.status as never, dueDate: p.due, since: e.since, prompt: p.status === "Complete" && !this.dismissed.has(`${e.projectId}>${e.blockedById}`) });
+      at(e.blockedById).blocking += 1;
+    }
+    for (const b of this.blockers) if (!b.resolvedOn) at(b.projectId).external.push({ waitingOn: b.waitingOn, description: b.description, since: b.since, followUpOn: b.followUpOn });
+    return out;
+  }
+
+  static rows(fx?: DepsFixture): DashboardRow[] {
+    const blockers = fx?.rowBlockers() ?? {};
     return DepsFixture.PROJECTS.map((p, i) => ({
+      ...(fx ? { blockers: blockers[p.id] ?? { blockedBy: [], external: [], blocking: 0 } } : {}),
       id: p.id, name: p.name, serviceArea: "Cath", owner: null, physicianChampion: null, requesterNotApplicable: false, contractsLead: null,
       status: p.status, statusLabel: p.label, nextMilestone: DepsFixture.STEPS[p.id]?.[0]?.name ?? null, dueDate: p.due, targetCompletion: null,
       percentComplete: i * 15, note: `Fictional note for ${p.name}`, inforRequestNumber: 200 + i, includeInReport: true,
@@ -74,7 +94,8 @@ export class DepsFixture {
   view(id: string, canEdit = true): DependencyView {
     const other = (pid: string) => ({ id: pid, name: this.name(pid).name, status: this.name(pid).status as never });
     const sort = <T extends { project: { name: string } }>(a: T, b: T) => a.project.name.localeCompare(b.project.name);
-    const blockedBy = this.edges.filter((e) => e.projectId === id).map((e) => ({ project: other(e.blockedById), note: e.note, milestone: this.step(e.milestoneId), since: e.since })).sort(sort);
+    const prompt = (e: DepsFixture["edges"][number]) => (canEdit && this.name(e.blockedById).status === "Complete" && !this.dismissed.has(`${e.projectId}>${e.blockedById}`) ? { prompt: true } : {});
+    const blockedBy = this.edges.filter((e) => e.projectId === id).map((e) => ({ project: other(e.blockedById), note: e.note, milestone: this.step(e.milestoneId), since: e.since, ...prompt(e) })).sort(sort);
     const blocking = this.edges.filter((e) => e.blockedById === id).map((e) => ({ project: other(e.projectId), note: e.note, milestone: this.step(e.milestoneId), since: e.since })).sort(sort);
     const dto = (b: DepsFixture["blockers"][number]): BlockerDto => {
       const { projectId: _p, milestoneId, ...rest } = b;
@@ -172,6 +193,20 @@ export class DepsFixture {
         const f = this.blockerFields(input);
         if ("error" in f) return { ok: false, error: f.error, kind: "input" };
         Object.assign(this.blockers.find((b) => b.id === blockerId)!, f);
+        return this.ok(id);
+      },
+      clearCompleted: async (id, by) => {
+        this.record("clearCompleted", { id, by });
+        const failed = this.fail();
+        if (failed) return failed;
+        this.edges = this.edges.filter((e) => !(e.projectId === id && e.blockedById === by));
+        return this.ok(id);
+      },
+      dismissPrompt: async (id, by) => {
+        this.record("dismissPrompt", { id, by });
+        const failed = this.fail();
+        if (failed) return failed;
+        this.dismissed.add(`${id}>${by}`);
         return this.ok(id);
       },
       resolveBlocker: async (id, blockerId, resolution) => {

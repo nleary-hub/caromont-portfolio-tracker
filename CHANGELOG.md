@@ -4,6 +4,22 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Dashboard: who is blocked, at a glance (1b)
+- A project waiting on something gets an amber tag after its name, for example
+  "Waiting on Northbeam Interiors · 12 days": the most recent thing it waits on and how long it has been blocked
+  (since its oldest open blocker). Long tags are cut short; hover to see every open item.
+- A project other projects wait on gets a grey "Blocking 2" tag. Clicking either tag opens the project at
+  "Dependencies & blockers".
+- New "Blocked" filter in the filter bar (with a count), and a new "Blocked" tile with a count and, when any are
+  late, "3 follow-ups overdue". Click the tile to filter too. Hide it like any tile. The PDF's counts never include it.
+- Warning flags, words only (they never change a status): a small amber ⚑ on the tag, listing in plain words
+  "Due Nov 4, before its blocker (due Nov 18)", "On track, but its blocker is Off track" (or On hold),
+  "Follow-up overdue since Oct 15", "Blocker was Cancelled" or "Blocked for 30+ days". The drawer shows the same
+  flags in an amber line at the top of the section.
+- When a project it waits on is Complete, the drawer asks "Imaging Scheduler Upgrade is Complete. Clear it?" and the
+  tag shows a small ↻. Clear removes the dependency (kept in History as cleared). Dismiss hides the question for you
+  only; it comes back if the dependency is ever added again.
+
 ### Project drawer: "Dependencies & blockers" (1a)
 - The old "Dependencies" list in the project drawer is now "Dependencies & blockers", with a count of open items.
 - Projects: "Blocked by" (projects this one waits on) and "Blocking" (projects waiting on this one). Each one can carry

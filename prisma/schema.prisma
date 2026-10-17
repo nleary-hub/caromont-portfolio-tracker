@@ -932,14 +932,32 @@ model ProjectDependency {
   updatedAt          DateTime?
   updatedBy          String?
 
+  dismissals         DependencyPromptDismissal[]
+
   @@unique([projectId, blockedById])
   @@index([blockedById])
   @@index([serviceLineId])
   @@map("project_dependencies")
 }
 
+/// Per-user "Dismiss" of the drawer's completion prompt ("X is Complete. Clear it?", migration 0056). One row per
+/// person and dependency. `dependencyCreatedAt` is the dependency's createdAt when dismissed: re-adding a removed pair
+/// resets createdAt, so the prompt comes back for the new dependency. Dashboard only; never read by the report.
+model DependencyPromptDismissal {
+  id                  String            @id @default(uuid()) @db.Uuid
+  dependencyId        String            @db.Uuid
+  dependency          ProjectDependency @relation(fields: [dependencyId], references: [id], onDelete: Cascade)
+  email               String
+  dependencyCreatedAt DateTime
+  dismissedAt         DateTime          @default(now())
+
+  @@unique([dependencyId, email])
+  @@index([email])
+  @@map("dependency_prompt_dismissals")
+}
+
 /// External blockers (migration 0055): something outside the portfolio a project is waiting on (vendor redlines, a
-/// committee date, a review). Written only by ProjectBlockerService, every add, edit and resolve with a ProjectHistory
+/// committee date, a review). Written only by ProjectDependencyService, every add, edit and resolve with a ProjectHistory
 /// row in the same transaction. Never deleted (DB trigger); resolving keeps the row with what resolved it. Not read by
 /// FreezeService, snapshots, stored PDFs or handoff.json.
 model ProjectBlocker {

@@ -9,12 +9,16 @@ import {
   addProjectBlocker,
   addProjectDependency,
   loadProjectDependencies,
+  clearCompletedDependency,
+  dismissCompletionPrompt,
   removeProjectDependency,
   resolveProjectBlocker,
   updateProjectBlocker,
   updateProjectDependency,
 } from "@/app/actions/dependencies";
 import type { BlockerInput, DependencyInput } from "@/lib/services/ProjectDependencyService";
+import { BlockerSummaryService } from "@/lib/services/BlockerSummaryService";
+import type { RowBlockers } from "@/lib/projects/BlockerSignals";
 import { recordSuggestionOutcome, suggestNote } from "@/app/actions/ai";
 import { applyAiChange, proposeAiChange, rejectAiChange, undoAiChange } from "@/app/actions/aiReview";
 import type { AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
@@ -173,6 +177,11 @@ class DashboardData {
         today,
       });
       const completedFiscalYear = FiscalYearRows.tile(fiscalYearRows, today);
+      // 1b: blocker pills, Blocked filter and tile (dashboard only). A failure here never blocks the dashboard.
+      const blockers = await BlockerSummaryService.forDashboard(db, scope.id, viewer.email, projects).catch((e) => {
+        console.error("Failed to load blocker summary", e);
+        return {} as Record<string, RowBlockers>;
+      });
       return {
         completedFiscalYear,
         layout,
@@ -186,7 +195,11 @@ class DashboardData {
           scope.departments,
           completedInPeriod,
           DashboardData.stepsByProject(steps),
-        ).map((r) => ({ ...r, editable: ProjectEditPolicy.canEdit(viewer, scope, stored.find((p) => p.id === r.id) ?? null) })),
+        ).map((r) => ({
+          ...r,
+          editable: ProjectEditPolicy.canEdit(viewer, scope, stored.find((p) => p.id === r.id) ?? null),
+          ...(blockers[r.id] ? { blockers: blockers[r.id] } : {}),
+        })),
         columns: ViewSettings.visibleColumns(settings.dashboard),
         latestReport: latest
           ? {
@@ -404,6 +417,14 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 resolveBlocker: async (projectId: string, blockerId: string, resolution: string) => {
                   "use server";
                   return resolveProjectBlocker(projectId, blockerId, resolution);
+                },
+                clearCompleted: async (projectId: string, blockedById: string) => {
+                  "use server";
+                  return clearCompletedDependency(projectId, blockedById);
+                },
+                dismissPrompt: async (projectId: string, blockedById: string) => {
+                  "use server";
+                  return dismissCompletionPrompt(projectId, blockedById);
                 },
               },
             },

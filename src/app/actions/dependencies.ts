@@ -90,3 +90,13 @@ export async function updateProjectBlocker(projectId: string, blockerId: string,
 export async function resolveProjectBlocker(projectId: string, blockerId: string, resolution: string): Promise<DependencyActionResult> {
   return DependencyAction.run("resolveBlocker", projectId, ({ viewer, scope }) => ProjectDependencyService.resolveBlocker(viewer, scope, String(projectId), String(blockerId), resolution));
 }
+
+/** Completion banner "Clear": removes a dependency whose blocker is Complete (history says it was cleared). */
+export async function clearCompletedDependency(projectId: string, blockedById: string): Promise<DependencyActionResult> {
+  return DependencyAction.run("clearCompleted", projectId, ({ viewer, scope }) => ProjectDependencyService.clearCompleted(viewer, scope, String(projectId), String(blockedById)));
+}
+
+/** Completion banner "Dismiss": per person, until the pair is added again. */
+export async function dismissCompletionPrompt(projectId: string, blockedById: string): Promise<DependencyActionResult> {
+  return DependencyAction.run("dismissPrompt", projectId, ({ viewer, scope }) => ProjectDependencyService.dismissPrompt(viewer, scope, String(projectId), String(blockedById)));
+}

@@ -39,7 +39,7 @@ if (new URLSearchParams(window.location.search).has("sample")) {
 // ?deps=demo|empty|fail: fictional projects with dependencies and external blockers (DepsFixture).
 const depsMode = new URLSearchParams(window.location.search).get("deps");
 const deps = new DepsFixture(depsMode ?? "demo");
-if (depsMode) rows.splice(0, rows.length, ...DepsFixture.rows());
+if (depsMode) rows.splice(0, rows.length, ...DepsFixture.rows(deps));
 const noop = async () => null;
 const counts = { NotStarted: 0, OnTrack: 3, AtRisk: 0, OffTrack: 0, OnHold: 0, Complete: 0, Cancelled: 0 };
 const admin: AdminDashboardProps = {

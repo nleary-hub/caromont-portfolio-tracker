@@ -32,6 +32,8 @@ export class DependencyCopy {
   static readonly EDIT = "Edit";
   static readonly REMOVE = "Remove";
   static readonly RESOLVE = "Resolve";
+  static readonly CLEAR = "Clear";
+  static readonly DISMISS = "Dismiss";
   static readonly RESOLVE_TITLE = "Resolve blocker";
   static readonly RESOLVE_LABEL = "What resolved it?";
   static readonly OVERDUE = "overdue";

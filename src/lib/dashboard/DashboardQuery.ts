@@ -1,3 +1,4 @@
+import { BlockerSignals } from "@/lib/projects/BlockerSignals";
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import type { DashboardRow, DashboardMilestone } from "@/lib/dashboard/DashboardViewModel";
 import { InforNumber } from "@/lib/domain/InforNumber";
@@ -30,6 +31,8 @@ export interface DashboardQueryState {
   taskOwners: string[];
   search: string;
   sort: DashboardSortState;
+  /** 1b "Blocked" chip: only rows with at least one open blocker or dependency. */
+  blocked: boolean;
 }
 
 /** One search hit: where the text matched beyond what the row shows, and the milestones that matched. */
@@ -86,12 +89,12 @@ export class DashboardQuery {
   };
 
   static empty(): DashboardQueryState {
-    return { due: { kind: "any" }, statuses: [], projectOwners: [], taskOwners: [], search: "", sort: null };
+    return { due: { kind: "any" }, statuses: [], projectOwners: [], taskOwners: [], search: "", sort: null, blocked: false };
   }
 
   /** Any filter or search set (sort does not count: "Clear all" leaves the sort alone). */
   static isFiltered(q: DashboardQueryState): boolean {
-    return q.due.kind !== "any" || q.statuses.length > 0 || q.projectOwners.length > 0 || q.taskOwners.length > 0 || q.search.trim() !== "";
+    return q.due.kind !== "any" || q.statuses.length > 0 || q.projectOwners.length > 0 || q.taskOwners.length > 0 || q.search.trim() !== "" || q.blocked;
   }
 
   /** "Clear all": filters and search, not the sort. */
@@ -213,6 +216,7 @@ export class DashboardQuery {
   static matchesFilters(row: DashboardRow, q: DashboardQueryState, today: string): boolean {
     if (!DashboardQuery.matchesDue(row, q.due, today)) return false;
     if (q.statuses.length && !q.statuses.includes(row.status)) return false;
+    if (q.blocked && !BlockerSignals.isBlocked(row.blockers)) return false;
     if (q.projectOwners.length && !q.projectOwners.includes(DashboardQuery.projectOwnerValue(row))) return false;
     if (q.taskOwners.length) {
       const v = DashboardQuery.taskOwnerValue(row);
@@ -326,6 +330,7 @@ export class DashboardQuery {
     out.projectOwners = strings(r.projectOwners);
     out.taskOwners = strings(r.taskOwners);
     out.search = typeof r.search === "string" ? r.search.slice(0, 200) : "";
+    out.blocked = r.blocked === true;
     const sort = r.sort as Record<string, unknown> | null | undefined;
     if (sort && typeof sort.key === "string" && sort.key in DashboardQuery.SORT_LABELS && (sort.dir === "asc" || sort.dir === "desc")) {
       out.sort = { key: sort.key as DashboardSortKey, dir: sort.dir };

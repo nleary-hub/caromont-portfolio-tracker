@@ -78,6 +78,7 @@ class Fake {
   blockers: Blocker[] = [];
   steps: Step[] = [];
   history: History[] = [];
+  dismissals: { id: string; dependencyId: string; email: string; dependencyCreatedAt: Date; dismissedAt: Date }[] = [];
   locks: string[] = [];
   failHistory = false;
   seq = 0;
@@ -170,6 +171,17 @@ class Fake {
         },
       },
       milestoneOwnerName: { findMany: async () => [{ name: "Casey Example" }] },
+      dependencyPromptDismissal: {
+        findMany: async ({ where }: { where: Record<string, unknown> }) => this.dismissals.filter((d) => matches(d, where)).map((d) => ({ ...d })),
+        upsert: async ({ where, create, update }: { where: { dependencyId_email: { dependencyId: string; email: string } }; create: Omit<Fake["dismissals"][number], "id">; update: Partial<Fake["dismissals"][number]> }) => {
+          const k = where.dependencyId_email;
+          const d = this.dismissals.find((x) => x.dependencyId === k.dependencyId && x.email === k.email);
+          if (d) return Object.assign(d, update);
+          const row = { id: `dm${++this.seq}`, ...create };
+          this.dismissals.push(row);
+          return row;
+        },
+      },
     };
   }
 
@@ -484,5 +496,74 @@ describe("Drawer section (Figma Bro spec, source checks)", () => {
   });
   it("reuses the shared pieces: PickerSelect, DueDatePopover, AiAlert", () => {
     for (const m of ["PickerSelect", "DueDatePopover", "AiAlert"]) expect(src).toContain(m);
+  });
+});
+
+describe("Completion prompts (1b): Clear and Dismiss", () => {
+  type DismissDb = Parameters<typeof S.dismissPrompt>[4];
+  const complete = (f: Fake) => (f.projects.find((p) => p.id === "b")!.status = "Complete");
+
+  it("a Complete blocker prompts editors only; the read-only view never prompts", async () => {
+    const f = new Fake();
+    f.edge("a", "b");
+    f.edge("a", "c");
+    complete(f);
+    const v = await S.view(ADMIN, SCOPE, "a", f.db(), { now: NOW });
+    expect(v.blockedBy.map((r) => [r.project.id, r.prompt ?? null])).toEqual([["b", true], ["c", null]]);
+    const ro = await S.view(MEMBER, SCOPE, "a", f.db(), { now: NOW, readOnly: true });
+    expect(ro.blockedBy.every((r) => r.prompt === undefined)).toBe(true);
+  });
+
+  it("Clear soft-removes the pair with a dependency_removed history row carrying CLEARED_ON_COMPLETE", async () => {
+    const f = new Fake();
+    f.edge("a", "b");
+    complete(f);
+    await S.clearCompleted(ADMIN, SCOPE, "a", "b", f.db(), NOW);
+    expect(f.edges[0]).toMatchObject({ removedAt: NOW, removedBy: ADMIN.email });
+    expect(f.history).toHaveLength(1);
+    expect(f.history[0]).toMatchObject({ projectId: "a", field: BlockerHistory.DEPENDENCY_REMOVED, comment: BlockerHistory.CLEARED_ON_COMPLETE, changedBy: ADMIN.email });
+  });
+
+  it("Clear is refused (and writes nothing) when the blocker is not Complete", async () => {
+    const f = new Fake();
+    f.edge("a", "b");
+    expect(await problem(S.clearCompleted(ADMIN, SCOPE, "a", "b", f.db(), NOW))).toBe("access");
+    expect(f.edges[0].removedAt).toBeNull();
+    expect(f.history).toEqual([]);
+  });
+
+  it("Dismiss is per person, writes no history, and the prompt returns when the pair is re-added", async () => {
+    const f = new Fake();
+    f.edge("a", "b");
+    complete(f);
+    await S.dismissPrompt({ ...ADMIN, email: "Admin@Example.org" }, SCOPE, "a", "b", f.db() as DismissDb, NOW);
+    expect(f.dismissals).toMatchObject([{ email: "admin@example.org", dependencyId: f.edges[0].id }]);
+    expect(f.history).toEqual([]);
+    expect((await S.view(ADMIN, SCOPE, "a", f.db(), { now: NOW })).blockedBy[0].prompt).toBe(false);
+    expect((await S.view({ email: "second@example.org", isAdmin: true }, SCOPE, "a", f.db(), { now: NOW })).blockedBy[0].prompt).toBe(true);
+    // Dismissing twice keeps one row.
+    await S.dismissPrompt(ADMIN, SCOPE, "a", "b", f.db() as DismissDb, NOW);
+    expect(f.dismissals).toHaveLength(1);
+    // Remove and re-add (new createdAt): the prompt shows again.
+    await S.removeDependency(ADMIN, SCOPE, "a", "b", f.db(), NOW);
+    await S.addDependency(ADMIN, SCOPE, "a", "b", {}, f.db(), new Date("2026-10-18T14:00:00Z"));
+    expect((await S.view(ADMIN, SCOPE, "a", f.db(), { now: NOW })).blockedBy[0].prompt).toBe(true);
+  });
+
+  it("Dismiss needs edit access and an open pair on this line", async () => {
+    const f = new Fake();
+    f.edge("a", "b");
+    complete(f);
+    expect(await problem(S.dismissPrompt(MEMBER, { id: LINE }, "a", "b", f.db() as DismissDb, NOW))).toBe("access");
+    expect(await problem(S.dismissPrompt(ADMIN, SCOPE, "a", "c", f.db() as DismissDb, NOW))).toBe("access");
+    f.edges[0].removedAt = NOW;
+    expect(await problem(S.dismissPrompt(ADMIN, SCOPE, "a", "b", f.db() as DismissDb, NOW))).toBe("access");
+    expect(f.dismissals).toEqual([]);
+  });
+
+  it("the server actions route Clear and Dismiss through the admin-only write path", () => {
+    const src = read("src/app/actions/dependencies.ts");
+    expect(src).toMatch(/clearCompletedDependency[\s\S]*DependencyAction\.run\("clearCompleted"/);
+    expect(src).toMatch(/dismissCompletionPrompt[\s\S]*DependencyAction\.run\("dismissPrompt"/);
   });
 });

@@ -43,10 +43,10 @@ async function lineOf(db: PGlite, id: string): Promise<string> {
 }
 
 describe("0055_project_blockers (PGlite, example data)", () => {
-  it("comes right after 0054_ai_feature_provider and is the last migration in this slice", () => {
+  it("comes right after 0054_ai_feature_provider and is followed only by 0056_dependency_prompt_dismissals", () => {
     const f = folders();
     expect(f[f.indexOf(M) - 1]).toBe("0054_ai_feature_provider");
-    expect(f.slice(f.indexOf(M) + 1)).toEqual([]);
+    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0056_dependency_prompt_dismissals"]);
   });
 
   it("is add-only: ADD COLUMN IF NOT EXISTS, ADD CONSTRAINT, CREATE TABLE/INDEX/TRIGGER; no DROP, UPDATE, DELETE, INSERT or report tables", () => {

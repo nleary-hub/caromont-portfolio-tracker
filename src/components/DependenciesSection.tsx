@@ -7,6 +7,7 @@ import type { ProjectStatus } from "@/generated/prisma/enums";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { PeopleComboboxModel } from "@/lib/people/PeopleComboboxModel";
 import { BlockerRules } from "@/lib/projects/BlockerRules";
+import { BlockerSignals, type BlockerFlag } from "@/lib/projects/BlockerSignals";
 import { DependencyCopy } from "@/lib/projects/DependencyCopy";
 import type { BlockerDto, BlockerInput, DependencyInput, DependencyProjectDto, DependencyRowDto, DependencyView } from "@/lib/services/ProjectDependencyService";
 import { AiAlert } from "./AiNoteAssistant";
@@ -24,6 +25,9 @@ export interface DependencyActions {
   addBlocker: (projectId: string, input: BlockerInput) => Promise<DependencyActionResult>;
   updateBlocker: (projectId: string, blockerId: string, input: BlockerInput) => Promise<DependencyActionResult>;
   resolveBlocker: (projectId: string, blockerId: string, resolution: string) => Promise<DependencyActionResult>;
+  /** 1b completion banner: Clear (removes the dependency, history says it was cleared) and Dismiss (per person). */
+  clearCompleted?: (projectId: string, blockedById: string) => Promise<DependencyActionResult>;
+  dismissPrompt?: (projectId: string, blockedById: string) => Promise<DependencyActionResult>;
 }
 
 const STATUS_VAR: Record<ProjectStatus, string> = {
@@ -59,6 +63,8 @@ export function DependenciesSection({
   onCount,
   onOpenProject,
   initialView,
+  flags = [],
+  focus = false,
 }: {
   projectId: string;
   /** Only `load` is used when the view is read-only. */
@@ -69,7 +75,12 @@ export function DependenciesSection({
   onOpenProject?: (id: string) => void;
   /** Test and screenshot fixtures: start from this view without loading. */
   initialView?: DependencyView;
+  /** 1b: computed flags (BlockerSignals) shown as an amber notice at the top of the section. Words only. */
+  flags?: readonly BlockerFlag[];
+  /** 1b: opened from a dashboard blocker pill, so scroll the section into view once it shows. */
+  focus?: boolean;
 }) {
+  const rootRef = useRef<HTMLElement>(null);
   const [view, setView] = useState<DependencyView | null>(initialView ?? null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -98,6 +109,10 @@ export function DependenciesSection({
   useEffect(() => {
     if (view) onCount?.(view.blockedBy.length);
   }, [view, onCount]);
+  const loaded = Boolean(view);
+  useEffect(() => {
+    if (focus && loaded) rootRef.current?.scrollIntoView?.({ block: "start", behavior: "smooth" });
+  }, [focus, loaded]);
 
   /** Runs a write; returns the error message for the form to show inline, or null on success. */
   const run = async (p: Promise<DependencyActionResult> | undefined, inline = false): Promise<{ error: string; kind?: string } | null> => {
@@ -123,7 +138,7 @@ export function DependenciesSection({
 
   const canEdit = Boolean(view?.canEdit && actions.add);
   return (
-    <section aria-labelledby={`deps-title-${projectId}`} className="flex flex-col gap-3" data-testid="dependencies">
+    <section ref={rootRef} aria-labelledby={`deps-title-${projectId}`} className="flex scroll-mt-3 flex-col gap-3" data-testid="dependencies" data-focus={focus || undefined}>
       <div className="flex items-center gap-2">
         <h3 id={`deps-title-${projectId}`} className={LABEL}>
           {DependencyCopy.TITLE}
@@ -134,6 +149,36 @@ export function DependenciesSection({
           </span>
         )}
       </div>
+      {flags.length > 0 && (
+        <div role="note" className="flex items-start gap-2 rounded-control border border-(--status-at-risk-dark-fg)/40 bg-(--status-at-risk-dark-bg) px-2.5 py-1.5 type-caption" style={{ color: AMBER }} data-testid="deps-flags">
+          <FlagIcon />
+          <ul className="flex min-w-0 flex-col">
+            {flags.map((f) => (
+              <li key={f.kind} data-flag={f.kind}>
+                {f.text}
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {view &&
+        canEdit &&
+        actions.clearCompleted &&
+        view.blockedBy
+          .filter((r) => r.prompt)
+          .map((r) => (
+            <div key={`prompt-${r.project.id}`} className="flex items-center gap-2 rounded-control border border-line bg-white/[.04] px-2.5 py-1.5 backdrop-blur-sm type-table" data-testid="completion-banner">
+              <span className="min-w-0 flex-1 text-fg [overflow-wrap:anywhere]">
+                {BlockerSignals.promptText(r.project.name)}
+              </span>
+              <button type="button" disabled={busy} className="h-7 rounded-control bg-accent px-3 text-white type-table-strong disabled:opacity-60" onClick={() => run(actions.clearCompleted?.(projectId, r.project.id))} data-testid="completion-clear">
+                {DependencyCopy.CLEAR}
+              </button>
+              <button type="button" disabled={busy} className="h-7 rounded-control px-2 text-muted type-table hover:text-fg disabled:opacity-60" onClick={() => run(actions.dismissPrompt?.(projectId, r.project.id))} data-testid="completion-dismiss">
+                {DependencyCopy.DISMISS}
+              </button>
+            </div>
+          ))}
       {saveError && <AiAlert tone="danger" testId="deps-save-error">{saveError}</AiAlert>}
       {!view ? (
         <p className="text-muted type-table">{loadError ?? DependencyCopy.LOADING}</p>
@@ -858,5 +903,14 @@ export function ProjectPicker({
           document.body,
         )}
     </div>
+  );
+}
+
+/** The amber flag (⚑) used by the dashboard badge and the drawer notice. */
+export function FlagIcon({ size = 12 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 12 12" fill="none" aria-hidden="true" className="mt-0.5 shrink-0">
+      <path d="M2.5 11V1.5M2.5 2h6.2l-1.4 2.3L8.7 6.6H2.5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
   );
 }

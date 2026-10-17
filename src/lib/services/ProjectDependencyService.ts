@@ -19,7 +19,7 @@ import { DependencyGraph, type DependencyProblem } from "@/lib/projects/Dependen
 type Scope = Pick<ServiceLineScope, "id" | "departmentLimit"> & Partial<Pick<ServiceLineScope, "owners" | "requesters" | "contractsLeads">>;
 
 export type DependencyDb = Pick<PrismaClient, "project" | "projectDependency"> &
-  Partial<Pick<PrismaClient, "projectBlocker" | "projectMilestone" | "projectHistory" | "milestoneOwnerName">>;
+  Partial<Pick<PrismaClient, "projectBlocker" | "projectMilestone" | "projectHistory" | "milestoneOwnerName" | "dependencyPromptDismissal">>;
 type Tx = Pick<Prisma.TransactionClient, "project" | "projectDependency" | "projectBlocker" | "projectMilestone" | "projectHistory" | "milestoneOwnerName">;
 type WriteDb = Pick<PrismaClient, "$transaction">;
 
@@ -42,6 +42,8 @@ export interface DependencyRowDto {
   milestone: MilestoneRefDto | null;
   /** YYYY-MM-DD (America/New_York) the dependency was added. */
   since: string;
+  /** Blocked-by rows for an editor only: the blocker is Complete and this viewer has not dismissed "Clear it?" (1b). */
+  prompt?: boolean;
 }
 
 export interface BlockerDto {
@@ -229,7 +231,23 @@ export class ProjectDependencyService {
       milestone: e.blockedMilestoneId && steps.has(e.blockedMilestoneId) ? { id: e.blockedMilestoneId, name: steps.get(e.blockedMilestoneId)! } : null,
       since: DateOnly.inZone(e.createdAt),
     });
-    const blockedBy = inEdges.filter((e) => shown.has(e.blockedById)).map((e) => row(e, shown.get(e.blockedById)!));
+    // Completion prompts (1b): editors only, per-user dismissal (0056) keyed to the dependency's createdAt.
+    const dismissed = new Map<string, number>();
+    if (canEdit && db.dependencyPromptDismissal && inEdges.length) {
+      try {
+        for (const d of await db.dependencyPromptDismissal.findMany({ where: { email: viewer.email.trim().toLowerCase(), dependencyId: { in: inEdges.map((e) => e.id) } }, select: { dependencyId: true, dependencyCreatedAt: true } }))
+          dismissed.set(d.dependencyId, d.dependencyCreatedAt.getTime());
+      } catch {
+        // Table not there yet (0056 not applied): every prompt shows, which is harmless.
+      }
+    }
+    const blockedBy = inEdges
+      .filter((e) => shown.has(e.blockedById))
+      .map((e) => {
+        const other = shown.get(e.blockedById)!;
+        const r = row(e, other);
+        return canEdit && other.status === "Complete" ? { ...r, prompt: dismissed.get(e.id) !== e.createdAt.getTime() } : r;
+      });
     const blocking = outEdges.filter((e) => shown.has(e.projectId)).map((e) => row(e, shown.get(e.projectId)!));
     const sort = (a: DependencyRowDto, b: DependencyRowDto) => ProjectDependencyService.byName(a.project, b.project);
     const listed = new Set(inEdges.map((e) => e.blockedById));
@@ -468,6 +486,29 @@ export class ProjectDependencyService {
         milestone: step?.name ?? null,
       });
       await ProjectDependencyService.history(tx, p.id, BlockerHistory.BLOCKER_RESOLVED, value, { ...value, resolution: r.value }, viewer.email, now);
+    });
+  }
+
+  /**
+   * Completion banner "Clear" (1b): soft-remove a dependency whose blocker is Complete, with the CLEARED_ON_COMPLETE
+   * comment on its history row. Refused (generic) when the blocker is not Complete.
+   */
+  static async clearCompleted(viewer: Viewer, scope: Scope, projectId: string, blockedById: string, db: WriteDb & Pick<DependencyDb, "project"> = Db.client, now: Date = new Date()): Promise<void> {
+    const b = await ProjectDependencyService.project(blockedById, db);
+    if (!b || b.status !== "Complete") throw new DependencyAccessError();
+    await ProjectDependencyService.removeDependency(viewer, scope, projectId, blockedById, db, now, BlockerHistory.CLEARED_ON_COMPLETE);
+  }
+
+  /** Completion banner "Dismiss" (1b): stays dismissed for this person until the pair is re-added. No history row. */
+  static async dismissPrompt(viewer: Viewer, scope: Scope, projectId: string, blockedById: string, db: Pick<PrismaClient, "project" | "projectDependency" | "dependencyPromptDismissal"> = Db.client, now: Date = new Date()): Promise<void> {
+    const p = await ProjectDependencyService.editable(viewer, scope, projectId, db);
+    const e = await db.projectDependency.findUnique({ where: { projectId_blockedById: { projectId: p.id, blockedById: String(blockedById) } } });
+    if (!e || e.removedAt || e.serviceLineId !== scope.id) throw new DependencyAccessError();
+    const email = viewer.email.trim().toLowerCase();
+    await db.dependencyPromptDismissal.upsert({
+      where: { dependencyId_email: { dependencyId: e.id, email } },
+      create: { dependencyId: e.id, email, dependencyCreatedAt: e.createdAt, dismissedAt: now },
+      update: { dependencyCreatedAt: e.createdAt, dismissedAt: now },
     });
   }
 
