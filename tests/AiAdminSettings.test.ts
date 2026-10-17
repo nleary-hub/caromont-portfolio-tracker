@@ -405,7 +405,9 @@ describe("related_links toggle hidden on AI settings (PR 0); key kept in DB, cod
     const shown = [...html.matchAll(/data-testid="ai-feature-toggle-([a-z_]+)"/g)].map((m) => m[1]);
     expect(shown).toEqual(AiFeatureFlags.ALL.filter((f) => f !== "related_links"));
     const page = readFileSync(path.resolve(__dirname, "../src/app/admin/ai/page.tsx"), "utf8");
-    expect(page).toContain("AiModelService.settingsViews(await mdb.aiFeatureSetting.findMany())");
+    // PR B reads the rows once (the per-feature provider choices use them too), then filters with settingsViews.
+    expect(page).toContain("const featureRows = await mdb.aiFeatureSetting.findMany();");
+    expect(page).toContain("AiModelService.settingsViews(featureRows)");
     expect(page).not.toContain("AiModelService.featureViews(");
   });
 
