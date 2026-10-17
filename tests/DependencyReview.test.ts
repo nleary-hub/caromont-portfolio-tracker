@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it } from "vitest";
-import { DependencyReviewCopy, DependencyReviewTable } from "@/components/DependencyReviewTable";
+import { DependencyReviewCopy, DependencyReviewIntro, DependencyReviewTable } from "@/components/DependencyReviewTable";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { DependencyReviewService, type DependencyDb } from "@/lib/services/ProjectDependencyService";
 
@@ -70,9 +70,21 @@ describe("Admin > Dependencies review (read only)", () => {
     expect(html).toContain("Zulu fictional project");
     expect(html).toContain("1 dependency");
     expect(html).not.toMatch(/<(button|a|form|input|select|textarea)\b/);
+    expect(html).not.toMatch(/<h[1-6]\b/);
+    expect(html).not.toContain("Blocked-by dependencies");
     const empty = renderToStaticMarkup(createElement(DependencyReviewTable, { rows: [] }));
     expect(empty).toContain(DependencyReviewCopy.EMPTY);
-    expect(empty).toContain("0 dependencies");
+    expect(empty).not.toContain("dependency-review-count");
+  });
+
+  it("intro: the exact Writing Bot copy, capped at 72ch", () => {
+    expect(DependencyReviewCopy.INTRO).toBe(
+      "Every Blocked-by dependency in this service line, newest first. This page is read only. The Link button on AI Find related suggestions in the project drawer used to save the suggested project as Blocked by, so some of these rows may not be real dependencies. To fix one, open that project's drawer and edit it under Dependencies.",
+    );
+    const html = renderToStaticMarkup(createElement(DependencyReviewIntro));
+    expect(html).toContain('class="max-w-[72ch] text-muted type-caption"');
+    expect(html).toContain("This page is read only.");
+    expect(readFileSync("src/app/admin/dependencies/page.tsx", "utf8")).toContain("<DependencyReviewIntro />");
   });
 
   it("the page is admin-only (404 otherwise), imports no actions, and has an admin menu link", () => {

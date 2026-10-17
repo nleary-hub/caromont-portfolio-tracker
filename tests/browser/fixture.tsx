@@ -16,7 +16,9 @@ import { FreezeNowButton } from "../../src/components/FreezeNowButton";
 import { FreezeGuard } from "../../src/lib/report/FreezeGuard";
 import { DriveCheckButton } from "../../src/components/DriveCheckButton";
 import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
-import { DependencyReviewCopy, DependencyReviewTable } from "../../src/components/DependencyReviewTable";
+import { AiFeatureFlags } from "../../src/lib/ai/AiFeatureFlags";
+import { AiCopy } from "../../src/lib/ai/AiCopy";
+import { DependencyReviewCopy, DependencyReviewIntro, DependencyReviewTable } from "../../src/components/DependencyReviewTable";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
 const rows: DashboardRow[] = ["Zulu", "Alpha", "Bravo"].map((name, i) => ({
@@ -106,6 +108,9 @@ const aiList = aiMode === "failed" ? { ok: false as const, error: "fictional fai
 // &vi=filled or &vi=over: the voice chat instructions field with fictional text (over = past the 4,000 cap).
 const vi = new URLSearchParams(window.location.search).get("vi");
 const voiceText = vi === "over" ? "Keep answers short and friendly for the fictional example team. ".repeat(66) : vi === "filled" ? "Keep answers short and friendly for the fictional example team.\nMention the next milestone first, then the due date." : "";
+// &features=all: every toggle Admin > AI settings shows (AiFeatureFlags.SETTINGS, so related_links is hidden), fictional state.
+const settingsFeatures = AiFeatureFlags.SETTINGS.map(f => ({ feature: f, label: AiCopy.featureLabel(f), enabled: true, killedByEnv: false, envName: AiFeatureFlags.FLAGS[f],
+  ...(AiFeatureFlags.OWN_MODEL.includes(f) ? { ownModel: true, model: "" } : {}), ...(f === "voice_chat" ? { instructions: voiceText } : {}) }));
 const aiView = { baseUrl: "", azureEndpoint: "", azureDeployment: "", encryption: { ready: true, problem: null }, modelOff: false, enabled: true, ready: true, provider: "openai" as const, model: "gpt-example-mini", key: { set: true, readable: true, last4: "WXYZ", setAt: null, setBy: null } };
 // ?page=cancelled: the Cancelled page with fictional cancelled projects (read-only drawer).
 const closedPage = new URLSearchParams(window.location.search).get("page") === "cancelled";
@@ -116,6 +121,7 @@ const reviewRows = [
   { id: "fictional-dep-1", project: "Zulu fictional project", blockedBy: "Bravo fictional project", created: "Oct 14, 2026, 9:12 AM ET", createdBy: "fictional.admin@example.org" },
   { id: "fictional-dep-2", project: "Alpha fictional project", blockedBy: "Zulu fictional project", created: "Oct 9, 2026, 3:40 PM ET", createdBy: "fictional.admin@example.org" },
   { id: "fictional-dep-3", project: "Sample Clinic refresh", blockedBy: "Example Lab move", created: "Sep 30, 2026, 11:05 AM ET", createdBy: "sample.reviewer@example.org" },
+  { id: "fictional-dep-4", project: "Example Imaging upgrade", blockedBy: "Sample Clinic refresh", created: "Sep 22, 2026, 2:18 PM ET", createdBy: "sample.reviewer@example.org" },
 ];
 // ?links=1: the dashboard with the old related_links placement note passed in (as a stale flag would), to prove the
 // drawer offers no Find related and writes no dependency from it.
@@ -127,7 +133,7 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
     <div className="flex items-center gap-3">
       <h1 className="type-title whitespace-nowrap">{DependencyReviewCopy.PAGE_TITLE}</h1>
     </div>
-    <p className="text-muted type-caption">{DependencyReviewCopy.INTRO}</p>
+    <DependencyReviewIntro />
     <DependencyReviewTable rows={new URLSearchParams(window.location.search).get("deps") === "empty" ? [] : reviewRows} />
   </main>
 ) : new URLSearchParams(window.location.search).has("freeze") ? (
@@ -152,7 +158,7 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
   <OpenAiModelListProvider initial={aiList}>
   <main className="pb-page mx-auto flex max-w-[880px] flex-col gap-6 px-6 py-6">
     <section className="relative z-20 flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiSettingsForm view={aiView as never} keySavedLine={null} dbReady modelOptions={["gpt-example-mini"]} /></section>
-    <section className="flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiFeaturesPanel dbReady features={[{ feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE_CHAT", ownModel: true, model: null, instructions: voiceText } as never]} modelOptions={{ realtime: ["gpt-live-example", "gpt-example-realtime"] }} /></section>
+    <section className="flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4"><AiFeaturesPanel dbReady features={new URLSearchParams(window.location.search).get("features") === "all" ? settingsFeatures as never : [{ feature: "voice_chat", label: "Voice chat", enabled: true, killedByEnv: false, envName: "AI_VOICE_CHAT", ownModel: true, model: null, instructions: voiceText } as never]} modelOptions={{ realtime: ["gpt-live-example", "gpt-example-realtime"], transcription: ["gpt-example-transcribe"] }} /></section>
   </main>
   </OpenAiModelListProvider>
 ) : (

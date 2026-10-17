@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
-import { DependencyReviewCopy, DependencyReviewTable } from "@/components/DependencyReviewTable";
+import { DependencyReviewCopy, DependencyReviewIntro, DependencyReviewTable } from "@/components/DependencyReviewTable";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AuditText } from "@/lib/admin/AuditText";
@@ -39,7 +39,7 @@ export default async function DependenciesReviewPage() {
           </Link>
         </div>
       </div>
-      <p className="text-muted type-caption">{DependencyReviewCopy.INTRO}</p>
+      <DependencyReviewIntro />
       <DependencyReviewTable rows={rows} />
     </main>
   );

@@ -10,7 +10,7 @@ export interface DependencyReviewRowDto {
 export class DependencyReviewCopy {
   static readonly PAGE_TITLE = "Dependencies review";
   static readonly INTRO =
-    "Every Blocked-by dependency of this service line, newest first. Read only: nothing here can be changed or removed. Until now, Link under AI Find related in the project drawer saved related projects as Blocked by, so some rows may be ones nobody meant to add. Change a row in that project's drawer, under Dependencies.";
+    "Every Blocked-by dependency in this service line, newest first. This page is read only. The Link button on AI Find related suggestions in the project drawer used to save the suggested project as Blocked by, so some of these rows may not be real dependencies. To fix one, open that project's drawer and edit it under Dependencies.";
   static readonly HEADERS = ["Project", "Blocked by", "Added", "Added by"] as const;
   static readonly EMPTY = "No dependencies yet.";
   static count(n: number): string {
@@ -18,19 +18,25 @@ export class DependencyReviewCopy {
   }
 }
 
+/** The page intro under the title, capped at about 72 characters per line for reading. */
+export function DependencyReviewIntro() {
+  return (
+    <p className="max-w-[72ch] text-muted type-caption" data-testid="dependency-review-intro">
+      {DependencyReviewCopy.INTRO}
+    </p>
+  );
+}
+
 /** Admin > Dependencies review: a read-only table (no buttons, links or forms). Dark, compact, glass card. */
 export function DependencyReviewTable({ rows }: { rows: DependencyReviewRowDto[] }) {
   const C = DependencyReviewCopy;
   return (
-    <section className="flex flex-col gap-2" aria-labelledby="dependency-review-heading" data-testid="dependency-review">
-      <div className="flex items-baseline justify-between gap-3">
-        <h2 id="dependency-review-heading" className="type-heading">
-          Blocked-by dependencies
-        </h2>
+    <section className="flex flex-col gap-2" aria-label={C.PAGE_TITLE} data-testid="dependency-review">
+      {rows.length > 0 && (
         <span className="text-muted type-caption" data-testid="dependency-review-count">
           {C.count(rows.length)}
         </span>
-      </div>
+      )}
       {rows.length === 0 ? (
         <p className="text-muted type-caption" data-testid="dependency-review-empty">
           {C.EMPTY}
