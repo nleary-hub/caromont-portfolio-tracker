@@ -1,6 +1,7 @@
 import type { AiToggleFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiModelService, type AiModelDb } from "@/lib/services/AiModelService";
+import { AiFeatureRuntime } from "@/lib/services/AiFeatureProviderService";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import type { AiToolsDb } from "@/lib/services/AiToolsService";
 import { AiVoiceChatService } from "@/lib/services/AiVoiceChatService";
@@ -15,10 +16,15 @@ export class AiToolsReadiness {
   static async notes(db: AiModelDb & AiSettingsDb, features: readonly AiToggleFeature[], env: Env = process.env): Promise<Record<string, string | null>> {
     const row = await AiSettingsService.row(db).catch(() => null);
     const enabled = await AiModelService.enabledIds(db, "chat");
-    const model = (row?.model ?? "").trim();
-    const base = !row?.enabled ? AiToolsCopy.AI_OFF_NOTE : !model || !enabled.includes(model) ? AiToolsCopy.MODEL_OFF_NOTE : null;
+    // PR B: a feature with its own model is ready when that model is on; the rest use the AI settings model, as before.
+    const rows = await AiFeatureRuntime.rows(db);
+    const note = (f: AiToggleFeature) => {
+      if (!row?.enabled) return AiToolsCopy.AI_OFF_NOTE;
+      const model = AiFeatureRuntime.modelFor(f, rows, row);
+      return !model || !enabled.includes(model) ? AiToolsCopy.MODEL_OFF_NOTE : null;
+    };
     const out: Record<string, string | null> = {};
-    for (const f of features) out[f] = (await AiModelService.featureOn(db, f, env)) ? base : AiToolsCopy.FEATURE_OFF_NOTE;
+    for (const f of features) out[f] = (await AiModelService.featureOn(db, f, env)) ? note(f) : AiToolsCopy.FEATURE_OFF_NOTE;
     return out;
   }
 

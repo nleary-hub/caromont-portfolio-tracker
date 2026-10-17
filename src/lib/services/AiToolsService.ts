@@ -14,6 +14,7 @@ import { AiTranscriptionClient, type AiTranscribeFetch } from "@/lib/ai/AiTransc
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
+import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 import { AiWritingService, type AiUsageRow } from "./AiWritingService";
 
@@ -160,6 +161,8 @@ export class AiToolsService {
     env?: Env;
     fetchImpl?: FetchLike;
     now?: () => Date;
+    /** PR B: the provider keys (tests inject a fake; the app reads the Provider keys card's storage). */
+    keys?: AiProviderKeySource;
   }): Promise<{ ok: true; text: string; log: (event: string, extra?: Partial<AiToolUsageRow>) => Promise<unknown>; proposalId: string } | AiToolFailure> {
     const { db, viewer, feature } = args;
     const env = args.env ?? process.env;
@@ -170,7 +173,8 @@ export class AiToolsService {
     if (!input.trim()) return { ok: false, kind: "empty", message: AiToolsCopy.INPUT_EMPTY };
 
     const row = await AiSettingsService.row(db).catch(() => null);
-    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    // PR B: the feature's own provider and model when an admin picked them; otherwise the AI settings, as before.
+    const saved = row?.enabled ? await AiFeatureRuntime.config({ db, feature, settings: row, env, keys: args.keys }) : null;
     if (!saved) return { ok: false, kind: "off", message: AiToolsCopy.AI_OFF };
     // Only models an admin turned on (ai_models). Never switched automatically.
     const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };

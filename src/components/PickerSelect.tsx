@@ -7,6 +7,11 @@ import { usePopover } from "./DashboardFilterControls";
 export interface PickerOption {
   value: string;
   label: string;
+  /** Greyed out and can't be picked (AI settings: a provider with no working key). */
+  disabled?: boolean;
+  /** A short right-aligned note on the option ("No key"). With onHint it is a link-style button. */
+  hint?: string;
+  onHint?: () => void;
 }
 
 /**
@@ -62,6 +67,7 @@ export function PickerSelect({
     setOpen(true);
   };
   const pick = (v: string) => {
+    if (options.find((o) => o.value === v)?.disabled) return;
     setOpen(false);
     if (v !== value) onChange(v);
   };
@@ -94,7 +100,12 @@ export function PickerSelect({
             setActive((a) => Math.max(0, a - 1));
           } else if (open && (e.key === "Enter" || e.key === " ") && active >= 0) {
             e.preventDefault();
-            pick(options[active].value);
+            // A disabled option with a hint link: Enter follows the link (keyboard path to the fix), never picks.
+            const o = options[active];
+            if (o.disabled && o.onHint) {
+              setOpen(false);
+              o.onHint();
+            } else pick(o.value);
           }
         }}
       >
@@ -106,7 +117,7 @@ export function PickerSelect({
         </span>
       )}
       {open && (
-        <div className="vp-pop" style={trigger ? { left: 0, top: "calc(100% + 4px)", ...anchor, width: menuWidth ?? 160, padding: 4, zIndex: 40 } : { left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
+        <div className="vp-pop" style={trigger ? { left: 0, top: "calc(100% + 4px)", ...anchor, width: menuWidth ?? 160, padding: 4, zIndex: 40 } : menuWidth ? { left: 0, width: menuWidth, top: "calc(100% + 4px)", padding: 4 } : { left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
           <ul id={listId} role="listbox" aria-label={label} className="vp-list">
             {options.map((o, i) => (
               <li
@@ -114,13 +125,37 @@ export function PickerSelect({
                 id={`${id}-opt-${i}`}
                 role="option"
                 aria-selected={o.value === value}
+                aria-disabled={o.disabled || undefined}
                 data-active={i === active || undefined}
-                className={`cursor-pointer px-2 type-table ${o.value === value ? "text-accent" : "text-fg"} ${i === active ? "bg-row-selected" : ""}`}
+                data-value={o.value}
+                className={`px-2 type-table ${o.disabled ? "cursor-not-allowed text-muted opacity-60" : `cursor-pointer ${o.value === value ? "text-accent" : "text-fg"}`} ${i === active ? "bg-row-selected" : ""}`}
                 onMouseDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setActive(i)}
                 onClick={() => pick(o.value)}
               >
-                {o.label}
+                {o.hint ? (
+                  <>
+                    <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                    {o.onHint ? (
+                      <button
+                        type="button"
+                        className="ml-auto shrink-0 cursor-pointer text-muted underline underline-offset-2 type-caption hover:text-fg"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpen(false);
+                          o.onHint?.();
+                        }}
+                        data-testid={testId ? `${testId}-hint-${o.value}` : undefined}
+                      >
+                        {o.hint}
+                      </button>
+                    ) : (
+                      <span className="ml-auto shrink-0 text-muted type-caption">{o.hint}</span>
+                    )}
+                  </>
+                ) : (
+                  o.label
+                )}
               </li>
             ))}
           </ul>

@@ -14,6 +14,7 @@ import { AiReviewPrompts } from "@/lib/ai/AiReviewPrompts";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
+import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiSettingsService } from "./AiSettingsService";
 import { AiWritingService, type AiUsageRow, type AiWritingDb } from "./AiWritingService";
 
@@ -76,6 +77,8 @@ export class AiReviewApplyService {
     fetchImpl?: FetchLike;
     transcriber?: AiTranscriber;
     now?: () => Date;
+    /** PR B: the provider keys (tests inject a fake; the app reads the Provider keys card's storage). */
+    keys?: AiProviderKeySource;
   }): Promise<AiProposeResult> {
     const { db, viewer, scope, projectId } = args;
     const env = args.env ?? process.env;
@@ -95,7 +98,8 @@ export class AiReviewApplyService {
     const current = typeof args.current === "string" ? args.current.slice(0, AppConfig.NOTE_MAX_LENGTH) : "";
 
     const row = await AiSettingsService.row(db).catch(() => null);
-    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    // PR B: the feature's own provider and model when an admin picked them; otherwise the AI settings, as before.
+    const saved = row?.enabled ? await AiFeatureRuntime.config({ db, feature, settings: row, env, keys: args.keys }) : null;
     if (!saved) return { ok: false, kind: "off", message: AiCopy.UNAVAILABLE };
     // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
     const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };

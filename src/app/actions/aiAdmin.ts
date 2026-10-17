@@ -28,9 +28,33 @@ async function run(name: string, fn: (db: AiModelDb, viewer: { email: string; is
   }
 }
 
-/** `manual`: typed after the model list failed to load; saved unchecked (still off) when OpenAI can't be reached. */
-export async function addAiModel(id: string, manual = false): Promise<AiAdminResult> {
-  return run("addAiModel", (db, v) => AiModelService.add(db, v, id, process.env, null, new Date(), { manual: manual === true }));
+/**
+ * `manual`: typed after the model list failed to load; saved unchecked (still off) when the provider can't be reached.
+ * `provider` (PR B): the provider the model belongs to; absent = OpenAI, as before.
+ */
+export async function addAiModel(id: string, manual = false, provider?: string): Promise<AiAdminResult> {
+  return run("addAiModel", (db, v) => AiModelService.add(db, v, id, process.env, null, new Date(), { manual: manual === true, ...(provider === undefined ? {} : { provider }) }));
+}
+
+/** PR B: one provider's model list for its saved key, by kind. Read-only; the key is never returned. */
+export async function listAiProviderModels(provider: string): Promise<{ ok: true; models: AiListedModel[] } | { ok: false; error: string }> {
+  const viewer = await CurrentViewer.get();
+  if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
+  if (!Db.isConfigured()) return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
+  try {
+    return await AiModelService.listProvider(Db.client as unknown as AiModelDb, viewer, provider);
+  } catch (e) {
+    console.error("Admin action failed: listAiProviderModels", (e as Error)?.name);
+    return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
+  }
+}
+
+/**
+ * PR B: a text feature's provider and model, saved together. Voice chat and Dictation are refused (OpenAI only). The
+ * result never carries a key.
+ */
+export async function setAiFeatureProvider(feature: string, provider: string, model: string): Promise<AiAdminResult> {
+  return run("setAiFeatureProvider", (db, v) => AiModelService.setFeatureProviderModel(db, v, feature, provider, model));
 }
 
 /** OpenAI's model list for the saved key, by kind. Read-only; the key is never returned. */

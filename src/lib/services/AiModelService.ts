@@ -8,6 +8,8 @@ import type { FetchLike } from "@/lib/ai/AiProviderClient";
 import type { AiSettingsHistoryRow, AiSettingsRow } from "@/lib/services/AiSettingsService";
 import { AiSettingsService } from "@/lib/services/AiSettingsService";
 import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
+import { AiFeatureProviders, type AiFeatureProvider } from "@/lib/ai/AiFeatureProviders";
+import { AiFeatureRuntime, AiProviderKeyAccess, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 
 type Env = Record<string, string | undefined>;
 type Price = number | string | { toString(): string } | null;
@@ -43,6 +45,17 @@ export interface AiFeatureRow {
   model?: string | null;
   /** 0050: voice chat instructions (voice_chat only). Null or absent = the built-in rules. */
   instructions?: string | null;
+  /** 0054: the provider a text feature runs on ("openai" by default). Voice and dictation stay "openai". Absent before 0054. */
+  provider?: string | null;
+}
+
+/**
+ * A text feature's provider and model as the settings page shows them (PR B). model "" = no model of its own yet, so
+ * it uses the model chosen in AI settings (today's behavior). Client-safe: no key, no key state.
+ */
+export interface AiFeatureChoice {
+  provider: AiFeatureProvider;
+  model: string;
 }
 
 /** Client-safe model row for the settings page. */
@@ -59,6 +72,8 @@ export interface AiModelView {
   priceSource?: "manual" | "refreshed" | null;
   /** 0049: what the model is for (null = none of the kinds the app uses). */
   kind?: AiModelKind | null;
+  /** PR B: the provider the model belongs to (OpenAI unless an admin added it under another provider). */
+  provider?: AiFeatureProvider;
 }
 
 export interface AiFeatureView {
@@ -164,14 +179,28 @@ export class AiModelService {
     return t ? Number(t).toFixed(AiModelService.INPUT_DECIMALS) : "";
   }
 
-  /** Enabled features that would lose their model if `modelId` were disabled (the warning list). */
-  static affectedFeatures(modelId: string, settings: Pick<AiSettingsRow, "enabled" | "model"> | null, features: readonly AiFeatureView[]): string[] {
+  /**
+   * Enabled features that would lose their model if `modelId` were disabled (the warning list). `choices` (PR B): a
+   * text feature with its own model is named when that model is its own, not when it is the AI settings model.
+   */
+  static affectedFeatures(modelId: string, settings: Pick<AiSettingsRow, "enabled" | "model"> | null, features: readonly AiFeatureView[], choices: Partial<Record<string, AiFeatureChoice>> = {}): string[] {
     if (!settings?.enabled) return [];
     const on = features.filter((f) => f.enabled && !f.killedByEnv);
+    const own = (f: AiFeatureView) => (f.ownModel ? "" : (choices[f.feature]?.model ?? ""));
     // The writing assistant (Draft from bullets, Fit for report) follows the main switch; the rest have toggles.
-    const main = (settings.model ?? "").trim() === modelId ? [AiCopy.SWITCH_LABEL, ...on.filter((f) => !f.ownModel).map((f) => f.label)] : [];
+    const main = (settings.model ?? "").trim() === modelId ? [AiCopy.SWITCH_LABEL, ...on.filter((f) => !f.ownModel && !own(f)).map((f) => f.label)] : [];
+    // Text features with their own model (PR B) are named when that model is theirs.
+    const text = on.filter((f) => !f.ownModel && own(f) === modelId).map((f) => f.label);
     // Features with their own model (dictation, step 6) are named when that model is theirs.
-    return [...main, ...on.filter((f) => f.ownModel && f.model === modelId).map((f) => f.label)];
+    return [...main, ...text, ...on.filter((f) => f.ownModel && f.model === modelId).map((f) => f.label)];
+  }
+
+  /**
+   * PR B: each text feature's provider and own model ("" = the AI settings model). A missing row or column reads as
+   * OpenAI with no model of its own, exactly as before 0054.
+   */
+  static featureChoices(rows: readonly AiFeatureRow[]): Record<string, AiFeatureChoice> {
+    return Object.fromEntries(AiFeatureProviders.textFeatures().map((f) => [f, AiFeatureRuntime.choiceOf(f, rows)]));
   }
 
   static featureViews(rows: readonly AiFeatureRow[], env: Env = process.env): AiFeatureView[] {
@@ -201,6 +230,7 @@ export class AiModelService {
       pricesUpdatedAt: r.pricesUpdatedAt ? new Date(r.pricesUpdatedAt).toISOString() : null,
       priceSource: r.priceSource === "manual" || r.priceSource === "refreshed" ? r.priceSource : null,
       kind: AiModelKinds.of(r),
+      provider: AiFeatureProviders.stored(r.provider),
     }));
   }
 
@@ -245,17 +275,20 @@ export class AiModelService {
    * list fail and typed the id; when OpenAI can't be reached it is saved unchecked (still off). A list that loads
    * but lacks the id is still refused.
    */
-  static async add(db: AiModelDb, admin: Viewer, rawId: unknown, env: Env = process.env, fetchImpl: FetchLike | null = null, now: Date = new Date(), opts: { manual?: boolean } = {}): Promise<AiAdminResult> {
+  static async add(db: AiModelDb, admin: Viewer, rawId: unknown, env: Env = process.env, fetchImpl: FetchLike | null = null, now: Date = new Date(), opts: { manual?: boolean; provider?: unknown; keys?: AiProviderKeySource } = {}): Promise<AiAdminResult> {
     AdminPolicy.assertAdmin(admin);
     const id = AiModelService.cleanId(rawId);
     if (!id) return { ok: false, error: AiCopy.MODEL_ID_INVALID };
+    // PR B: a model of another provider is checked against that provider's own list, with that provider's key.
+    const provider = opts.provider === undefined ? "openai" : AiFeatureProviders.parse(opts.provider);
+    if (!provider) return { ok: false, error: AiCopy.SAVE_FAILED };
     if (await db.aiModel.findUnique({ where: { id } })) return { ok: false, error: AiCopy.MODEL_EXISTS };
-    const listed = await AiModelService.openAiHas(db, id, env, fetchImpl);
-    const unchecked = opts.manual === true && (listed === AiCopy.MODEL_CHECK_FAILED || listed === AiCopy.MODEL_CHECK_NEEDS_KEY);
+    const listed = provider === "openai" ? await AiModelService.openAiHas(db, id, env, fetchImpl) : await AiModelService.providerHas(db, provider, id, env, fetchImpl, opts.keys);
+    const unchecked = opts.manual === true && (listed === AiCopy.MODEL_CHECK_FAILED || listed === AiCopy.MODEL_CHECK_NEEDS_KEY || listed === AiCopy.providerListFailed(provider) || listed === AiCopy.providerNeedsKey(provider));
     if (listed !== true && !unchecked) return { ok: false, error: listed };
-    const kind = AiModelKinds.classify(id);
+    const kind = provider === "openai" ? AiModelKinds.classify(id) : AiFeatureProviders.kindOf(provider, id);
     return db.$transaction(async (tx) => {
-      await tx.aiModel.create({ data: { id, provider: "openai", enabled: false, priceUnit: null, inputPrice: null, outputPrice: null, addedAt: now, addedBy: admin.email, updatedAt: now, updatedBy: admin.email, ...(kind ? { kind } : {}) } });
+      await tx.aiModel.create({ data: { id, provider, enabled: false, priceUnit: null, inputPrice: null, outputPrice: null, addedAt: now, addedBy: admin.email, updatedAt: now, updatedBy: admin.email, ...(kind ? { kind } : {}) } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", "model_added", null, id, admin, now)] });
       return { ok: true, message: AiCopy.modelAdded(id) };
     });
@@ -298,6 +331,43 @@ export class AiModelService {
   }
 
   /**
+   * PR B: one provider's model list for the provider's saved key, classified (chat only for non-OpenAI providers).
+   * Admin only. Read-only. The key goes in a request header only and is never logged or returned. OpenAI keeps #63's
+   * path exactly (listOpenAi).
+   */
+  static async listProvider(db: Pick<AiModelDb, "aiSettings">, admin: Viewer, rawProvider: unknown, env: Env = process.env, fetchImpl: FetchLike | null = null, keys?: AiProviderKeySource): Promise<{ ok: true; models: AiListedModel[] } | { ok: false; error: string }> {
+    AdminPolicy.assertAdmin(admin);
+    const provider = AiFeatureProviders.parse(rawProvider);
+    if (!provider) return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
+    if (provider === "openai" && !keys) return AiModelService.listOpenAi(db, admin, env, fetchImpl);
+    const r = await AiModelService.fetchProviderList(db, provider, env, fetchImpl, keys);
+    return r.ok ? { ok: true, models: AiFeatureProviders.parseList(provider, r.body, (id) => AiModelService.cleanId(id) === id, (id) => AiModelKinds.classify(id)) } : r;
+  }
+
+  private static async fetchProviderList(db: unknown, provider: AiFeatureProvider, env: Env, fetchImpl: FetchLike | null, keys?: AiProviderKeySource): Promise<{ ok: true; body: unknown } | { ok: false; error: string }> {
+    const source = keys ?? AiProviderKeyAccess.source(db, env);
+    const secret = await source.secret(provider).catch(() => null);
+    const req = secret ? AiFeatureProviders.modelsRequest(provider, secret) : null;
+    if (!req) return { ok: false, error: AiCopy.providerNeedsKey(provider) };
+    const doFetch = fetchImpl ?? (fetch as unknown as FetchLike);
+    try {
+      const res = await (doFetch as unknown as (u: string, i: object) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>)(req.url, { method: "GET", headers: req.headers, signal: AbortSignal.timeout(15_000) });
+      if (!res.ok) return { ok: false, error: AiCopy.providerListFailed(provider) };
+      return { ok: true, body: JSON.parse(await res.text()) };
+    } catch {
+      return { ok: false, error: AiCopy.providerListFailed(provider) };
+    }
+  }
+
+  /** True when the provider lists `id` for its saved key; otherwise the message to show. */
+  static async providerHas(db: unknown, provider: AiFeatureProvider, id: string, env: Env, fetchImpl: FetchLike | null, keys?: AiProviderKeySource): Promise<true | string> {
+    const r = await AiModelService.fetchProviderList(db, provider, env, fetchImpl, keys);
+    if (!r.ok) return r.error;
+    const data = (r.body as { data?: { id?: unknown }[] } | null)?.data ?? [];
+    return Array.isArray(data) && data.some((m) => m?.id === id) ? true : AiCopy.modelNotListed(provider);
+  }
+
+  /**
    * Enables or disables a model. Disabling the model an enabled feature uses needs `confirmed`; without it the result
    * says needsConfirm and nothing changes.
    */
@@ -310,8 +380,9 @@ export class AiModelService {
       if (row.enabled === enabled) return { ok: true };
       if (!enabled && !confirmed) {
         const settings = await tx.aiSettings.findUnique({ where: { id: AiSettingsService.ID } });
-        const features = AiModelService.featureViews(await tx.aiFeatureSetting.findMany(), env);
-        const hit = AiModelService.affectedFeatures(id, settings, features);
+        const featureRows = await tx.aiFeatureSetting.findMany();
+        const features = AiModelService.featureViews(featureRows, env);
+        const hit = AiModelService.affectedFeatures(id, settings, features, AiModelService.featureChoices(featureRows));
         if (hit.length) return { ok: false, needsConfirm: true, error: AiCopy.disableWarning(id, hit) };
       }
       await tx.aiModel.update({ where: { id }, data: { enabled, updatedAt: now, updatedBy: admin.email } });
@@ -386,6 +457,42 @@ export class AiModelService {
       if ((before ?? "") === model) return { ok: true };
       await tx.aiFeatureSetting.upsert({ where: { feature }, create: { feature, enabled: true, model: model || null, updatedAt: now, updatedBy: admin.email }, update: { model: model || null, updatedAt: now, updatedBy: admin.email } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiFeatureModel", "changed", before, model || null, admin, now)] });
+      return { ok: true };
+    });
+  }
+
+  /**
+   * PR B: a text feature's provider and model, saved together (changing the provider clears the model on the page, and
+   * nothing is saved until a model is picked). The model must be on under Models, a chat model, and belong to that
+   * provider; switching to a provider needs a working key for it. Voice chat and Dictation are locked to OpenAI: any
+   * request to give them another provider is refused and nothing changes. One history row per changed value.
+   */
+  static async setFeatureProviderModel(db: AiModelDb, admin: Viewer, rawFeature: unknown, rawProvider: unknown, rawModel: unknown, env: Env = process.env, now: Date = new Date(), keys?: AiProviderKeySource): Promise<AiAdminResult> {
+    AdminPolicy.assertAdmin(admin);
+    const feature = AiFeatureFlags.parseToggle(rawFeature);
+    if (!feature) return { ok: false, error: AiCopy.SAVE_FAILED };
+    if (!AiFeatureProviders.isText(feature)) return { ok: false, error: AiCopy.PROVIDER_LOCKED };
+    const provider = AiFeatureProviders.parse(rawProvider);
+    if (!provider) return { ok: false, error: AiCopy.SAVE_FAILED };
+    const model = AiModelService.cleanId(rawModel);
+    if (!model) return { ok: false, error: AiCopy.PICK_A_MODEL };
+    return db.$transaction(async (tx) => {
+      const rows = await tx.aiFeatureSetting.findMany();
+      const before = AiFeatureRuntime.choiceOf(feature, rows);
+      const row = await tx.aiModel.findUnique({ where: { id: model } });
+      if (!row?.enabled) return { ok: false, error: AiCopy.MODEL_NOT_ALLOWED };
+      if (!AiModelKinds.fits(row, "chat")) return { ok: false, error: AiCopy.MODEL_WRONG_KIND };
+      if (AiFeatureProviders.stored(row.provider) !== provider) return { ok: false, error: AiCopy.modelOtherProvider(model, AiFeatureProviders.label(AiFeatureProviders.stored(row.provider))) };
+      if (provider !== before.provider) {
+        const states = await (keys ?? AiProviderKeyAccess.source(tx, env)).states().catch(() => AiFeatureProviders.noKeys());
+        if (states[provider] !== "ok") return { ok: false, error: states[provider] === "failing" ? AiCopy.PROVIDER_KEY_FAILING : AiCopy.PROVIDER_NO_KEY };
+      }
+      if (before.provider === provider && before.model === model) return { ok: true };
+      await tx.aiFeatureSetting.upsert({ where: { feature }, create: { feature, enabled: true, provider, model, updatedAt: now, updatedBy: admin.email }, update: { provider, model, updatedAt: now, updatedBy: admin.email } });
+      const hist: AiSettingsHistoryRow[] = [];
+      if (before.provider !== provider) hist.push(AiModelService.hist("aiFeatureProvider", "changed", `${feature}:${before.provider}`, `${feature}:${provider}`, admin, now));
+      if (before.model !== model) hist.push(AiModelService.hist("aiFeatureTextModel", "changed", `${feature}:${before.model}`, `${feature}:${model}`, admin, now));
+      await tx.aiSettingsHistory.createMany({ data: hist });
       return { ok: true };
     });
   }

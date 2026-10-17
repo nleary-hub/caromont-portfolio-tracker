@@ -38,6 +38,7 @@ export function ModelField({
   onLoadList,
   onChange,
   onCommit,
+  row,
 }: {
   value: string;
   error?: string;
@@ -58,6 +59,12 @@ export function ModelField({
   onLoadList?: () => void;
   onChange?: (model: string) => void;
   onCommit?: (model: string) => void;
+  /**
+   * PR B: the one-grid layout of Admin > AI settings Features. The trigger goes in the row's model cell (the label is
+   * kept for screen readers) and the help, list button and typed-ID field go in a line under the row. Each value is the
+   * grid placement classes of that part.
+   */
+  row?: { trigger: string; extras: string };
 }) {
   const [model, setModel] = useState(value);
   const [open, setOpen] = useState(defaultOpen);
@@ -79,84 +86,117 @@ export function ModelField({
   };
   const listId = `${id}-list`;
   const off = (m: string) => !on.has(m) && m !== value;
+  const picker = (
+    <div className="relative">
+      <button
+        type="button"
+        id={id}
+        role="combobox"
+        aria-invalid={Boolean(error) || undefined}
+        className={`${INPUT} flex items-center justify-between text-left`}
+        aria-haspopup="listbox"
+        aria-expanded={open}
+        aria-controls={listId}
+        aria-describedby={error ? `${id}-error` : `${id}-help`}
+        disabled={disabled}
+        onClick={() => setOpen((v) => !v)}
+        onKeyDown={(e) => {
+          if (e.key === "Escape") setOpen(false);
+        }}
+        data-testid={`${id}-picker`}
+      >
+        <span className={`${row ? "min-w-0 truncate " : ""}${model ? "text-fg" : "text-muted"}`}>{model || noneLabel || C.MODEL_PICKER_PLACEHOLDER}</span>
+        <span aria-hidden className="text-muted">▾</span>
+      </button>
+      {open && (
+        <ul id={listId} role="listbox" aria-label={label} className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-control border border-line bg-input py-1 shadow-[0_12px_32px_rgba(0,0,0,.55)]" data-testid={`${id}-list`} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
+          {noneLabel && (
+            <li role="option" aria-selected={!model}>
+              <button type="button" className={`w-full px-2.5 py-1.5 text-left type-table text-muted hover:bg-input ${FOCUS}`} onClick={() => pick("")}>
+                {noneLabel}
+              </button>
+            </li>
+          )}
+          {all.length === 0 && <li className="px-2.5 py-1.5 text-muted type-caption">{C.MODEL_PICKER_EMPTY}</li>}
+          {all.map((m) => (
+            <li key={m} role="option" aria-selected={m === model} data-off={off(m) || undefined}>
+              <button type="button" className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left type-table hover:bg-input ${off(m) ? "text-muted" : m === model ? "text-accent" : "text-fg"} ${FOCUS}`} onClick={() => pick(m)}>
+                <span className="min-w-0 truncate">{m}</span>
+                {off(m) && <span className="shrink-0 type-caption">{C.MODEL_PICKER_OFF}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+  const loadButton = onLoadList && (
+    <div className="flex items-center gap-2">
+      <button type="button" className={GHOST} onClick={onLoadList} disabled={disabled || listLoading} data-testid={`${id}-load-list`}>
+        {listLoading ? C.MODEL_LIST_LOADING : C.MODEL_LIST_LOAD}
+      </button>
+      {list?.ok && <span className="text-muted type-caption">{C.modelsListed(listed.length, AiModelKinds.label(kind))}</span>}
+    </div>
+  );
+  const manualField = manual && (
+    <div className="flex flex-col gap-1" data-testid={`${id}-manual`}>
+      <label htmlFor={`${id}-manual-input`} className="text-muted type-caption">
+        {C.MODEL_PICKER_MANUAL_LABEL}
+      </label>
+      <input
+        id={`${id}-manual-input`}
+        className={INPUT}
+        value={model}
+        onChange={(e) => set(e.target.value)}
+        onBlur={commitTyped}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") {
+            e.preventDefault();
+            commitTyped();
+          }
+        }}
+        placeholder={placeholder}
+        maxLength={100}
+        autoComplete="off"
+        spellCheck={false}
+        disabled={disabled}
+      />
+    </div>
+  );
+  if (row) {
+    return (
+      <div className="contents">
+        <div className={`min-w-0 ${row.trigger}`}>
+          <label htmlFor={id} className="sr-only">
+            {label}
+          </label>
+          {name && <input type="hidden" name={name} value={model} />}
+          {picker}
+        </div>
+        <div className={`flex min-w-0 flex-col gap-1 ${row.extras}`}>
+          {error ? (
+            <div id={`${id}-error`}>
+              <AiAlert tone="danger" testId={`${id}-error`}>
+                {error}
+              </AiAlert>
+            </div>
+          ) : help ? (
+            <p id={`${id}-help`} className="text-muted type-caption">
+              {help}
+            </p>
+          ) : null}
+          {loadButton}
+          {manualField}
+        </div>
+      </div>
+    );
+  }
   return (
     <Field id={id} label={label} error={error} help={help}>
       {name && <input type="hidden" name={name} value={model} />}
-      <div className="relative">
-        <button
-          type="button"
-          id={id}
-          role="combobox"
-          aria-invalid={Boolean(error) || undefined}
-          className={`${INPUT} flex items-center justify-between text-left`}
-          aria-haspopup="listbox"
-          aria-expanded={open}
-          aria-controls={listId}
-          aria-describedby={error ? `${id}-error` : `${id}-help`}
-          disabled={disabled}
-          onClick={() => setOpen((v) => !v)}
-          onKeyDown={(e) => {
-            if (e.key === "Escape") setOpen(false);
-          }}
-          data-testid={`${id}-picker`}
-        >
-          <span className={model ? "text-fg" : "text-muted"}>{model || noneLabel || C.MODEL_PICKER_PLACEHOLDER}</span>
-          <span aria-hidden className="text-muted">▾</span>
-        </button>
-        {open && (
-          <ul id={listId} role="listbox" aria-label={label} className="absolute z-30 mt-1 max-h-64 w-full overflow-y-auto rounded-control border border-line bg-input py-1 shadow-[0_12px_32px_rgba(0,0,0,.55)]" data-testid={`${id}-list`} onKeyDown={(e) => e.key === "Escape" && setOpen(false)}>
-            {noneLabel && (
-              <li role="option" aria-selected={!model}>
-                <button type="button" className={`w-full px-2.5 py-1.5 text-left type-table text-muted hover:bg-input ${FOCUS}`} onClick={() => pick("")}>
-                  {noneLabel}
-                </button>
-              </li>
-            )}
-            {all.length === 0 && <li className="px-2.5 py-1.5 text-muted type-caption">{C.MODEL_PICKER_EMPTY}</li>}
-            {all.map((m) => (
-              <li key={m} role="option" aria-selected={m === model} data-off={off(m) || undefined}>
-                <button type="button" className={`flex w-full items-center justify-between gap-2 px-2.5 py-1.5 text-left type-table hover:bg-input ${off(m) ? "text-muted" : m === model ? "text-accent" : "text-fg"} ${FOCUS}`} onClick={() => pick(m)}>
-                  <span className="min-w-0 truncate">{m}</span>
-                  {off(m) && <span className="shrink-0 type-caption">{C.MODEL_PICKER_OFF}</span>}
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-      {onLoadList && (
-        <div className="flex items-center gap-2">
-          <button type="button" className={GHOST} onClick={onLoadList} disabled={disabled || listLoading} data-testid={`${id}-load-list`}>
-            {listLoading ? C.MODEL_LIST_LOADING : C.MODEL_LIST_LOAD}
-          </button>
-          {list?.ok && <span className="text-muted type-caption">{C.modelsListed(listed.length, AiModelKinds.label(kind))}</span>}
-        </div>
-      )}
-      {manual && (
-        <div className="flex flex-col gap-1" data-testid={`${id}-manual`}>
-          <label htmlFor={`${id}-manual-input`} className="text-muted type-caption">
-            {C.MODEL_PICKER_MANUAL_LABEL}
-          </label>
-          <input
-            id={`${id}-manual-input`}
-            className={INPUT}
-            value={model}
-            onChange={(e) => set(e.target.value)}
-            onBlur={commitTyped}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                e.preventDefault();
-                commitTyped();
-              }
-            }}
-            placeholder={placeholder}
-            maxLength={100}
-            autoComplete="off"
-            spellCheck={false}
-            disabled={disabled}
-          />
-        </div>
-      )}
+      {picker}
+      {loadButton}
+      {manualField}
     </Field>
   );
 }

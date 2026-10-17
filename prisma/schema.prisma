@@ -900,7 +900,7 @@ model ProjectDependency {
 /// OpenAI models admins can pick on Admin > AI settings (0039). New rows start disabled; rows are never deleted.
 model AiModel {
   id          String   @id
-  /// "openai" (DB check constraint)
+  /// "openai" | "anthropic" | "xai" | "other" (DB check constraint, 0054)
   provider    String   @default("openai")
   enabled     Boolean  @default(false)
   /// "per_1m_tokens" | "per_minute" (DB check constraint)
@@ -931,6 +931,9 @@ model AiFeatureSetting {
   model     String?
   /// 0050: admin voice chat instructions (voice_chat only). Null = the built-in rules.
   instructions String?
+  /// 0054: the provider a text feature runs on: "openai" | "anthropic" | "xai" | "other" (DB check). voice_chat and
+  /// dictation are always "openai" (DB check). With model null the feature uses the AI settings model, as before.
+  provider  String   @default("openai")
 
   @@map("ai_feature_settings")
 }
