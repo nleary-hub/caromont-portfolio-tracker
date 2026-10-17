@@ -8,7 +8,7 @@ test("on a preview deployment the Year-end report button is disabled and the not
   const button = page.getByTestId("year-end-button");
   await expect(button).toBeVisible();
   await expect(button).toBeDisabled();
-  await expect(page.getByTestId("year-end-disabled-note")).toHaveText("Freezing is turned off on preview deployments.");
+  await expect(page.getByTestId("year-end-disabled-note")).toHaveText("Year-end reports are turned off on preview deployments.");
   await expect(page.getByTestId("year-end-disabled-note")).toHaveClass("type-caption text-muted");
   await button.click({ force: true });
   await expect(page.getByRole("dialog")).toHaveCount(0);

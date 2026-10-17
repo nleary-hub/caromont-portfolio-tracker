@@ -1,6 +1,7 @@
 import { createRoot } from "react-dom/client";
 import { YearEndReportButton } from "../../src/components/YearEndReportButton";
 import { DriveCheckService } from "../../src/lib/services/DriveCheckService";
+import { YearEndPreviewCopy } from "../../src/lib/report/YearEndPreviewCopy";
 import { AiSettingsForm } from "../../src/components/AiSettingsForm";
 import { AiFeaturesPanel } from "../../src/components/AiModelsPanel";
 import { OpenAiModelListProvider } from "../../src/components/useOpenAiModelList";
@@ -143,7 +144,7 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
       <h2 id="report-year-end-heading" className="type-heading">Report freeze</h2>
       <div className="flex flex-wrap items-center gap-4">
         <a href="#" className="type-table-strong text-accent">Generate PDF now (draft)</a>
-        <YearEndReportButton years={["FY27", "FY26"]} current="FY27" disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />
+        <YearEndReportButton years={["FY27", "FY26"]} current="FY27" disabledNote={FreezeGuard.disabled() ? YearEndPreviewCopy.NOTE : null} />
       </div>
     </section>
   </main>

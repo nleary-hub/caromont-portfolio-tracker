@@ -15,6 +15,8 @@ vi.mock("next/cache", () => ({ revalidatePath: () => undefined }));
 const { YearEndReportService } = await import("@/lib/services/YearEndReportService");
 const { YearEndRenderer } = await import("@/lib/report/YearEndRenderer");
 const { FreezeDisabledError, FreezeGuard } = await import("@/lib/report/FreezeGuard");
+const { YearEndPreviewCopy } = await import("@/lib/report/YearEndPreviewCopy");
+const YEAR_END_NOTE = "Year-end reports are turned off on preview deployments.";
 const { ServiceLine } = await import("@/lib/domain/ServiceLine");
 const { generateYearEndReport } = await import("@/app/actions/reports");
 
@@ -71,10 +73,13 @@ describe("YearEndReportService.generate under VERCEL_ENV=preview", () => {
     expect(fake.state.yearEndReports).toHaveLength(0);
   });
 
-  it("the Generate PDF action returns an error state with the guard's message and writes no year-end row", async () => {
+  it("the Generate PDF action returns an error state with the year-end note's words and writes no year-end row", async () => {
+    expect(YearEndPreviewCopy.NOTE).toBe(YEAR_END_NOTE);
+    // The shared freeze message is unchanged (the service still throws FreezeDisabledError with it).
+    expect(new FreezeDisabledError().message).toBe("Freezing is turned off on preview deployments.");
     h.viewer = Factory.ADMIN as unknown as Viewer;
     const before = fake.state.yearEndReports.length;
-    expect(await generateYearEndReport("FY27")).toEqual({ ok: false, message: new FreezeDisabledError().message });
+    expect(await generateYearEndReport("FY27")).toEqual({ ok: false, message: YEAR_END_NOTE });
     expect(fake.state.yearEndReports.length).toBe(before);
     expect(console.error).not.toHaveBeenCalled();
   });
@@ -122,8 +127,8 @@ describe("YearEndReportButton", () => {
     const { createElement } = await import("react");
     const { YearEndReportButton } = await import("@/components/YearEndReportButton");
     const { FREEZE_DISABLED_BUTTON } = await import("@/components/FreezeDisabledNote");
-    const off = renderToStaticMarkup(createElement(YearEndReportButton, { years: ["FY27"], current: "FY27", initialOpen: true, disabledNote: FreezeGuard.NOTE }));
-    expect(off).toContain(`<span data-testid="year-end-disabled-note" class="type-caption text-muted">${FreezeGuard.NOTE}</span>`);
+    const off = renderToStaticMarkup(createElement(YearEndReportButton, { years: ["FY27"], current: "FY27", initialOpen: true, disabledNote: YearEndPreviewCopy.NOTE }));
+    expect(off).toContain(`<span data-testid="year-end-disabled-note" class="type-caption text-muted">${YEAR_END_NOTE}</span>`);
     expect(off).toMatch(new RegExp(`<button type="button" class="[^"]*${FREEZE_DISABLED_BUTTON}" disabled=""`));
     expect(off).not.toContain('role="dialog"');
   });

@@ -6,6 +6,7 @@ import { AdminPolicy } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { FreezeDisabledError } from "@/lib/report/FreezeGuard";
+import { YearEndPreviewCopy } from "@/lib/report/YearEndPreviewCopy";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { FreezeService } from "@/lib/services/FreezeService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
@@ -102,7 +103,8 @@ export async function generateYearEndReport(fiscalYear: string, categories?: unk
     revalidatePath("/reports");
     return { ok: true, id: entry.id, fileName: entry.fileName };
   } catch (e) {
-    if (e instanceof FreezeDisabledError) return { ok: false, message: e.message };
+    // Preview deployment: the same words as the disabled note on /reports.
+    if (e instanceof FreezeDisabledError) return { ok: false, message: YearEndPreviewCopy.NOTE };
     ReportLog.error("year_end.failed", { error: e instanceof Error ? e.message : String(e) });
     return { ok: false, message: YearEndCopy.ERROR };
   }
