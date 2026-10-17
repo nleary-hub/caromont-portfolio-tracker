@@ -6,6 +6,7 @@ import type { CompletedRow, ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import type { ReportDocInput } from "@/lib/report/pdf/ReportLayout";
+import { WaitingOnText, type WaitingOnItem } from "@/lib/report/WaitingOnText";
 
 type Seed = [DepartmentKey, string, ProjectStatus, string | null, string | null, string | null, boolean, ProjectStatus | null, string];
 
@@ -53,6 +54,13 @@ export class SampleReportData {
     ["IR", "Sample: Dialysis access clinic", "OnTrack", "Clinic template live", "2026-10-12", "Template built; go-live after scheduler training.", false, null, "2026-09-16"],
   ];
 
+  /** The row's waitingOn key: only with the option on and open blockers (WaitingOnText.build is null otherwise). */
+  private static waitingOn(i: number, mode: boolean | "none" | undefined): { waitingOn?: string } {
+    if (mode !== true) return {};
+    const text = WaitingOnText.build(SampleReportData.WAITING_ON[i] ?? []);
+    return text ? { waitingOn: text } : {};
+  }
+
   /** Fake Infor request numbers by seed index. The rest have none. */
   private static readonly INFOR: Readonly<Record<number, number>> = {
     0: 4656,
@@ -70,17 +78,27 @@ export class SampleReportData {
   static readonly CONTRACTS_LEADS: readonly string[] = ["Sam Delacroix", "Jesse Okafor", "Morgan Ellsworth", "Dana Whitlock", "Alex Rivera"];
 
   /**
-   * Fictional open blockers ("Waiting on" line) by seed index: a project blocker, external blockers, one row with no
-   * note, one long line that clips. Applied only when rows() is asked for them, so the default sample (and every
-   * golden hash built from it) is unchanged.
+   * Fictional open blockers ("Waiting on" line) by seed index, as WaitingOnText items: Blocked-by dependencies (the
+   * blocking project's name, plus the note when there is one) and external blockers. Applied only when rows() is
+   * asked for them, so the default sample (and every golden hash built from it) is unchanged. `createdAt` is only
+   * informational here: the line has no date filter, so a dependency added before the Dependencies review (#86) still
+   * prints. Seed 15 shows a note-less dependency: the blocking project's name only.
    */
-  static readonly WAITING_ON: Readonly<Record<number, string>> = {
-    1: "Northbeam Interiors revised bid · 12 days",
-    3: "Sample: EP lab mapping system upgrade · 9 days; Biomed downtime sign-off · 4 days",
-    4: "IT security review (Harborview IT) · 21 days",
-    10: "Contrast agent formulary approval · 6 days",
-    17: "Neurology criteria review with Dr. Sample M · 14 days",
-    22: "Strategy volume data from planning; certificate of need consultant contract signature; Owner T follow-up · 33 days",
+  static readonly WAITING_ON: Readonly<Record<number, readonly (WaitingOnItem & { createdAt?: string })[]>> = {
+    1: [{ kind: "external", waitingOn: "Northbeam Interiors", description: "Revised bid for the 6-bay scope" }],
+    3: [
+      { kind: "project", name: "Sample: EP lab mapping system upgrade", note: "Shared interface engine cutover" },
+      { kind: "external", waitingOn: "Biomed", description: "Downtime plan sign-off" },
+    ],
+    4: [{ kind: "external", waitingOn: "Harborview IT security", description: "Security review of the mapping interface" }],
+    10: [{ kind: "external", waitingOn: "Pharmacy and therapeutics committee", description: "Contrast agent formulary approval" }],
+    // Note-less Blocked-by dependency, added Sep 24 (before #86): prints the blocking project's name only.
+    15: [{ kind: "project", name: "Sample: INU bed flow redesign", note: null, createdAt: "2026-09-24" }],
+    17: [{ kind: "external", waitingOn: "Dr. Sample M", description: "Neurology review of the referral criteria" }],
+    22: [
+      { kind: "project", name: "Sample: Dialysis access clinic", note: "Shared scheduler build has to finish first" },
+      { kind: "external", waitingOn: "Planning", description: "Market volume data for the certificate of need filing and the consultant contract signature" },
+    ],
   };
 
   /**
@@ -117,7 +135,7 @@ export class SampleReportData {
         updatedOn,
         statusFrom: from,
         stale: ReportBuilder.isStale({ status, updatedOn }, SampleReportData.REPORT_DATE),
-        ...(opts.waitingOn === true && SampleReportData.WAITING_ON[i] ? { waitingOn: SampleReportData.WAITING_ON[i] } : {}),
+        ...SampleReportData.waitingOn(i, opts.waitingOn),
       };
     });
     return ReportBuilder.sort(rows);

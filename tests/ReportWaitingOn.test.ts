@@ -3,6 +3,7 @@ import { afterEach, describe, expect, it, vi } from "vitest";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { SampleReportData } from "@/lib/report/SampleReportData";
+import { WaitingOnText } from "@/lib/report/WaitingOnText";
 import { ReportGeometry, ReportLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { ReportOptionsForm } from "@/lib/services/ReportOptionsForm";
@@ -55,7 +56,7 @@ describe("ReportRow.waitingOn (PDF 'Waiting on' line)", () => {
   });
 
   it("a long Waiting on line is one line, clipped with an ellipsis", () => {
-    const row = SampleReportData.rows({ waitingOn: true }).find((r) => r.waitingOn?.startsWith("Strategy volume"))!;
+    const row = SampleReportData.rows({ waitingOn: true }).find((r) => r.waitingOn?.startsWith("Sample: Dialysis access clinic"))!;
     const l = ReportLayout.rowLayout(m, row, settings, SampleReportData.REPORT_DATE);
     expect(l.waiting!.text.endsWith("\u2026")).toBe(true);
   });
@@ -69,6 +70,24 @@ describe("ReportRow.waitingOn (PDF 'Waiting on' line)", () => {
     expect(sha(plain)).toBe("74404053aee5dcf007f9f9981754affd36f1578d506fd309c908de002b3dfd3e");
     expect(sha(on)).not.toBe(sha(plain));
   }, 60000);
+});
+
+describe("WaitingOnText", () => {
+  it("dependencies by the blocking project's name (plus the note when present), then external blockers", () => {
+    expect(
+      WaitingOnText.build([
+        { kind: "external", waitingOn: "Northbeam Interiors", description: "Revised bid" },
+        { kind: "project", name: "Sample: Atrium wayfinding refresh", note: null },
+        { kind: "project", name: "Sample: Lobby kiosk", note: "  Kiosk  vendor   contract " },
+      ]),
+    ).toBe("Sample: Atrium wayfinding refresh; Sample: Lobby kiosk: Kiosk vendor contract; Northbeam Interiors: Revised bid");
+    expect(WaitingOnText.build([])).toBeNull();
+  });
+
+  it("the sample's note-less dependency (seed 15) prints the blocking project's name only", () => {
+    const row = SampleReportData.rows({ waitingOn: true }).find((r) => r.name === "Sample: Telemetry alarm reduction")!;
+    expect(row.waitingOn).toBe("Sample: INU bed flow redesign");
+  });
 });
 
 describe("Report contents: showWaitingOn", () => {
