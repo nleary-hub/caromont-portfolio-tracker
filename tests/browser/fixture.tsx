@@ -13,6 +13,9 @@ import { ServiceAreaInfo } from "../../src/lib/domain/ServiceAreaInfo";
 import { SampleReportData } from "../../src/lib/report/SampleReportData";
 import { TemplatesFixture } from "./templates-fixture";
 import { KeysFixture } from "./keys-fixture";
+import { FreezeNowButton } from "../../src/components/FreezeNowButton";
+import { FreezeGuard } from "../../src/lib/report/FreezeGuard";
+import { DriveCheckButton } from "../../src/components/DriveCheckButton";
 import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
@@ -109,6 +112,20 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
   <TemplatesFixture />
 ) : new URLSearchParams(window.location.search).has("keys") ? (
   <KeysFixture />
+) : new URLSearchParams(window.location.search).has("freeze") ? (
+  // ?freeze=1: the Report freeze controls as /reports renders them. FreezeGuard.disabled() reads VERCEL_ENV, which the
+  // harness server fixes at build time from its own environment (as the server component reads it).
+  <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
+    <section aria-labelledby="report-freeze-heading" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
+      <h2 id="report-freeze-heading" className="type-heading">Report freeze</h2>
+      <div className="flex flex-wrap items-center gap-4">
+        <FreezeNowButton disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />
+        <a href="#" className="type-table-strong text-accent">Generate PDF now (draft)</a>
+      </div>
+      <DriveCheckButton folder="Fictional Report Folder" help="Saves a small test file to Fictional Report Folder, then removes it. Nothing is frozen or sent."
+        disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />
+    </section>
+  </main>
 ) : closedPage ? (
   <ClosedProjectsView kind={ClosedPageModel.CANCELLED} rows={cancelledRows as never} today="2026-10-04"
     initialView={{ fy: "FY27", departments: ["Cath"] } as never} options={["Cath"] as never} list={ServiceAreaInfo.LEGACY}
