@@ -219,6 +219,8 @@ export class AiCopy {
     "The API key can't be saved until the server setting AI_SETTINGS_ENCRYPTION_KEY is set. Ask whoever manages the Vercel project to add it, then redeploy.";
   static readonly ENCRYPTION_INVALID =
     "The server setting AI_SETTINGS_ENCRYPTION_KEY is not a valid 32-byte base64 key, so the API key can't be saved or used. Ask whoever manages the Vercel project to fix it, then redeploy.";
+  static readonly PREVIEW_OFF = "AI is off on preview deployments.";
+  static readonly KEY_USE_PROVIDER_KEYS = "The OpenAI key is managed under Provider keys at the top of this page.";
   static readonly KEY_UNREADABLE = "The saved key can't be read with the current encryption key. Paste the key again to replace it.";
   static readonly SAVE = "Save";
   static readonly SAVING = "Saving…";

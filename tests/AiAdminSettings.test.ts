@@ -274,7 +274,8 @@ describe("0039_ai_models_features (PGlite)", () => {
     await db.exec(`INSERT INTO "ai_models" ("id", "addedBy", "updatedBy") VALUES ('gpt-example-mini', 'a@example.org', 'a@example.org')`);
     expect((await db.query(`SELECT "enabled" FROM "ai_models" WHERE "id" = 'gpt-example-mini'`)).rows).toEqual([{ enabled: false }]);
     await expect(db.exec(`DELETE FROM "ai_models" WHERE "id" = 'gpt-example-mini'`)).rejects.toThrow();
-    await expect(db.exec(`INSERT INTO "ai_models" ("id", "provider", "addedBy", "updatedBy") VALUES ('x', 'not-a-provider', 'a', 'a')`)).rejects.toThrow();
+    // 0053 widened the list to openai, anthropic, xai and other; anything else is still refused.
+    await expect(db.exec(`INSERT INTO "ai_models" ("id", "provider", "addedBy", "updatedBy") VALUES ('x', 'azure_openai', 'a', 'a')`)).rejects.toThrow();
     await db.exec(`INSERT INTO "ai_settings_history" ("id", "field", "action", "newValue", "changedBy") VALUES (gen_random_uuid(), 'aiModel', 'model_added', 'gpt-example-mini', 'a@example.org')`);
     // Idempotent: a second run changes nothing.
     await db.exec(readFileSync(path.join(dir, "0039_ai_models_features", "migration.sql"), "utf8"));

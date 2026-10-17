@@ -4,6 +4,7 @@ import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiKeyCipher, type AiKeyProblem } from "@/lib/ai/AiKeyCipher";
 import type { AiRuntimeConfig } from "@/lib/ai/AiProviderClient";
 import { AiProviders, type AiProviderId, type AiSettingsFields } from "@/lib/ai/AiProviders";
+import { AiProviderKeyService, type AiProviderKeyDb } from "@/lib/services/AiProviderKeyService";
 
 type Env = Record<string, string | undefined>;
 
@@ -22,6 +23,11 @@ export interface AiSettingsRow {
   apiKeySetBy: string | null;
   updatedAt: Date;
   updatedBy: string;
+  /**
+   * Set by row() when the OpenAI key lives in ai_provider_keys (migration 0053): that row's ciphertext (null after a
+   * delete), which runtime() decrypts with the row's own binding instead of the legacy column. Never sent to a client.
+   */
+  providerKey?: { ciphertext: string | null; last4: string | null; setAt: Date | null; setBy: string | null };
 }
 
 export interface AiSettingsHistoryRow {
@@ -39,7 +45,7 @@ export interface AiSettingsHistoryRow {
  * so the ciphertext (and of course the plain key) can't reach the browser.
  */
 export interface AiSettingsView extends AiSettingsFields {
-  key: { set: boolean; last4: string; setAt: string | null; setBy: string | null; readable: boolean };
+  key: { set: boolean; last4: string; setAt: string | null; setBy: string | null; readable: boolean; source?: "provider_keys" | "legacy" };
   encryption: { ready: boolean; problem: AiKeyProblem | null };
   /** Provider fields complete and a readable key: the switch can turn the buttons on. */
   ready: boolean;
@@ -78,8 +84,34 @@ export class AiSettingsService {
   static readonly KEY_MAX = 500;
   static readonly HISTORY_TAKE = 50;
 
-  static async row(db: AiSettingsDb): Promise<AiSettingsRow | null> {
+  /**
+   * The settings row, with the OpenAI key resolved from ai_provider_keys when the provider is OpenAI (copying the legacy
+   * key there on first read, once). Reads prefer the new table and fall back to the legacy column when it can't be used
+   * (table not migrated yet, or a fake db in tests). On a preview the row comes back as stored: nothing is decrypted,
+   * copied or written, and runtime() refuses anyway.
+   */
+  static async row(db: AiSettingsDb, env: Env = process.env): Promise<AiSettingsRow | null> {
+    const row = await AiSettingsService.storedRow(db);
+    if (!row || AiKeyCipher.isPreview(env) || AiProviders.parse(row.provider) !== "openai") return row;
+    const kdb = db as unknown as Partial<AiProviderKeyDb>;
+    if (typeof kdb.aiProviderKey?.findUnique !== "function" || typeof kdb.$transaction !== "function") return row;
+    try {
+      const key = await AiProviderKeyService.ensureOpenAiCopied(kdb as AiProviderKeyDb, env);
+      return key ? { ...row, providerKey: { ciphertext: key.ciphertext, last4: key.last4, setAt: key.setAt, setBy: key.setBy } } : row;
+    } catch {
+      return row;
+    }
+  }
+
+  /** ai_settings exactly as stored (no key resolution). */
+  static async storedRow(db: AiSettingsDb): Promise<AiSettingsRow | null> {
     return db.aiSettings.findUnique({ where: { id: AiSettingsService.ID } });
+  }
+
+  /** Where the key of `row` comes from: the ai_provider_keys "openai" row, or the legacy column. */
+  private static keyOf(row: AiSettingsRow | null): { ciphertext: string | null; last4: string | null; setAt: Date | null; setBy: string | null; binding: string; source: "provider_keys" | "legacy" } {
+    if (row?.providerKey) return { ...row.providerKey, binding: AiKeyCipher.providerBinding("openai"), source: "provider_keys" };
+    return { ciphertext: row?.apiKeyCiphertext ?? null, last4: row?.apiKeyLast4 ?? null, setAt: row?.apiKeySetAt ?? null, setBy: row?.apiKeySetBy ?? null, binding: AiKeyCipher.LEGACY_BINDING, source: "legacy" };
   }
 
   static fieldsOf(row: AiSettingsRow | null): AiSettingsFields {
@@ -96,8 +128,9 @@ export class AiSettingsService {
   static view(row: AiSettingsRow | null, env: Env = process.env): AiSettingsView {
     const cipher = AiKeyCipher.fromEnv(env);
     const fields = AiSettingsService.fieldsOf(row);
-    const set = Boolean(row?.apiKeyCiphertext);
-    const readable = set && cipher.ok ? AiKeyCipher.decrypt(row!.apiKeyCiphertext!, cipher.key) !== null : false;
+    const k = AiSettingsService.keyOf(row);
+    const set = Boolean(k.ciphertext);
+    const readable = set && cipher.ok ? AiKeyCipher.decrypt(k.ciphertext!, cipher.key, k.binding) !== null : false;
     return {
       enabled: fields.enabled,
       provider: fields.provider,
@@ -105,7 +138,7 @@ export class AiSettingsService {
       baseUrl: fields.baseUrl,
       azureEndpoint: fields.azureEndpoint,
       azureDeployment: fields.azureDeployment,
-      key: { set, last4: set ? (row?.apiKeyLast4 ?? "") : "", setAt: set && row?.apiKeySetAt ? row.apiKeySetAt.toISOString() : null, setBy: set ? (row?.apiKeySetBy ?? null) : null, readable },
+      key: { set, last4: set ? (k.last4 ?? "") : "", setAt: set && k.setAt ? k.setAt.toISOString() : null, setBy: set ? (k.setBy ?? null) : null, readable, ...(k.source === "provider_keys" ? { source: k.source } : {}) },
       encryption: { ready: cipher.ok, problem: cipher.ok ? null : cipher.problem },
       ready: AiProviders.missing(fields).length === 0 && readable,
       updatedAt: row ? row.updatedAt.toISOString() : null,
@@ -124,12 +157,15 @@ export class AiSettingsService {
 
   /** The decrypted config for a provider call, or null when anything is missing or the key can't be read. Server only. */
   static runtime(row: AiSettingsRow | null, env: Env = process.env): AiRuntimeConfig | null {
-    if (!row?.apiKeyCiphertext) return null;
+    // Guard (a): a preview never decrypts any key, so every AI feature is off there.
+    if (AiKeyCipher.isPreview(env)) return null;
+    const k = AiSettingsService.keyOf(row);
+    if (!row || !k.ciphertext) return null;
     const fields = AiSettingsService.fieldsOf(row);
     if (!fields.provider || AiProviders.missing(fields).length) return null;
     const cipher = AiKeyCipher.fromEnv(env);
     if (!cipher.ok) return null;
-    const apiKey = AiKeyCipher.decrypt(row.apiKeyCiphertext, cipher.key);
+    const apiKey = AiKeyCipher.decrypt(k.ciphertext, cipher.key, k.binding);
     if (!apiKey) return null;
     return {
       provider: fields.provider,
@@ -173,8 +209,10 @@ export class AiSettingsService {
     if (f.provider === "azure_openai" && f.azureEndpoint.trim() && !AiProviders.httpsUrl(f.azureEndpoint)) errors.azureEndpoint = AiCopy.INVALID_URL;
     if (newKey) {
       const cipher = AiKeyCipher.fromEnv(env);
-      if (!cipher.ok) return { ok: false, error: cipher.problem === "missing" ? AiCopy.ENCRYPTION_MISSING : AiCopy.ENCRYPTION_INVALID, fieldErrors: { apiKey: AiCopy.ENCRYPTION_MISSING } };
-      if (newKey.length > AiSettingsService.KEY_MAX || /\s/.test(newKey)) errors.apiKey = AiCopy.KEY_INVALID;
+      if (!cipher.ok) return { ok: false, error: cipher.problem === "preview" ? AiCopy.PREVIEW_OFF : cipher.problem === "missing" ? AiCopy.ENCRYPTION_MISSING : AiCopy.ENCRYPTION_INVALID, fieldErrors: { apiKey: cipher.problem === "preview" ? AiCopy.PREVIEW_OFF : AiCopy.ENCRYPTION_MISSING } };
+      // The OpenAI key lives under Provider keys once copied there; this form no longer writes it.
+      if (current?.providerKey && f.provider === "openai") errors.apiKey = AiCopy.KEY_USE_PROVIDER_KEYS;
+      else if (newKey.length > AiSettingsService.KEY_MAX || /\s/.test(newKey)) errors.apiKey = AiCopy.KEY_INVALID;
     }
     // Turning it on needs a complete setup, so "On" always means the buttons show.
     if (f.enabled) {
@@ -182,7 +220,8 @@ export class AiSettingsService {
         if (errors[m]) continue;
         errors[m] = m === "provider" ? AiCopy.REQUIRED_PROVIDER : m === "model" ? AiCopy.REQUIRED_MODEL : m === "azureDeployment" ? AiCopy.REQUIRED_DEPLOYMENT : AiCopy.INVALID_URL;
       }
-      const keyUsable = newKey ? true : Boolean(current?.apiKeyCiphertext) && AiSettingsService.view(current, env).key.readable;
+      const saved = AiSettingsService.view(current, env).key;
+      const keyUsable = newKey ? true : saved.set && saved.readable;
       if (!keyUsable && !errors.apiKey) errors.apiKey = AiKeyCipher.fromEnv(env).ok ? AiCopy.REQUIRED_KEY : AiCopy.ENCRYPTION_MISSING;
     }
     return Object.keys(errors).length ? { ok: false, error: AiCopy.FIX_FIELDS, fieldErrors: errors } : { ok: true };
@@ -191,8 +230,11 @@ export class AiSettingsService {
   /** Saves the settings and appends one change-log row per changed field (key rows carry no value). Admin only. */
   static async save(db: AiSettingsDb, admin: Viewer, input: AiSettingsInput, env: Env = process.env, now: Date = new Date()): Promise<AiSettingsSaveResult> {
     AdminPolicy.assertAdmin(admin);
+    // The key as runtime() sees it (ai_provider_keys for OpenAI), resolved before the transaction.
+    const resolved = await AiSettingsService.row(db, env);
     return db.$transaction(async (tx) => {
-      const current = await AiSettingsService.row(tx);
+      const stored = await AiSettingsService.storedRow(tx);
+      const current = stored && resolved?.providerKey ? { ...stored, providerKey: resolved.providerKey } : stored;
       const check = AiSettingsService.validate(input, current, env);
       if (!check.ok) return check;
       const before = AiSettingsService.fieldsOf(current);
@@ -243,7 +285,7 @@ export class AiSettingsService {
   static async clearKey(db: AiSettingsDb, admin: Viewer, now: Date = new Date()): Promise<void> {
     AdminPolicy.assertAdmin(admin);
     await db.$transaction(async (tx) => {
-      const current = await AiSettingsService.row(tx);
+      const current = await AiSettingsService.storedRow(tx);
       if (!current?.apiKeyCiphertext) return;
       await tx.aiSettings.upsert({
         where: { id: AiSettingsService.ID },

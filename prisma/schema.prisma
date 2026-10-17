@@ -812,6 +812,30 @@ model AiSettings {
   @@map("ai_settings")
 }
 
+/// One encrypted API key per AI provider (migration 0053; Admin > AI settings > Provider keys). provider is the key:
+/// "openai" | "anthropic" | "xai" | "other" (OpenAI-compatible, with baseUrl). ciphertext is AES-256-GCM bound to
+/// "ai_provider_keys:<provider>" (AiKeyCipher) and never leaves the server. Never deleted (trigger): deleting a key
+/// clears ciphertext and last4.
+model AiProviderKey {
+  provider       String    @id
+  /// "v1:<iv>:<tag>:<ciphertext>" (base64). Never returned to the client.
+  ciphertext     String?
+  last4          String?
+  /// Display name for "other" (shown in pickers as "Other · <label>").
+  label          String?
+  /// https base URL, "other" only (DB check constraint).
+  baseUrl        String?
+  setAt          DateTime?
+  setBy          String?
+  lastTestedAt   DateTime?
+  /// "ok" | "rejected" | "unreachable" | "error" (DB check constraint).
+  lastTestStatus String?
+  updatedAt      DateTime  @default(now())
+  updatedBy      String
+
+  @@map("ai_provider_keys")
+}
+
 /// Append-only change log of AI settings (trigger). Key changes never carry values (check constraint).
 model AiSettingsHistory {
   id        String   @id @default(uuid()) @db.Uuid
