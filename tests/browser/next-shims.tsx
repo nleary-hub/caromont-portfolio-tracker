@@ -9,3 +9,6 @@ export function dynamic(load: () => Promise<ComponentType<Record<string, unknown
   };
 }
 export function Link(props: AnchorHTMLAttributes<HTMLAnchorElement>) { return <a {...props} />; }
+// next/navigation (year-end report button): the harness has no router, so refresh and navigation do nothing.
+export function useRouter() { return { refresh() {}, push() {}, replace() {}, back() {}, forward() {}, prefetch() {} }; }
+export function usePathname() { return "/"; }
