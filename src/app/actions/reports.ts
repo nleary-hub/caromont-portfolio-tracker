@@ -61,7 +61,7 @@ export async function saveReportOptions(_prev: ReportOptionsFormState, form: For
   const viewer = await CurrentViewer.get();
   if (!viewer?.isAdmin) return { ok: false, message: ReportOptionsForm.NOT_AUTHORIZED };
   const scope = await ServiceLineAccess.activeFor(viewer);
-  const state = await ReportOptionsForm.submit(viewer, { departments: form.getAll("departments"), totalsGrid: form.get("totalsGrid") }, undefined, scope);
+  const state = await ReportOptionsForm.submit(viewer, { departments: form.getAll("departments"), totalsGrid: form.get("totalsGrid"), waitingOnField: form.get("waitingOnField"), showWaitingOn: form.get("showWaitingOn") }, undefined, scope);
   if (state?.ok) {
     revalidatePath("/admin/settings");
     revalidatePath("/reports");

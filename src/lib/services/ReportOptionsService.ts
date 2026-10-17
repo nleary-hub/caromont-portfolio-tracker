@@ -17,6 +17,11 @@ export interface StoredReportOptions {
   totalsGrid: TotalsGridMode;
   /** Weekly PDF colors (migration 0027). Absent in history rows and snapshots saved before it (defaults). */
   colors: ReportColorsValue;
+  /**
+   * "Waiting on" line under blocked projects (Report contents). Written ONLY when turned off: on is the default, so
+   * every history row and frozen optionsJson saved with the default stays exactly as before this option existed.
+   */
+  showWaitingOn?: false;
 }
 
 /** Admin report options frozen into each snapshot (ReportSnapshot.optionsJson, as StoredReportOptions). */
@@ -35,6 +40,12 @@ export interface ReportOptionsValue {
    * and, like the rest, in each history row and snapshot. Snapshots frozen before 0027 read as the defaults.
    */
   colors: ReportColorsValue;
+  /**
+   * Add a "Waiting on: ..." line under projects with open blockers (on by default). Read when the report rows are
+   * built (ReportDataLoader fills ReportRow.waitingOn only when on); the PDF itself only looks at the rows, so frozen
+   * snapshots never need this value re-read.
+   */
+  showWaitingOn: boolean;
 }
 
 type Reader = Pick<Prisma.TransactionClient, "reportOptions" | "reportOptionsHistory">;
@@ -52,7 +63,7 @@ export class ReportOptionsService {
   static readonly ID = "report";
 
   static defaults(options: readonly DepartmentKey[] = DepartmentFilter.OPTIONS): ReportOptionsValue {
-    return { showKeyPage: true, departments: DepartmentFilter.all(options), totalsGrid: TotalsGridPlacement.DEFAULT, colors: { ...ReportColorScheme.DEFAULTS } };
+    return { showKeyPage: true, departments: DepartmentFilter.all(options), totalsGrid: TotalsGridPlacement.DEFAULT, colors: { ...ReportColorScheme.DEFAULTS }, showWaitingOn: true };
   }
 
   /**
@@ -73,6 +84,7 @@ export class ReportOptionsService {
       departments,
       totalsGrid: TotalsGridPlacement.normalize(r.totalsGrid),
       colors: ReportColorScheme.normalize(r.colors),
+      showWaitingOn: typeof r.showWaitingOn === "boolean" ? r.showWaitingOn : true,
     };
   }
 
@@ -83,6 +95,7 @@ export class ReportOptionsService {
       departments: patch.departments !== undefined ? DepartmentFilter.normalize(patch.departments, options) : before.departments,
       totalsGrid: patch.totalsGrid !== undefined ? TotalsGridPlacement.normalize(patch.totalsGrid) : before.totalsGrid,
       colors: patch.colors !== undefined ? ReportColorScheme.normalize({ ...before.colors, ...patch.colors }) : before.colors,
+      showWaitingOn: typeof patch.showWaitingOn === "boolean" ? patch.showWaitingOn : before.showWaitingOn,
     };
   }
 
@@ -93,6 +106,8 @@ export class ReportOptionsService {
       excludedDepartments: DepartmentFilter.toStored(value.departments, options).excluded,
       totalsGrid: value.totalsGrid,
       colors: { bar: value.colors.bar, band: value.colors.band },
+      // Only when off, so default-valued rows and snapshots keep their exact JSON.
+      ...(value.showWaitingOn === false ? { showWaitingOn: false as const } : {}),
     };
   }
 
@@ -100,6 +115,7 @@ export class ReportOptionsService {
     return (
       a.showKeyPage === b.showKeyPage &&
       a.totalsGrid === b.totalsGrid &&
+      a.showWaitingOn === b.showWaitingOn &&
       DepartmentFilter.equals(a.departments, b.departments, options) &&
       ReportColorScheme.equals(a.colors, b.colors)
     );

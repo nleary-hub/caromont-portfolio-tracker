@@ -99,6 +99,20 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
 - Sample: `npx vite-node --config vitest.config.ts scripts/render-sample-report.mts out.pdf [--draft]`
   (fictional data from `SampleReportData`).
 
+## Waiting on line (blocked projects)
+
+Admin > Report contents > Blocked projects: "Add a 'Waiting on' line under blocked projects" (on by default).
+When on, a project with open blockers gets one extra line under its note: an amber "Waiting on:" label, then
+each open blocker with its days open, clipped to one line. `ReportRow.waitingOn` carries the text and is present
+only when the project has an open blocker AND the option was on when the rows were built (the loader decides;
+the renderer only looks at the row). So:
+
+- projects with no open blockers, and every report with the option off, print byte-identical to before;
+- frozen snapshots never change: rows frozen before this existed have no `waitingOn`;
+- the key page is unchanged, and handoff.json does not include the line;
+- the option is stored in report_options_history JSON as `showWaitingOn: false` only when turned off, so
+  default-valued history rows and snapshot optionsJson keep their exact JSON.
+
 ## Completed this period
 
 A Complete project is listed once, in the first FROZEN report after it became Complete, then drops off.

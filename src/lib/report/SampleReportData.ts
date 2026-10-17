@@ -69,7 +69,25 @@ export class SampleReportData {
   /** Fictional contracts leads for the sample (Morgan Ellsworth is the longest, matching the longest live name). */
   static readonly CONTRACTS_LEADS: readonly string[] = ["Sam Delacroix", "Jesse Okafor", "Morgan Ellsworth", "Dana Whitlock", "Alex Rivera"];
 
-  static rows(): ReportRow[] {
+  /**
+   * Fictional open blockers ("Waiting on" line) by seed index: a project blocker, external blockers, one row with no
+   * note, one long line that clips. Applied only when rows() is asked for them, so the default sample (and every
+   * golden hash built from it) is unchanged.
+   */
+  static readonly WAITING_ON: Readonly<Record<number, string>> = {
+    1: "Northbeam Interiors revised bid · 12 days",
+    3: "Sample: EP lab mapping system upgrade · 9 days; Biomed downtime sign-off · 4 days",
+    4: "IT security review (Harborview IT) · 21 days",
+    10: "Contrast agent formulary approval · 6 days",
+    17: "Neurology criteria review with Dr. Sample M · 14 days",
+    22: "Strategy volume data from planning; certificate of need consultant contract signature; Owner T follow-up · 33 days",
+  };
+
+  /**
+   * Sample rows. `waitingOn`: true adds WAITING_ON (as ReportDataLoader does with the Report contents option on);
+   * `none` stands for the option on with zero open blockers, which must render exactly like the default.
+   */
+  static rows(opts: { waitingOn?: boolean | "none" } = {}): ReportRow[] {
     const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     const rows = SampleReportData.SEEDS.map(([area, name, status, next, due, note, changed, from, updatedOn], i): ReportRow => {
       const overdue = ReportBuilder.isOverdue(
@@ -99,6 +117,7 @@ export class SampleReportData {
         updatedOn,
         statusFrom: from,
         stale: ReportBuilder.isStale({ status, updatedOn }, SampleReportData.REPORT_DATE),
+        ...(opts.waitingOn === true && SampleReportData.WAITING_ON[i] ? { waitingOn: SampleReportData.WAITING_ON[i] } : {}),
       };
     });
     return ReportBuilder.sort(rows);
@@ -152,8 +171,8 @@ export class SampleReportData {
    * hidden). Rows include every sample project; ReportLayout lists and counts only visible statuses,
    * so passing other viewSettings in overrides shows the effect of turning a status on.
    */
-  static docInput(overrides: Partial<ReportDocInput> = {}): ReportDocInput {
-    const rows = SampleReportData.rows();
+  static docInput(overrides: Partial<ReportDocInput> = {}, opts: { waitingOn?: boolean | "none" } = {}): ReportDocInput {
+    const rows = SampleReportData.rows(opts);
     // Classic settings (no chips key: flags column, legend and inline owner, as every report before migration 0034).
     // Pass viewSettings with showStatusChips to see the Milestone owner column and the chips switch.
     const viewSettings = overrides.viewSettings ?? ViewSettings.normalize("report", null);
