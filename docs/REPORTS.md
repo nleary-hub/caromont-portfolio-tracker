@@ -103,9 +103,14 @@ This branch adds only `$schema` + `crons`. Whichever merges second resolves by k
 
 Admin > Report contents > Blocked projects: "Add a 'Waiting on' line under blocked projects" (on by default).
 When on, a project with open blockers gets one extra line under its note: an amber "Waiting on:" label, then
-each open blocker with its days open, clipped to one line. `ReportRow.waitingOn` carries the text and is present
-only when the project has an open blocker AND the option was on when the rows were built (the loader decides;
-the renderer only looks at the row). So:
+each open blocker, clipped to one line. `ReportRow.waitingOn` carries the text and is present only when the
+project has an open blocker AND the option was on when the rows were built (the loader decides; the renderer only
+looks at the row).
+
+What prints (`WaitingOnLoader`, CTO decision Oct 17, 2026): every open (not soft-removed) Blocked-by dependency,
+as the blocking project's name plus ": note" when it has one, then every open (unresolved) external blocker as
+"waiting on: description"; oldest first within each kind, joined with "; " (`WaitingOnText`). No date or note
+filter. New freezes carry the text in their frozen rows, so a re-render prints the same line. So:
 
 - projects with no open blockers, and every report with the option off, print byte-identical to before;
 - frozen snapshots never change: rows frozen before this existed have no `waitingOn`;

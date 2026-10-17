@@ -27,5 +27,5 @@ Plain-language notes for Nick. Newest first.
 - Projects that are not waiting on anything print exactly as before, and turning the option off prints
   exactly as before. Reports that are already frozen never change.
 - The status and flag key page is unchanged.
-- The line is filled in from the new blockers once that part lands (next steps in this PR). Until then no
-  real report shows it.
+- The line lists every open "Blocked by" project (by name, plus its note) and every open outside blocker from the
+  drawer's "Dependencies & blockers". Removed and resolved ones never print. There is no date cut-off.
