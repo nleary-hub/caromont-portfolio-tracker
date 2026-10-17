@@ -27,7 +27,6 @@ import { AiAlert, AiNoteAssistant, AiUndoLine, type AiNoteActions } from "./AiNo
 import { AiReviewPanel, type AiReviewActions } from "./AiReviewPanel";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 import { StartDateDefaultTag } from "./StartDateDefaultTag";
-import { DependencyCopy } from "@/lib/projects/DependencyCopy";
 
 /**
  * Resolves to the saved project's id, or a message plus per-field errors from ProjectValidator. `milestones`
@@ -636,11 +635,8 @@ export function ProjectEditForm({
           </Field>
         </Section>
 
-        {dependencies && (
-          <Section title={DependencyCopy.TITLE} caption={DependencyCopy.CAPTION}>
-            {dependencies}
-          </Section>
-        )}
+        {/* "Dependencies & blockers" renders its own heading with the open-count chip. */}
+        {dependencies}
 
         {trailing}
 

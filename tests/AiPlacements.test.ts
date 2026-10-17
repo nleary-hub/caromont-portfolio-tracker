@@ -175,15 +175,17 @@ describe("placement 5: Suggested related projects", () => {
     expectReady(h, "ai-tool-related_links-propose");
   });
   it("model off: greyed with the note", () => expectPaused(links(OFF), "ai-tool-related_links-propose", OFF));
-  it("Link goes through the normal Dependencies add (history entry), Dismiss rejects", () => {
+  // 1a (same fix as #86): the drawer no longer shows Find related; it saved related projects as Blocked by.
+  it("the drawer renders no AI links panel and no Suggested related projects subsection", () => {
     const src = readFileSync("src/components/ProjectDashboard.tsx", "utf8");
-    expect(src).toContain("admin.dependencyActions!.add(selected.id");
-    const review = html(createElement(AiLinksPanel, { inline: true, saved: [], disabledNote: null, onLink: async () => ({ ok: true as const }), initial: { kind: "review", proposalId: "x", links: [{ line: 1, aId: "p1", aName: "Example Clinic refresh", bId: "p2", bName: "Sample Lab move", reason: "Same vendor" }] } as never }));
-    expect(review).toContain(C.LINK_CONFIRM);
-    expect(review).toContain(C.LINK_DISMISS);
+    expect(src).not.toContain("AiLinksPanel");
+    expect(src).not.toContain("related_links");
+    expect(src).not.toContain("ai-related-section");
   });
-  it("feature off: no subsection", () => {
-    expect(readFileSync("src/components/ProjectDashboard.tsx", "utf8")).toContain('aiPlacements && "related_links" in aiPlacements && (');
+  it("the only dependency write path in the drawer is the Dependencies & blockers section", () => {
+    const src = readFileSync("src/components/ProjectDashboard.tsx", "utf8");
+    expect(src).not.toMatch(/dependencyActions!?\.add\(/);
+    expect(src).toContain("actions={admin.dependencyActions}");
   });
 });
 

@@ -4,8 +4,6 @@ import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 /** Every user-facing string of the drawer "Dependencies & blockers" section (short and plain, no em dashes). */
 export class DependencyCopy {
   static readonly TITLE = "Dependencies & blockers";
-  /** Interim caption for the old editor (removed with the new drawer section). */
-  static readonly CAPTION = "Saves as you pick";
   static readonly PROJECTS = "Projects";
   static readonly EXTERNAL = "External";
   static readonly BLOCKED_BY = "Blocked by";

@@ -473,3 +473,16 @@ describe("Dependencies stay out of the frozen report path", () => {
     }
   });
 });
+
+describe("Drawer section (Figma Bro spec, source checks)", () => {
+  const src = read("src/components/DependenciesSection.tsx");
+  it("a rejected add marks the picker with the red ring and points at the red alert box", () => {
+    expect(src).toMatch(/data-invalid=\{invalid \|\| undefined\}/);
+    expect(src).toMatch(/aria-invalid=\{invalid \? true : undefined\}/);
+    expect(src).toMatch(/aria-describedby=\{invalid \? errorId : undefined\}/);
+    expect(read("src/styles/polish.css")).toMatch(/\.pb-drawer \[data-invalid\] :is\(input, select, textarea\) \{\s*border-color: #ff8a8a/);
+  });
+  it("reuses the shared pieces: PickerSelect, DueDatePopover, AiAlert", () => {
+    for (const m of ["PickerSelect", "DueDatePopover", "AiAlert"]) expect(src).toContain(m);
+  });
+});

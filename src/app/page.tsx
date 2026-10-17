@@ -5,7 +5,16 @@ import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { loadProjectHistory } from "@/app/actions/history";
-import { addProjectDependency, loadProjectDependencies, removeProjectDependency } from "@/app/actions/dependencies";
+import {
+  addProjectBlocker,
+  addProjectDependency,
+  loadProjectDependencies,
+  removeProjectDependency,
+  resolveProjectBlocker,
+  updateProjectBlocker,
+  updateProjectDependency,
+} from "@/app/actions/dependencies";
+import type { BlockerInput, DependencyInput } from "@/lib/services/ProjectDependencyService";
 import { recordSuggestionOutcome, suggestNote } from "@/app/actions/ai";
 import { applyAiChange, proposeAiChange, rejectAiChange, undoAiChange } from "@/app/actions/aiReview";
 import type { AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
@@ -372,19 +381,36 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   "use server";
                   return loadProjectDependencies(projectId);
                 },
-                add: async (projectId: string, blockedById: string) => {
+                add: async (projectId: string, blockedById: string, input?: DependencyInput) => {
                   "use server";
-                  return addProjectDependency(projectId, blockedById);
+                  return addProjectDependency(projectId, blockedById, input);
                 },
-                remove: async (projectId: string, blockedById: string) => {
+                update: async (projectId: string, blockedById: string, input: DependencyInput) => {
                   "use server";
-                  return removeProjectDependency(projectId, blockedById);
+                  return updateProjectDependency(projectId, blockedById, input);
+                },
+                remove: async (projectId: string, blockedById: string, viewFor?: string) => {
+                  "use server";
+                  return removeProjectDependency(projectId, blockedById, viewFor);
+                },
+                addBlocker: async (projectId: string, input: BlockerInput) => {
+                  "use server";
+                  return addProjectBlocker(projectId, input);
+                },
+                updateBlocker: async (projectId: string, blockerId: string, input: BlockerInput) => {
+                  "use server";
+                  return updateProjectBlocker(projectId, blockerId, input);
+                },
+                resolveBlocker: async (projectId: string, blockerId: string, resolution: string) => {
+                  "use server";
+                  return resolveProjectBlocker(projectId, blockerId, resolution);
                 },
               },
             },
           }
         : {})}
       historyAction={loadProjectHistory}
+      dependencyLoadAction={loadProjectDependencies}
       {...(aiVoice ? { aiVoice } : {})}
       {...(aiPlacements ? { aiPlacements } : {})}
       signOutAction={signOutAction}

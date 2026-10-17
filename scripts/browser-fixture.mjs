@@ -41,4 +41,4 @@ createServer(async (req, res) => {
     if (!route) { res.writeHead(404); res.end(); return; }
     res.setHeader("Content-Type", route[1]); res.end(await readFile(route[0]));
   } catch { res.writeHead(500); res.end(); }
-}).listen(4173, "127.0.0.1", () => console.log("Fictional dashboard fixture: http://127.0.0.1:4173"));
+}).listen(Number(process.env.FIXTURE_PORT || 4173), "127.0.0.1", () => console.log(`Fictional dashboard fixture: http://127.0.0.1:${process.env.FIXTURE_PORT || 4173}`));

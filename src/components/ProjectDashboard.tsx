@@ -25,7 +25,8 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { ProjectEditFormHandle, ProjectFormSubmit } from "./ProjectEditForm";
-import { DependenciesEditor, type DependencyActions } from "./DependenciesEditor";
+import { DependenciesSection, type DependencyActions } from "./DependenciesSection";
+import type { DependencyActionResult } from "@/app/actions/dependencies";
 import { DependencyCopy } from "@/lib/projects/DependencyCopy";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import type { AiOutcome, AiSuggestResult } from "@/lib/services/AiWritingService";
@@ -66,7 +67,6 @@ const AiBriefCard = dynamic(() => import("./AiPlacements").then((m) => m.AiBrief
 const AiQuickCapture = dynamic(() => import("./AiPlacements").then((m) => m.AiQuickCapture));
 const AiRowMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiRowMenu));
 const AiToolbarMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiToolbarMenu));
-const AiLinksPanel = dynamic(() => import("./AiLinksPanel").then((m) => m.AiLinksPanel));
 const AiNextStepPanel = dynamic(() => import("./AiNextStepPanel").then((m) => m.AiNextStepPanel));
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
@@ -181,6 +181,8 @@ interface Props {
   signOutAction: () => Promise<void>;
   /** Project detail > History for the signed-in viewer (everyone; the server applies the visibility rules). */
   historyAction?: HistoryLoader;
+  /** Read-only "Dependencies & blockers" load for non-admins (admins use admin.dependencyActions). */
+  dependencyLoadAction?: (projectId: string) => Promise<DependencyActionResult>;
   /** Dashboard header Voice chat (AiVoiceChatDrawer, built by the page): present only when AI and voice_chat are on. */
   aiVoice?: ReactNode;
   /** AI tools where people work (placement spec). Absent key = that feature is off (not rendered). */
@@ -236,6 +238,7 @@ export function ProjectDashboard({
   layout: layoutProp,
   signOutAction,
   historyAction,
+  dependencyLoadAction,
   aiVoice,
   aiPlacements,
   initialProjectId,
@@ -263,8 +266,6 @@ export function ProjectDashboard({
   };
   const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
   // AI toolbar menu: rows picked with Ctrl or Cmd click for "Bulk edit selected (N)".
-  // Bumped after Suggested related projects > Link so the Dependencies list reloads.
-  const [depsVersion, setDepsVersion] = useState(0);
   // Row "..." AI shortcuts: open the edit drawer, then focus that field's AI button once the form is there.
   const rowShortcuts: AiRowShortcut[] = [
     ...(admin && aiPlacements && "next_step" in aiPlacements ? [{ key: "next_step" as const, label: AiToolsCopy.NEXT_INLINE, note: aiPlacements.next_step ?? null }] : []),
@@ -881,6 +882,9 @@ export function ProjectDashboard({
             today={today}
             onClose={requestClose}
             headerTag={blockedCount?.id === selected.id && blockedCount.n > 0 ? <BlockedByTag n={blockedCount.n} /> : null}
+            {...(!admin && dependencyLoadAction
+              ? { dependencies: <DependenciesSection key={`deps-ro-${selected.id}`} projectId={selected.id} actions={{ load: dependencyLoadAction }} onOpenProject={setSelectedId} /> }
+              : {})}
             {...(aiPlacements && "meeting_brief" in aiPlacements ? { headerAction: <AiBriefButton note={aiPlacements.meeting_brief ?? null} projectName={selected.name} /> } : {})}
             peopleEditor={
               admin ? (
@@ -933,29 +937,15 @@ export function ProjectDashboard({
                   {...(aiPlacements && "next_step" in aiPlacements ? { aiNextStep: <AiNextStepPanel key={`next-${selected.id}`} inline projects={[{ id: selected.id, name: selected.name }]} initialProject={selected.id} disabledNote={aiPlacements.next_step ?? null} /> } : {})}
                   dependencies={
                     admin.dependencyActions ? (
-                      <>
-                        <DependenciesEditor key={`deps-${selected.id}-${depsVersion}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))} />
-                        {aiPlacements && "related_links" in aiPlacements && (
-                          <section aria-labelledby="ai-related-title" className="mt-3 flex flex-col gap-2" data-testid="ai-related-section">
-                            <h4 id="ai-related-title" className="text-muted type-label">
-                              {AiToolsCopy.LINKS_SUGGESTED_TITLE}
-                            </h4>
-                            <AiLinksPanel
-                              key={`links-${selected.id}`}
-                              inline
-                              focus={selected.name}
-                              saved={[]}
-                              disabledNote={aiPlacements.related_links ?? null}
-                              onLink={async (aId, bId) => {
-                                // Normal edit path: the same add as the Dependencies picker (checks, history entry).
-                                const r = await admin.dependencyActions!.add(selected.id, aId === selected.id ? bId : aId);
-                                if (r.ok) setDepsVersion((v) => v + 1);
-                                return r.ok ? { ok: true as const } : { ok: false as const, error: r.error };
-                              }}
-                            />
-                          </section>
-                        )}
-                      </>
+                      // AI "Find related" is gone from the drawer: it saved related projects as Blocked by (same fix
+                      // as #86). AI blocker suggestions come back later with a direction and a reason.
+                      <DependenciesSection
+                        key={`deps-${selected.id}`}
+                        projectId={selected.id}
+                        actions={admin.dependencyActions}
+                        onOpenProject={setSelectedId}
+                        onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))}
+                      />
                     ) : null
                   }
                   people={
@@ -1129,9 +1119,12 @@ export function ProjectDrawer({
   historyAction,
   headerAction,
   headerTag,
+  dependencies,
   entering = false,
   onEntered,
 }: {
+  /** Read-only "Dependencies & blockers" (non-admins), under the details. The edit form carries its own. */
+  dependencies?: ReactNode;
   /** True on the render that opens the panel: it slides in once. */
   entering?: boolean;
   onEntered?: () => void;
@@ -1210,6 +1203,7 @@ export function ProjectDrawer({
       ) : row ? (
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-5" data-testid="drawer-readonly">
           <ReadOnlyDetails row={row} today={today} departments={departments} peopleEditor={peopleEditor} previously={history.timeline?.previously} />
+          {dependencies}
           {trailing}
           {/* Admin controls at the bottom of the side panel, below History. */}
           {adminControls}

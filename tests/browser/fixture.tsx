@@ -14,7 +14,7 @@ import { SampleReportData } from "../../src/lib/report/SampleReportData";
 import { TemplatesFixture } from "./templates-fixture";
 import { AiProviderFixture } from "./ai-provider-fixture";
 import { KeysFixture } from "./keys-fixture";
-import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
+import { DepsFixture } from "./deps-fixture";
 
 // Fictional data and in-memory actions only. No auth, database, network actions or production configuration.
 const rows: DashboardRow[] = ["Zulu", "Alpha", "Bravo"].map((name, i) => ({
@@ -33,17 +33,11 @@ if (new URLSearchParams(window.location.search).has("sample")) {
   (window as unknown as { __pdfOrder?: string[] }).__pdfOrder = sample.map(r => r.projectId);
   rows.splice(0, rows.length, ...[...sample].reverse().map(r => ({ ...r, id: r.projectId, includeInReport: true, updatedOn: r.updatedOn ?? "2026-09-29" }) as unknown as DashboardRow));
 }
+// ?deps=demo|empty|fail: fictional projects with dependencies and external blockers (DepsFixture).
+const depsMode = new URLSearchParams(window.location.search).get("deps");
+const deps = new DepsFixture(depsMode ?? "demo");
+if (depsMode) rows.splice(0, rows.length, ...DepsFixture.rows());
 const noop = async () => null;
-// Fictional dependencies: Zulu is blocked by Bravo, and Alpha is blocked by Zulu (so Zulu blocked by Alpha is a loop).
-let edges: DependencyEdge[] = [{ projectId: "fictional-0", blockedById: "fictional-2" }, { projectId: "fictional-1", blockedById: "fictional-0" }];
-const depView = (id: string) => {
-  const listed = new Set(edges.filter(e => e.projectId === id).map(e => e.blockedById));
-  const all = rows.map(r => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name));
-  // Interim (1a data model): the old editor reads blockedBy[].project; the drawer section and its fixture come next.
-  const view = { canEdit: true, blockedBy: all.filter(r => listed.has(r.id)).map(r => ({ project: { ...r, status: "OnTrack" as const }, note: null, milestone: null, since: "2026-10-04" })),
-    blocking: [], blockers: [], resolved: [], options: all.filter(r => r.id !== id && !listed.has(r.id)), milestones: [], people: [], openCount: listed.size, today: "2026-10-04" };
-  return { ok: true as const, view };
-};
 const counts = { NotStarted: 0, OnTrack: 3, AtRisk: 0, OffTrack: 0, OnHold: 0, Complete: 0, Cancelled: 0 };
 const admin: AdminDashboardProps = {
   viewSettings: { dashboard: ViewSettings.defaults("dashboard"), report: ViewSettings.defaults("report") },
@@ -82,19 +76,7 @@ const admin: AdminDashboardProps = {
   },
   createProjectAction: async () => ({ ok: true, id: "fictional-new" }),
   saveColumnLayoutAction: noop, saveRowOrderAction: noop, resetRowOrderAction: noop,
-  dependencyActions: {
-    load: async id => depView(id),
-    add: async (id, by) => {
-      const problem = DependencyGraph.check(edges, id, by);
-      if (problem) return { ok: false as const, error: DependencyGraph.MESSAGES[problem] };
-      edges.push({ projectId: id, blockedById: by });
-      return depView(id);
-    },
-    remove: async (id, by) => {
-      edges = edges.filter(e => !(e.projectId === id && e.blockedById === by));
-      return depView(id);
-    },
-  },
+  dependencyActions: deps.actions(),
 };
 // ?ai=list or ?ai=failed: Admin > AI settings pickers with a fictional OpenAI model list, or the list-failed fallback.
 const aiMode = new URLSearchParams(window.location.search).get("ai");
@@ -128,13 +110,14 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
   </OpenAiModelListProvider>
 ) : (
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}
-    today="2026-10-04" userEmail="fictional@example.org" userName="Fictional Reviewer"
+    today={depsMode ? DepsFixture.TODAY : "2026-10-04"} userEmail="fictional@example.org" userName="Fictional Reviewer"
     latestReport={null} loadError={null} serviceLine={ServiceLine.SEED}
     // ?line=1: a fictional active line with its own contracts-lead pick-list.
     {...(new URLSearchParams(window.location.search).has("line") ? { line: { ...ServiceLine.defaultScope(), owners: ["Fictional Owner"], requesters: ["Fictional Requester"], contractsLeads: ["Fictional Lead One", "Fictional Lead Two"] } } : {})}
     // ?viewer=readonly: the same dashboard for a non-admin (the drawer shows the fields read-only).
     admin={new URLSearchParams(window.location.search).get("viewer") === "readonly" ? undefined : admin}
     completedFiscalYear={new URLSearchParams(window.location.search).has("fy") ? { label: "FY27", start: "2026-07-01", count: 4 } : undefined}
+    dependencyLoadAction={deps.readOnlyLoad}
     signOutAction={async () => {}} historyAction={async id => {
       // A late result must never reintroduce a previous project's history.
       await new Promise(resolve => setTimeout(resolve, id === "fictional-0" ? 120 : 20));
