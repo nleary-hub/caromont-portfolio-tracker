@@ -15,6 +15,8 @@ export class FreezeDisabledError extends Error {
 export class FreezeGuard {
   /** The UI note; the same string as the server error. */
   static readonly NOTE = FreezeDisabledError.MESSAGE;
+  /** Check Drive on a preview: the UI note and the Drive check service message (one string). */
+  static readonly DRIVE_CHECK_NOTE = "Drive checks are turned off on preview deployments.";
 
   static disabled(): boolean {
     return process.env.VERCEL_ENV === "preview";

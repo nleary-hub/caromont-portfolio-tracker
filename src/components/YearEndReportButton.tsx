@@ -3,6 +3,7 @@
 import { useRouter } from "next/navigation";
 import { useEffect, useId, useState, useTransition } from "react";
 import { generateYearEndReport } from "@/app/actions/reports";
+import { FREEZE_DISABLED_BUTTON, FreezeDisabledNote } from "@/components/FreezeDisabledNote";
 import { YearEndCategories, YearEndCopy, type YearEndCategory } from "@/lib/report/YearEndReportData";
 
 const GHOST = "h-8 rounded-control border border-line px-3.5 type-table-strong hover:text-fg";
@@ -27,14 +28,10 @@ export function YearEndReportButton({
   const [open, setOpen] = useState(initialOpen && disabledNote === null);
   return (
     <>
-      <button type="button" className={disabledNote !== null ? `${GHOST} disabled:opacity-60` : GHOST} onClick={() => setOpen(true)} disabled={disabledNote !== null} aria-haspopup="dialog" data-testid="year-end-button">
+      <button type="button" className={disabledNote !== null ? `${GHOST} ${FREEZE_DISABLED_BUTTON}` : GHOST} onClick={() => setOpen(true)} disabled={disabledNote !== null} aria-haspopup="dialog" data-testid="year-end-button">
         {YearEndCopy.BUTTON}
       </button>
-      {disabledNote !== null && (
-        <span data-testid="year-end-disabled-note" className="type-caption text-muted">
-          {disabledNote}
-        </span>
-      )}
+      {disabledNote !== null && <FreezeDisabledNote note={disabledNote} testId="year-end-disabled-note" />}
       {open && disabledNote === null && <YearEndDialog years={years} current={current} onClose={() => setOpen(false)} />}
     </>
   );

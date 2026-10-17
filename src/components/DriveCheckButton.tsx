@@ -11,7 +11,7 @@ const FAILED = "Drive check failed. Try again.";
 /**
  * Admin > Report freeze: next to the Drive folder name. Saves, reads back and removes a small test file in the report
  * folder (no freeze, no email). Secondary button; the result stays inline under it (not a toast).
- * `disabledNote`: set by the server on preview deployments; the button is disabled and the note shows.
+ * `disabledNote`: set by the server on preview deployments; the button is disabled, the note shows and the helper line is dimmed.
  */
 export function DriveCheckButton({ folder, help, initialResult = null, disabledNote = null }: { folder: string; help: string; initialResult?: DriveCheckResult | null; disabledNote?: string | null }) {
   const [result, setResult] = useState<DriveCheckResult | null>(initialResult);
@@ -43,7 +43,8 @@ export function DriveCheckButton({ folder, help, initialResult = null, disabledN
         </button>
         {disabledNote !== null && <FreezeDisabledNote note={disabledNote} testId="drive-check-disabled-note" />}
       </div>
-      <p className="text-muted type-caption">{help}</p>
+      {/* On a preview the button is disabled, so the helper describing the test file is dimmed with it. */}
+      <p className={disabledNote !== null ? "text-muted type-caption opacity-60" : "text-muted type-caption"}>{help}</p>
       {result && !pending && (
         <div role="status" data-testid="drive-check-result" data-step={result.ok ? "ok" : result.step}>
           {result.ok ? (

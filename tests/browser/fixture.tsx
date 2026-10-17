@@ -121,7 +121,7 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
         <a href="#" className="type-table-strong text-accent">Generate PDF now (draft)</a>
       </div>
       <DriveCheckButton folder="Fictional Report Folder" help="Saves a small test file to Fictional Report Folder, then removes it. Nothing is frozen or sent."
-        disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />
+        disabledNote={FreezeGuard.disabled() ? FreezeGuard.DRIVE_CHECK_NOTE : null} />
     </section>
   </main>
 ) : closedPage ? (

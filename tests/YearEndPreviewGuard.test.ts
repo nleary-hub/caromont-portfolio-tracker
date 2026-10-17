@@ -115,3 +115,25 @@ describe("YearEndReportService.generate outside preview is unchanged", () => {
     expect(fake.state.yearEndReports).toHaveLength(1);
   }, 30000);
 });
+
+describe("YearEndReportButton", () => {
+  it("on a preview: disabled with the shared note component and disabled style; no dialog even with initialOpen", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { YearEndReportButton } = await import("@/components/YearEndReportButton");
+    const { FREEZE_DISABLED_BUTTON } = await import("@/components/FreezeDisabledNote");
+    const off = renderToStaticMarkup(createElement(YearEndReportButton, { years: ["FY27"], current: "FY27", initialOpen: true, disabledNote: FreezeGuard.NOTE }));
+    expect(off).toContain(`<span data-testid="year-end-disabled-note" class="type-caption text-muted">${FreezeGuard.NOTE}</span>`);
+    expect(off).toMatch(new RegExp(`<button type="button" class="[^"]*${FREEZE_DISABLED_BUTTON}" disabled=""`));
+    expect(off).not.toContain('role="dialog"');
+  });
+
+  it("outside preview the markup is exactly what it was before (no prop and null render the same)", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { YearEndReportButton } = await import("@/components/YearEndReportButton");
+    const html = renderToStaticMarkup(createElement(YearEndReportButton, { years: ["FY27"], current: "FY27" }));
+    expect(html).toBe('<button type="button" class="h-8 rounded-control border border-line px-3.5 type-table-strong hover:text-fg" aria-haspopup="dialog" data-testid="year-end-button">Year-end report</button>');
+    expect(renderToStaticMarkup(createElement(YearEndReportButton, { years: ["FY27"], current: "FY27", disabledNote: null }))).toBe(html);
+  });
+});
