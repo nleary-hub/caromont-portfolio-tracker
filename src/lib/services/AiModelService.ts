@@ -187,7 +187,7 @@ export class AiModelService {
     if (!settings?.enabled) return [];
     const on = features.filter((f) => f.enabled && !f.killedByEnv);
     const own = (f: AiFeatureView) => (f.ownModel ? "" : (choices[f.feature]?.model ?? ""));
-    // The writing assistant (Draft from bullets, Fit for report) follows the main switch; the rest have toggles.
+    // Features with no model of their own (Draft and Fit included since PR B) follow the AI settings model.
     const main = (settings.model ?? "").trim() === modelId ? [AiCopy.SWITCH_LABEL, ...on.filter((f) => !f.ownModel && !own(f)).map((f) => f.label)] : [];
     // Text features with their own model (PR B) are named when that model is theirs.
     const text = on.filter((f) => !f.ownModel && own(f) === modelId).map((f) => f.label);

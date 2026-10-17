@@ -18,8 +18,14 @@ export type AiLiveFeature = "voice_chat";
 /** The Template AI assistant on Admin > Milestone templates (draft a template, edit one with AI). */
 export type AiTemplateFeature = "template_ai";
 
+/**
+ * The writing assistant's one-shot actions in the update-note editor (Draft from bullets, Fit for report; AiPrompts
+ * features, ai_usage_log.feature). PR B gives each its own row (toggle, provider and model) next to Revise with AI.
+ */
+export type AiWritingToggle = "draft_from_bullets" | "fit_for_report";
+
 /** Every feature with a toggle on Admin > AI settings. */
-export type AiToggleFeature = AiReviewFeature | AiToolFeature | AiInputFeature | AiLiveFeature | AiTemplateFeature;
+export type AiToggleFeature = AiWritingToggle | AiReviewFeature | AiToolFeature | AiInputFeature | AiLiveFeature | AiTemplateFeature;
 
 /**
  * Per-feature kill switches for the review-then-apply layer. Every feature is ON by default; setting its environment
@@ -28,6 +34,8 @@ export type AiToggleFeature = AiReviewFeature | AiToolFeature | AiInputFeature |
  */
 export class AiFeatureFlags {
   static readonly FLAGS: Readonly<Record<AiToggleFeature, string>> = {
+    draft_from_bullets: "AI_FEATURE_DRAFT_FROM_BULLETS",
+    fit_for_report: "AI_FEATURE_FIT_FOR_REPORT",
     revise_note: "AI_FEATURE_REVISE_NOTE",
     meeting_notes: "AI_FEATURE_MEETING_NOTES",
     bulk_edit: "AI_FEATURE_BULK_EDIT",
@@ -47,8 +55,11 @@ export class AiFeatureFlags {
   /** AI tools page features, in step order. */
   static readonly TOOL_FEATURES: readonly AiToolFeature[] = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "request_to_project", "meeting_brief", "related_links"];
 
-  /** Everything with a toggle on the settings page, in display order. */
-  static readonly ALL: readonly AiToggleFeature[] = [...AiFeatureFlags.FEATURES, ...AiFeatureFlags.TOOL_FEATURES, "dictation", "voice_chat", "template_ai"];
+  /** The writing assistant's Draft and Fit rows (PR B), shown first with Revise with AI. */
+  static readonly WRITING_FEATURES: readonly AiWritingToggle[] = ["draft_from_bullets", "fit_for_report"];
+
+  /** Everything with a toggle on the settings page, in display order: the writing assistant (Draft, Fit, Revise) first. */
+  static readonly ALL: readonly AiToggleFeature[] = [...AiFeatureFlags.WRITING_FEATURES, ...AiFeatureFlags.FEATURES, ...AiFeatureFlags.TOOL_FEATURES, "dictation", "voice_chat", "template_ai"];
 
   /**
    * Features with their own model setting, because they need a different model type than the text features (CTO,
