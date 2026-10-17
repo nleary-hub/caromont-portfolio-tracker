@@ -134,9 +134,14 @@ export class AiCopy {
   static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone, and pick the provider and model each text feature uses. Until you pick one, a feature uses the model chosen above. Voice chat and Dictation have their own models and run on OpenAI.";
   static readonly FEATURE_ON_HELP = "On for everyone.";
   static readonly FEATURE_OFF_HELP = "Off for everyone. The button is hidden.";
-  static readonly FEATURE_REVISE_NOTE = "Revise with AI on the update note";
+  static readonly FEATURE_REVISE_NOTE = "Revise with AI";
+  /** PR B: the writing assistant's rows on Admin > AI settings > Features (CTO: Draft, Fit for report, Revise with AI). */
+  static readonly FEATURE_DRAFT = "Draft";
+  static readonly FEATURE_FIT = "Fit for report";
 
   static featureLabel(feature: string): string {
+    if (feature === "draft_from_bullets") return AiCopy.FEATURE_DRAFT;
+    if (feature === "fit_for_report") return AiCopy.FEATURE_FIT;
     return feature === "revise_note" ? AiCopy.FEATURE_REVISE_NOTE : (AiToolsCopy.FEATURE_LABELS[feature] ?? feature);
   }
 
@@ -148,11 +153,13 @@ export class AiCopy {
   static readonly PICK_A_MODEL = "Pick a model";
   static readonly PROVIDER_KEY_MISSING = "Provider key missing";
   static readonly PROVIDER_KEY_MISSING_HELP = "This feature's provider has no working key, so it can't run. Add or fix the key in Provider keys, or pick another provider.";
-  static readonly VOICE_OPENAI_ONLY = "Voice runs on OpenAI only for now.";
+  static readonly VOICE_OPENAI_ONLY = "Runs on OpenAI only for now.";
   static readonly PROVIDER_LOCKED = "Voice chat and Dictation run on OpenAI only for now.";
   static readonly PROVIDER_NO_KEY = "That provider has no key. Add one in Provider keys first.";
   static readonly PROVIDER_KEY_FAILING = "That provider's key is failing. Fix it in Provider keys first.";
   static readonly FEATURE_MODEL_SAME_AS_ABOVE = "Uses the model chosen above";
+  /** Caption under a text feature's Model picker when it uses the AI settings model (Figma Bro, Oct 17). */
+  static readonly FEATURE_MODEL_DEFAULT = "Default";
   static readonly HISTORY_MODEL_ABOVE = "the model chosen above";
   static readonly FEATURE_MODEL_TYPE_PLACEHOLDER = "Type a model ID";
   static readonly FEATURES_GRID_HEADERS = ["Feature", "Provider", "Model", "On"] as const;
@@ -167,7 +174,7 @@ export class AiCopy {
   }
 
   static modelNotListed(provider: string): string {
-    return `${AiCopy.featureProviderName(provider)} doesn't list that model for the saved key`;
+    return `${AiCopy.featureProviderName(provider)} doesn't list that model for your saved key.`;
   }
 
   static providerListFailed(provider: string): string {
@@ -219,7 +226,7 @@ export class AiCopy {
     "The API key can't be saved until the server setting AI_SETTINGS_ENCRYPTION_KEY is set. Ask whoever manages the Vercel project to add it, then redeploy.";
   static readonly ENCRYPTION_INVALID =
     "The server setting AI_SETTINGS_ENCRYPTION_KEY is not a valid 32-byte base64 key, so the API key can't be saved or used. Ask whoever manages the Vercel project to fix it, then redeploy.";
-  static readonly PREVIEW_OFF = "AI is off on preview deployments.";
+  static readonly PREVIEW_OFF = "AI is turned off on preview deployments.";
 
   /** The editor's "AI unavailable" message, or the preview one on a Vercel preview (no key is decrypted there). */
   static unavailable(env: Record<string, string | undefined> = process.env): string {

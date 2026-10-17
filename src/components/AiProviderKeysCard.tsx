@@ -225,9 +225,11 @@ function KeyRow({ initial, readOnly, preview, canWrite, adminName, actions }: { 
     dot = "bg-(--status-at-risk-dark-fg)";
     text = C.TEST_FAILED;
   } else {
-    dot = "bg-(--status-not-started-dark-fg)";
+    // Not tested: a hollow grey ring, so it reads apart from No key's solid grey dot.
+    dot = "border-[1.5px] border-(--status-not-started-dark-fg) bg-transparent";
     text = C.NOT_TESTED;
   }
+  const rotating = mode.kind === "busy" && mode.busy === "rotating";
   const spinning = busy && mode.busy !== "deleting";
 
   return (
@@ -239,8 +241,8 @@ function KeyRow({ initial, readOnly, preview, canWrite, adminName, actions }: { 
         <span className="min-w-0 truncate type-table-strong text-fg" data-testid="key-name">
           {provider === "other" && row.label ? name : label}
         </span>
-        <span className="flex shrink-0 items-center gap-1.5 text-muted type-caption" role="status" aria-live="polite" data-testid="key-status">
-          {spinning ? <Spinner /> : <span aria-hidden className={`size-2 rounded-full ${dot}`} data-testid="key-dot" />}
+        <span className="flex shrink-0 items-center gap-1.5 whitespace-nowrap text-muted type-caption" role="status" aria-live="polite" aria-describedby={rotating ? `key-${provider}-rotating` : undefined} data-testid="key-status">
+          {spinning ? <Spinner /> : <span aria-hidden className={`size-2 shrink-0 rounded-full ${dot}`} data-testid="key-dot" data-dot={!row.set ? "none" : state === "untested" && !unreadable ? "hollow" : undefined} />}
           {text}
         </span>
         <span className="ml-auto flex min-w-0 items-center gap-2">
@@ -272,7 +274,7 @@ function KeyRow({ initial, readOnly, preview, canWrite, adminName, actions }: { 
                   <button type="button" className={GHOST} disabled={busy || mode.kind === "entry" || !canWrite} onClick={() => setMode({ kind: "entry", entry: "replace" })} data-testid="key-replace">
                     {C.REPLACE}
                   </button>
-                  <button type="button" className={GHOST} disabled={busy || mode.kind === "entry" || !canWrite} onClick={() => setMode({ kind: "entry", entry: "rotate" })} data-testid="key-rotate">
+                  <button type="button" className={`${GHOST}${rotating ? " opacity-40" : ""}`} disabled={busy || mode.kind === "entry" || !canWrite} aria-busy={rotating || undefined} onClick={() => setMode({ kind: "entry", entry: "rotate" })} data-testid="key-rotate" data-rotating={rotating || undefined}>
                     {C.ROTATE}
                   </button>
                   <button ref={deleteButton} type="button" className={ICON} disabled={busy || mode.kind === "entry" || !canWrite} onClick={() => setConfirmDelete(true)} aria-label={`${C.DELETE}: ${label}`} title={C.DELETE} data-testid="key-delete">
@@ -284,6 +286,12 @@ function KeyRow({ initial, readOnly, preview, canWrite, adminName, actions }: { 
           )}
         </span>
       </div>
+      {rotating && (
+        // Under the row, aligned with the provider name: the old key keeps working while the rotate runs.
+        <p id={`key-${provider}-rotating`} className="-mt-1.5 truncate px-3 pb-2 pl-[37px] text-muted type-caption" data-testid="key-rotating-caption">
+          {C.ROTATING_CAPTION}
+        </p>
+      )}
       {mode.kind === "entry" && !readOnly && (
         <KeyEntry
           provider={provider}
@@ -351,10 +359,16 @@ function KeyEntry({
   const title = entry === "add" ? C.ADD : entry === "replace" ? C.REPLACE_LABEL : C.ROTATE_LABEL;
   const blank = !key.trim();
 
+  // On Save, focus moves to the first field that is invalid (Base URL, then Display name, then API key).
+  const focusFirstInvalid = (e: { baseUrl?: string; apiKey?: string; label?: string }) => {
+    const target = e.baseUrl ? `${id}-base-url` : e.label ? `${id}-label` : e.apiKey ? `${id}-input` : null;
+    if (target) requestAnimationFrame(() => document.getElementById(target)?.focus());
+  };
   const save = async () => {
     if (blank || sending) return;
     if (other && !AiKeyProviders.httpsUrl(baseUrl)) {
       setErrors({ baseUrl: C.INVALID_URL });
+      focusFirstInvalid({ baseUrl: C.INVALID_URL });
       return;
     }
     setSending(true);
@@ -363,7 +377,10 @@ function KeyEntry({
     setKey("");
     const fieldErrors = await onSubmit(typed, baseUrl, label);
     setSending(false);
-    if (fieldErrors) setErrors(fieldErrors);
+    if (fieldErrors) {
+      setErrors(fieldErrors);
+      focusFirstInvalid(fieldErrors);
+    }
   };
   const keys = (e: KeyboardEvent) => {
     if (e.key === "Enter") {
@@ -410,11 +427,14 @@ function KeyEntry({
           </label>
           <label className="flex flex-col gap-1">
             <span className="text-muted type-caption">{C.DISPLAY_NAME}</span>
-            <input className={INPUT} value={label} onChange={(e) => setLabel(e.target.value)} placeholder={C.DISPLAY_NAME_PLACEHOLDER} maxLength={AiKeyProviders.LABEL_MAX} autoComplete="off" data-testid="key-label" />
+            <input id={`${id}-label`} className={INPUT} value={label} onChange={(e) => setLabel(e.target.value)} aria-invalid={Boolean(errors.label) || undefined} placeholder={C.DISPLAY_NAME_PLACEHOLDER} maxLength={AiKeyProviders.LABEL_MAX} autoComplete="off" data-testid="key-label" />
             {errors.label && <span className="text-danger type-caption">{errors.label}</span>}
           </label>
         </div>
       )}
+      <label htmlFor={`${id}-input`} className="-mb-1 text-muted type-caption" data-testid="key-input-label">
+        {C.KEY_LABEL}
+      </label>
       <div className="flex items-center gap-2">
         <div className="relative min-w-0 flex-1">
           <input
@@ -426,13 +446,13 @@ function KeyEntry({
               setKey(e.target.value);
               if (errors.apiKey) setErrors((x) => ({ ...x, apiKey: undefined }));
             }}
-            aria-label={title}
             placeholder={title}
             autoComplete="new-password"
             spellCheck={false}
             autoFocus
             disabled={sending}
             aria-invalid={Boolean(errors.apiKey) || undefined}
+            aria-describedby={errors.apiKey ? `${id}-input-error` : undefined}
             data-testid="key-input"
           />
           <button type="button" className={`absolute top-0.5 right-0.5 h-6 rounded-control px-2 text-muted type-caption hover:text-fg ${FOCUS}`} onClick={() => setShow((v) => !v)} aria-pressed={show} data-testid="key-show">
@@ -446,7 +466,11 @@ function KeyEntry({
           {C.CANCEL}
         </button>
       </div>
-      {errors.apiKey && <span className="text-danger type-caption">{errors.apiKey}</span>}
+      {errors.apiKey && (
+        <span id={`${id}-input-error`} className="text-danger type-caption" data-testid="key-input-error">
+          {errors.apiKey}
+        </span>
+      )}
     </fieldset>
   );
 }

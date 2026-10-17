@@ -187,7 +187,7 @@ export class AiModelService {
     if (!settings?.enabled) return [];
     const on = features.filter((f) => f.enabled && !f.killedByEnv);
     const own = (f: AiFeatureView) => (f.ownModel ? "" : (choices[f.feature]?.model ?? ""));
-    // The writing assistant (Draft from bullets, Fit for report) follows the main switch; the rest have toggles.
+    // Features with no model of their own (Draft and Fit included since PR B) follow the AI settings model.
     const main = (settings.model ?? "").trim() === modelId ? [AiCopy.SWITCH_LABEL, ...on.filter((f) => !f.ownModel && !own(f)).map((f) => f.label)] : [];
     // Text features with their own model (PR B) are named when that model is theirs.
     const text = on.filter((f) => !f.ownModel && own(f) === modelId).map((f) => f.label);
@@ -216,6 +216,11 @@ export class AiModelService {
       const own: AiFeatureView = AiFeatureFlags.OWN_MODEL.includes(feature) ? { ...view, ownModel: true, model: row?.model ?? "" } : view;
       return feature === "voice_chat" ? { ...own, instructions: row?.instructions ?? "" } : own;
     });
+  }
+
+  /** featureViews of the toggles Admin > AI settings shows (AiFeatureFlags.SETTINGS; related_links is hidden). */
+  static settingsViews(rows: readonly AiFeatureRow[], env: Env = process.env): AiFeatureView[] {
+    return AiModelService.featureViews(rows, env).filter((v) => AiFeatureFlags.SETTINGS.includes(v.feature));
   }
 
   static views(rows: readonly AiModelRow[], settings: Pick<AiSettingsRow, "model"> | null): AiModelView[] {
@@ -381,7 +386,7 @@ export class AiModelService {
       if (!enabled && !confirmed) {
         const settings = await tx.aiSettings.findUnique({ where: { id: AiSettingsService.ID } });
         const featureRows = await tx.aiFeatureSetting.findMany();
-        const features = AiModelService.featureViews(featureRows, env);
+        const features = AiModelService.settingsViews(featureRows, env);
         const hit = AiModelService.affectedFeatures(id, settings, features, AiModelService.featureChoices(featureRows));
         if (hit.length) return { ok: false, needsConfirm: true, error: AiCopy.disableWarning(id, hit) };
       }

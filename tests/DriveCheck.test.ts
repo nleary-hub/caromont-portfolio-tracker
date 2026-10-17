@@ -187,7 +187,7 @@ describe("DriveCheckService: one message per step", () => {
     expect(DriveCheckService.folderLabel({ GOOGLE_DRIVE_FOLDER_ID: "  " })).toBe("Cardiac Status Reports");
     // The page passes exactly this label to the button (src/app/reports/page.tsx).
     const { readFileSync } = await import("node:fs");
-    expect(readFileSync("src/app/reports/page.tsx", "utf8")).toContain("<DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />");
+    expect(readFileSync("src/app/reports/page.tsx", "utf8")).toContain("<DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} disabledNote={FreezeGuard.disabled() ? DriveCheckService.PREVIEW_OFF : null} />");
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { createElement } = await import("react");
     const { DriveCheckButton } = await import("@/components/DriveCheckButton");
@@ -212,7 +212,7 @@ describe("DriveCheckService: one message per step", () => {
 });
 
 describe("Check Drive on a preview deployment (FreezeGuard)", () => {
-  const PREVIEW_MESSAGE = "Freezing is turned off on preview deployments.";
+  const PREVIEW_MESSAGE = "Drive checks are turned off on preview deployments.";
 
   it("the service and the admin route refuse before any Drive call", async () => {
     for (const [k, v] of Object.entries(DRIVE)) vi.stubEnv(k, v);
@@ -226,6 +226,22 @@ describe("Check Drive on a preview deployment (FreezeGuard)", () => {
     expect(await res.json()).toEqual(refused);
     expect(drive.fetch).not.toHaveBeenCalled();
     expect(drive.names).toEqual([]);
+  });
+
+  it("the button on a preview: disabled, the Drive checks note, and the helper line dimmed", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    const { createElement } = await import("react");
+    const { DriveCheckButton } = await import("@/components/DriveCheckButton");
+    const help = "Saves a small test file to F, then removes it.";
+    expect(DriveCheckService.PREVIEW_OFF).toBe(PREVIEW_MESSAGE);
+    const off = renderToStaticMarkup(createElement(DriveCheckButton, { folder: "F", help, disabledNote: DriveCheckService.PREVIEW_OFF }));
+    expect(off).toContain(`<span data-testid="drive-check-disabled-note" class="type-caption text-muted">${PREVIEW_MESSAGE}</span>`);
+    expect(off).toMatch(/<button[^>]*disabled=""[^>]*data-testid="drive-check"/);
+    expect(off).toContain(`<p class="text-muted type-caption opacity-60">${help}</p>`);
+    const on = renderToStaticMarkup(createElement(DriveCheckButton, { folder: "F", help }));
+    expect(on).toContain(`<p class="text-muted type-caption">${help}</p>`);
+    expect(on).not.toContain("drive-check-disabled-note");
+    expect(renderToStaticMarkup(createElement(DriveCheckButton, { folder: "F", help, disabledNote: null }))).toBe(on);
   });
 
   it("a non-admin on a preview still gets 403", async () => {

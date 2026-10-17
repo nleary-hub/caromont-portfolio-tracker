@@ -45,7 +45,7 @@ export default async function AiSettingsPage() {
   let view: AiSettingsView = AiSettingsService.view(null);
   let history: AiSettingsHistoryRow[] = [];
   let models: AiModelView[] = [];
-  let features: AiFeatureView[] = AiModelService.featureViews([]);
+  let features: AiFeatureView[] = AiModelService.settingsViews([]);
   // PR B: each text feature's provider and model, and which providers have a working key (no key, no last 4).
   let choices: Record<string, AiFeatureChoice> = AiModelService.featureChoices([]);
   let keyStates: AiProviderKeyStates = AiFeatureProviders.noKeys();
@@ -65,7 +65,7 @@ export default async function AiSettingsPage() {
       history = await AiSettingsService.history(db);
       models = AiModelService.views(await AiModelService.list(mdb), row);
       const featureRows = await mdb.aiFeatureSetting.findMany();
-      features = AiModelService.featureViews(featureRows);
+      features = AiModelService.settingsViews(featureRows);
       choices = AiModelService.featureChoices(featureRows);
       keyStates = AiProviderKeyAccess.statesOf(keyStatuses, preview);
       // The saved model must be one an admin turned on, or the assistant isn't ready (the call would be refused).

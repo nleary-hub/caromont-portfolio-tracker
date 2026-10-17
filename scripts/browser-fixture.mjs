@@ -22,9 +22,11 @@ await build({ entryPoints: ["tests/browser/fixture.tsx"], outfile: path.join(out
       // A fixture may supply in-memory fakes on globalThis.__fixtureActions (fictional data only); otherwise null.
       return { contents: names.map(n => `export const ${n} = async (...a) => globalThis.__fixtureActions?.${n} ? globalThis.__fixtureActions.${n}(...a) : null;`).join("\n"), loader: "js" };
     });
-    builder.onResolve({ filter: /^next\/(dynamic|link)$/ }, args => ({ path: args.path, namespace: "next-harness" }));
+    builder.onResolve({ filter: /^next\/(dynamic|link|navigation)$/ }, args => ({ path: args.path, namespace: "next-harness" }));
     builder.onLoad({ filter: /.*/, namespace: "next-harness" }, args => ({
-      contents: `export { ${args.path.endsWith("dynamic") ? "dynamic" : "Link"} as default } from ${JSON.stringify(path.join(root, "tests/browser/next-shims.tsx"))}`,
+      contents: args.path.endsWith("navigation")
+        ? `export { useRouter, usePathname } from ${JSON.stringify(path.join(root, "tests/browser/next-shims.tsx"))}`
+        : `export { ${args.path.endsWith("dynamic") ? "dynamic" : "Link"} as default } from ${JSON.stringify(path.join(root, "tests/browser/next-shims.tsx"))}`,
       resolveDir: root,
     }));
   } }] });

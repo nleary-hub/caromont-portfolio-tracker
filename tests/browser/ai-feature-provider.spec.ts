@@ -1,5 +1,13 @@
 import { test, expect, type Page } from "@playwright/test";
 
+// Screenshots at 2x when AIP_SHOTS is set (a folder), fictional data only.
+const SHOTS = process.env.AIP_SHOTS;
+test.use({ deviceScaleFactor: 2 });
+const shot = async (page: Page, testId: string, name: string) => {
+  if (!SHOTS) return;
+  await page.getByTestId(testId).screenshot({ path: `${SHOTS}/${name}.png`, animations: "disabled" });
+};
+
 // Per-feature provider and model pickers (tests/browser/ai-provider-fixture.tsx, ?aip=1). Fictional models, no keys;
 // the provider's model list and the save are mocked in memory.
 const open = async (page: Page, query = "") => {
@@ -76,7 +84,7 @@ test("Voice chat and Dictation are locked to OpenAI with a lock glyph; their mod
     await expect(page.getByTestId(`ai-feature-${f}-provider-locked`)).toContainText("OpenAI");
     await expect(page.getByTestId(`ai-feature-${f}-lock`)).toBeVisible();
     await expect(page.locator(`#ai-feature-${f}-provider`)).toHaveCount(0);
-    await expect(page.getByTestId(`ai-feature-${f}-caption`)).toHaveText("Voice runs on OpenAI only for now.");
+    await expect(page.getByTestId(`ai-feature-${f}-caption`)).toHaveText("Runs on OpenAI only for now.");
     await expect(page.getByTestId(`ai-feature-row-${f}`)).toHaveAttribute("data-provider", "openai");
   }
   await expect(page.getByTestId("ai-feature-voice_chat-model-trigger").or(page.locator("#ai-feature-voice_chat-model"))).toBeVisible();
@@ -86,9 +94,13 @@ test("Voice chat and Dictation are locked to OpenAI with a lock glyph; their mod
 test("one grid with 44px rows; Provider key missing shows when the provider in use loses its key, and the feature stays on", async ({ page }) => {
   await open(page, "&lost=1");
   const grid = page.getByTestId("ai-features-grid");
-  await expect(grid.locator("[data-testid^='ai-feature-row-']")).toHaveCount(5);
-  const first = await page.getByTestId("ai-feature-row-meeting_notes").boundingBox();
-  expect(first?.height).toBe(44);
+  await expect(grid.locator("[data-testid^='ai-feature-row-']")).toHaveCount(8);
+  // The main line of every row is 44px (a Default caption sits under the Model picker, below that line).
+  for (const f of ["draft_from_bullets", "meeting_notes", "bulk_edit", "voice_chat"]) {
+    expect((await page.getByTestId(`ai-feature-row-${f}`).locator("> div").first().boundingBox())?.height).toBe(44);
+  }
+  // Bulk edit has its own model and no caption under it, so the whole row is the 44px line (plus its 1px top border).
+  expect((await page.getByTestId("ai-feature-row-bulk_edit").boundingBox())?.height).toBe(45);
   // One grid: the Provider column lines up on every row, and the Voice chat label is not squeezed by its help text.
   const textX = (await page.locator("#ai-feature-meeting_notes-provider").boundingBox())!.x;
   for (const f of ["voice_chat", "dictation"]) expect(Math.round((await page.getByTestId(`ai-feature-${f}-provider-locked`).boundingBox())!.x)).toBe(Math.round(textX));
@@ -96,4 +108,96 @@ test("one grid with 44px rows; Provider key missing shows when the provider in u
   await expect(page.getByTestId("ai-feature-bulk_edit-key-missing")).toHaveText("Provider key missing");
   await expect(page.getByTestId("ai-feature-meeting_notes-key-missing")).toHaveCount(0);
   await expect(page.getByTestId("ai-feature-toggle-bulk_edit")).toHaveAttribute("aria-checked", "true");
+});
+
+test("the writing assistant has Draft, Fit for report and Revise with AI rows, on OpenAI with the AI settings model by default", async ({ page }) => {
+  await open(page);
+  const rows = page.locator("[data-testid^='ai-feature-row-']");
+  await expect(rows.nth(0)).toHaveAttribute("data-testid", "ai-feature-row-draft_from_bullets");
+  await expect(rows.nth(1)).toHaveAttribute("data-testid", "ai-feature-row-fit_for_report");
+  await expect(rows.nth(2)).toHaveAttribute("data-testid", "ai-feature-row-revise_note");
+  for (const [f, label] of [["draft_from_bullets", "Draft"], ["fit_for_report", "Fit for report"], ["revise_note", "Revise with AI"]]) {
+    await expect(page.locator(`#ai-feature-${f}-label`)).toHaveText(label);
+    await expect(page.getByTestId(`ai-feature-row-${f}`)).toHaveAttribute("data-provider", "openai");
+    await expect(page.getByTestId(`ai-feature-${f}-model-picker`)).toHaveText("gpt-example-mini");
+    await expect(page.getByTestId(`ai-feature-${f}-model-caption`)).toHaveText("Default");
+    await expect(page.getByTestId(`ai-feature-toggle-${f}`)).toHaveAttribute("aria-checked", "true");
+  }
+  await shot(page, "ai-features-grid", "1-writing-assistant-rows");
+  // Picking a provider and model for Draft saves only Draft; Fit and Revise keep the default.
+  await (await providerMenu(page, "draft_from_bullets")).getByRole("option", { name: "Anthropic" }).click();
+  await page.getByTestId("ai-feature-draft_from_bullets-model-picker").click();
+  await page.getByTestId("ai-feature-draft_from_bullets-model-option-claude-example-sonnet").click();
+  await expect.poll(() => saves(page)).toEqual([{ feature: "draft_from_bullets", provider: "anthropic", model: "claude-example-sonnet" }]);
+  await expect(page.getByTestId("ai-feature-row-fit_for_report")).toHaveAttribute("data-provider", "openai");
+  await expect(page.getByTestId("ai-feature-fit_for_report-model-caption")).toHaveText("Default");
+});
+
+test("the Model picker is the same PickerSelect as Provider: chevron, height and focus ring; no old triangle", async ({ page }) => {
+  await open(page);
+  const model = page.getByTestId("ai-feature-next_step-model-picker");
+  const provider = page.locator("#ai-feature-next_step-provider");
+  await expect(page.getByTestId("ai-features-grid")).not.toContainText("\u25BE");
+  for (const f of ["next_step", "voice_chat", "dictation"]) await expect(page.getByTestId(`ai-feature-${f}-model-select`).locator("svg")).toHaveCount(1);
+  expect((await model.boundingBox())!.height).toBe((await provider.boundingBox())!.height);
+  await expect(provider).toHaveClass(/focus:border-accent/);
+  await expect(model).toHaveClass(/focus:border-accent/);
+  await model.focus();
+  await page.keyboard.press("ArrowDown");
+  await expect(page.getByRole("listbox", { name: "Model" })).toBeVisible();
+  await expect(page.getByTestId("ai-feature-next_step-model-option-gpt-example-pro")).toBeVisible();
+});
+
+test("a row with no model of its own shows the AI settings model at full strength with a muted Default caption", async ({ page }) => {
+  await open(page);
+  const picker = page.getByTestId("ai-feature-next_step-model-picker");
+  await expect(picker).toHaveText("gpt-example-mini");
+  await expect(picker).toHaveClass(/text-fg/);
+  await expect(picker).not.toHaveClass(/text-muted/);
+  await expect(page.getByTestId("ai-feature-next_step-model-caption")).toHaveText("Default");
+  await expect(page.getByTestId("ai-feature-next_step-model-caption")).toHaveClass(/text-muted/);
+  // A row with its own model has no caption.
+  await expect(page.getByTestId("ai-feature-bulk_edit-model-caption")).toHaveCount(0);
+});
+
+test("when the inherited model is off under Models, the row says Off under Models instead of Default", async ({ page }) => {
+  await open(page, "&mainoff=1");
+  await expect(page.getByTestId("ai-feature-next_step-model-picker")).toHaveText("gpt-example-legacy");
+  await expect(page.getByTestId("ai-feature-next_step-model-picker")).toHaveClass(/text-muted/);
+  await expect(page.getByTestId("ai-feature-next_step-model-caption")).toHaveText("Off under Models");
+  await expect(page.getByTestId("ai-feature-next_step-model-caption")).toHaveAttribute("data-caption", "off");
+});
+
+test("Other provider row: typed model-ID field in the 220px Model column, Provider stays 140px", async ({ page }) => {
+  await open(page, "&other=ok");
+  const row = page.getByTestId("ai-feature-row-meeting_brief");
+  await expect(row).toHaveAttribute("data-provider", "other");
+  await expect(page.locator("#ai-feature-meeting_brief-provider")).toHaveText("Other");
+  await expect(page.getByTestId("ai-feature-meeting_brief-model-typed-input")).toHaveValue("gateway-example-chat");
+  expect(Math.round((await page.getByTestId("ai-feature-meeting_brief-provider").boundingBox())!.width)).toBe(140);
+  expect(Math.round((await page.getByTestId("ai-feature-meeting_brief-model-typed-input").boundingBox())!.width)).toBe(220);
+  expect((await row.locator("> div").first().boundingBox())?.height).toBe(44);
+  await shot(page, "ai-features-grid", "3-other-typed-model-id");
+});
+
+test("a provider with no saved key: disabled with No key in the picker, and the AI tool buttons show unavailable with a note", async ({ page }) => {
+  await open(page);
+  const menu = await providerMenu(page, "fit_for_report");
+  await expect(menu.getByRole("option", { name: /xAI/ })).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("ai-feature-fit_for_report-provider-hint-xai")).toHaveText("No key");
+  await shot(page, "ai-features-grid", "2-provider-no-key-disabled");
+  await page.keyboard.press("Escape");
+  // The AI tool buttons: Next step and Draft run on xAI, which has no saved key.
+  const note = "No saved xAI key. An admin can add one in AI settings.";
+  await expect(page.getByTestId("ai-tool-next_step-propose")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("ai-tool-next_step-off")).toHaveText(note);
+  await expect(page.getByTestId("ai-draft")).toHaveAttribute("aria-disabled", "true");
+  await expect(page.getByTestId("ai-unavailable-note")).toHaveText(`Draft from bullets: ${note}`);
+  await expect(page.getByTestId("ai-fit")).not.toHaveAttribute("aria-disabled", "true");
+  // Unavailable stays focusable (aria-disabled) but does nothing.
+  await page.getByTestId("ai-draft").focus();
+  await page.keyboard.press("Enter");
+  await expect(page.getByTestId("ai-error")).toHaveCount(0);
+  await expect(page.getByTestId("ai-draft")).toBeFocused();
+  await shot(page, "ai-tool-buttons-fixture", "4-tool-buttons-no-key");
 });

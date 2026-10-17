@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { AiAlert } from "@/components/AiNoteAssistant";
+import { PickerSelect, type PickerOption } from "@/components/PickerSelect";
 import type { OpenAiListState } from "@/components/useOpenAiModelList";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
 import { AiModelKinds, type AiModelKind } from "@/lib/ai/AiModelKinds";
@@ -164,6 +165,12 @@ export function ModelField({
     </div>
   );
   if (row) {
+    // PR B (Figma Bro, Oct 17): in the Features grid every Model picker is the same PickerSelect as the Provider picker
+    // (#71's single dropdown style: chevron, 32px height, focus ring). Off models stay pickable, greyed with the hint.
+    const rowOptions: PickerOption[] = [
+      ...(noneLabel ? [{ value: "", label: noneLabel, muted: true, testId: `${id}-option-none` }] : []),
+      ...all.map((m) => ({ value: m, label: m, testId: `${id}-option-${m}`, ...(off(m) ? { muted: true, hint: C.MODEL_PICKER_OFF } : {}) })),
+    ];
     return (
       <div className="contents">
         <div className={`min-w-0 ${row.trigger}`}>
@@ -171,7 +178,23 @@ export function ModelField({
             {label}
           </label>
           {name && <input type="hidden" name={name} value={model} />}
-          {picker}
+          <PickerSelect
+            id={id}
+            label={label}
+            value={model}
+            options={rowOptions}
+            placeholder={model || noneLabel || C.MODEL_PICKER_PLACEHOLDER}
+            valueClassName={model ? "text-fg" : "text-muted"}
+            status={all.length === 0 ? C.MODEL_PICKER_EMPTY : undefined}
+            menuWidth={260}
+            maxMenuHeight={256}
+            disabled={disabled}
+            describedBy={error ? `${id}-error` : `${id}-help`}
+            invalid={Boolean(error)}
+            triggerData={{ "data-testid": `${id}-picker` }}
+            onChange={pick}
+            testId={`${id}-select`}
+          />
         </div>
         <div className={`flex min-w-0 flex-col gap-1 ${row.extras}`}>
           {error ? (

@@ -12,6 +12,13 @@ import { AutoGrowTextarea } from "./AutoGrowTextarea";
 export interface AiNoteActions {
   suggest: (feature: AiFeature, text: string) => Promise<AiSuggestResult>;
   outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
+  /** PR B: the buttons that are on (absent = both). A feature turned off in AI settings is not rendered. */
+  features?: readonly AiFeature[];
+  /**
+   * PR B: a button that can't run for its own reason (no saved key for its provider, or its own model off), with its
+   * note. It stays visible and focusable but does nothing (aria-disabled), like the paused state.
+   */
+  unavailable?: Partial<Record<AiFeature, string>>;
 }
 
 /** 2px focus ring on every control of the assistant (keyboard focus only). */
@@ -142,9 +149,14 @@ export function AiNoteAssistant({
   // The override box: ticked for exactly this list of missing values (a new missing value unticks it).
   const [confirmedFor, setConfirmedFor] = useState<string | null>(null);
 
+  const shownFeatures = AiWritingModel.shown(actions);
+  const off = (f: AiFeature) => paused || Boolean(actions.unavailable?.[f]);
+  const unavailableLines = paused ? [] : AiWritingModel.unavailableLines(shownFeatures, actions.unavailable, (f) => (f === "fit_for_report" ? C.FIT_BUTTON : C.DRAFT_BUTTON));
+  const unavailableNoteId = `${pausedNoteId}-unavailable`;
+
   const run = async (feature: AiFeature) => {
-    // Paused (model off): aria-disabled keeps focus, so a click or Enter lands here and does nothing.
-    if (paused) return;
+    // Paused (model off) or unavailable (no saved key): aria-disabled keeps focus, so a click or Enter lands here and does nothing.
+    if (off(feature)) return;
     if (busy) return;
     onRun?.();
     if (!value.trim()) return setMessage({ text: C.EMPTY_INPUT, kind: "empty" });
@@ -212,15 +224,27 @@ export function AiNoteAssistant({
   return (
     <div className="flex flex-col gap-2" data-testid="ai-assistant">
       <div className="flex items-center gap-2">
-        <button type="button" className={paused ? BTN_PAUSED : BTN} disabled={!paused && busy !== null} aria-disabled={paused ? "true" : undefined} aria-describedby={paused ? pausedNoteId : undefined} onClick={() => run("draft_from_bullets")} title={C.DRAFT_TOOLTIP} data-testid="ai-draft">
-          <Sparkle />
-          {busy === "draft_from_bullets" ? C.WORKING : C.DRAFT_BUTTON}
-        </button>
-        <button type="button" className={paused ? BTN_PAUSED : BTN} disabled={!paused && busy !== null} aria-disabled={paused ? "true" : undefined} aria-describedby={paused ? pausedNoteId : undefined} onClick={() => run("fit_for_report")} title={C.FIT_TOOLTIP} data-testid="ai-fit">
-          <Sparkle />
-          {busy === "fit_for_report" ? C.WORKING : C.FIT_BUTTON}
-        </button>
+        {shownFeatures.includes("draft_from_bullets") && (
+          <button type="button" className={off("draft_from_bullets") ? BTN_PAUSED : BTN} disabled={!off("draft_from_bullets") && busy !== null} aria-disabled={off("draft_from_bullets") ? "true" : undefined} aria-describedby={paused ? pausedNoteId : off("draft_from_bullets") ? unavailableNoteId : undefined} onClick={() => run("draft_from_bullets")} title={C.DRAFT_TOOLTIP} data-testid="ai-draft">
+            <Sparkle />
+            {busy === "draft_from_bullets" ? C.WORKING : C.DRAFT_BUTTON}
+          </button>
+        )}
+        {shownFeatures.includes("fit_for_report") && (
+          <button type="button" className={off("fit_for_report") ? BTN_PAUSED : BTN} disabled={!off("fit_for_report") && busy !== null} aria-disabled={off("fit_for_report") ? "true" : undefined} aria-describedby={paused ? pausedNoteId : off("fit_for_report") ? unavailableNoteId : undefined} onClick={() => run("fit_for_report")} title={C.FIT_TOOLTIP} data-testid="ai-fit">
+            <Sparkle />
+            {busy === "fit_for_report" ? C.WORKING : C.FIT_BUTTON}
+          </button>
+        )}
       </div>
+      {unavailableLines.length > 0 && (
+        // PR B: a button whose provider has no saved key (or whose own model is off), at full contrast like the paused note.
+        <p id={unavailableNoteId} className="-mt-1 flex flex-col text-muted type-caption" data-testid="ai-unavailable-note">
+          {unavailableLines.map((line) => (
+            <span key={line}>{line}</span>
+          ))}
+        </p>
+      )}
       {paused && (
         // The grey help line at full contrast (not dimmed like the paused buttons).
         <p id={pausedNoteId} className="-mt-1 text-muted type-caption" data-testid="ai-model-off-note">

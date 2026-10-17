@@ -63,6 +63,8 @@ export class AdminMenu {
     { id: "people", group: "library", kind: "link", icon: "people", label: "People", href: "/admin/people", shipped: true },
     // Group 3: oversight and settings.
     { id: "audit", group: "admin", kind: "link", icon: "audit", label: "Audit log", href: "/admin/audit", shipped: true },
+    // Read-only list of Blocked-by dependencies for review (no edit or delete).
+    { id: "dependencies", group: "admin", kind: "link", icon: "audit", label: "Dependencies review", href: "/admin/dependencies", shipped: true },
     { id: "settings", group: "admin", kind: "viewSettings", icon: "settings", label: AdminMenu.DASHBOARD_VIEW, href: `/${AdminMenu.VIEW_SETTINGS_HASH}`, shipped: true },
     { id: "service-lines", group: "admin", kind: "link", icon: "tag", label: "Service lines", href: "/admin/service-lines", shipped: true },
     // Milestone templates.

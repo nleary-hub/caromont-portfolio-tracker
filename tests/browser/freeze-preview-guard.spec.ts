@@ -18,7 +18,11 @@ test("on a preview deployment Freeze now and Check Drive are disabled and the no
   page.on("request", (r) => { if (r.url().includes("/api/reports/drive-check")) driveRequests += 1; });
   const drive = page.getByTestId("drive-check");
   await expect(drive).toBeDisabled();
-  await expect(page.getByTestId("drive-check-disabled-note")).toHaveText("Freezing is turned off on preview deployments.");
+  await expect(page.getByTestId("drive-check-disabled-note")).toHaveText("Drive checks are turned off on preview deployments.");
+  // The helper line about the test file stays, dimmed with the disabled button.
+  const helper = page.getByTestId("drive-check-block").getByText("Saves a small test file");
+  await expect(helper).toBeVisible();
+  await expect(helper).toHaveCSS("opacity", "0.6");
   await drive.click({ force: true });
   expect(driveRequests).toBe(0);
   await page.locator("#report-freeze-heading").locator("..").screenshot({ path: testInfo.outputPath("freeze-preview-disabled.png") });
@@ -31,9 +35,10 @@ test("on a preview deployment Freeze now and Check Drive are disabled and the no
 });
 
 test("outside preview the same controls are enabled with no note", async ({ page }) => {
-  await page.goto("http://127.0.0.1:4173/?freeze=1");
+  await page.goto(`http://127.0.0.1:${process.env.FIXTURE_PORT || 4173}/?freeze=1`);
   await expect(page.getByRole("button", { name: "Freeze now" })).toBeEnabled();
   await expect(page.getByTestId("freeze-disabled-note")).toHaveCount(0);
   await expect(page.getByTestId("drive-check")).toBeEnabled();
   await expect(page.getByTestId("drive-check-disabled-note")).toHaveCount(0);
+  await expect(page.getByTestId("drive-check-block").getByText("Saves a small test file")).toHaveCSS("opacity", "1");
 });

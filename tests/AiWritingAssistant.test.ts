@@ -225,7 +225,8 @@ describe("buttons: hidden when AI is off and for anyone who can't edit", () => {
     const page = readFileSync(path.resolve(__dirname, "../src/app/admin/ai/page.tsx"), "utf8");
     expect(page).toMatch(/if \(!viewer\?\.isAdmin\) notFound\(\);/);
     const dash = readFileSync(path.resolve(__dirname, "../src/app/page.tsx"), "utf8");
-    expect(dash).toMatch(/\.\.\.\(aiOn\s*\?/);
+    // PR B: the writing actions also need Draft or Fit to be on (their own rows).
+    expect(dash).toMatch(/\.\.\.\(aiOn && writing && writing\.shown\.length > 0\s*\?/);
     expect(dash).toMatch(/const aiOn = Boolean\(admin\)/);
   });
 

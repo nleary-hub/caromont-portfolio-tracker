@@ -48,6 +48,39 @@ export class AiProviderKeyAccess {
   }
 
   /**
+   * CTO, Oct 17 (item 4): the providers that have a saved key row in the Provider keys store (ai_provider_keys, PR A),
+   * by existence only: no decrypt, no copy, no write and no live test call. The legacy single OpenAI key (ai_settings,
+   * before it is copied into ai_provider_keys) counts for OpenAI, so OpenAI with a saved key behaves as today. A
+   * database without the table (a fake in tests) reads the legacy key only. Unreadable = no saved keys.
+   */
+  static async savedProviders(db: unknown): Promise<ReadonlySet<AiFeatureProvider>> {
+    const out = new Set<AiFeatureProvider>();
+    const d = db as {
+      aiProviderKey?: { findMany?: (args?: object) => Promise<{ provider: string; ciphertext: string | null }[]> };
+      aiSettings?: { findUnique?: (args: { where: { id: string } }) => Promise<{ provider: string | null; apiKeyCiphertext: string | null } | null> };
+    };
+    try {
+      if (typeof d?.aiProviderKey?.findMany === "function") {
+        for (const r of await d.aiProviderKey.findMany()) {
+          const p = AiFeatureProviders.parse(r.provider);
+          if (p && r.ciphertext) out.add(p);
+        }
+      }
+    } catch {
+      // A missing table (0053 not applied) reads as no rows.
+    }
+    if (!out.has("openai")) {
+      try {
+        const legacy = typeof d?.aiSettings?.findUnique === "function" ? await d.aiSettings.findUnique({ where: { id: AiProviderKeyService.LEGACY_ID } }) : null;
+        if (legacy?.apiKeyCiphertext && (legacy.provider === null || legacy.provider === "openai")) out.add("openai");
+      } catch {
+        // Unreadable settings: no legacy key.
+      }
+    }
+    return out;
+  }
+
+  /**
    * The app's key source: AiProviderKeyService (which copies the legacy OpenAI key into ai_provider_keys on first read).
    * A database without that table (a fake in tests) falls back to the single AI settings key, an OpenAI key only when
    * OpenAI is the saved provider.
