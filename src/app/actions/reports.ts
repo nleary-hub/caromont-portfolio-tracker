@@ -5,6 +5,7 @@ import { StoredPdfCopy, StoredPdfMissingError } from "@/lib/report/StoredPdf";
 import { AdminPolicy } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { FreezeDisabledError } from "@/lib/report/FreezeGuard";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { FreezeService } from "@/lib/services/FreezeService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
@@ -27,6 +28,7 @@ export async function freezeNow(): Promise<FreezeNowState> {
     const delivery = result.delivery ? ` Delivery: ${result.delivery.status.replace("_", " ")}.` : "";
     return { ok: result.outcome !== "refused", message: `${result.message}${delivery}` };
   } catch (e) {
+    if (e instanceof FreezeDisabledError) return { ok: false, message: e.message };
     ReportLog.error("freeze.manual.failed", { error: e instanceof Error ? e.message : String(e) });
     if (e instanceof StoredPdfMissingError) return { ok: false, message: `${StoredPdfCopy.TITLE}. ${StoredPdfCopy.message(StoredPdfCopy.frozenOn(e.generatedAt))}` };
     return { ok: false, message: "Freeze failed. See the server logs." };

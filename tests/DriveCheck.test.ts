@@ -187,7 +187,7 @@ describe("DriveCheckService: one message per step", () => {
     expect(DriveCheckService.folderLabel({ GOOGLE_DRIVE_FOLDER_ID: "  " })).toBe("Cardiac Status Reports");
     // The page passes exactly this label to the button (src/app/reports/page.tsx).
     const { readFileSync } = await import("node:fs");
-    expect(readFileSync("src/app/reports/page.tsx", "utf8")).toContain("<DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} />");
+    expect(readFileSync("src/app/reports/page.tsx", "utf8")).toContain("<DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />");
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { createElement } = await import("react");
     const { DriveCheckButton } = await import("@/components/DriveCheckButton");
@@ -209,4 +209,39 @@ describe("DriveCheckService: one message per step", () => {
     const { PasswordTags } = await import("@/components/AccessAccountControls");
     expect(renderToStaticMarkup(createElement(PasswordTags, { status: { state: "active", off: false, locked: true } }))).toContain("text-(--status-at-risk-dark-fg)");
   });
+});
+
+describe("Check Drive on a preview deployment (FreezeGuard)", () => {
+  const PREVIEW_MESSAGE = "Freezing is turned off on preview deployments.";
+
+  it("the service and the admin route refuse before any Drive call", async () => {
+    for (const [k, v] of Object.entries(DRIVE)) vi.stubEnv(k, v);
+    vi.stubEnv("VERCEL_ENV", "preview");
+    const drive = new FakeDrive();
+    vi.stubGlobal("fetch", drive.fetch);
+    const refused = { ok: false, step: "setup", message: PREVIEW_MESSAGE, detail: null };
+    expect(await DriveCheckService.run(process.env, drive.fetch, () => T0)).toEqual(refused);
+    h.session = { user: { email: "admin@example.org" } };
+    const res = await POST();
+    expect(await res.json()).toEqual(refused);
+    expect(drive.fetch).not.toHaveBeenCalled();
+    expect(drive.names).toEqual([]);
+  });
+
+  it("a non-admin on a preview still gets 403", async () => {
+    vi.stubEnv("VERCEL_ENV", "preview");
+    h.session = { user: { email: "jane@example.org" } };
+    expect((await POST()).status).toBe(403);
+  });
+
+  for (const v of [undefined, "production", "development"]) {
+    it(`still runs with VERCEL_ENV ${v ?? "unset"}`, async () => {
+      for (const [k, val] of Object.entries(DRIVE)) vi.stubEnv(k, val);
+      vi.stubEnv("VERCEL_ENV", v as string);
+      const drive = new FakeDrive();
+      const r = await DriveCheckService.run(process.env, drive.fetch, () => T0);
+      expect(r.ok).toBe(true);
+      expect(drive.names).toEqual([DriveCheckService.fileName(T0)]);
+    });
+  }
 });

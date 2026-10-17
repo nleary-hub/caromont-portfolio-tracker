@@ -89,6 +89,10 @@ test("one grid with 44px rows; Provider key missing shows when the provider in u
   await expect(grid.locator("[data-testid^='ai-feature-row-']")).toHaveCount(5);
   const first = await page.getByTestId("ai-feature-row-meeting_notes").boundingBox();
   expect(first?.height).toBe(44);
+  // One grid: the Provider column lines up on every row, and the Voice chat label is not squeezed by its help text.
+  const textX = (await page.locator("#ai-feature-meeting_notes-provider").boundingBox())!.x;
+  for (const f of ["voice_chat", "dictation"]) expect(Math.round((await page.getByTestId(`ai-feature-${f}-provider-locked`).boundingBox())!.x)).toBe(Math.round(textX));
+  expect((await page.locator("#ai-feature-voice_chat-label").boundingBox())!.width).toBeGreaterThan(40);
   await expect(page.getByTestId("ai-feature-bulk_edit-key-missing")).toHaveText("Provider key missing");
   await expect(page.getByTestId("ai-feature-meeting_notes-key-missing")).toHaveCount(0);
   await expect(page.getByTestId("ai-feature-toggle-bulk_edit")).toHaveAttribute("aria-checked", "true");
