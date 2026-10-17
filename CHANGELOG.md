@@ -4,6 +4,11 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Polish from the provider keys review (Figma Bro)
+- Admin > AI settings > Provider keys: while a key is rotating, the Rotate button is greyed exactly like Test and
+  Replace (it no longer lights up under the mouse).
+- The "No key" and "Key failing" notes in the provider picker are no longer underlined (they are not links).
+
 ### Dashboard: who is blocked, at a glance (1b)
 - A project waiting on something gets an amber tag after its name, for example
   "Waiting on Northbeam Interiors · 12 days": the most recent thing it waits on and how long it has been blocked

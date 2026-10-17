@@ -9,7 +9,7 @@ export interface PickerOption {
   label: string;
   /** Greyed out and can't be picked (AI settings: a provider with no working key). */
   disabled?: boolean;
-  /** A short right-aligned note on the option ("No key"). With onHint it is a link-style button. */
+  /** A short right-aligned note on the option ("No key"). With onHint it is a button (not a link, so no underline). */
   hint?: string;
   onHint?: () => void;
   /** data-testid on the option (AI settings model pickers). */
@@ -184,7 +184,7 @@ export function PickerSelect({
                     {o.onHint ? (
                       <button
                         type="button"
-                        className="ml-auto shrink-0 cursor-pointer text-muted underline underline-offset-2 type-caption hover:text-fg"
+                        className="ml-auto shrink-0 cursor-pointer text-muted type-caption hover:text-fg focus-visible:outline-2 focus-visible:outline-(--color-accent)"
                         onClick={(e) => {
                           e.stopPropagation();
                           setOpen(false);

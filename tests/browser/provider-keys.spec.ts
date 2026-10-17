@@ -125,7 +125,10 @@ test("Rotate keeps the old key live while the new one is tested; a failed rotate
   await row(page, "openai").getByTestId("key-input").press("Enter");
   await expect(row(page, "openai").getByTestId("key-status")).toHaveText("Rotating…");
   await expect(row(page, "openai").getByTestId("key-rotating-caption")).toHaveText("The old key stays active until this finishes.");
-  await expect(row(page, "openai").getByTestId("key-rotate")).toHaveClass(/opacity-40/);
+  // Figma Bro nit: while rotating, Rotate uses the same disabled color as Test and Replace.
+  const look = (id: string) => row(page, "openai").getByTestId(id).evaluate((el) => { const c = getComputedStyle(el); return [c.color, c.opacity, c.backgroundColor].join(" "); });
+  expect(await look("key-rotate")).toBe(await look("key-test"));
+  expect(await look("key-rotate")).toBe(await look("key-replace"));
   await expect(row(page, "openai").getByTestId("key-mask")).toHaveText("•••• a1B2");
   for (const b of ["key-test", "key-replace", "key-rotate", "key-delete"]) await expect(row(page, "openai").getByTestId(b)).toBeDisabled();
   await shot(page, "7-rotating");
