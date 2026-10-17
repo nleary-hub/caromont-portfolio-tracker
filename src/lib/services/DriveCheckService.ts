@@ -18,6 +18,8 @@ export type DriveCheckResult =
  */
 export class DriveCheckService {
   static readonly FILE_PREFIX = "portfolio-drive-setup-test-";
+  /** Check Drive on a preview deployment (FreezeGuard): the service message and the UI note (one string). */
+  static readonly PREVIEW_OFF = "Drive checks are turned off on preview deployments.";
   static readonly NOT_CONFIGURED = "Drive isn't set up on this server.";
   static readonly NOT_CONFIGURED_DETAIL = "Add GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET and GOOGLE_DRIVE_REFRESH_TOKEN, then redeploy.";
   static readonly READ_FAILED = "Saved a test file, but couldn't read it back.";
@@ -64,7 +66,7 @@ export class DriveCheckService {
 
   /** Refused on a preview deployment (FreezeGuard) before any Drive call: previews share production settings. */
   static async run(env: EnvSource = process.env, fetchImpl: FetchLike = fetch, now: () => Date = () => new Date()): Promise<DriveCheckResult> {
-    if (FreezeGuard.disabled()) return { ok: false, step: "setup", message: FreezeGuard.DRIVE_CHECK_NOTE, detail: null };
+    if (FreezeGuard.disabled()) return { ok: false, step: "setup", message: DriveCheckService.PREVIEW_OFF, detail: null };
     const drive = ReportEnv.drive(env);
     if (!drive) return { ok: false, step: "setup", message: DriveCheckService.NOT_CONFIGURED, detail: DriveCheckService.NOT_CONFIGURED_DETAIL };
     const client = new GoogleDriveClient(drive, fetchImpl);

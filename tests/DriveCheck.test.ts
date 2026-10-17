@@ -187,7 +187,7 @@ describe("DriveCheckService: one message per step", () => {
     expect(DriveCheckService.folderLabel({ GOOGLE_DRIVE_FOLDER_ID: "  " })).toBe("Cardiac Status Reports");
     // The page passes exactly this label to the button (src/app/reports/page.tsx).
     const { readFileSync } = await import("node:fs");
-    expect(readFileSync("src/app/reports/page.tsx", "utf8")).toContain("<DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} disabledNote={FreezeGuard.disabled() ? FreezeGuard.DRIVE_CHECK_NOTE : null} />");
+    expect(readFileSync("src/app/reports/page.tsx", "utf8")).toContain("<DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} disabledNote={FreezeGuard.disabled() ? DriveCheckService.PREVIEW_OFF : null} />");
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { createElement } = await import("react");
     const { DriveCheckButton } = await import("@/components/DriveCheckButton");
@@ -232,10 +232,9 @@ describe("Check Drive on a preview deployment (FreezeGuard)", () => {
     const { renderToStaticMarkup } = await import("react-dom/server");
     const { createElement } = await import("react");
     const { DriveCheckButton } = await import("@/components/DriveCheckButton");
-    const { FreezeGuard } = await import("@/lib/report/FreezeGuard");
     const help = "Saves a small test file to F, then removes it.";
-    expect(FreezeGuard.DRIVE_CHECK_NOTE).toBe(PREVIEW_MESSAGE);
-    const off = renderToStaticMarkup(createElement(DriveCheckButton, { folder: "F", help, disabledNote: FreezeGuard.DRIVE_CHECK_NOTE }));
+    expect(DriveCheckService.PREVIEW_OFF).toBe(PREVIEW_MESSAGE);
+    const off = renderToStaticMarkup(createElement(DriveCheckButton, { folder: "F", help, disabledNote: DriveCheckService.PREVIEW_OFF }));
     expect(off).toContain(`<span data-testid="drive-check-disabled-note" class="type-caption text-muted">${PREVIEW_MESSAGE}</span>`);
     expect(off).toMatch(/<button[^>]*disabled=""[^>]*data-testid="drive-check"/);
     expect(off).toContain(`<p class="text-muted type-caption opacity-60">${help}</p>`);

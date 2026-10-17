@@ -91,7 +91,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             </a>
             <YearEndReportButton years={yearEndYears} current={FiscalYear.of(today).label} initialOpen={openYearEnd} disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />
           </div>
-          {scope.isDefault && <DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} disabledNote={FreezeGuard.disabled() ? FreezeGuard.DRIVE_CHECK_NOTE : null} />}
+          {scope.isDefault && <DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} disabledNote={FreezeGuard.disabled() ? DriveCheckService.PREVIEW_OFF : null} />}
           <form action={setShowKeyPageForm} className="flex flex-wrap items-end gap-4 type-table">
             <label className="flex items-center gap-2 pb-1">
               <input type="checkbox" name="showKeyPage" defaultChecked={options.showKeyPage} />

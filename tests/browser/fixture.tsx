@@ -1,5 +1,6 @@
 import { createRoot } from "react-dom/client";
 import { YearEndReportButton } from "../../src/components/YearEndReportButton";
+import { DriveCheckService } from "../../src/lib/services/DriveCheckService";
 import { AiSettingsForm } from "../../src/components/AiSettingsForm";
 import { AiFeaturesPanel } from "../../src/components/AiModelsPanel";
 import { OpenAiModelListProvider } from "../../src/components/useOpenAiModelList";
@@ -121,7 +122,7 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
         <a href="#" className="type-table-strong text-accent">Generate PDF now (draft)</a>
       </div>
       <DriveCheckButton folder="Fictional Report Folder" help="Saves a small test file to Fictional Report Folder, then removes it. Nothing is frozen or sent."
-        disabledNote={FreezeGuard.disabled() ? FreezeGuard.DRIVE_CHECK_NOTE : null} />
+        disabledNote={FreezeGuard.disabled() ? DriveCheckService.PREVIEW_OFF : null} />
     </section>
   </main>
 ) : closedPage ? (
