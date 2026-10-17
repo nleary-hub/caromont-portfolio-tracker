@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { FreezeDisabledError } from "@/lib/report/FreezeGuard";
 import { ReportHttp } from "@/lib/report/ReportHttp";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { StoredPdfCopy, StoredPdfMissingError } from "@/lib/report/StoredPdf";
@@ -26,6 +27,7 @@ class CronFreezeRoute {
         delivery: result.delivery?.status ?? null,
       });
     } catch (e) {
+      if (e instanceof FreezeDisabledError) return NextResponse.json({ error: e.message }, { status: 403 });
       ReportLog.error("freeze.failed", { error: e instanceof Error ? e.message : String(e) });
       if (e instanceof StoredPdfMissingError) return NextResponse.json({ error: StoredPdfCopy.TITLE, message: StoredPdfCopy.message(StoredPdfCopy.frozenOn(e.generatedAt)), snapshotId: e.snapshotId }, { status: 500 });
       return NextResponse.json({ error: "Freeze failed. See logs." }, { status: 500 });
