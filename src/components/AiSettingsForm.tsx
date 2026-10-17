@@ -37,14 +37,16 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
     setSeenState(state);
     if (state?.ok) setReplacing(false);
   }
-  const keyInput = !view.key.set || replacing;
+  // The OpenAI key lives under Provider keys (0053): this form only shows its status there.
+  const managedAbove = view.key.source === "provider_keys";
+  const keyInput = !managedAbove && (!view.key.set || replacing);
   const [confirmClear, setConfirmClear] = useState(false);
   const [keyMessage, setKeyMessage] = useState<string | null>(null);
   const [test, setTest] = useState<AiTestResult | null>(null);
   const [testing, startTest] = useTransition();
   const [clearing, startClear] = useTransition();
   const err = (f: string) => (state && !state.ok ? state.fieldErrors?.[f] : undefined);
-  const keyBlocked = !view.encryption.ready;
+  const keyBlocked = !view.encryption.ready && !managedAbove;
   // Test needs the saved provider and a readable key; the model comes from the test picker (preselected with the saved model).
   const canTest = dbReady && Boolean(view.provider) && view.key.set && view.key.readable;
   // Switch on but the chosen model is off under Models: amber Not ready, even before the switch is saved (step 3b).
@@ -132,8 +134,9 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
               <span aria-hidden className={`size-2 rounded-full ${view.key.set ? (view.key.readable ? "bg-(--status-on-track-dark-fg)" : "bg-(--status-at-risk-dark-fg)") : "bg-(--status-not-started-dark-fg)"}`} />
               {view.key.set ? C.keySet(view.key.last4) : C.KEY_NOT_SET}
             </span>
-            {keySavedLine && <span className="text-muted type-caption" data-testid="ai-key-saved">{keySavedLine}</span>}
-            {view.key.set && !confirmClear && (
+            {keySavedLine && !managedAbove && <span className="text-muted type-caption" data-testid="ai-key-saved">{keySavedLine}</span>}
+            {managedAbove && <span className="text-muted type-caption" data-testid="ai-key-managed">{C.KEY_USE_PROVIDER_KEYS}</span>}
+            {view.key.set && !confirmClear && !managedAbove && (
               <span className="ml-auto flex items-center gap-2">
                 <button type="button" className={GHOST} onClick={() => setReplacing((v) => !v)} disabled={keyBlocked || !dbReady} data-testid="ai-key-replace">
                   {replacing ? C.KEY_CANCEL_REPLACE : C.KEY_REPLACE}
@@ -168,10 +171,10 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
               </button>
             </div>
           )}
-          {view.key.set && !view.key.readable && view.encryption.ready && <p className="text-(--status-at-risk-dark-fg) type-table">{C.KEY_UNREADABLE}</p>}
+          {view.key.set && !view.key.readable && view.encryption.ready && !managedAbove && <p className="text-(--status-at-risk-dark-fg) type-table">{C.KEY_UNREADABLE}</p>}
           {keyBlocked && (
             <p className="rounded-control bg-(--status-at-risk-dark-bg) px-3 py-2 text-(--status-at-risk-dark-fg) type-table" role="status" data-testid="ai-encryption-missing">
-              {view.encryption.problem === "invalid" ? C.ENCRYPTION_INVALID : C.ENCRYPTION_MISSING}
+              {view.encryption.problem === "preview" ? C.PREVIEW_OFF : view.encryption.problem === "invalid" ? C.ENCRYPTION_INVALID : C.ENCRYPTION_MISSING}
             </p>
           )}
           {(keyInput || keyBlocked) && (
@@ -191,7 +194,7 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
                 data-testid="ai-key-input"
               />
               {keyBlocked ? null : err("apiKey") ? <p className="text-danger type-table">{err("apiKey")}</p> : <p className="text-muted type-caption">{C.KEY_HELP}</p>}
-              {keyBlocked && <span id="ai-key-blocked" className="sr-only">{view.encryption.problem === "invalid" ? C.ENCRYPTION_INVALID : C.ENCRYPTION_MISSING}</span>}
+              {keyBlocked && <span id="ai-key-blocked" className="sr-only">{view.encryption.problem === "preview" ? C.PREVIEW_OFF : view.encryption.problem === "invalid" ? C.ENCRYPTION_INVALID : C.ENCRYPTION_MISSING}</span>}
             </>
           )}
           {keyMessage && (

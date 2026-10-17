@@ -62,11 +62,19 @@ export class AiRealtimeClient {
     });
   }
 
-  /** Strips anything that looks like a key or secret, and caps the length, so the text is safe for a log line. */
+  /**
+   * Strips anything that looks like a key or secret, and caps the length, so the text is safe for a log line: the given
+   * secrets; OpenAI, Anthropic and xAI style keys (sk-, sk-ant-, ek-, rk-, pk-, xai-); Bearer tokens; and any other long
+   * run (24+ characters) that mixes letters and digits, the generic shape of an API key.
+   */
   static scrub(text: string, secrets: readonly string[] = []): string {
     let t = text;
     for (const s of secrets) if (s) t = t.split(s).join("[hidden]");
-    return t.replace(/\b(sk|ek|rk)[-_][A-Za-z0-9_-]{6,}/g, "[hidden]").replace(/Bearer\s+\S+/gi, "Bearer [hidden]").slice(0, 300);
+    return t
+      .replace(/\b(sk|ek|rk|pk|xai)[-_][A-Za-z0-9_-]{6,}/gi, "[hidden]")
+      .replace(/Bearer\s+\S+/gi, "Bearer [hidden]")
+      .replace(/(?<![A-Za-z0-9_-])(?=[A-Za-z0-9_-]*\d)(?=[A-Za-z0-9_-]*[A-Za-z])[A-Za-z0-9_-]{24,}(?![A-Za-z0-9_-])/g, "[hidden]")
+      .slice(0, 300);
   }
 
   /** OpenAI's { error: { type, code, message } } body, scrubbed. Any shape is accepted; missing parts stay undefined. */

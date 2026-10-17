@@ -40,6 +40,13 @@ export class AiProviderKeyAccess {
     return preview || status.readable ? "ok" : "failing";
   }
 
+  /** The pickers' key states from Provider keys statuses already read (one read per page). */
+  static statesOf(statuses: readonly Pick<AiProviderKeyStatus, "provider" | "set" | "state" | "readable">[], preview: boolean): AiProviderKeyStates {
+    const out: Record<AiFeatureProvider, AiProviderKeyState> = { ...AiFeatureProviders.noKeys() };
+    for (const s of statuses) out[s.provider] = AiProviderKeyAccess.stateOf(s, preview);
+    return out;
+  }
+
   /**
    * The app's key source: AiProviderKeyService (which copies the legacy OpenAI key into ai_provider_keys on first read).
    * A database without that table (a fake in tests) falls back to the single AI settings key, an OpenAI key only when
@@ -51,9 +58,7 @@ export class AiProviderKeyAccess {
     if (typeof kdb?.aiProviderKey?.findUnique === "function" && typeof kdb.$transaction === "function") {
       return {
         async states() {
-          const out: Record<AiFeatureProvider, AiProviderKeyState> = { ...AiFeatureProviders.noKeys() };
-          for (const s of await AiProviderKeyService.list(kdb as AiProviderKeyDb, env)) out[s.provider] = AiProviderKeyAccess.stateOf(s, preview);
-          return out;
+          return AiProviderKeyAccess.statesOf(await AiProviderKeyService.list(kdb as AiProviderKeyDb, env), preview);
         },
         async secret(provider) {
           if (preview) return null;
@@ -125,6 +130,33 @@ export class AiFeatureRuntime {
   }
 
   /** The model a text feature will call: its own, or the AI settings model. For readiness notes. */
+  /**
+   * The provider whose key a feature runs on: its own pick when it has its own model, OpenAI for Voice chat and
+   * Dictation, otherwise the AI settings provider (counted only when that is OpenAI; the Provider keys card has no row
+   * for the legacy Azure or custom endpoints).
+   */
+  static providerOf(feature: string, choices: Readonly<Partial<Record<string, { provider: AiFeatureProvider; model: string }>>>, mainProvider: string): AiFeatureProvider | null {
+    if (!AiFeatureProviders.isText(feature as AiToggleFeature)) return "openai";
+    const c = choices[feature];
+    if (c?.model) return c.provider;
+    return mainProvider === "openai" ? "openai" : null;
+  }
+
+  /** How many features that are on (and not switched off by env) run on each provider's key. */
+  static featuresUsing(
+    features: readonly { feature: string; enabled: boolean; killedByEnv: boolean }[],
+    choices: Readonly<Partial<Record<string, { provider: AiFeatureProvider; model: string }>>>,
+    mainProvider: string,
+  ): Partial<Record<AiFeatureProvider, number>> {
+    const out: Partial<Record<AiFeatureProvider, number>> = {};
+    for (const f of features) {
+      if (!f.enabled || f.killedByEnv) continue;
+      const p = AiFeatureRuntime.providerOf(f.feature, choices, mainProvider);
+      if (p) out[p] = (out[p] ?? 0) + 1;
+    }
+    return out;
+  }
+
   static modelFor(feature: AiToggleFeature, rows: readonly FeatureRowLike[], settings: Pick<AiSettingsRow, "model"> | null): string {
     const own = AiFeatureRuntime.choiceOf(feature, rows).model;
     return own || (settings?.model ?? "").trim();

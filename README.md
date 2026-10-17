@@ -60,6 +60,7 @@ See `.env.example` for the full annotated list.
 | `AUTH_GOOGLE_ID` / `AUTH_GOOGLE_SECRET` | optional | Enables Google sign-in. See "Google OAuth setup" |
 | `AUTH_DEV_LOGIN` | optional | `true` enables the email-only dev form (never in production) |
 | `AUTH_TRUST_HOST` / `AUTH_URL` | optional | Only needed off Vercel. Do not set them on Vercel |
+| `AI_SETTINGS_ENCRYPTION_KEY` | for AI | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the AI provider keys saved under Admin > AI settings > Provider keys (AES-256-GCM, one binding per provider row). Empty = keys can't be saved or used. Changing it makes saved keys unreadable. Never decrypted on Vercel preview deployments (`VERCEL_ENV=preview`), so AI is off there |
 
 OAuth redirect URI: `https://<domain>/api/auth/callback/google`.
 

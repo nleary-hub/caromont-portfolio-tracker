@@ -172,10 +172,10 @@ export class AiToolsService {
     const input = args.input.slice(0, AiToolsService.INPUT_MAX);
     if (!input.trim()) return { ok: false, kind: "empty", message: AiToolsCopy.INPUT_EMPTY };
 
-    const row = await AiSettingsService.row(db).catch(() => null);
+    const row = await AiSettingsService.row(db, env).catch(() => null);
     // PR B: the feature's own provider and model when an admin picked them; otherwise the AI settings, as before.
     const saved = row?.enabled ? await AiFeatureRuntime.config({ db, feature, settings: row, env, keys: args.keys }) : null;
-    if (!saved) return { ok: false, kind: "off", message: AiToolsCopy.AI_OFF };
+    if (!saved) return { ok: false, kind: "off", message: AiToolsCopy.aiOff(env) };
     // Only models an admin turned on (ai_models). Never switched automatically.
     const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
     if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
@@ -344,9 +344,9 @@ export class AiToolsService {
     if (!(await AiModelService.featureOn(db, "dictation", env))) return { ok: false, message: AiToolsCopy.FEATURE_OFF };
     const audio = args.audio as Blob | null;
     if (!audio || typeof audio !== "object" || typeof audio.size !== "number" || typeof audio.type !== "string" || !AiTranscriptionClient.acceptable(audio.type, audio.size)) return { ok: false, message: AiToolsCopy.DICTATION_FAILED };
-    const row = await AiSettingsService.row(db).catch(() => null);
+    const row = await AiSettingsService.row(db, env).catch(() => null);
     const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
-    if (!saved) return { ok: false, message: AiToolsCopy.AI_OFF };
+    if (!saved) return { ok: false, message: AiToolsCopy.aiOff(env) };
     const model = await AiModelService.featureModel(db, "dictation");
     if (!model) return { ok: false, message: AiToolsCopy.DICTATION_NO_MODEL };
     if (!(await AiModelService.enabledIds(db, "transcription")).includes(model)) return { ok: false, message: AiCopy.MODEL_NOT_ALLOWED };

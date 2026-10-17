@@ -28,6 +28,8 @@ export interface AiKeyRowView extends AiKeyActionView {
   /** "other" only: the display name ("Local gateway") and base URL. */
   label: string | null;
   baseUrl: string | null;
+  /** The saved key decrypts on this server (false on a preview, where nothing is decrypted). */
+  readable: boolean;
   /** Live features using this provider now (the delete dialog's N). */
   featuresUsing: number;
 }

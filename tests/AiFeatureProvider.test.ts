@@ -188,6 +188,16 @@ describe("per-feature provider resolution", () => {
     expect(state(true, "ok", false, true)).toBe("ok");
   });
 
+  it("the Provider keys card's Used by count follows each feature's provider; voice stays on OpenAI; off features don't count", () => {
+    const f = (feature: string, enabled = true, killedByEnv = false) => ({ feature, enabled, killedByEnv });
+    const features = [f("meeting_notes"), f("bulk_edit"), f("next_step"), f("template_ai", false), f("voice_chat"), f("dictation", true, true)];
+    const choices = { meeting_notes: { provider: "anthropic" as const, model: "claude-example-sonnet" }, bulk_edit: { provider: "xai" as const, model: "" }, template_ai: { provider: "xai" as const, model: "grok-example-4" } };
+    expect(AiFeatureRuntime.featuresUsing(features, choices, "openai")).toEqual({ anthropic: 1, openai: 3 });
+    // A legacy Azure main setting has no Provider keys row: features without their own model aren't counted.
+    expect(AiFeatureRuntime.featuresUsing(features, choices, "azure_openai")).toEqual({ anthropic: 1, openai: 1 });
+    expect(AiProviderKeyAccess.statesOf([{ provider: "xai", set: true, state: "rejected", readable: true }, { provider: "openai", set: true, state: "untested", readable: true }], false)).toEqual({ openai: "ok", anthropic: "missing", xai: "failing", other: "missing" });
+  });
+
   it("the AI tools call reaches Anthropic Messages and xAI chat completions with the right headers", async () => {
     const db = await setup();
     db.featureRows = [

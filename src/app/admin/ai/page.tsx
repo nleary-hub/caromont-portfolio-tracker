@@ -4,14 +4,19 @@ import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AiFeaturesPanel, AiModelsPanel } from "@/components/AiModelsPanel";
 import { AiPriceRefresh } from "@/components/AiPriceRefresh";
+import { AiProviderKeysCard } from "@/components/AiProviderKeysCard";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
 import { OpenAiModelListProvider } from "@/components/useOpenAiModelList";
-import { ProviderModelListsProvider } from "@/components/AiFeatureProviderPicker";
+import { PROVIDER_KEYS_CARD_ID, ProviderModelListsProvider } from "@/components/AiFeatureProviderPicker";
 import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyStates } from "@/lib/ai/AiFeatureProviders";
-import { AiProviderKeyAccess } from "@/lib/services/AiFeatureProviderService";
+import { AiFeatureRuntime, AiProviderKeyAccess } from "@/lib/services/AiFeatureProviderService";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
+import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
+import type { AiKeyRowView } from "@/lib/ai/AiKeyProviders";
+import { LineAccessService } from "@/lib/services/LineAccessService";
+import { AiProviderKeyService, type AiProviderKeyDb, type AiProviderKeyStatus } from "@/lib/services/AiProviderKeyService";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { AiModelService, type AiFeatureChoice, type AiFeatureView, type AiModelDb, type AiModelView } from "@/lib/services/AiModelService";
@@ -45,10 +50,16 @@ export default async function AiSettingsPage() {
   let choices: Record<string, AiFeatureChoice> = AiModelService.featureChoices([]);
   let keyStates: AiProviderKeyStates = AiFeatureProviders.noKeys();
   let dbReady = Db.isConfigured();
+  // Guard (a): on a Vercel preview nothing is decrypted, copied or written; the keys card is read-only.
+  const preview = AiKeyCipher.isPreview();
+  let keyStatuses: AiProviderKeyStatus[] = [];
+  const names = new Map<string, string>();
   if (dbReady) {
     try {
       const db = Db.client as unknown as AiSettingsDb;
       const mdb = Db.client as unknown as AiModelDb;
+      // Provider keys first: this copies the legacy OpenAI key into ai_provider_keys once (never on a preview).
+      keyStatuses = await AiProviderKeyService.list(Db.client as unknown as AiProviderKeyDb);
       const row = await AiSettingsService.row(db);
       view = AiSettingsService.view(row);
       history = await AiSettingsService.history(db);
@@ -56,9 +67,14 @@ export default async function AiSettingsPage() {
       const featureRows = await mdb.aiFeatureSetting.findMany();
       features = AiModelService.featureViews(featureRows);
       choices = AiModelService.featureChoices(featureRows);
-      keyStates = await AiProviderKeyAccess.source(db).states();
+      keyStates = AiProviderKeyAccess.statesOf(keyStatuses, preview);
       // The saved model must be one an admin turned on, or the assistant isn't ready (the call would be refused).
       if (view.model && !models.some((m) => m.inUse && m.enabled)) view = { ...view, ready: false, modelOff: true };
+      const setters = [...new Set(keyStatuses.map((k) => k.setBy).filter((e): e is string => Boolean(e && e.includes("@"))))];
+      if (setters.length) {
+        const users = await Db.client.appUser.findMany({ where: { email: { in: setters } } }).catch(() => []);
+        for (const u of users) names.set(u.email.toLowerCase(), LineAccessService.displayName(u));
+      }
     } catch {
       // Tables not migrated yet (Vercel previews skip migrations): show the defaults, saving is disabled.
       dbReady = false;
@@ -68,6 +84,9 @@ export default async function AiSettingsPage() {
   const chatModels: Partial<Record<AiFeatureProvider, string[]>> = Object.fromEntries(
     AiFeatureProviders.ALL.map((p) => [p, models.filter((m) => m.enabled && m.kind === "chat" && (m.provider ?? "openai") === p).map((m) => m.id)]),
   );
+  // How many features that are on run on each provider's key (the Provider keys card's "Used by" count).
+  const featuresUsing = view.enabled ? AiFeatureRuntime.featuresUsing(features, choices, view.provider ?? "") : {};
+  const keyRows: AiKeyRowView[] = AiProviderKeyService.rowViews(keyStatuses.length ? keyStatuses : AiProviderKeyService.emptyStatuses(), names, featuresUsing);
   const keySavedLine = view.key.set && view.key.setAt ? AiCopy.keySaved(AiPageFormat.when(view.key.setAt), view.key.setBy ?? "") : null;
   const section = "flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4 backdrop-blur-[20px]";
 
@@ -89,6 +108,11 @@ export default async function AiSettingsPage() {
           {Db.isConfigured() ? AiCopy.DB_MISSING : "DATABASE_URL is not configured; showing the defaults."}
         </p>
       )}
+
+      {/* The text feature Provider pickers' "No key" / "Key failing" hints scroll here and focus it. */}
+      <section id={PROVIDER_KEYS_CARD_ID} className={`${section} scroll-mt-6 outline-none`} aria-labelledby="provider-keys-heading">
+        <AiProviderKeysCard rows={keyRows} preview={preview} dbReady={dbReady} encryptionReady={view.encryption.ready} adminName={viewer.name ?? LineAccessService.displayName({ email: viewer.email })} />
+      </section>
 
       {/* One shared OpenAI model list for the settings card, the Models panel and the feature pickers. */}
       <OpenAiModelListProvider>

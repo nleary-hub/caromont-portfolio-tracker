@@ -53,8 +53,8 @@ export class AiVoiceChatService {
    */
   static async readiness(db: AiToolsDb, env: Env = process.env): Promise<{ code: "feature_off" | "ai_off" | "model_off"; message: string; note: string } | null> {
     if (!(await AiModelService.featureOn(db, FEATURE, env))) return { code: "feature_off", message: AiToolsCopy.FEATURE_OFF, note: AiToolsCopy.FEATURE_OFF_NOTE };
-    const row = await AiSettingsService.row(db).catch(() => null);
-    if (!row?.enabled || !AiSettingsService.runtime(row, env)) return { code: "ai_off", message: AiToolsCopy.AI_OFF, note: AiToolsCopy.AI_OFF_NOTE };
+    const row = await AiSettingsService.row(db, env).catch(() => null);
+    if (!row?.enabled || !AiSettingsService.runtime(row, env)) return { code: "ai_off", message: AiToolsCopy.aiOff(env), note: AiToolsCopy.aiOffNote(env) };
     const model = await AiVoiceChatService.model(db);
     if (!model || !(await AiModelService.enabledIds(db, "realtime")).includes(model)) return { code: "model_off", message: AiToolsCopy.MODEL_OFF_NOTE, note: AiToolsCopy.MODEL_OFF_NOTE };
     return null;
@@ -69,9 +69,9 @@ export class AiVoiceChatService {
     // Same check as the page's note: model off means the greyed state, never a connect attempt.
     const blocked = await AiVoiceChatService.readiness(db, env);
     if (blocked) return { ok: false, code: blocked.code, message: blocked.message };
-    const row = await AiSettingsService.row(db);
+    const row = await AiSettingsService.row(db, env);
     const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
-    if (!saved) return { ok: false, code: "ai_off", message: AiToolsCopy.AI_OFF };
+    if (!saved) return { ok: false, code: "ai_off", message: AiToolsCopy.aiOff(env) };
     // The admin-chosen voice chat model. Never picked or switched here; it must be one an admin turned on.
     const model = await AiVoiceChatService.model(db);
     const user = viewer.email;
@@ -151,7 +151,7 @@ export class AiVoiceChatService {
       return deny(400, AiToolsCopy.VOICE_CONNECT_FAILED);
     }
     const env = args.env ?? process.env;
-    const row = await AiSettingsService.row(db).catch(() => null);
+    const row = await AiSettingsService.row(db, env).catch(() => null);
     const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
     if (!saved || !args.scope) {
       await AiVoiceChatService.logFailure(db, viewer, session, "connect_failed", { status: 503, type: saved ? "no_scope" : "ai_off", api: "live" }, args.now);
