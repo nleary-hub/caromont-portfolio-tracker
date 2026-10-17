@@ -1,5 +1,5 @@
 import { AiNumberCheck } from "./AiNumberCheck";
-import type { AiFeature } from "./AiPrompts";
+import { AiPrompts, type AiFeature } from "./AiPrompts";
 
 /** A suggestion as the editor holds it (from AiWritingService.suggest). */
 export interface AiSuggestion {
@@ -28,6 +28,28 @@ export class AiWritingModel {
    */
   static paused(input: { aiOn: boolean; modelOn: boolean }): boolean {
     return input.aiOn && !input.modelOn;
+  }
+
+  /** PR B: the buttons that are on (Draft and Fit each have a toggle; absent = both, as before). */
+  static shown(input: { features?: readonly AiFeature[] }): readonly AiFeature[] {
+    return input.features ?? AiPrompts.FEATURES;
+  }
+
+  /** PR B: the per-button availability the editor gets with its actions (only the keys that are set). */
+  static availability(input: { features?: readonly AiFeature[]; unavailable?: Partial<Record<AiFeature, string>> }): { features?: readonly AiFeature[]; unavailable?: Partial<Record<AiFeature, string>> } {
+    return { ...(input.features ? { features: input.features } : {}), ...(input.unavailable && Object.keys(input.unavailable).length ? { unavailable: input.unavailable } : {}) };
+  }
+
+  /**
+   * PR B: the notes under Draft and Fit when a button can't run for its own reason (no saved key for its provider, or
+   * its own model is off). One line when every shown button has the same note; otherwise one line per button, named.
+   */
+  static unavailableLines(shown: readonly AiFeature[], unavailable: Partial<Record<AiFeature, string>> | undefined, label: (f: AiFeature) => string): string[] {
+    const hit = shown.filter((f) => unavailable?.[f]);
+    if (hit.length === 0) return [];
+    const notes = [...new Set(hit.map((f) => unavailable![f]!))];
+    if (hit.length === shown.length && notes.length === 1) return notes;
+    return hit.map((f) => `${label(f)}: ${unavailable![f]}`);
   }
 
   /** One-click Accept: the numbers check passed, the text passed the PHI check, and it fits the limit. */

@@ -7,6 +7,15 @@ import { usePopover } from "./DashboardFilterControls";
 export interface PickerOption {
   value: string;
   label: string;
+  /** Greyed out and can't be picked (AI settings: a provider with no working key). */
+  disabled?: boolean;
+  /** A short right-aligned note on the option ("No key"). With onHint it is a link-style button. */
+  hint?: string;
+  onHint?: () => void;
+  /** data-testid on the option (AI settings model pickers). */
+  testId?: string;
+  /** Greyed text without blocking the pick (a model that is off under Models, #71: pickable, refused on save). */
+  muted?: boolean;
 }
 
 /**
@@ -25,6 +34,16 @@ export function PickerSelect({
   trigger,
   onTriggerKeyDown,
   menuWidth,
+  placeholder,
+  valueClassName,
+  status,
+  onOpen,
+  disabled,
+  title,
+  triggerData,
+  maxMenuHeight,
+  describedBy,
+  invalid,
 }: {
   /** The trigger's id (the field label points at it). */
   id: string;
@@ -43,6 +62,24 @@ export function PickerSelect({
   onTriggerKeyDown?: (e: KeyboardEvent<HTMLButtonElement>, open: boolean) => void;
   /** Menu width in px with a custom trigger (default 160). */
   menuWidth?: number;
+  /** Trigger text when `value` matches no option (AI settings model pickers: "Pick a model" or the inherited model). */
+  placeholder?: string;
+  /** Text color class of the trigger (default text-fg). */
+  valueClassName?: string;
+  /** A line at the top of the menu ("Loading models...", "No models yet"). */
+  status?: string;
+  /** Runs when the menu opens (load a list on demand). */
+  onOpen?: () => void;
+  disabled?: boolean;
+  title?: string;
+  /** data-* attributes on the trigger. */
+  triggerData?: Record<`data-${string}`, string | undefined>;
+  /** Scroll the menu past this height in px (long model lists). */
+  maxMenuHeight?: number;
+  /** aria-describedby of the trigger (help or error text). */
+  describedBy?: string;
+  /** aria-invalid on the trigger. */
+  invalid?: boolean;
 }) {
   const { open, setOpen, rootRef } = usePopover();
   const [active, setActive] = useState(-1);
@@ -60,8 +97,10 @@ export function PickerSelect({
     }
     setActive(Math.max(0, options.findIndex((o) => o.value === value)));
     setOpen(true);
+    onOpen?.();
   };
   const pick = (v: string) => {
+    if (options.find((o) => o.value === v)?.disabled) return;
     setOpen(false);
     if (v !== value) onChange(v);
   };
@@ -77,8 +116,13 @@ export function PickerSelect({
         aria-controls={listId}
         aria-activedescendant={open && active >= 0 ? `${id}-opt-${active}` : undefined}
         aria-label={trigger?.label}
+        aria-describedby={describedBy}
+        aria-invalid={invalid || undefined}
         data-inline-target={trigger?.target}
-        className={trigger ? trigger.className : `${FieldControlStyle.BOX} h-8 text-left text-fg`}
+        className={trigger ? trigger.className : `${FieldControlStyle.BOX} h-8 text-left ${valueClassName ?? "text-fg"} disabled:cursor-not-allowed disabled:opacity-50`}
+        disabled={disabled}
+        title={title}
+        {...triggerData}
         onClick={() => (open ? setOpen(false) : show())}
         onKeyDown={(e) => {
           onTriggerKeyDown?.(e, open);
@@ -94,11 +138,16 @@ export function PickerSelect({
             setActive((a) => Math.max(0, a - 1));
           } else if (open && (e.key === "Enter" || e.key === " ") && active >= 0) {
             e.preventDefault();
-            pick(options[active].value);
+            // A disabled option with a hint link: Enter follows the link (keyboard path to the fix), never picks.
+            const o = options[active];
+            if (o.disabled && o.onHint) {
+              setOpen(false);
+              o.onHint();
+            } else pick(o.value);
           }
         }}
       >
-        {trigger ? trigger.content : (current?.label ?? "")}
+        {trigger ? trigger.content : (current?.label ?? placeholder ?? "")}
       </button>
       {!trigger && (
         <span aria-hidden="true" className={`pointer-events-none ${FieldControlStyle.CHEVRON_SLOT}`}>
@@ -106,21 +155,52 @@ export function PickerSelect({
         </span>
       )}
       {open && (
-        <div className="vp-pop" style={trigger ? { left: 0, top: "calc(100% + 4px)", ...anchor, width: menuWidth ?? 160, padding: 4, zIndex: 40 } : { left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
-          <ul id={listId} role="listbox" aria-label={label} className="vp-list">
+        <div className="vp-pop" style={trigger ? { left: 0, top: "calc(100% + 4px)", ...anchor, width: menuWidth ?? 160, padding: 4, zIndex: 40 } : menuWidth ? { left: 0, width: menuWidth, top: "calc(100% + 4px)", padding: 4 } : { left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
+          <ul id={listId} role="listbox" aria-label={label} className="vp-list" style={maxMenuHeight ? { maxHeight: maxMenuHeight, overflowY: "auto" } : undefined}>
+            {status && (
+              <li role="presentation" className="px-2 text-muted type-caption">
+                {status}
+              </li>
+            )}
             {options.map((o, i) => (
               <li
                 key={o.value || "__none"}
                 id={`${id}-opt-${i}`}
                 role="option"
                 aria-selected={o.value === value}
+                aria-disabled={o.disabled || undefined}
                 data-active={i === active || undefined}
-                className={`cursor-pointer px-2 type-table ${o.value === value ? "text-accent" : "text-fg"} ${i === active ? "bg-row-selected" : ""}`}
+                data-value={o.value}
+                data-testid={o.testId}
+                data-off={o.muted || undefined}
+                className={`px-2 type-table ${o.disabled ? "cursor-not-allowed text-muted opacity-60" : `cursor-pointer ${o.muted ? "text-muted" : o.value === value ? "text-accent" : "text-fg"}`} ${i === active ? "bg-row-selected" : ""}`}
                 onMouseDown={(e) => e.preventDefault()}
                 onMouseEnter={() => setActive(i)}
                 onClick={() => pick(o.value)}
               >
-                {o.label}
+                {o.hint ? (
+                  <>
+                    <span className="min-w-0 flex-1 truncate">{o.label}</span>
+                    {o.onHint ? (
+                      <button
+                        type="button"
+                        className="ml-auto shrink-0 cursor-pointer text-muted underline underline-offset-2 type-caption hover:text-fg"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setOpen(false);
+                          o.onHint?.();
+                        }}
+                        data-testid={testId ? `${testId}-hint-${o.value}` : undefined}
+                      >
+                        {o.hint}
+                      </button>
+                    ) : (
+                      <span className="ml-auto shrink-0 text-muted type-caption">{o.hint}</span>
+                    )}
+                  </>
+                ) : (
+                  o.label
+                )}
               </li>
             ))}
           </ul>

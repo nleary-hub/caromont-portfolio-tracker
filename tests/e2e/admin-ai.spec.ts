@@ -21,7 +21,7 @@ test("preview guard: the admin sees AI disabled and a read-only Provider keys ca
   expect(res?.status()).toBe(200);
   const card = page.getByTestId("provider-keys");
   await expect(card).toBeVisible({ timeout: 60000 });
-  await expect(page.getByTestId("provider-keys-preview")).toHaveText("AI is off on preview deployments. Keys can only be managed in production.");
+  await expect(page.getByTestId("provider-keys-preview")).toHaveText("AI is turned off on preview deployments. Keys can only be managed in production.");
   await expect(card.getByTestId("key-actions")).toHaveCount(0);
   await expect(card.locator('[data-testid="key-status"]')).toHaveText(["No key", "No key", "No key", "No key"]);
   // The card is the first section, above the settings, models and features.

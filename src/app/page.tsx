@@ -8,7 +8,7 @@ import { loadProjectHistory } from "@/app/actions/history";
 import { addProjectDependency, loadProjectDependencies, removeProjectDependency } from "@/app/actions/dependencies";
 import { recordSuggestionOutcome, suggestNote } from "@/app/actions/ai";
 import { applyAiChange, proposeAiChange, rejectAiChange, undoAiChange } from "@/app/actions/aiReview";
-import type { AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
+import { AiFeatureFlags, type AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
 import type { AiInput } from "@/lib/ai/AiInput";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
@@ -246,6 +246,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
   const aiOn = Boolean(admin) && Db.isConfigured() ? await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb) : false;
   // Draft and Fit paused: AI on, but its model is turned off under Models (the server refuses with MODEL_NOT_ALLOWED).
   const aiPaused = aiOn ? AiWritingModel.paused({ aiOn, modelOn: await AiSettingsService.modelOn(Db.client as unknown as AiSettingsDb, await AiModelService.enabledIds(Db.client, "chat")) }) : false;
+  // PR B: Draft and Fit each have a row (toggle, env kill switch, provider and model). Off hides that button; no saved key
+  // for its provider (or its own model off) shows it unavailable with a note. Following AI settings keeps today's rules.
+  const writing = aiOn ? await AiToolsReadiness.writing(Db.client as unknown as AiModelDb & AiSettingsDb, aiPaused).catch(() => ({ shown: [...AiFeatureFlags.WRITING_FEATURES], paused: aiPaused, unavailable: {} })) : null;
   // Revise with AI: the admin toggle (ai_feature_settings, on by default) and the env kill switch.
   const reviseOn = aiOn ? await AiModelService.featureOn(Db.client, "revise_note") : false;
   // Voice chat in the header: hidden when the feature is off (no gap); greyed with the note when its model is off.
@@ -324,10 +327,12 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   }
                 : {}),
               // Writing assistant: only when an admin turned AI on and it is fully configured (off by default).
-              ...(aiOn
+              ...(aiOn && writing && writing.shown.length > 0
                 ? {
                     aiWriting: {
-                      paused: aiPaused,
+                      paused: writing.paused,
+                      features: writing.shown,
+                      unavailable: writing.unavailable,
                       suggestAction: async (projectId: string | null, feature: AiFeature, text: string) => {
                         "use server";
                         return suggestNote(projectId, feature, text);

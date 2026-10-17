@@ -58,6 +58,7 @@ import { AccountMenu } from "./AccountMenu";
 import { MfiCheckbox, MfiChip } from "./MfiChip";
 import type { AiPlacementNotes, AiRowShortcut } from "./AiPlacements";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
+import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 // AI placements use server actions: loaded on demand so importing the dashboard never pulls them in (tests, non-AI views).
@@ -118,6 +119,10 @@ export interface AdminDashboardProps {
     outcomeAction: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) => Promise<boolean>;
     /** On, but the model is turned off under Models: Draft and Fit show as paused with the model-off note. */
     paused?: boolean;
+    /** PR B: the buttons that are on (absent = both). A feature turned off in AI settings is not rendered. */
+    features?: readonly AiFeature[];
+    /** PR B: a button that can't run for its own reason (no saved key for its provider, its own model off), with its note. */
+    unavailable?: Partial<Record<AiFeature, string>>;
   };
   /** Revise with AI (review-then-apply layer). Present only when AI is on and the revise_note kill switch is on. */
   aiReview?: {
@@ -265,7 +270,9 @@ export function ProjectDashboard({
   // Row "..." AI shortcuts: open the edit drawer, then focus that field's AI button once the form is there.
   const rowShortcuts: AiRowShortcut[] = [
     ...(admin && aiPlacements && "next_step" in aiPlacements ? [{ key: "next_step" as const, label: AiToolsCopy.NEXT_INLINE, note: aiPlacements.next_step ?? null }] : []),
-    ...(admin?.aiWriting ? [{ key: "draft" as const, label: AiToolsCopy.ROW_DRAFT, note: admin.aiWriting.paused ? AiToolsCopy.MODEL_OFF_NOTE : null }] : []),
+    ...(admin?.aiWriting && AiWritingModel.shown(admin.aiWriting).includes("draft_from_bullets")
+      ? [{ key: "draft" as const, label: AiToolsCopy.ROW_DRAFT, note: admin.aiWriting.paused ? AiToolsCopy.MODEL_OFF_NOTE : (admin.aiWriting.unavailable?.draft_from_bullets ?? null) }]
+      : []),
   ];
   const openShortcut = (id: string, key: AiRowShortcut["key"]) =>
     guard(() => {
@@ -851,6 +858,7 @@ export function ProjectDashboard({
               {...(admin.aiWriting
                 ? {
                     ai: {
+                      ...AiWritingModel.availability(admin.aiWriting),
                       suggest: (feature: AiFeature, text: string) => admin.aiWriting!.suggestAction(null, feature, text),
                       outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) =>
                         unverifiedCount === undefined ? admin.aiWriting!.outcomeAction(suggestionId, outcome) : admin.aiWriting!.outcomeAction(suggestionId, outcome, unverifiedCount),
@@ -967,6 +975,7 @@ export function ProjectDashboard({
                   {...(admin.aiWriting
                     ? {
                         ai: {
+                          ...AiWritingModel.availability(admin.aiWriting),
                           suggest: (feature: AiFeature, text: string) => admin.aiWriting!.suggestAction(selected.id, feature, text),
                           outcome: (suggestionId: string, outcome: AiOutcome, unverifiedCount?: number) =>
                             unverifiedCount === undefined ? admin.aiWriting!.outcomeAction(suggestionId, outcome) : admin.aiWriting!.outcomeAction(suggestionId, outcome, unverifiedCount),

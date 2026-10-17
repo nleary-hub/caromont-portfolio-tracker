@@ -80,12 +80,14 @@ export class AiKeyProviders {
 export class AiKeyCopy {
   static readonly TITLE = "Provider keys";
   static readonly CAPTION = "Keys are stored encrypted. Only the last 4 characters are ever shown.";
-  static readonly PREVIEW_BANNER = "AI is off on preview deployments. Keys can only be managed in production.";
-  static readonly PREVIEW_OFF = "AI is off on preview deployments.";
+  static readonly PREVIEW_BANNER = "AI is turned off on preview deployments. Keys can only be managed in production.";
+  static readonly PREVIEW_OFF = "AI is turned off on preview deployments.";
   static readonly NO_KEY = "No key";
   static readonly NOT_TESTED = "Not tested";
   static readonly TESTING = "Testing…";
-  static readonly ROTATING = "Rotating… old key still active";
+  static readonly ROTATING = "Rotating…";
+  /** Muted caption under the row while a rotate runs (never in the status slot, so it can't wrap into the key column). */
+  static readonly ROTATING_CAPTION = "The old key stays active until this finishes.";
   static readonly TEST_FAILED = "Test failed";
   static readonly ADD = "Add key";
   static readonly REPLACE_LABEL = "Replace key";
@@ -94,7 +96,7 @@ export class AiKeyCopy {
   static readonly BASE_URL = "Base URL";
   static readonly DISPLAY_NAME = "Display name";
   static readonly DISPLAY_NAME_PLACEHOLDER = "e.g. Local gateway";
-  static readonly INVALID_URL = "Enter a full https:// URL";
+  static readonly INVALID_URL = "Enter a full https:// URL.";
   static readonly KEY_INVALID = "Paste the whole key, with no spaces.";
   static readonly LABEL_TOO_LONG = "Keep the display name under 40 characters.";
   static readonly ENCRYPTION_MISSING = "Keys can't be saved: AI_SETTINGS_ENCRYPTION_KEY is not set on the server.";
@@ -146,6 +148,7 @@ export class AiKeyCopy {
 
   static deleteBody(p: AiKeyProvider, n: number): string {
     const name = AiKeyProviders.pickerName(p, null);
-    return `Features using ${name} will stop working until you add a key or pick another provider. ${n} ${n === 1 ? "feature uses" : "features use"} it now.`;
+    const now = n === 0 ? "No features use it now." : `${n} ${n === 1 ? "feature uses" : "features use"} it now.`;
+    return `Features using ${name} will stop working until you add a key or pick another provider. ${now}`;
   }
 }

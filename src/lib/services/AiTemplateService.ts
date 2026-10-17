@@ -9,6 +9,7 @@ import { AiTemplateModel, type AiTemplateDesired, type AiTemplateMode, type AiTe
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
+import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { MilestoneTemplateService, type TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import { AiToolsService, type AiToolFailure, type AiToolsDb, type AiToolUsageRow } from "./AiToolsService";
 
@@ -38,6 +39,8 @@ export class AiTemplateService {
     env?: Env;
     fetchImpl?: FetchLike;
     now?: () => Date;
+    /** PR B: the provider keys (tests inject a fake). */
+    keys?: AiProviderKeySource;
   }): Promise<AiTemplateProposeResult> {
     const { mode, current } = args;
     if (mode === "edit" && !current) return { ok: false, kind: "denied", message: AiCopy.NOT_AUTHORIZED };

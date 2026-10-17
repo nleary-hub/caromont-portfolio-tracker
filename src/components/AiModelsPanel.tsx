@@ -2,7 +2,9 @@
 
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
-import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions } from "@/app/actions/aiAdmin";
+import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiFeatureProvider, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions } from "@/app/actions/aiAdmin";
+import { LockedProviderChip, ProviderPickerCell, TextModelCell, textModelCaption, useProviderModelLists } from "@/components/AiFeatureProviderPicker";
+import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyStates } from "@/lib/ai/AiFeatureProviders";
 import { ModelField } from "@/components/AiModelPicker";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
@@ -10,7 +12,7 @@ import { AiModelKinds, type AiModelKind } from "@/lib/ai/AiModelKinds";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 import { useOpenAiModelList, type OpenAiListState } from "@/components/useOpenAiModelList";
-import type { AiAdminResult, AiFeatureView, AiModelView } from "@/lib/services/AiModelService";
+import type { AiAdminResult, AiFeatureChoice, AiFeatureView, AiModelView } from "@/lib/services/AiModelService";
 
 /** The same 2px focus outline used across the AI settings page since #50. */
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -34,8 +36,11 @@ export function AiToggle({ checked, onChange, labelledBy, describedBy, disabled,
 }
 
 /** Admin > AI settings: the model list (add, on/off with the in-use warning, prices). */
-export function AiModelsPanel({ models, dbReady, initialList = null }: { models: AiModelView[]; dbReady: boolean; initialList?: OpenAiListState }) {
+export function AiModelsPanel({ models, dbReady, initialList = null, keyStates }: { models: AiModelView[]; dbReady: boolean; initialList?: OpenAiListState; keyStates?: AiProviderKeyStates }) {
   const [newId, setNewId] = useState("");
+  /** PR B: the provider a typed model is added under (checked against that provider's list). OpenAI by default. */
+  const [addProvider, setAddProvider] = useState<AiFeatureProvider>("openai");
+  const lists = useProviderModelLists();
   const { list, loading: listing, load: loadList, shared } = useOpenAiModelList(initialList);
   /** The list failed to load: the typed id is saved unchecked (still off), with the note shown. */
   const manual = list?.ok === false;
@@ -106,7 +111,7 @@ export function AiModelsPanel({ models, dbReady, initialList = null }: { models:
           // Locked while a price-refresh review is open (step 3c follow-up): the form does nothing until Cancel or Confirm.
           if (locked) return;
           startAdd(async () => {
-            const r = await addAiModel(newId, manual);
+            const r = addProvider === "openai" ? await addAiModel(newId, manual) : await addAiModel(newId, lists.list(addProvider)?.ok === false, addProvider);
             setAddResult(r);
             if (r.ok) setNewId("");
           });
@@ -115,9 +120,10 @@ export function AiModelsPanel({ models, dbReady, initialList = null }: { models:
         data-locked={locked || undefined}
       >
         <label htmlFor="ai-model-add" className="text-muted type-caption">
-          {C.MODEL_ADD_LABEL}
+          {addProvider === "openai" ? C.MODEL_ADD_LABEL : C.modelAddLabel(addProvider)}
         </label>
         <div className="flex items-start gap-2">
+          {keyStates && <ProviderPickerCell feature="add" value={addProvider} keyStates={keyStates} onChange={(p) => { setAddProvider(p); setAddResult(null); }} />}
           <input id="ai-model-add" className={INPUT} value={newId} onChange={(e) => setNewId(e.target.value)} placeholder={C.MODEL_ADD_PLACEHOLDER} maxLength={100} autoComplete="off" spellCheck={false} disabled={!dbReady} readOnly={locked} aria-disabled={locked || undefined} aria-invalid={(addResult && !addResult.ok) || undefined} aria-describedby={addResult && !addResult.ok ? "ai-model-add-error" : "ai-model-add-help"} />
           <button type="submit" className={`${SECONDARY} aria-disabled:cursor-not-allowed aria-disabled:opacity-50`} disabled={!dbReady || adding || !newId.trim()} aria-disabled={locked || undefined} data-testid="ai-model-add-button">
             {adding ? C.MODEL_ADDING : C.MODEL_ADD}
@@ -226,6 +232,7 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
             ))}
           <span className="block text-muted type-caption" data-testid={`ai-model-kind-${m.id}`}>
             {C.MODEL_KIND_LABEL}: {AiModelKinds.label(m.kind ?? null)}
+            {m.provider && m.provider !== "openai" ? ` (${AiFeatureProviders.label(m.provider)})` : ""}
           </span>
           <span className="block whitespace-normal text-muted type-caption" data-testid={`ai-model-price-updated-${m.id}`}>
             {m.pricesUpdatedAt ? C.priceUpdated(PRICE_DATE.format(new Date(m.pricesUpdatedAt)), m.priceSource) : C.PRICE_NEVER_UPDATED}
@@ -365,69 +372,177 @@ function VoiceInstructionsField({ initial, disabled }: { initial: string; disabl
   );
 }
 
+/** A copy of `o` without `key`. */
+function without<T>(o: Partial<Record<string, T>>, key: string): Partial<Record<string, T>> {
+  return Object.fromEntries(Object.entries(o).filter(([k]) => k !== key)) as Partial<Record<string, T>>;
+}
+
 /** Admin > AI settings: one toggle per AI feature. Future features (dictation, voice chat) add a row by adding a feature. */
 /**
  * `modelOptions`: enabled model ids by kind. Each own-model feature lists only its kind (dictation transcription, voice
  * chat realtime), plus the models of that kind OpenAI lists for the saved key (the same list as the Models panel). Listed
  * models that are off say so; the server refuses them until an admin turns them on. When the list can't load, a typed
  * model ID is the fallback. No built-in voice or dictation model.
+ *
+ * PR B: one grid of 44px rows (feature, Provider, Model, toggle). Text features pick a provider (`keyStates` greys out
+ * the ones without a working key) and a model of that provider (`chatModels`: models on under Models, by provider).
+ * Changing the provider clears the model and nothing is saved until a model is picked. Voice chat and Dictation show a
+ * locked OpenAI chip. `choices` are the saved picks; `mainModel` is the AI settings model the rest still use.
  */
-export function AiFeaturesPanel({ features, dbReady, modelOptions = {}, initialList = null }: { features: AiFeatureView[]; dbReady: boolean; modelOptions?: Partial<Record<AiModelKind, readonly string[]>>; initialList?: OpenAiListState }) {
+export function AiFeaturesPanel({
+  features,
+  dbReady,
+  modelOptions = {},
+  initialList = null,
+  choices = {},
+  keyStates,
+  chatModels = {},
+  mainModel = "",
+}: {
+  features: AiFeatureView[];
+  dbReady: boolean;
+  modelOptions?: Partial<Record<AiModelKind, readonly string[]>>;
+  initialList?: OpenAiListState;
+  choices?: Partial<Record<string, AiFeatureChoice>>;
+  keyStates?: AiProviderKeyStates;
+  chatModels?: Partial<Record<AiFeatureProvider, readonly string[]>>;
+  mainModel?: string;
+}) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
   const openAi = useOpenAiModelList(initialList);
+  const lists = useProviderModelLists();
+  const [saved, setSaved] = useState<Partial<Record<string, AiFeatureChoice>>>(choices);
+  /** A provider picked but no model yet: shown, not saved. */
+  const [draft, setDraft] = useState<Partial<Record<string, AiFeatureProvider>>>({});
   const choose = (feature: string, model: string) =>
     start(async () => {
       const r = await setAiFeatureModel(feature, model);
       setError(r.ok ? null : r.error);
     });
+  const saveText = (feature: string, provider: AiFeatureProvider, model: string) =>
+    start(async () => {
+      const r = await setAiFeatureProvider(feature, provider, model);
+      if (r?.ok) {
+        setSaved((s) => ({ ...s, [feature]: { provider, model } }));
+        setDraft((d) => without(d, feature));
+        setError(null);
+      } else setError(r?.error ?? C.SAVE_FAILED);
+    });
+  // Each list that failed is said once, above the grid (OpenAI's is said at the top of the AI settings card).
+  const failed = AiFeatureProviders.ALL.filter((p) => p !== "openai" && lists.list(p)?.ok === false);
+  // Fixed Provider, Model and toggle tracks, so every row lines up as one grid and the wide help or instructions under
+  // the Voice chat and Dictation rows can never squeeze the label column.
+  const ROW = "grid grid-cols-[minmax(0,1fr)_140px_220px_32px] items-center gap-x-3 px-3";
   return (
     <div className="flex flex-col gap-2" data-testid="ai-features">
-      {features.map((f) => {
+      {failed.map((p) => (
+        <AiAlert key={p} tone="danger" testId={`ai-provider-list-failed-${p}`}>
+          {C.providerListFailed(p)}
+        </AiAlert>
+      ))}
+      <div className="flex flex-col rounded-control border border-line bg-input/60" data-testid="ai-features-grid">
+      {features.map((f, i) => {
         const labelId = `ai-feature-${f.feature}-label`;
         const helpId = `ai-feature-${f.feature}-help`;
+        const text = AiFeatureProviders.isText(f.feature);
+        const choice = saved[f.feature] ?? { provider: AiFeatureProviders.DEFAULT, model: "" };
+        const shownProvider = draft[f.feature] ?? choice.provider;
+        const picking = text && draft[f.feature] !== undefined;
+        const keyMissing = text && !picking && keyStates !== undefined && keyStates[choice.provider] !== "ok";
+        const caption = f.killedByEnv ? C.featureKilled(f.envName) : picking ? C.PICK_A_MODEL : !text ? C.VOICE_OPENAI_ONLY : f.enabled ? C.FEATURE_ON_HELP : C.FEATURE_OFF_HELP;
         return (
-          <div key={f.feature} className="flex flex-col gap-3 rounded-control border border-line bg-input/60 px-3 py-2.5">
-            <div className="flex items-start gap-3">
+          <div key={f.feature} className={`${ROW} ${i > 0 ? "border-t border-line" : ""} ${f.ownModel ? "pb-2.5" : ""}`} data-testid={`ai-feature-row-${f.feature}`} data-provider={text ? shownProvider : "openai"}>
+            <div className="col-start-1 row-start-1 flex h-11 min-w-0 flex-col justify-center">
+              <div className="flex min-w-0 items-center gap-2">
+                <span id={labelId} className="min-w-0 truncate type-table-strong text-fg">
+                  {f.label}
+                </span>
+                {keyMissing && (
+                  <span className="shrink-0 rounded-pill bg-(--status-at-risk-dark-bg) px-1.5 text-(--status-at-risk-dark-fg) type-caption" title={C.PROVIDER_KEY_MISSING_HELP} data-testid={`ai-feature-${f.feature}-key-missing`}>
+                    {C.PROVIDER_KEY_MISSING}
+                  </span>
+                )}
+              </div>
+              <p id={helpId} className={`truncate type-caption ${picking ? "text-(--status-at-risk-dark-fg)" : "text-muted"}`} title={caption} data-testid={`ai-feature-${f.feature}-caption`}>
+                {caption}
+              </p>
+            </div>
+            {text ? (
+              <ProviderPickerCell
+                className="col-start-2 row-start-1"
+                feature={f.feature}
+                value={shownProvider}
+                keyStates={keyStates}
+                onChange={(p) => setDraft((d) => {
+                  // Back to the saved provider: nothing pending. Another provider: the model is cleared until one is picked.
+                  return p === choice.provider ? without(d, f.feature) : { ...d, [f.feature]: p };
+                })}
+              />
+            ) : (
+              <LockedProviderChip className="col-start-2 row-start-1" feature={f.feature} />
+            )}
+            {text && (() => {
+              // Under the Model picker: "Default" when the row uses the AI settings model (shown at full strength), or
+              // "Off under Models" when the model it would call is off (Figma Bro, Oct 17).
+              const cap = textModelCaption({ value: picking ? "" : choice.model, mainModel: shownProvider === "openai" ? mainModel : "", pending: picking, options: chatModels[shownProvider] ?? [] });
+              return cap ? (
+                <p className="col-start-3 row-start-2 -mt-1.5 truncate pb-1.5 pl-2 text-muted type-caption" data-testid={`ai-feature-${f.feature}-model-caption`} data-caption={cap}>
+                  {cap === "default" ? C.FEATURE_MODEL_DEFAULT : C.MODEL_PICKER_OFF}
+                </p>
+              ) : null;
+            })()}
+            {text ? (
+              <TextModelCell
+                key={`${f.feature}-${shownProvider}`}
+                className="col-start-3 row-start-1"
+                feature={f.feature}
+                provider={shownProvider}
+                value={picking ? "" : choice.model}
+                mainModel={shownProvider === "openai" ? mainModel : ""}
+                pending={picking}
+                options={chatModels[shownProvider] ?? []}
+                lists={lists}
+                disabled={!dbReady || pending}
+                onPick={(m) => saveText(f.feature, shownProvider, m)}
+              />
+            ) : f.ownModel ? (
+              <ModelField
+                id={`ai-feature-${f.feature}-model`}
+                name={null}
+                label={AiToolsCopy.modelLabel(f.feature)}
+                help={AiToolsCopy.modelHelp(f.feature)}
+                kind={AiModelKinds.forFeature(f.feature)}
+                {...(f.feature === "voice_chat" ? { placeholder: C.VOICE_MODEL_PLACEHOLDER } : {})}
+                noneLabel={AiToolsCopy.DICTATION_MODEL_NONE}
+                value={f.model ?? ""}
+                disabled={!dbReady || pending}
+                options={modelOptions[AiModelKinds.forFeature(f.feature)] ?? []}
+                list={openAi.list}
+                listLoading={openAi.loading}
+                onLoadList={openAi.load}
+                onCommit={(m) => choose(f.feature, m)}
+                row={{ trigger: "col-start-3 row-start-1", extras: "col-start-2 col-span-3 row-start-2" }}
+              />
+            ) : (
+              <span className="col-start-3 row-start-1" />
+            )}
+            <div className="col-start-4 row-start-1 flex items-center">
               <AiToggle checked={f.enabled} labelledBy={labelId} describedBy={helpId} disabled={!dbReady || pending} testId={`ai-feature-toggle-${f.feature}`} onChange={(v) => start(async () => {
                 const r = await setAiFeatureEnabled(f.feature, v);
                 setError(r.ok ? null : r.error);
               })} />
-              <div className="min-w-0 flex-1">
-                <span id={labelId} className="type-table-strong text-fg">
-                  {f.label}
-                </span>
-                <p id={helpId} className="mt-0.5 text-muted type-caption">
-                  {f.killedByEnv ? C.featureKilled(f.envName) : f.enabled ? C.FEATURE_ON_HELP : C.FEATURE_OFF_HELP}
-                </p>
-              </div>
             </div>
-            {/* The model field sits under the whole row, full width like the writing assistant's fields (no indent). */}
-            {f.ownModel && (
-              <div className="grid grid-cols-2 gap-3">
-                <ModelField
-                  id={`ai-feature-${f.feature}-model`}
-                  name={null}
-                  label={AiToolsCopy.modelLabel(f.feature)}
-                  help={AiToolsCopy.modelHelp(f.feature)}
-                  kind={AiModelKinds.forFeature(f.feature)}
-                  {...(f.feature === "voice_chat" ? { placeholder: C.VOICE_MODEL_PLACEHOLDER } : {})}
-                  noneLabel={AiToolsCopy.DICTATION_MODEL_NONE}
-                  value={f.model ?? ""}
-                  disabled={!dbReady || pending}
-                  options={modelOptions[AiModelKinds.forFeature(f.feature)] ?? []}
-                  list={openAi.list}
-                  listLoading={openAi.loading}
-                  onLoadList={openAi.load}
-                  onCommit={(m) => choose(f.feature, m)}
-                />
-                {/* Under the Voice model field, in the same column (same width and left edge). */}
-                {f.feature === "voice_chat" && <VoiceInstructionsField initial={f.instructions ?? ""} disabled={!dbReady || pending} />}
+            {/* Under the Voice model field's help, in the same column. */}
+            {f.feature === "voice_chat" && (
+              <div className="col-start-2 col-span-3 row-start-3 min-w-0 pt-2">
+                <VoiceInstructionsField initial={f.instructions ?? ""} disabled={!dbReady || pending} />
               </div>
             )}
           </div>
         );
       })}
+      </div>
       {error && (
         <AiAlert tone="danger" testId="ai-feature-error">
           {error}

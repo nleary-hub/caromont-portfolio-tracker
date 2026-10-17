@@ -7,6 +7,9 @@ import { AiPriceRefresh } from "@/components/AiPriceRefresh";
 import { AiProviderKeysCard } from "@/components/AiProviderKeysCard";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
 import { OpenAiModelListProvider } from "@/components/useOpenAiModelList";
+import { PROVIDER_KEYS_CARD_ID, ProviderModelListsProvider } from "@/components/AiFeatureProviderPicker";
+import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyStates } from "@/lib/ai/AiFeatureProviders";
+import { AiFeatureRuntime, AiProviderKeyAccess } from "@/lib/services/AiFeatureProviderService";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
@@ -16,7 +19,7 @@ import { LineAccessService } from "@/lib/services/LineAccessService";
 import { AiProviderKeyService, type AiProviderKeyDb, type AiProviderKeyStatus } from "@/lib/services/AiProviderKeyService";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
-import { AiModelService, type AiFeatureView, type AiModelDb, type AiModelView } from "@/lib/services/AiModelService";
+import { AiModelService, type AiFeatureChoice, type AiFeatureView, type AiModelDb, type AiModelView } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb, type AiSettingsHistoryRow, type AiSettingsView } from "@/lib/services/AiSettingsService";
 
 /** AI Draft/Fit/Test connection server actions run on this page; the provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
@@ -43,6 +46,9 @@ export default async function AiSettingsPage() {
   let history: AiSettingsHistoryRow[] = [];
   let models: AiModelView[] = [];
   let features: AiFeatureView[] = AiModelService.settingsViews([]);
+  // PR B: each text feature's provider and model, and which providers have a working key (no key, no last 4).
+  let choices: Record<string, AiFeatureChoice> = AiModelService.featureChoices([]);
+  let keyStates: AiProviderKeyStates = AiFeatureProviders.noKeys();
   let dbReady = Db.isConfigured();
   // Guard (a): on a Vercel preview nothing is decrypted, copied or written; the keys card is read-only.
   const preview = AiKeyCipher.isPreview();
@@ -58,7 +64,10 @@ export default async function AiSettingsPage() {
       view = AiSettingsService.view(row);
       history = await AiSettingsService.history(db);
       models = AiModelService.views(await AiModelService.list(mdb), row);
-      features = AiModelService.settingsViews(await mdb.aiFeatureSetting.findMany());
+      const featureRows = await mdb.aiFeatureSetting.findMany();
+      features = AiModelService.settingsViews(featureRows);
+      choices = AiModelService.featureChoices(featureRows);
+      keyStates = AiProviderKeyAccess.statesOf(keyStatuses, preview);
       // The saved model must be one an admin turned on, or the assistant isn't ready (the call would be refused).
       if (view.model && !models.some((m) => m.inUse && m.enabled)) view = { ...view, ready: false, modelOff: true };
       const setters = [...new Set(keyStatuses.map((k) => k.setBy).filter((e): e is string => Boolean(e && e.includes("@"))))];
@@ -71,9 +80,13 @@ export default async function AiSettingsPage() {
       dbReady = false;
     }
   }
-  // Every AI feature runs on the OpenAI key today (PR B adds per-feature providers), so only OpenAI has a live count.
-  const openAiUsers = view.enabled && view.provider === "openai" ? features.filter((f) => f.enabled && !f.killedByEnv).length : 0;
-  const keyRows: AiKeyRowView[] = AiProviderKeyService.rowViews(keyStatuses.length ? keyStatuses : AiProviderKeyService.emptyStatuses(), names, { openai: openAiUsers });
+  // Chat models that are on under Models, by the provider they were added under (the text feature model pickers).
+  const chatModels: Partial<Record<AiFeatureProvider, string[]>> = Object.fromEntries(
+    AiFeatureProviders.ALL.map((p) => [p, models.filter((m) => m.enabled && m.kind === "chat" && (m.provider ?? "openai") === p).map((m) => m.id)]),
+  );
+  // How many features that are on run on each provider's key (the Provider keys card's "Used by" count).
+  const featuresUsing = view.enabled ? AiFeatureRuntime.featuresUsing(features, choices, view.provider ?? "") : {};
+  const keyRows: AiKeyRowView[] = AiProviderKeyService.rowViews(keyStatuses.length ? keyStatuses : AiProviderKeyService.emptyStatuses(), names, featuresUsing);
   const keySavedLine = view.key.set && view.key.setAt ? AiCopy.keySaved(AiPageFormat.when(view.key.setAt), view.key.setBy ?? "") : null;
   const section = "flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4 backdrop-blur-[20px]";
 
@@ -96,12 +109,14 @@ export default async function AiSettingsPage() {
         </p>
       )}
 
-      <section className={section} aria-labelledby="provider-keys-heading">
+      {/* The text feature Provider pickers' "No key" / "Key failing" hints scroll here and focus it. */}
+      <section id={PROVIDER_KEYS_CARD_ID} className={`${section} scroll-mt-6 outline-none`} aria-labelledby="provider-keys-heading">
         <AiProviderKeysCard rows={keyRows} preview={preview} dbReady={dbReady} encryptionReady={view.encryption.ready} adminName={viewer.name ?? LineAccessService.displayName({ email: viewer.email })} />
       </section>
 
       {/* One shared OpenAI model list for the settings card, the Models panel and the feature pickers. */}
       <OpenAiModelListProvider>
+      <ProviderModelListsProvider>
       <section className={`${section} relative z-20`} aria-labelledby="ai-settings-heading">
         <h2 id="ai-settings-heading" className="type-heading">
           {AiCopy.SWITCH_LABEL}
@@ -116,10 +131,10 @@ export default async function AiSettingsPage() {
         <p className="text-muted type-caption">{AiCopy.MODELS_INTRO}</p>
         {AiFeatureFlags.isPriceRefreshOn() ? (
           <AiPriceRefresh dbReady={dbReady && models.length > 0}>
-            <AiModelsPanel models={models} dbReady={dbReady} />
+            <AiModelsPanel models={models} dbReady={dbReady} keyStates={keyStates} />
           </AiPriceRefresh>
         ) : (
-          <AiModelsPanel models={models} dbReady={dbReady} />
+          <AiModelsPanel models={models} dbReady={dbReady} keyStates={keyStates} />
         )}
       </section>
 
@@ -128,8 +143,9 @@ export default async function AiSettingsPage() {
           {AiCopy.FEATURES_TITLE}
         </h2>
         <p className="text-muted type-caption">{AiCopy.FEATURES_INTRO}</p>
-        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} />
+        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} choices={choices} keyStates={keyStates} chatModels={chatModels} mainModel={view.model} />
       </section>
+      </ProviderModelListsProvider>
       </OpenAiModelListProvider>
 
       <section className="flex flex-col gap-2" aria-labelledby="ai-history-heading">

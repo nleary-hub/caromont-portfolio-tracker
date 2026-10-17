@@ -10,6 +10,7 @@ import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai
 import { AiProviders } from "@/lib/ai/AiProviders";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
+import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 
@@ -96,6 +97,8 @@ export class AiWritingService {
     env?: Env;
     fetchImpl?: FetchLike;
     now?: () => Date;
+    /** PR B: the provider keys (tests inject a fake; the app reads the Provider keys card's storage). */
+    keys?: AiProviderKeySource;
   }): Promise<AiSuggestResult> {
     const { db, viewer, scope, projectId } = args;
     const env = args.env ?? process.env;
@@ -106,8 +109,11 @@ export class AiWritingService {
     if (!text.trim()) return { ok: false, kind: "empty", message: AiCopy.EMPTY_INPUT };
     if (!(await AiWritingService.canEdit(db, viewer, projectId, scope))) return { ok: false, kind: "not_allowed", message: AiCopy.NOT_ALLOWED };
 
+    // PR B: Draft and Fit have their own rows (toggle and env kill switch, on by default, like the other text features).
+    if (!(await AiModelService.featureOn(db, feature, env))) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
     const row = await AiSettingsService.row(db, env).catch(() => null);
-    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    // PR B: the feature's own provider and model when an admin picked them; otherwise the AI settings, exactly as before.
+    const saved = row?.enabled ? await AiFeatureRuntime.config({ db, feature, settings: row, env, keys: args.keys }) : null;
     if (!saved) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
     // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
     const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };

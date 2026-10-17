@@ -15,6 +15,7 @@ import { ClosedPageModel } from "../../src/lib/closed/ClosedPageModel";
 import { ServiceAreaInfo } from "../../src/lib/domain/ServiceAreaInfo";
 import { SampleReportData } from "../../src/lib/report/SampleReportData";
 import { TemplatesFixture } from "./templates-fixture";
+import { AiProviderFixture } from "./ai-provider-fixture";
 import { KeysFixture } from "./keys-fixture";
 import { FreezeNowButton } from "../../src/components/FreezeNowButton";
 import { FreezeGuard } from "../../src/lib/report/FreezeGuard";
@@ -132,6 +133,8 @@ const reviewRows = [
 const stalePlacements = new URLSearchParams(window.location.search).has("links") ? { aiPlacements: { related_links: null } as never } : {};
 createRoot(document.getElementById("root")!).render(new URLSearchParams(window.location.search).has("templates") ? (
   <TemplatesFixture />
+) : new URLSearchParams(window.location.search).has("aip") ? (
+  <AiProviderFixture />
 ) : new URLSearchParams(window.location.search).has("keys") ? (
   <KeysFixture />
 ) : new URLSearchParams(window.location.search).has("deps") ? (

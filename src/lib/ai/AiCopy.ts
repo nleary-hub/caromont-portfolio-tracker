@@ -131,13 +131,63 @@ export class AiCopy {
   static readonly DISABLE_CONFIRM_YES = "Turn off anyway";
   static readonly DISABLE_CONFIRM_NO = "Keep on";
   static readonly FEATURES_TITLE = "Features";
-  static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone. Each one uses the model chosen above, except Dictation, which has its own model.";
+  static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone, and pick the provider and model each text feature uses. Until you pick one, a feature uses the model chosen above. Voice chat and Dictation have their own models and run on OpenAI.";
   static readonly FEATURE_ON_HELP = "On for everyone.";
   static readonly FEATURE_OFF_HELP = "Off for everyone. The button is hidden.";
-  static readonly FEATURE_REVISE_NOTE = "Revise with AI on the update note";
+  static readonly FEATURE_REVISE_NOTE = "Revise with AI";
+  /** PR B: the writing assistant's rows on Admin > AI settings > Features (CTO: Draft, Fit for report, Revise with AI). */
+  static readonly FEATURE_DRAFT = "Draft";
+  static readonly FEATURE_FIT = "Fit for report";
 
   static featureLabel(feature: string): string {
+    if (feature === "draft_from_bullets") return AiCopy.FEATURE_DRAFT;
+    if (feature === "fit_for_report") return AiCopy.FEATURE_FIT;
     return feature === "revise_note" ? AiCopy.FEATURE_REVISE_NOTE : (AiToolsCopy.FEATURE_LABELS[feature] ?? feature);
+  }
+
+  // ---- Per-feature provider and model (PR B) -------------------------------------------------------------------
+  static readonly FEATURE_PROVIDER_LABEL = "Provider";
+  static readonly FEATURE_MODEL_LABEL = "Model";
+  static readonly PROVIDER_HINT_NO_KEY = "No key";
+  static readonly PROVIDER_HINT_KEY_FAILING = "Key failing";
+  static readonly PICK_A_MODEL = "Pick a model";
+  static readonly PROVIDER_KEY_MISSING = "Provider key missing";
+  static readonly PROVIDER_KEY_MISSING_HELP = "This feature's provider has no working key, so it can't run. Add or fix the key in Provider keys, or pick another provider.";
+  static readonly VOICE_OPENAI_ONLY = "Runs on OpenAI only for now.";
+  static readonly PROVIDER_LOCKED = "Voice chat and Dictation run on OpenAI only for now.";
+  static readonly PROVIDER_NO_KEY = "That provider has no key. Add one in Provider keys first.";
+  static readonly PROVIDER_KEY_FAILING = "That provider's key is failing. Fix it in Provider keys first.";
+  static readonly FEATURE_MODEL_SAME_AS_ABOVE = "Uses the model chosen above";
+  /** Caption under a text feature's Model picker when it uses the AI settings model (Figma Bro, Oct 17). */
+  static readonly FEATURE_MODEL_DEFAULT = "Default";
+  static readonly HISTORY_MODEL_ABOVE = "the model chosen above";
+  static readonly FEATURE_MODEL_TYPE_PLACEHOLDER = "Type a model ID";
+  static readonly FEATURES_GRID_HEADERS = ["Feature", "Provider", "Model", "On"] as const;
+  static readonly MODEL_ADD_PROVIDER_LABEL = "Provider";
+
+  static modelAddLabel(provider: string): string {
+    return provider === "other" ? "Add a model from your Other provider" : `Add a model from ${AiCopy.featureProviderName(provider)}`;
+  }
+
+  static modelOtherProvider(model: string, provider: string): string {
+    return `${model} is a ${provider} model. Pick a model from this feature's provider.`;
+  }
+
+  static modelNotListed(provider: string): string {
+    return `${AiCopy.featureProviderName(provider)} doesn't list that model for your saved key.`;
+  }
+
+  static providerListFailed(provider: string): string {
+    return `Couldn't load ${AiCopy.featureProviderName(provider)}'s model list. You can still type a model ID. Only models turned on under Models can be used.`;
+  }
+
+  static providerNeedsKey(provider: string): string {
+    return `Add a ${AiCopy.featureProviderName(provider)} key in Provider keys first, so its models can be listed.`;
+  }
+
+  /** Provider names for the per-feature picker (ai_feature_settings.provider). */
+  static featureProviderName(p: string): string {
+    return p === "openai" ? "OpenAI" : p === "anthropic" ? "Anthropic" : p === "xai" ? "xAI" : p === "other" ? "Other" : p;
   }
 
   static featureKilled(envName: string): string {
@@ -176,7 +226,7 @@ export class AiCopy {
     "The API key can't be saved until the server setting AI_SETTINGS_ENCRYPTION_KEY is set. Ask whoever manages the Vercel project to add it, then redeploy.";
   static readonly ENCRYPTION_INVALID =
     "The server setting AI_SETTINGS_ENCRYPTION_KEY is not a valid 32-byte base64 key, so the API key can't be saved or used. Ask whoever manages the Vercel project to fix it, then redeploy.";
-  static readonly PREVIEW_OFF = "AI is off on preview deployments.";
+  static readonly PREVIEW_OFF = "AI is turned off on preview deployments.";
 
   /** The editor's "AI unavailable" message, or the preview one on a Vercel preview (no key is decrypted there). */
   static unavailable(env: Record<string, string | undefined> = process.env): string {
@@ -241,6 +291,10 @@ export class AiCopy {
         return AiCopy.FEATURES_TITLE;
       case "aiFeatureModel":
         return AiToolsCopy.DICTATION_MODEL_LABEL;
+      case "aiFeatureProvider":
+        return AiCopy.FEATURE_PROVIDER_LABEL;
+      case "aiFeatureTextModel":
+        return AiCopy.FEATURE_MODEL_LABEL;
       case "aiPriceRefresh":
         return AiCopy.PRICE_REFRESH_FIELD;
       case "apiKey":
@@ -262,6 +316,17 @@ export class AiCopy {
     if (action === "price_refresh_failed") return `Refresh failed, nothing changed (${newValue === "fetch_failed" ? "page couldn't be read" : newValue === "no_match" ? "no models matched" : "format changed"})`;
     if (action === "feature_on") return `${AiCopy.featureLabel(newValue ?? "")} turned on`;
     if (action === "feature_off") return `${AiCopy.featureLabel(newValue ?? "")} turned off`;
+    // PR B: "<feature>:<value>" on both sides; an empty model means the model chosen above.
+    if (field === "aiFeatureProvider" || field === "aiFeatureTextModel") {
+      const split = (v: string | null) => {
+        const at = (v ?? "").indexOf(":");
+        return at < 0 ? { feature: "", value: v ?? "" } : { feature: (v ?? "").slice(0, at), value: (v ?? "").slice(at + 1) };
+      };
+      const o = split(oldValue);
+      const n = split(newValue);
+      const name = (v: string) => (field === "aiFeatureProvider" ? AiCopy.featureProviderName(v) : v || AiCopy.HISTORY_MODEL_ABOVE);
+      return `${AiCopy.featureLabel(n.feature || o.feature)}: ${name(o.value)} to ${name(n.value)}`;
+    }
     const show = (v: string | null) => (v === null || v === "" ? "(none)" : field === "enabled" ? (v === "true" ? "On" : "Off") : field === "provider" ? AiCopy.providerName(v) : v);
     return `${show(oldValue)} to ${show(newValue)}`;
   }
