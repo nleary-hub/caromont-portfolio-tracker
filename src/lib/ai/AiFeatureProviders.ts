@@ -1,9 +1,10 @@
 import { AiFeatureFlags, type AiToggleFeature } from "./AiFeatureFlags";
+import { AiKeyProviders, type AiKeyProvider } from "./AiKeyProviders";
 import type { AiListedModel, AiModelKind } from "./AiModelKinds";
 import type { AiRuntimeConfig } from "./AiProviderClient";
 
-/** The providers a text feature can run on (ai_feature_settings.provider, 0054; the keys live in ai_provider_keys, 0053). */
-export type AiFeatureProvider = "openai" | "anthropic" | "xai" | "other";
+/** The providers a text feature can run on (ai_feature_settings.provider, 0054): the Provider keys providers (0053). */
+export type AiFeatureProvider = AiKeyProvider;
 
 /** Whether a provider has a key the server can use: saved and readable, not saved, or saved but its last test failed. */
 export type AiProviderKeyState = "ok" | "missing" | "failing";
@@ -24,7 +25,7 @@ export interface AiProviderSecret {
  * with a mocked fetch.
  */
 export class AiFeatureProviders {
-  static readonly ALL: readonly AiFeatureProvider[] = ["openai", "anthropic", "xai", "other"];
+  static readonly ALL: readonly AiFeatureProvider[] = AiKeyProviders.ALL;
   /** Every feature starts here, and an unreadable value reads as this. Today's behavior. */
   static readonly DEFAULT: AiFeatureProvider = "openai";
   /** Voice and dictation run on OpenAI only for now (realtime, live and transcription APIs). */

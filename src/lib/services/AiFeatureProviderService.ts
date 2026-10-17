@@ -1,6 +1,8 @@
-import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyStates, type AiProviderSecret } from "@/lib/ai/AiFeatureProviders";
+import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyState, type AiProviderKeyStates, type AiProviderSecret } from "@/lib/ai/AiFeatureProviders";
+import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
 import type { AiToggleFeature } from "@/lib/ai/AiFeatureFlags";
 import type { AiRuntimeConfig } from "@/lib/ai/AiProviderClient";
+import { AiProviderKeyService, type AiProviderKeyDb, type AiProviderKeyStatus } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsRow } from "@/lib/services/AiSettingsService";
 
 type Env = Record<string, string | undefined>;
@@ -22,29 +24,54 @@ interface FeatureRowLike {
 }
 
 /**
- * The provider keys, read through the Provider keys card's storage. Preview deployments never decrypt a key (AI is
- * off there), whatever the database holds.
+ * The provider keys, read through the Provider keys card's storage (ai_provider_keys, AiProviderKeyService from 0053).
+ * Preview deployments never decrypt a key (AI is off there), whatever the database holds.
  */
 export class AiProviderKeyAccess {
   static isPreview(env: Env): boolean {
-    return env.VERCEL_ENV === "preview";
+    return AiKeyCipher.isPreview(env);
+  }
+
+  /** A provider's key state for the pickers: no key, a key that is working or not tested yet, or one that is failing. */
+  static stateOf(status: Pick<AiProviderKeyStatus, "set" | "state" | "readable">, preview: boolean): AiProviderKeyState {
+    if (!status.set) return "missing";
+    if (status.state === "rejected" || status.state === "unreachable" || status.state === "error") return "failing";
+    // On a preview nothing is decrypted, so readability is unknown there; AI is off anyway.
+    return preview || status.readable ? "ok" : "failing";
   }
 
   /**
-   * The app's key source. Until the Provider keys table is in place this reads the single AI settings key, which is
-   * an OpenAI key only when OpenAI is the saved provider; every other provider reads as no key.
+   * The app's key source: AiProviderKeyService (which copies the legacy OpenAI key into ai_provider_keys on first read).
+   * A database without that table (a fake in tests) falls back to the single AI settings key, an OpenAI key only when
+   * OpenAI is the saved provider.
    */
   static source(db: unknown, env: Env = process.env): AiProviderKeySource {
-    const settings = async (): Promise<AiSettingsRow | null> => AiSettingsService.row(db as never).catch(() => null);
+    const kdb = db as Partial<AiProviderKeyDb>;
+    const preview = AiProviderKeyAccess.isPreview(env);
+    if (typeof kdb?.aiProviderKey?.findUnique === "function" && typeof kdb.$transaction === "function") {
+      return {
+        async states() {
+          const out: Record<AiFeatureProvider, AiProviderKeyState> = { ...AiFeatureProviders.noKeys() };
+          for (const s of await AiProviderKeyService.list(kdb as AiProviderKeyDb, env)) out[s.provider] = AiProviderKeyAccess.stateOf(s, preview);
+          return out;
+        },
+        async secret(provider) {
+          if (preview) return null;
+          const s = await AiProviderKeyService.secret(kdb as AiProviderKeyDb, provider, env);
+          return s ? { apiKey: s.apiKey, baseUrl: s.baseUrl } : null;
+        },
+      };
+    }
+    const settings = async (): Promise<AiSettingsRow | null> => AiSettingsService.row(db as never, env).catch(() => null);
     return {
       async states() {
-        const out: Record<AiFeatureProvider, "ok" | "missing" | "failing"> = { ...AiFeatureProviders.noKeys() };
+        const out: Record<AiFeatureProvider, AiProviderKeyState> = { ...AiFeatureProviders.noKeys() };
         const row = await settings();
-        if (row?.provider === "openai" && row.apiKeyCiphertext) out.openai = AiProviderKeyAccess.isPreview(env) ? "missing" : AiSettingsService.view(row, env).key.readable ? "ok" : "failing";
+        if (row?.provider === "openai" && row.apiKeyCiphertext) out.openai = preview ? "missing" : AiSettingsService.view(row, env).key.readable ? "ok" : "failing";
         return out;
       },
       async secret(provider) {
-        if (AiProviderKeyAccess.isPreview(env) || provider !== "openai") return null;
+        if (preview || provider !== "openai") return null;
         const row = await settings();
         if (row?.provider !== "openai") return null;
         const config = AiSettingsService.runtimeFor(row, row.model || "list", env);

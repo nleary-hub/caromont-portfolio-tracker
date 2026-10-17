@@ -176,6 +176,18 @@ describe("per-feature provider resolution", () => {
     expect(await AiProviderKeyAccess.source(db, ENV).secret("openai")).toEqual({ apiKey: OPENAI_KEY, baseUrl: null });
   });
 
+  it("Provider keys states map onto the pickers: none is No key; rejected, unreachable, error or unreadable is Key failing", () => {
+    const state = (set: boolean, st: string, readable: boolean, preview = false) => AiProviderKeyAccess.stateOf({ set, state: st as never, readable }, preview);
+    expect(state(false, "none", false)).toBe("missing");
+    expect(state(true, "untested", true)).toBe("ok");
+    expect(state(true, "ok", true)).toBe("ok");
+    expect(state(true, "rejected", true)).toBe("failing");
+    expect(state(true, "unreachable", true)).toBe("failing");
+    expect(state(true, "error", true)).toBe("failing");
+    expect(state(true, "ok", false)).toBe("failing");
+    expect(state(true, "ok", false, true)).toBe("ok");
+  });
+
   it("the AI tools call reaches Anthropic Messages and xAI chat completions with the right headers", async () => {
     const db = await setup();
     db.featureRows = [
@@ -348,8 +360,10 @@ describe("model lists per provider (mocked fetch)", () => {
   });
 });
 
+const statements0054 = (sql: string) => sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+
 describe("0054_ai_feature_provider (PGlite)", () => {
-  it("adds provider with default 'openai' to existing rows, locks voice and dictation, widens ai_models and history", async () => {
+  it("adds provider with default 'openai' to existing rows, locks voice and dictation, keeps 0053's lists and adds the history fields", async () => {
     const dir = path.resolve(__dirname, "../prisma/migrations");
     const folders = readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
     const db = await PGlite.create();
@@ -369,9 +383,13 @@ describe("0054_ai_feature_provider (PGlite)", () => {
     await db.exec(`INSERT INTO "ai_models" ("id", "provider", "addedBy", "updatedBy") VALUES ('claude-example-sonnet', 'anthropic', 'a', 'a'), ('grok-example-4', 'xai', 'a', 'a'), ('fictional-other-model', 'other', 'a', 'a')`);
     await expect(db.exec(`INSERT INTO "ai_models" ("id", "provider", "addedBy", "updatedBy") VALUES ('y', 'gemini', 'a', 'a')`)).rejects.toThrow();
     await db.exec(`INSERT INTO "ai_settings_history" ("id", "field", "action", "oldValue", "newValue", "changedBy") VALUES (gen_random_uuid(), 'aiFeatureProvider', 'changed', 'meeting_notes:openai', 'meeting_notes:anthropic', 'a@example.org'), (gen_random_uuid(), 'aiFeatureTextModel', 'changed', 'meeting_notes:', 'meeting_notes:claude-example-sonnet', 'a@example.org')`);
-    // Earlier history values still pass.
+    // Earlier history values still pass, including 0053's providerKey rows and their no-key-material check.
     await db.exec(`INSERT INTO "ai_settings_history" ("id", "field", "action", "changedBy") VALUES (gen_random_uuid(), 'aiVoiceInstructions', 'changed', 'a@example.org')`);
-    const statements = sql.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
+    await db.exec(`INSERT INTO "ai_settings_history" ("id", "field", "action", "newValue", "changedBy") VALUES (gen_random_uuid(), 'providerKey', 'rotated', 'xai:1234', 'a@example.org')`);
+    await expect(db.exec(`INSERT INTO "ai_settings_history" ("id", "field", "action", "newValue", "changedBy") VALUES (gen_random_uuid(), 'providerKey', 'key_set', 'xai:xai-test-not-a-real-key', 'a@example.org')`)).rejects.toThrow();
+    // 0054 does not touch ai_models (0053 already widened it).
+    expect(statements0054(sql)).not.toMatch(/ai_models/);
+    const statements = statements0054(sql);
     expect(statements).not.toMatch(/\bDROP\s+(TABLE|COLUMN)\b|\bDELETE\b|\bUPDATE\b/i);
   }, 60_000);
 });
