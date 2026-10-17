@@ -53,7 +53,7 @@ describe("Admin > Dependencies review (read only)", () => {
       { id: "r1", project: "Alpha fictional project", blockedBy: "Zulu fictional project", createdAt: new Date("2026-10-09T19:40:00Z"), createdBy: ADMIN.email },
       { id: "r3", project: "Sample Clinic refresh", blockedBy: "Alpha fictional project", createdAt: new Date("2026-10-01T15:00:00Z"), createdBy: ADMIN.email },
     ]);
-    expect(calls).toMatchObject([{ where: { serviceLineId: LINE }, orderBy: [{ createdAt: "desc" }, { id: "asc" }] }]);
+    expect(calls).toMatchObject([{ where: { serviceLineId: LINE, removedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "asc" }] }]);
     expect(writes).toEqual([]);
   });
 

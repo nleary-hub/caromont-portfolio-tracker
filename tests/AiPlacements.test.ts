@@ -174,9 +174,9 @@ describe("placement 5 removed: no Find related in the drawer (it saved related p
     expect(src()).not.toContain("LINKS_SUGGESTED_TITLE");
     expect(src()).not.toContain("ai-related-section");
   });
-  it("the links panel never writes dependencies: the only dependency write path in the drawer is the Dependencies picker", () => {
+  it("the only dependency write path in the drawer is the Dependencies & blockers section", () => {
     expect(src()).not.toMatch(/dependencyActions!?\.add\(/);
-    expect(src()).toContain("<DependenciesEditor key={`deps-${selected.id}`} projectId={selected.id} actions={admin.dependencyActions}");
+    expect(src()).toContain("actions={admin.dependencyActions}");
   });
   it("placement data never offers related_links, even with the feature and model on", async () => {
     expect(AiPlacementData.FEATURES).not.toContain("related_links" as never);

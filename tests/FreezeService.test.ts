@@ -293,7 +293,7 @@ describe("report options (key page)", () => {
     vi.spyOn(console, "warn").mockImplementation(() => {});
     const { ReportOptionsService } = await import("@/lib/services/ReportOptionsService");
     const { fake, db } = await Setup.db();
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top", colors: { bar: "navy", band: "none" } });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top", colors: { bar: "navy", band: "none" }, showWaitingOn: true });
     await expect(ReportOptionsService.update({ showKeyPage: false }, Factory.MEMBER, db)).rejects.toThrow();
     await ReportOptionsService.update({ showKeyPage: false }, Factory.ADMIN, db);
     expect(fake.state.reportOptionsHistory).toHaveLength(1);
@@ -316,13 +316,13 @@ describe("report options (departments and totals grid), no migration", () => {
     expect(fake.state.reportOptions[0]).toMatchObject({ id: "report", serviceLineId: ServiceLine.DEFAULT_ID });
     // Saved as the EXCLUDED departments, so a department added later starts included.
     expect(fake.state.reportOptionsHistory.at(-1)!.newValue).toEqual({ showKeyPage: true, excludedDepartments: ["Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "lastPage", colors: { bar: "navy", band: "none" } });
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP"], totalsGrid: "lastPage", colors: { bar: "navy", band: "none" } });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: true, departments: ["Cath", "EP"], totalsGrid: "lastPage", colors: { bar: "navy", band: "none" }, showWaitingOn: true });
     // Changing the key page later keeps the other keys.
     await ReportOptionsService.update({ showKeyPage: false }, Factory.ADMIN, db);
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP"], totalsGrid: "lastPage", colors: { bar: "navy", band: "none" } });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP"], totalsGrid: "lastPage", colors: { bar: "navy", band: "none" }, showWaitingOn: true });
     // Invalid input falls back: an empty list is every department, an unknown mode is Top.
     await ReportOptionsService.update({ departments: [], totalsGrid: "sideways" as never }, Factory.ADMIN, db);
-    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top", colors: { bar: "navy", band: "none" } });
+    expect(await ReportOptionsService.get(db)).toEqual({ showKeyPage: false, departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"], totalsGrid: "top", colors: { bar: "navy", band: "none" }, showWaitingOn: true });
   });
 
   it("a filtered freeze lists only the included departments in the snapshot and handoff.json (same structure)", async () => {

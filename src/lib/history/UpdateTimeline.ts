@@ -1,3 +1,4 @@
+import { BlockerHistory } from "@/lib/projects/BlockerHistory";
 import { DisplayName } from "@/lib/auth/DisplayName";
 import { DefaultMilestone } from "@/lib/projects/DefaultMilestone";
 import { MilestoneRules } from "@/lib/domain/MilestoneRules";
@@ -349,6 +350,16 @@ export class UpdateTimeline {
         return { text: row.comment === "bulk" ? "Marked as reviewed (Mark all as reviewed)." : "Marked as reviewed." };
       case "created":
         return { text: row.comment === UpdateTimeline.CSV_IMPORT_COMMENT ? C.IMPORTED : C.PROJECT_CREATED };
+      case BlockerHistory.DEPENDENCY_ADDED:
+      case BlockerHistory.DEPENDENCY_UPDATED:
+      case BlockerHistory.DEPENDENCY_REMOVED:
+      case BlockerHistory.BLOCKER_ADDED:
+      case BlockerHistory.BLOCKER_UPDATED:
+      case BlockerHistory.BLOCKER_RESOLVED: {
+        // Dependencies and external blockers (migration 0055): shown in History, never an update.
+        const text = BlockerHistory.text(field, before ?? null, after ?? null, row.comment);
+        return text ? { text } : null;
+      }
       case F.added:
         return { text: C.addedStep(UpdateTimeline.stepName(after)) };
       case F.deleted:

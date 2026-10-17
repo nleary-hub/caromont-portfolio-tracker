@@ -59,6 +59,8 @@ test("providers without a working key are greyed with No key / Key failing, can'
   await expect(xai).toHaveAttribute("aria-disabled", "true");
   await expect(page.getByTestId("ai-feature-meeting_notes-provider-hint-xai")).toHaveText("No key");
   await expect(page.getByTestId("ai-feature-meeting_notes-provider-hint-other")).toHaveText("Key failing");
+  // Figma Bro nit: the hints are buttons, not links, so no underline.
+  for (const h of ["xai", "other"]) expect(await page.getByTestId(`ai-feature-meeting_notes-provider-hint-${h}`).evaluate((el) => getComputedStyle(el).textDecorationLine)).toBe("none");
   await expect(menu.getByRole("option", { name: "Anthropic" })).not.toHaveAttribute("aria-disabled", "true");
   await xai.click({ position: { x: 10, y: 8 }, force: true });
   await expect(page.getByTestId("ai-feature-row-meeting_notes")).toHaveAttribute("data-provider", "openai");

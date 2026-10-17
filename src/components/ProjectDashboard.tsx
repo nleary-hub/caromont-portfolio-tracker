@@ -25,7 +25,10 @@ import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import type { MilestoneStepDto } from "@/lib/services/MilestoneService";
 import type { TemplateDto } from "@/lib/services/MilestoneTemplateService";
 import type { ProjectEditFormHandle, ProjectFormSubmit } from "./ProjectEditForm";
-import { DependenciesEditor, type DependencyActions } from "./DependenciesEditor";
+import { DependenciesSection, type DependencyActions } from "./DependenciesSection";
+import { BlockedFilterChip, BlockedTile } from "./BlockedControls";
+import { BlockerSignals } from "@/lib/projects/BlockerSignals";
+import type { DependencyActionResult } from "@/app/actions/dependencies";
 import { DependencyCopy } from "@/lib/projects/DependencyCopy";
 import type { AiFeature } from "@/lib/ai/AiPrompts";
 import type { AiOutcome, AiSuggestResult } from "@/lib/services/AiWritingService";
@@ -185,6 +188,8 @@ interface Props {
   signOutAction: () => Promise<void>;
   /** Project detail > History for the signed-in viewer (everyone; the server applies the visibility rules). */
   historyAction?: HistoryLoader;
+  /** Read-only "Dependencies & blockers" load for non-admins (admins use admin.dependencyActions). */
+  dependencyLoadAction?: (projectId: string) => Promise<DependencyActionResult>;
   /** Dashboard header Voice chat (AiVoiceChatDrawer, built by the page): present only when AI and voice_chat are on. */
   aiVoice?: ReactNode;
   /** AI tools where people work (placement spec). Absent key = that feature is off (not rendered). */
@@ -240,6 +245,7 @@ export function ProjectDashboard({
   layout: layoutProp,
   signOutAction,
   historyAction,
+  dependencyLoadAction,
   aiVoice,
   aiPlacements,
   initialProjectId,
@@ -455,7 +461,12 @@ export function ProjectDashboard({
     });
     return null;
   };
-  const tiles = DashboardPrefs.visibleTiles(hiddenTiles, Boolean(completedFiscalYear));
+  // 1b: blocker summary (dashboard only; report counts never include it). Present once the server sent it.
+  const hasBlockers = deptRows.some((r) => r.blockers !== undefined);
+  const blockedRows = deptRows.filter((r) => BlockerSignals.isBlocked(r.blockers)).length;
+  const overdueFollowUps = deptRows.reduce((n, r) => n + BlockerSignals.overdueFollowUps(r.blockers, today), 0);
+  const [focusDeps, setFocusDeps] = useState<string | null>(null);
+  const tiles = DashboardPrefs.visibleTiles(hiddenTiles, Boolean(completedFiscalYear), hasBlockers);
   const tileTemplate = DashboardPrefs.gridTemplate(tiles);
   const emptyLine = DashboardViewModel.isEmptyLine(line, rows.length, Boolean(loadError));
   // Non-admins get only the visible columns in order; that is the same model with nothing hidden.
@@ -725,6 +736,8 @@ export function ProjectDashboard({
             {tiles.map((t) =>
               t === "completedFy" ? (
                 completedFiscalYear && <CompletedFiscalYearCard key={t} fy={completedFiscalYear} href={ClosedPageModel.tileHref()} beat={heartbeat} />
+              ) : t === "blocked" ? (
+                <BlockedTile key={t} count={blockedRows} overdue={overdueFollowUps} on={q.blocked} onClick={() => setQ({ ...q, blocked: !q.blocked })} beat={heartbeat} />
               ) : (
                 <div key={t} data-tile={t} className="pb-tile flex min-w-0 flex-col items-start gap-1.5 rounded-card border border-line bg-card px-3 py-2.5">
                   {heartbeat && <span className="pb-tile-beat" aria-hidden="true" />}
@@ -747,6 +760,7 @@ export function ProjectDashboard({
           <MultiFilterSelect label="Status" testId="status-filter" options={statusOptions(deptRows)} value={q.statuses} onChange={(v) => setQ({ ...q, statuses: v as DashboardQueryState["statuses"] })} width={130} />
           <MultiFilterSelect label="Project owner" testId="project-owner-filter" searchable options={DashboardQuery.ownerOptions(deptRows, "project")} value={q.projectOwners} onChange={(v) => setQ({ ...q, projectOwners: v })} width={160} />
           <MultiFilterSelect label="Milestone owner" testId="task-owner-filter" searchable options={DashboardQuery.ownerOptions(deptRows, "task")} value={q.taskOwners} onChange={(v) => setQ({ ...q, taskOwners: v })} width={150} />
+          {hasBlockers && <BlockedFilterChip count={blockedRows} on={q.blocked} onChange={(blocked) => setQ({ ...q, blocked })} />}
           <div className="flex-1" />
           {layoutError && (
             <span role="alert" className="mr-2 text-danger type-caption">
@@ -767,9 +781,9 @@ export function ProjectDashboard({
           )}
           <PrintOrderSwitch on={printOrder} onChange={setPrintOrder} />
           <TileVisibilityButton
-            tiles={DashboardPrefs.availableTiles(Boolean(completedFiscalYear))}
+            tiles={DashboardPrefs.availableTiles(Boolean(completedFiscalYear), hasBlockers)}
             hidden={hiddenTiles}
-            labelOf={(t) => (t === "completedFy" ? DashboardPrefs.tileLabel(t, completedFiscalYear?.label ?? null) : <span className={`pill st-${t}`}>{ProjectStatusInfo.label(t)}</span>)}
+            labelOf={(t) => (t === "completedFy" || t === "blocked" ? DashboardPrefs.tileLabel(t, completedFiscalYear?.label ?? null) : <span className={`pill st-${t}`}>{ProjectStatusInfo.label(t)}</span>)}
             onChange={setHiddenTiles}
           />
         </div>
@@ -809,6 +823,10 @@ export function ProjectDashboard({
               {...(rowShortcuts.length && admin ? { rowMenu: (r: DashboardRow) => (admin.formValues[r.id] ? <AiRowMenu rowName={r.name} items={rowShortcuts} onPick={(k) => openShortcut(r.id, k)} /> : null) } : {})}
               flashId={flashId}
               onSelect={selectRow}
+              onBlockers={(id) => {
+                setFocusDeps(id);
+                selectRow(id);
+              }}
               today={today}
               emptyText={rows.length === 0 ? "No projects yet." : "No projects match the current filter."}
               renderMeta={(r) => <ProjectMetaLine row={r} showInfor={showInfor} />}
@@ -886,6 +904,9 @@ export function ProjectDashboard({
             today={today}
             onClose={requestClose}
             headerTag={blockedCount?.id === selected.id && blockedCount.n > 0 ? <BlockedByTag n={blockedCount.n} /> : null}
+            {...(!admin && dependencyLoadAction
+              ? { dependencies: <DependenciesSection key={`deps-ro-${selected.id}`} projectId={selected.id} actions={{ load: dependencyLoadAction }} onOpenProject={setSelectedId} flags={BlockerSignals.flags(selected, selected.blockers, today)} focus={focusDeps === selected.id} /> }
+              : {})}
             {...(aiPlacements && "meeting_brief" in aiPlacements ? { headerAction: <AiBriefButton note={aiPlacements.meeting_brief ?? null} projectName={selected.name} /> } : {})}
             peopleEditor={
               admin ? (
@@ -938,9 +959,17 @@ export function ProjectDashboard({
                   {...(aiPlacements && "next_step" in aiPlacements ? { aiNextStep: <AiNextStepPanel key={`next-${selected.id}`} inline projects={[{ id: selected.id, name: selected.name }]} initialProject={selected.id} disabledNote={aiPlacements.next_step ?? null} /> } : {})}
                   dependencies={
                     admin.dependencyActions ? (
-                      // AI "Find related" is gone from the drawer: it saved related projects as Blocked by. AI blocker
-                      // suggestions come back later with a direction and a reason.
-                      <DependenciesEditor key={`deps-${selected.id}`} projectId={selected.id} actions={admin.dependencyActions} onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))} />
+                      // AI "Find related" is gone from the drawer: it saved related projects as Blocked by (same fix
+                      // as #86). AI blocker suggestions come back later with a direction and a reason.
+                      <DependenciesSection
+                        key={`deps-${selected.id}`}
+                        projectId={selected.id}
+                        actions={admin.dependencyActions}
+                        onOpenProject={setSelectedId}
+                        flags={BlockerSignals.flags(selected, selected.blockers, today)}
+                        focus={focusDeps === selected.id}
+                        onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))}
+                      />
                     ) : null
                   }
                   people={
@@ -1115,9 +1144,12 @@ export function ProjectDrawer({
   historyAction,
   headerAction,
   headerTag,
+  dependencies,
   entering = false,
   onEntered,
 }: {
+  /** Read-only "Dependencies & blockers" (non-admins), under the details. The edit form carries its own. */
+  dependencies?: ReactNode;
   /** True on the render that opens the panel: it slides in once. */
   entering?: boolean;
   onEntered?: () => void;
@@ -1196,6 +1228,7 @@ export function ProjectDrawer({
       ) : row ? (
         <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto px-6 pb-5" data-testid="drawer-readonly">
           <ReadOnlyDetails row={row} today={today} departments={departments} peopleEditor={peopleEditor} previously={history.timeline?.previously} />
+          {dependencies}
           {trailing}
           {/* Admin controls at the bottom of the side panel, below History. */}
           {adminControls}

@@ -5,7 +5,20 @@ import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { createProjectFromForm, deleteProject, resetRowOrder, saveColumnLayout, saveProjectForm, saveProjectMilestones, saveRowOrder, saveViewSettings, setProjectHidden, setProjectPeopleField } from "@/app/actions/admin";
 import { loadProjectHistory } from "@/app/actions/history";
-import { addProjectDependency, loadProjectDependencies, removeProjectDependency } from "@/app/actions/dependencies";
+import {
+  addProjectBlocker,
+  addProjectDependency,
+  loadProjectDependencies,
+  clearCompletedDependency,
+  dismissCompletionPrompt,
+  removeProjectDependency,
+  resolveProjectBlocker,
+  updateProjectBlocker,
+  updateProjectDependency,
+} from "@/app/actions/dependencies";
+import type { BlockerInput, DependencyInput } from "@/lib/services/ProjectDependencyService";
+import { BlockerSummaryService } from "@/lib/services/BlockerSummaryService";
+import type { RowBlockers } from "@/lib/projects/BlockerSignals";
 import { recordSuggestionOutcome, suggestNote } from "@/app/actions/ai";
 import { applyAiChange, proposeAiChange, rejectAiChange, undoAiChange } from "@/app/actions/aiReview";
 import { AiFeatureFlags, type AiReviewFeature } from "@/lib/ai/AiFeatureFlags";
@@ -164,6 +177,11 @@ class DashboardData {
         today,
       });
       const completedFiscalYear = FiscalYearRows.tile(fiscalYearRows, today);
+      // 1b: blocker pills, Blocked filter and tile (dashboard only). A failure here never blocks the dashboard.
+      const blockers = await BlockerSummaryService.forDashboard(db, scope.id, viewer.email, projects).catch((e) => {
+        console.error("Failed to load blocker summary", e);
+        return {} as Record<string, RowBlockers>;
+      });
       return {
         completedFiscalYear,
         layout,
@@ -177,7 +195,11 @@ class DashboardData {
           scope.departments,
           completedInPeriod,
           DashboardData.stepsByProject(steps),
-        ).map((r) => ({ ...r, editable: ProjectEditPolicy.canEdit(viewer, scope, stored.find((p) => p.id === r.id) ?? null) })),
+        ).map((r) => ({
+          ...r,
+          editable: ProjectEditPolicy.canEdit(viewer, scope, stored.find((p) => p.id === r.id) ?? null),
+          ...(blockers[r.id] ? { blockers: blockers[r.id] } : {}),
+        })),
         columns: ViewSettings.visibleColumns(settings.dashboard),
         latestReport: latest
           ? {
@@ -377,19 +399,44 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   "use server";
                   return loadProjectDependencies(projectId);
                 },
-                add: async (projectId: string, blockedById: string) => {
+                add: async (projectId: string, blockedById: string, input?: DependencyInput) => {
                   "use server";
-                  return addProjectDependency(projectId, blockedById);
+                  return addProjectDependency(projectId, blockedById, input);
                 },
-                remove: async (projectId: string, blockedById: string) => {
+                update: async (projectId: string, blockedById: string, input: DependencyInput) => {
                   "use server";
-                  return removeProjectDependency(projectId, blockedById);
+                  return updateProjectDependency(projectId, blockedById, input);
+                },
+                remove: async (projectId: string, blockedById: string, viewFor?: string) => {
+                  "use server";
+                  return removeProjectDependency(projectId, blockedById, viewFor);
+                },
+                addBlocker: async (projectId: string, input: BlockerInput) => {
+                  "use server";
+                  return addProjectBlocker(projectId, input);
+                },
+                updateBlocker: async (projectId: string, blockerId: string, input: BlockerInput) => {
+                  "use server";
+                  return updateProjectBlocker(projectId, blockerId, input);
+                },
+                resolveBlocker: async (projectId: string, blockerId: string, resolution: string) => {
+                  "use server";
+                  return resolveProjectBlocker(projectId, blockerId, resolution);
+                },
+                clearCompleted: async (projectId: string, blockedById: string) => {
+                  "use server";
+                  return clearCompletedDependency(projectId, blockedById);
+                },
+                dismissPrompt: async (projectId: string, blockedById: string) => {
+                  "use server";
+                  return dismissCompletionPrompt(projectId, blockedById);
                 },
               },
             },
           }
         : {})}
       historyAction={loadProjectHistory}
+      dependencyLoadAction={loadProjectDependencies}
       {...(aiVoice ? { aiVoice } : {})}
       {...(aiPlacements ? { aiPlacements } : {})}
       signOutAction={signOutAction}

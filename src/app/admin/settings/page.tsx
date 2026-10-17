@@ -66,7 +66,7 @@ export default async function AdminSettingsPage() {
         <h2 id="report-settings" className="type-heading">
           Report
         </h2>
-        <ReportSettingsForm departments={reportOptions.departments} totalsGrid={reportOptions.totalsGrid} options={options} list={scope.departments} scheduled={scope.isDefault} />
+        <ReportSettingsForm departments={reportOptions.departments} totalsGrid={reportOptions.totalsGrid} showWaitingOn={reportOptions.showWaitingOn} options={options} list={scope.departments} scheduled={scope.isDefault} />
       </section>
 
       <section id="report-colors" className={section} aria-labelledby="report-colors-heading">

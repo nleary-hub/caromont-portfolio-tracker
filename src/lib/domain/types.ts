@@ -126,6 +126,12 @@ export interface ReportRow {
   completedInPeriod?: true;
   /** Major Facility Investment. Only on MFI rows, so every other row (and every stored snapshot) is exactly as before. */
   isMfi?: true;
+  /**
+   * "Waiting on: ..." line under the note (open blockers, plain text). Present only when the project has at least one
+   * open blocker AND the Report contents "Waiting on line" option was on when the rows were built, so rows without
+   * blockers (and every snapshot frozen before it existed) are byte-identical to before. Not part of handoff.json.
+   */
+  waitingOn?: string;
 }
 
 /** One row of a "Completed this period" block, as stored in ReportSnapshot.completedJson. */

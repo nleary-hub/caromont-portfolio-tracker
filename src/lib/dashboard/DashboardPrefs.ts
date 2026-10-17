@@ -4,8 +4,8 @@ import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 
-/** A summary tile: a status count, or the "Completed FY27 to date" card. */
-export type DashboardTile = ProjectStatus | "completedFy";
+/** A summary tile: a status count, the "Completed FY27 to date" card, or the dashboard-only "Blocked" tile (1b). */
+export type DashboardTile = ProjectStatus | "completedFy" | "blocked";
 
 /** The service line prefs belong to. Absent = the default line (CVPSL), which keeps the original keys. */
 export interface PrefsLine {
@@ -28,7 +28,7 @@ export interface PrefsStorage {
 export class DashboardPrefs {
   static readonly VERSION = 1;
   /** Tiles in display order. Cancelled has no tile. */
-  static readonly TILES: readonly DashboardTile[] = ["NotStarted", "OnTrack", "AtRisk", "OffTrack", "OnHold", "Complete", "completedFy"];
+  static readonly TILES: readonly DashboardTile[] = ["NotStarted", "OnTrack", "AtRisk", "OffTrack", "OnHold", "Complete", "completedFy", "blocked"];
   static readonly TILES_TOOLTIP = "Show or hide tiles";
   static readonly SHOW_ALL = "Show all";
 
@@ -83,13 +83,16 @@ export class DashboardPrefs {
     storage?.setItem(DashboardPrefs.hiddenTilesKey(email, line), JSON.stringify(DashboardPrefs.TILES.filter((t) => hidden.includes(t))));
   }
 
-  /** Tiles available now (the FY card only when its count loaded), in display order. */
-  static availableTiles(hasFiscalYear: boolean): DashboardTile[] {
-    return DashboardPrefs.TILES.filter((t) => t !== "completedFy" || hasFiscalYear);
+  /**
+   * Tiles available now, in display order: the FY card only when its count loaded, the Blocked tile only when the
+   * line's blocker summary loaded (it is a dashboard tile only; report counts never include it).
+   */
+  static availableTiles(hasFiscalYear: boolean, hasBlockers = false): DashboardTile[] {
+    return DashboardPrefs.TILES.filter((t) => (t !== "completedFy" || hasFiscalYear) && (t !== "blocked" || hasBlockers));
   }
 
-  static visibleTiles(hidden: readonly DashboardTile[], hasFiscalYear: boolean): DashboardTile[] {
-    return DashboardPrefs.availableTiles(hasFiscalYear).filter((t) => !hidden.includes(t));
+  static visibleTiles(hidden: readonly DashboardTile[], hasFiscalYear: boolean, hasBlockers = false): DashboardTile[] {
+    return DashboardPrefs.availableTiles(hasFiscalYear, hasBlockers).filter((t) => !hidden.includes(t));
   }
 
   static toggleTile(hidden: readonly DashboardTile[], tile: DashboardTile, show: boolean): DashboardTile[] {
@@ -104,6 +107,7 @@ export class DashboardPrefs {
 
   static tileLabel(tile: DashboardTile, fiscalYearLabel: string | null): string {
     if (tile === "completedFy") return fiscalYearLabel ? FiscalYear.completedLabel(fiscalYearLabel) : "Completed this fiscal year";
+    if (tile === "blocked") return "Blocked";
     return ProjectStatusInfo.label(tile);
   }
 }

@@ -1,3 +1,4 @@
+import type { RowBlockers } from "@/lib/projects/BlockerSignals";
 import { CompletionRules } from "@/lib/projects/CompletionRules";
 import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
@@ -61,6 +62,8 @@ export interface DashboardRow {
   milestones?: DashboardMilestone[];
   /** The viewer may edit this project (ProjectEditPolicy): shows "Mark as reviewed". Set by the page. */
   editable?: boolean;
+  /** 1b: open blockers and blocking count (dashboard only; present only when there is something to show). */
+  blockers?: RowBlockers;
 }
 
 export interface DashboardMilestone {

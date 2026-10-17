@@ -1,5 +1,6 @@
 "use client";
 
+import { BlockerPills } from "./BlockerPills";
 import { MfiChip } from "./MfiChip";
 import { LatestUpdate } from "@/lib/dashboard/LatestUpdate";
 import { Fragment, useEffect, useRef, useState, type CSSProperties, type KeyboardEvent as ReactKeyboardEvent, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
@@ -57,6 +58,8 @@ export interface DashboardTableProps {
   groupTotals?: Partial<Record<AreaGroup, number>>;
   /** Present when the viewer may mark rows reviewed (per row: row.editable). */
   onReview?: (row: DashboardRow) => void;
+  /** 1b: a blocker pill click (opens the drawer at "Dependencies & blockers"). Absent = a plain row select. */
+  onBlockers?: (id: string) => void;
   /** Rendered instead of the plain empty text (filters: "No projects match these filters" + Clear all filters). */
   empty?: ReactNode;
   /**
@@ -181,7 +184,7 @@ class TableMeasure {
  * flexible column. Admins resize from each header's right edge, drag headers (Project stays first) and drag
  * rows within their department; everyone else sees the same layout with no handles or grips.
  */
-export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiToggle, rowMenu, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, empty, printOrder = false, notInReport, inlineEdit }: DashboardTableProps) {
+export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiToggle, rowMenu, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, onBlockers, empty, printOrder = false, notInReport, inlineEdit }: DashboardTableProps) {
   const value = layout?.value ?? LineLayout.defaults();
   const effective = value.columns ? LineLayout.orderedSettings("dashboard", settings, value.columns.order) : settings;
   const baseOrder = value.columns?.order ?? LineLayout.orderFromSettings("dashboard", settings);
@@ -553,6 +556,7 @@ export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiTo
                   notInReport={Boolean(notInReport?.has(r.id))}
                   inlineEdit={inlineEdit}
                   onReview={onReview && r.editable && r.changed ? () => onReview(r) : undefined}
+                  onBlockers={onBlockers}
                   renderMeta={renderMeta}
                   style={drag.style}
                   lifted={drag.lifted}
@@ -696,7 +700,9 @@ function ProjectRow({
   rowMenu,
   notInReport = false,
   inlineEdit,
+  onBlockers,
 }: {
+  onBlockers?: (id: string) => void;
   notInReport?: boolean;
   inlineEdit?: InlineEditControl;
   row: DashboardRow;
@@ -756,6 +762,7 @@ function ProjectRow({
                 <div data-part="project-name" className={NAME_WRAP}>
                   <Highlight text={row.name} query={search} />
                   {row.isMfi && <MfiChip />}
+                  <BlockerPills row={row} today={today} onOpen={() => (onBlockers ? onBlockers(row.id) : onSelect(row.id))} />
                   {notInReport && (
                     <span data-testid="not-in-report" className="ml-1.5 inline-flex shrink-0 items-center rounded-full border border-line px-1.5 align-middle text-[10px] leading-[14px] font-semibold text-muted">
                       {PrintOrder.NOT_IN_REPORT}

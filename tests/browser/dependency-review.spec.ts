@@ -5,13 +5,13 @@ const open = (page: Page, i: number) => page.locator(`tr[data-row-key="fictional
 const panel = (page: Page) => page.getByRole("complementary", { name: "Project detail", exact: true });
 const shot = (page: Page, name: string, el?: import("@playwright/test").Locator) =>
   process.env.PR0_SHOTS ? (el ?? page).screenshot({ path: `${process.env.PR0_SHOTS}/${name}.png` }) : Promise.resolve();
-const adds = (page: Page) => page.evaluate(() => (window as unknown as { __depAdds?: unknown[] }).__depAdds ?? []);
+// 1a: the drawer section (DepsFixture) records every write on window.__depSaves.
+const adds = (page: Page) => page.evaluate(() => (window as unknown as { __depSaves?: unknown[] }).__depSaves ?? []);
 
 test("drawer: Dependencies stays, no Find related or suggested related projects, and nothing writes a dependency", async ({ page }) => {
   await page.goto("/?links=1");
   await open(page, 0);
   await expect(panel(page).getByTestId("dependencies")).toBeVisible();
-  await expect(panel(page).getByTestId("blocked-by-list")).toContainText("Bravo fictional project");
   await expect(page.getByTestId("ai-related-section")).toHaveCount(0);
   await expect(page.getByTestId("ai-tool-related_links")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Find related" })).toHaveCount(0);
@@ -53,7 +53,7 @@ test("AI settings: no Related-project links toggle; the rows around where it sat
 });
 
 test("Dependencies review: read-only table of fictional rows, no buttons, links, forms or inputs", async ({ page }) => {
-  await page.goto("/?deps=1");
+  await page.goto("/?depreview=1");
   const review = page.getByTestId("dependency-review");
   await expect(review).toBeVisible();
   await expect(review.getByRole("columnheader")).toHaveText(["Project", "Blocked by", "Added", "Added by"]);
@@ -79,7 +79,7 @@ test("Dependencies review: read-only table of fictional rows, no buttons, links,
 });
 
 test("Dependencies review: empty state", async ({ page }) => {
-  await page.goto("/?deps=empty");
+  await page.goto("/?depreview=empty");
   await expect(page.getByTestId("dependency-review-empty")).toHaveText("No dependencies yet.");
   await expect(page.getByTestId("dependency-review-count")).toHaveCount(0);
   await shot(page, "pr0-2-dependencies-review-empty");

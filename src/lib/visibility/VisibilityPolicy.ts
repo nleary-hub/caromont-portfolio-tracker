@@ -1,4 +1,5 @@
 import type { ViewContext } from "@/generated/prisma/enums";
+import { BlockerHistory } from "@/lib/projects/BlockerHistory";
 import { DefaultMilestone } from "@/lib/projects/DefaultMilestone";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import type { ProjectRecord } from "@/lib/domain/types";
@@ -44,9 +45,10 @@ export class VisibilityPolicy {
 
   /**
    * History fields shown in History but never a public update: no Changed flag, no Stale reset, no "Updated" date.
-   * The "Project complete" milestone added automatically (DefaultMilestone, migration 0032).
+   * The "Project complete" milestone added automatically (DefaultMilestone, migration 0032), "reviewed", and every
+   * dependency and external blocker event (BlockerHistory, migration 0055; Nick, Oct 17, 2026: not updates).
    */
-  static readonly NOT_AN_UPDATE_HISTORY_FIELDS: readonly string[] = [DefaultMilestone.HISTORY_FIELD, "reviewed"];
+  static readonly NOT_AN_UPDATE_HISTORY_FIELDS: readonly string[] = [DefaultMilestone.HISTORY_FIELD, "reviewed", ...BlockerHistory.FIELDS];
 
   static isDeleted(project: Pick<ProjectRecord, "archivedAt">): boolean {
     return project.archivedAt !== null;
