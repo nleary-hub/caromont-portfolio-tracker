@@ -4,6 +4,16 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Writing assistant knows the project (item 9)
+- Draft from bullets, Fit for report and Revise with AI now get the project's facts (people, milestones, status,
+  blockers) and its last 3 updates, so names, dates and terms stay the way the tracker has them.
+- They write in the house report style: what happened or where it stands in the past tense, then the next action and
+  who owns it, when your text says them. Draft puts the status and next action first, because the biweekly report
+  shows the first 200 characters. Fit for report still keeps to 200 characters.
+- The project facts are for consistency only. Nothing from them is added unless your text says it too, and the number
+  and date check still compares the suggestion with your text alone. On the New project form there are no facts yet,
+  so it works on your text as before.
+
 ### AI blocker suggestions live in Dependencies (item 8)
 - The old "Related-project links" tool is gone for good (it saved related projects as Blocked by). Its AI settings
   toggle is back, renamed "Dependency suggestions (AI blockers)".

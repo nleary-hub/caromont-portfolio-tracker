@@ -14,6 +14,7 @@ import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
+import { AiWritingContext } from "./AiWritingContext";
 
 type Env = Record<string, string | undefined>;
 
@@ -148,7 +149,9 @@ export class AiWritingService {
 
     AiWritingService.inFlight.add(viewer.email);
     try {
-      const result = await AiProviderClient.complete(config, AiPrompts.build(feature, text), args.fetchImpl);
+      // Item 9: the project's facts and last 3 updates keep names, dates and terms consistent (null = text alone).
+      const facts = await AiWritingContext.load({ db, scope, viewer, projectId, now });
+      const result = await AiProviderClient.complete(config, AiPrompts.build(feature, text, facts), args.fetchImpl);
       run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");

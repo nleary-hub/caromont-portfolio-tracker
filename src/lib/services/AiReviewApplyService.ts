@@ -17,6 +17,7 @@ import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiSettingsService } from "./AiSettingsService";
+import { AiWritingContext } from "./AiWritingContext";
 import { AiWritingService, type AiUsageRow, type AiWritingDb } from "./AiWritingService";
 
 type Env = Record<string, string | undefined>;
@@ -122,7 +123,9 @@ export class AiReviewApplyService {
 
     AiReviewApplyService.inFlight.add(user);
     try {
-      const result = await AiProviderClient.complete(config, AiReviewPrompts.build(feature, current, instruction.text), args.fetchImpl);
+      // Item 9: the project's facts and last 3 updates (null = exactly as before).
+      const facts = await AiWritingContext.load({ db, scope, viewer: viewer!, projectId, now });
+      const result = await AiProviderClient.complete(config, AiReviewPrompts.build(feature, current, instruction.text, facts), args.fetchImpl);
       run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");
