@@ -56,8 +56,10 @@ export class AiVoiceChat {
    * instructions when set (Admin > AI settings), otherwise the built-in rules. The tool contract, the patient-details
    * line and the projects the viewer can see (refs, names, fields) are always added.
    */
-  static instructions(projects: readonly AiToolProject[], custom: string | null = null): string {
+  static instructions(projects: readonly AiToolProject[] | string, custom: string | null = null): string {
     const rules = custom?.trim() ? [custom.trim().slice(0, AiVoiceChat.INSTRUCTIONS_MAX)] : AiVoiceChat.BUILT_IN_RULES;
+    // Item A: the service passes the shared portfolio context (PortfolioContext text); a list is the old thin form.
+    if (typeof projects === "string") return [...rules, AiVoiceChat.TOOL_CONTRACT, AiVoiceChat.PATIENT_LINE, "Portfolio context:", projects].join("\n");
     return [...rules, AiVoiceChat.TOOL_CONTRACT, AiVoiceChat.PATIENT_LINE, "Projects (one JSON object per line):", AiToolsModel.context(projects, AiVoiceChat.FIELDS)].join("\n");
   }
 

@@ -6,7 +6,7 @@ import { AiModelKinds } from "@/lib/ai/AiModelKinds";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiRealtimeClient, type AiRealtimeFetch, type AiRealtimeTicket } from "@/lib/ai/AiRealtimeClient";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
-import type { AiToolChange } from "@/lib/ai/AiToolsModel";
+import type { AiToolChange, AiToolProject } from "@/lib/ai/AiToolsModel";
 import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
@@ -14,6 +14,7 @@ import { AiModelService, type AiModelRow } from "@/lib/services/AiModelService";
 import { AiSettingsService } from "@/lib/services/AiSettingsService";
 import { AiToolsService, type AiToolsDb, type AiToolUsageRow } from "@/lib/services/AiToolsService";
 import { AiWritingService } from "@/lib/services/AiWritingService";
+import { PortfolioContextService } from "@/lib/services/PortfolioContextService";
 
 type Env = Record<string, string | undefined>;
 
@@ -44,6 +45,13 @@ const UUID = /^[0-9a-f-]{36}$/i;
  * for review; applying a line goes through AiToolsService.applyLine and ProjectService.update like every text tool.
  */
 export class AiVoiceChatService {
+  /** Item A: the shared portfolio context for the voice session, within the voice budget (session instructions). */
+  static readonly CONTEXT_TOKENS = 24_000;
+
+  static async context(db: AiToolsDb, scope: ServiceLineScope, viewer: Viewer, projects: readonly AiToolProject[], now: () => Date): Promise<string> {
+    return (await PortfolioContextService.build({ db, scope, viewer, projects, now: now(), maxTokens: AiVoiceChatService.CONTEXT_TOKENS })).text;
+  }
+
   private static async model(db: AiToolsDb): Promise<string> {
     return AiModelService.featureModel(db, FEATURE);
   }
@@ -91,7 +99,7 @@ export class AiVoiceChatService {
       api === "live"
         ? // No token for the browser: the Live API has no ephemeral secret, so connect starts the session server side.
           { ok: true, ticket: { clientSecret: "", expiresAt: Math.floor(now().getTime() / 1000) + AiLiveClient.CONNECT_WINDOW_S, callsUrl: AiRealtimeClient.PROXY_PATH, model, api } }
-        : await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(projects, await AiModelService.voiceInstructions(db)), tools: [AiVoiceChat.TOOL], voice: AiVoiceChat.VOICE }, args.fetchImpl);
+        : await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db)), tools: [AiVoiceChat.TOOL], voice: AiVoiceChat.VOICE }, args.fetchImpl);
     await db.aiUsageLog.create({
       data: { id: randomUUID(), suggestionId: sessionId, userEmail: user, projectId: null, feature: FEATURE, event: r.ok ? "session_started" : "failed", provider: saved.provider, model, inputLength: projects.length, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
     });
@@ -160,7 +168,7 @@ export class AiVoiceChatService {
     const projects = await AiToolsService.projects(db, args.scope);
     const model = session.model ?? "";
     // The same instructions as the Realtime adapter (admin rules or built-in, plus tool contract, patient line, projects).
-    const base = AiVoiceChat.instructions(projects, await AiModelService.voiceInstructions(db));
+    const base = AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db));
     const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel: saved.model, backendInstructions: base, tools: [AiVoiceChat.TOOL] }, sdp, args.fetchImpl);
     if (r.ok) {
       console.info("AI tools: voice live session started", { sessionId: session.suggestionId, model, backendModel: saved.model, liveSessionId: r.liveSessionId });

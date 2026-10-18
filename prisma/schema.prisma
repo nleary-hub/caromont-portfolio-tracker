@@ -1050,3 +1050,48 @@ model ProjectRelatedLink {
   @@index([serviceLineId])
   @@map("project_related_links")
 }
+
+/// Org glossary (migration 0057, AI overhaul item A): sent with every AI prompt. Never deleted (trigger); removing a term
+/// sets removedAt. termKey is the trimmed lowercase term (DB check), unique. Seeded with terms only; admins write definitions.
+model AiGlossaryTerm {
+  id         String    @id @default(uuid()) @db.Uuid
+  term       String
+  termKey    String    @unique
+  /// 500 characters max (DB check). Null until an admin writes it.
+  definition String?
+  position   Int
+  removedAt  DateTime?
+  removedBy  String?
+  createdAt  DateTime  @default(now())
+  createdBy  String
+  updatedAt  DateTime  @default(now())
+  updatedBy  String
+
+  @@map("ai_glossary_terms")
+}
+
+/// One row ("default", migration 0057): the role title the AI context gives the signed-in director. Never deleted.
+model AiContextSetting {
+  id        String   @id @default("default")
+  /// 120 characters max (DB check). Null = no role line.
+  roleTitle String?
+  updatedAt DateTime @default(now())
+  updatedBy String
+
+  @@map("ai_context_settings")
+}
+
+/// Append-only log of glossary and role title changes (migration 0057, trigger).
+model AiContextHistory {
+  id        String   @id @default(uuid()) @db.Uuid
+  /// "glossary_added" | "glossary_definition" | "glossary_removed" | "role_title" (DB check)
+  field     String
+  term      String?
+  oldValue  String?
+  newValue  String?
+  changedAt DateTime @default(now())
+  changedBy String
+
+  @@index([changedAt])
+  @@map("ai_context_history")
+}

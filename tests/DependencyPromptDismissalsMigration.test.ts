@@ -43,10 +43,10 @@ async function dependency(db: PGlite): Promise<string> {
 }
 
 describe("0056_dependency_prompt_dismissals (PGlite, example data)", () => {
-  it("comes right after 0055_project_blockers and is the last migration in this slice", () => {
+  it("comes right after 0055_project_blockers; only the AI overhaul migrations follow it", () => {
     const f = folders();
     expect(f[f.indexOf(M) - 1]).toBe("0055_project_blockers");
-    expect(f.slice(f.indexOf(M) + 1)).toEqual([]);
+    expect(f.slice(f.indexOf(M) + 1).every((x) => x > "0056_")).toBe(true);
   });
 
   it("is add-only: CREATE TABLE/INDEX IF NOT EXISTS; no ALTER, DROP, UPDATE, DELETE, INSERT or report tables", () => {

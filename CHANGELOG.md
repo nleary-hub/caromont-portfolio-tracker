@@ -4,6 +4,25 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Every AI feature now sees the whole picture (A: shared context)
+- One context builder feeds every AI tool (meeting notes, bulk edit, quick capture, next step, request to draft, the
+  pre-meeting brief) and voice chat. Each project now comes with its REQ number, department, description, MFI and
+  in-report flags, owner, requester, contracts lead, the current milestone's owner, every milestone in order (name,
+  owner, due date, done) with "N of M", the full Latest update (no more 300-character cut) and up to 3 earlier
+  updates with dates, what changed since the last report, the last reviewed date, its blockers both ways, and how
+  long it has been blocked.
+- Facts are worked out by the app, not guessed by the AI: overdue, due within 14 days, stale, days in the current
+  status, "No change" for 2+ reports in a row, Off track or At risk for 2+ reports in a row, no owner, current
+  milestone with no owner, "on track but past due", plus the five blocker flags. Overdue and Stale use the exact same
+  rules as the dashboard and the PDF.
+- Every prompt also gets today's date, the service line, your name and role title, and the org glossary.
+- New card on Admin > AI settings: "Context". Set your role title and edit the glossary (term plus definition). It
+  starts with SIVAT, VIPER, HPG, Infor, MFI, PAR, New Services team, Invasive Governance and EP Governance, with the
+  definitions left blank for you to write. Terms are never deleted, and every change is logged.
+- The context covers a full service line (up to 500 projects) and stays inside a size budget: when it is too big,
+  the oldest earlier updates go first, then long descriptions, then finished milestones, then closed projects with no
+  blockers, then long updates.
+
 ### Polish from the provider keys review (Figma Bro)
 - Admin > AI settings > Provider keys: while a key is rotating, the Rotate button is greyed exactly like Test and
   Replace (it no longer lights up under the mouse).

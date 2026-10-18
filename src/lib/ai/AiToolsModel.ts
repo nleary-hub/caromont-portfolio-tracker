@@ -66,8 +66,8 @@ export class AiToolsModel {
   static readonly ALL_FIELDS: readonly AiToolField[] = ["status", "nextMilestone", "dueDate", "targetCompletion", "note"];
   /** Most lines one proposal may carry. */
   static readonly MAX_LINES = 50;
-  /** Most projects sent as context. */
-  static readonly MAX_PROJECTS = 200;
+  /** Most projects listed for the AI (item A: a full service line; PortfolioContext enforces the token budget). */
+  static readonly MAX_PROJECTS = 500;
   /** Each project's note is cut to this many characters in the context. */
   static readonly CONTEXT_NOTE_MAX = 300;
   static readonly REASON_MAX = 200;
@@ -83,7 +83,7 @@ export class AiToolsModel {
     return Number.isNaN(x.getTime()) ? null : x.toISOString().slice(0, 10);
   }
 
-  /** The project list sent to the model: refs, names and the allowed fields only. */
+  /** The old thin project list (refs, names and a few fields). Item A replaced it in every prompt with PortfolioContext. */
   static context(projects: readonly AiToolProject[], fields: readonly AiToolField[]): string {
     return projects
       .slice(0, AiToolsModel.MAX_PROJECTS)

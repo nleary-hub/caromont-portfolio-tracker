@@ -85,7 +85,7 @@ export async function proposeAiProjectDraft(input: string) {
   try {
     const c = await context();
     if (!c) return { ok: false as const, kind: "denied" as const, message: AiCopy.NOT_AUTHORIZED };
-    return await AiToolsService.proposeDraft({ db: c.db, viewer: c.viewer, input });
+    return await AiToolsService.proposeDraft({ db: c.db, viewer: c.viewer, scope: c.scope, input });
   } catch (e) {
     console.error("AI tools failed: draft", (e as Error)?.name);
     return { ok: false as const, kind: "provider" as const, message: AiToolsCopy.PROVIDER_ERROR };

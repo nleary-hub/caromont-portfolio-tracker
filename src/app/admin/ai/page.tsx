@@ -5,6 +5,8 @@ import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AiFeaturesPanel, AiModelsPanel } from "@/components/AiModelsPanel";
 import { AiPriceRefresh } from "@/components/AiPriceRefresh";
 import { AiProviderKeysCard } from "@/components/AiProviderKeysCard";
+import { AiContextCard } from "@/components/AiContextCard";
+import { AiGlossaryService, type GlossaryDb, type GlossaryView } from "@/lib/services/AiGlossaryService";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
 import { OpenAiModelListProvider } from "@/components/useOpenAiModelList";
 import { PROVIDER_KEYS_CARD_ID, ProviderModelListsProvider } from "@/components/AiFeatureProviderPicker";
@@ -54,6 +56,17 @@ export default async function AiSettingsPage() {
   const preview = AiKeyCipher.isPreview();
   let keyStatuses: AiProviderKeyStatus[] = [];
   const names = new Map<string, string>();
+  // Item A: the role title and org glossary every AI prompt carries.
+  let glossary: GlossaryView = { roleTitle: "", terms: [] };
+  let glossaryReady = dbReady;
+  if (dbReady) {
+    try {
+      glossary = await AiGlossaryService.view(Db.client as unknown as GlossaryDb);
+    } catch {
+      // 0057 not applied yet (previews skip migrations): the card shows read-only defaults.
+      glossaryReady = false;
+    }
+  }
   if (dbReady) {
     try {
       const db = Db.client as unknown as AiSettingsDb;
@@ -147,6 +160,10 @@ export default async function AiSettingsPage() {
       </section>
       </ProviderModelListsProvider>
       </OpenAiModelListProvider>
+
+      <section className={section} aria-labelledby="ai-context-heading">
+        <AiContextCard view={glossary} dbReady={dbReady && glossaryReady} />
+      </section>
 
       <section className="flex flex-col gap-2" aria-labelledby="ai-history-heading">
         <h2 id="ai-history-heading" className="type-heading">
