@@ -8,11 +8,15 @@ import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyStates } 
 import { ModelField } from "@/components/AiModelPicker";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
+import { AiModelDefaults } from "@/lib/ai/AiModelDefaults";
 import { AiModelKinds, type AiModelKind } from "@/lib/ai/AiModelKinds";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 import { useOpenAiModelList, type OpenAiListState } from "@/components/useOpenAiModelList";
 import type { AiAdminResult, AiFeatureChoice, AiFeatureView, AiModelView } from "@/lib/services/AiModelService";
+
+/** Item D: a seeded default that is not running, and the AI settings model used instead. */
+export type AiModelFallback = { seeded: string; using: string; reason: "model_off" | "no_key" };
 
 /** The same 2px focus outline used across the AI settings page since #50. */
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -398,6 +402,8 @@ export function AiFeaturesPanel({
   keyStates,
   chatModels = {},
   mainModel = "",
+  fallbacks = {},
+  defaults = {},
 }: {
   features: AiFeatureView[];
   dbReady: boolean;
@@ -407,6 +413,10 @@ export function AiFeaturesPanel({
   keyStates?: AiProviderKeyStates;
   chatModels?: Partial<Record<AiFeatureProvider, readonly string[]>>;
   mainModel?: string;
+  /** Item D: features whose seeded default can't run now, with the AI settings model they use instead. */
+  fallbacks?: Partial<Record<string, AiModelFallback>>;
+  /** Item D: each feature's seeded default model (0059 defaultModel), for the "Recommended default" caption. */
+  defaults?: Partial<Record<string, string>>;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -485,10 +495,15 @@ export function AiFeaturesPanel({
             {text && (() => {
               // Under the Model picker: "Default" when the row uses the AI settings model (shown at full strength), or
               // "Off under Models" when the model it would call is off (Figma Bro, Oct 17).
-              const cap = textModelCaption({ value: picking ? "" : choice.model, mainModel: shownProvider === "openai" ? mainModel : "", pending: picking, options: chatModels[shownProvider] ?? [] });
+              // Item D: a seeded default says so, and when it can't run the row names the model used instead.
+              const fb = !picking && choice.model && fallbacks[f.feature]?.seeded === choice.model ? fallbacks[f.feature] : undefined;
+              const seeded = !picking && shownProvider === "openai" && AiModelDefaults.isSeeded({ model: choice.model, defaultModel: defaults[f.feature] });
+              const base = textModelCaption({ value: picking ? "" : choice.model, mainModel: shownProvider === "openai" ? mainModel : "", pending: picking, options: chatModels[shownProvider] ?? [] });
+              const cap = fb ? "fallback" : seeded && base === null ? "recommended" : base;
+              const words = cap === "fallback" ? C.modelFallback(fb!.reason, fb!.using) : cap === "recommended" ? C.FEATURE_MODEL_RECOMMENDED : cap === "default" ? C.FEATURE_MODEL_DEFAULT : C.MODEL_PICKER_OFF;
               return cap ? (
-                <p className="col-start-3 row-start-2 -mt-1.5 truncate pb-1.5 pl-2 text-muted type-caption" data-testid={`ai-feature-${f.feature}-model-caption`} data-caption={cap}>
-                  {cap === "default" ? C.FEATURE_MODEL_DEFAULT : C.MODEL_PICKER_OFF}
+                <p className={`col-start-3 row-start-2 -mt-1.5 truncate pb-1.5 pl-2 type-caption ${cap === "fallback" ? "text-(--status-at-risk-dark-fg)" : "text-muted"}`} title={words} data-testid={`ai-feature-${f.feature}-model-caption`} data-caption={cap}>
+                  {words}
                 </p>
               ) : null;
             })()}

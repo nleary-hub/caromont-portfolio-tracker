@@ -1,5 +1,7 @@
 import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyState, type AiProviderKeyStates, type AiProviderSecret } from "@/lib/ai/AiFeatureProviders";
 import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
+import { AiModelDefaults } from "@/lib/ai/AiModelDefaults";
+import { AiModelKinds } from "@/lib/ai/AiModelKinds";
 import type { AiToggleFeature } from "@/lib/ai/AiFeatureFlags";
 import type { AiRuntimeConfig } from "@/lib/ai/AiProviderClient";
 import { AiProviderKeyService, type AiProviderKeyDb, type AiProviderKeyStatus } from "@/lib/services/AiProviderKeyService";
@@ -21,6 +23,8 @@ interface FeatureRowLike {
   feature: string;
   provider?: string | null;
   model?: string | null;
+  /** 0059: the seeded default model (item D). */
+  defaultModel?: string | null;
 }
 
 /**
@@ -149,7 +153,8 @@ export class AiFeatureRuntime {
   static async config(args: { db: unknown; feature: AiToggleFeature; settings: AiSettingsRow | null; env?: Env; keys?: AiProviderKeySource }): Promise<AiRuntimeConfig | null> {
     const env = args.env ?? process.env;
     if (!args.settings?.enabled) return null;
-    const choice = AiFeatureRuntime.choiceOf(args.feature, await AiFeatureRuntime.rows(args.db));
+    const rows = await AiFeatureRuntime.rows(args.db);
+    const choice = AiFeatureRuntime.choiceOf(args.feature, rows);
     if (!AiFeatureProviders.isText(args.feature) || !choice.model) {
       // Today's path, unchanged. A provider other than OpenAI is only ever saved together with a model.
       if (choice.provider !== "openai") return null;
@@ -157,12 +162,54 @@ export class AiFeatureRuntime {
     }
     if (AiProviderKeyAccess.isPreview(env)) return null;
     const keys = args.keys ?? AiProviderKeyAccess.source(args.db, env);
+    if (choice.provider === "openai" && AiModelDefaults.isSeeded({ model: choice.model, defaultModel: rows.find((r) => r.feature === args.feature)?.defaultModel })) {
+      // Item D: a seeded default runs only when its model is on under Models and OpenAI has a key; otherwise the
+      // feature uses the AI settings model (Admin > AI settings says so on the row). Never enables anything.
+      const on = (await AiFeatureRuntime.enabledChat(args.db)).includes(choice.model);
+      const secret = on ? await keys.secret("openai").catch(() => null) : null;
+      if (!secret?.apiKey) return AiSettingsService.runtime(args.settings, env);
+      return AiFeatureProviders.runtime("openai", choice.model, secret);
+    }
     const secret = await keys.secret(choice.provider).catch(() => null);
     if (!secret?.apiKey) return null;
     return AiFeatureProviders.runtime(choice.provider, choice.model, secret);
   }
 
-  /** The model a text feature will call: its own, or the AI settings model. For readiness notes. */
+  /** Item D: the chat models on under Models (ai_models). Unreadable table = none. */
+  static async enabledChat(db: unknown): Promise<string[]> {
+    try {
+      const m = (db as { aiModel?: { findMany(a: object): Promise<{ id: string; enabled: boolean; kind?: string | null }[]> } })?.aiModel;
+      if (!m) return [];
+      return (await m.findMany({ orderBy: { id: "asc" } })).filter((r) => r.enabled && AiModelKinds.fits(r, "chat")).map((r) => r.id);
+    } catch {
+      return [];
+    }
+  }
+
+  /**
+   * Item D: the feature rows as they route. A seeded default that can't run (model off under Models, or no OpenAI key)
+   * reads as "no model of its own", so readiness, key counts and the backend pick follow the AI settings model, exactly
+   * as config() does. Every other row is returned unchanged.
+   */
+  static routed<T extends FeatureRowLike>(rows: readonly T[], enabledChat: readonly string[], openAiKey: boolean): T[] {
+    return rows.map((r) => {
+      const provider = AiFeatureProviders.stored(r.provider);
+      const model = (r.model ?? "").trim();
+      return AiModelDefaults.fallsBack({ provider, model, defaultModel: r.defaultModel, enabledChat, openAiKey }) ? { ...r, model: null } : r;
+    });
+  }
+
+  /** Item D: the features whose seeded default is not running now, with the model they use instead. For settings notes. */
+  static fallbacks(rows: readonly FeatureRowLike[], enabledChat: readonly string[], openAiKey: boolean, mainModel: string): Record<string, { seeded: string; using: string; reason: "model_off" | "no_key" }> {
+    const out: Record<string, { seeded: string; using: string; reason: "model_off" | "no_key" }> = {};
+    for (const r of rows) {
+      const model = (r.model ?? "").trim();
+      if (!AiModelDefaults.fallsBack({ provider: AiFeatureProviders.stored(r.provider), model, defaultModel: r.defaultModel, enabledChat, openAiKey })) continue;
+      out[r.feature] = { seeded: model, using: mainModel.trim(), reason: enabledChat.includes(model) ? "no_key" : "model_off" };
+    }
+    return out;
+  }
+
   /**
    * The provider whose key a feature runs on: its own pick when it has its own model, OpenAI for Voice chat and
    * Dictation, otherwise the AI settings provider (counted only when that is OpenAI; the Provider keys card has no row

@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AiRunMetrics } from "@/lib/ai/AiRunMetrics";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AiBulkEdit, type AiBulkSummary } from "@/lib/ai/AiBulkEdit";
@@ -191,13 +192,16 @@ export class AiToolsService {
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
 
     const proposalId = randomUUID();
+    // Item D: the call's tokens, latency and estimated cost, written on the run row (proposed or failed).
+    let run: Partial<AiToolUsageRow> = {};
     const log = (event: string, extra: Partial<AiToolUsageRow> = {}) =>
       db.aiUsageLog.create({
-        data: { id: randomUUID(), suggestionId: proposalId, userEmail: user, projectId: args.projectId ?? null, feature, event, provider: config.provider, model: config.model, inputLength: input.length, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now(), ...extra },
+        data: { id: randomUUID(), suggestionId: proposalId, userEmail: user, projectId: args.projectId ?? null, feature, event, provider: config.provider, model: config.model, inputLength: input.length, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now(), ...run, ...extra },
       });
     AiToolsService.inFlight.add(user);
     try {
       const result = await AiProviderClient.complete(config, args.build(input), args.fetchImpl);
+      run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");
         console.error("AI tools: provider call failed", { feature, kind: result.kind, status: result.status });

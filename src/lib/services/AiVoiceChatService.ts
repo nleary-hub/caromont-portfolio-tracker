@@ -11,6 +11,7 @@ import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService, type AiModelRow } from "@/lib/services/AiModelService";
+import { AiFeatureRuntime, AiProviderKeyAccess } from "@/lib/services/AiFeatureProviderService";
 import { AiSettingsService } from "@/lib/services/AiSettingsService";
 import { AiToolsService, type AiToolsDb, type AiToolUsageRow } from "@/lib/services/AiToolsService";
 import { AiWritingService } from "@/lib/services/AiWritingService";
@@ -52,6 +53,18 @@ export class AiVoiceChatService {
     return (await PortfolioContextService.build({ db, scope, viewer, projects, now: now(), maxTokens: AiVoiceChatService.CONTEXT_TOKENS })).text;
   }
 
+  /**
+   * Item D: the Live backend model, the step that turns spoken requests into tool calls. It is the command bar's
+   * (Quick capture) model when that routes to an OpenAI chat model that is on under Models; otherwise the AI settings
+   * model, as before. The backend always runs on the AI settings OpenAI key (voice runs on OpenAI only).
+   */
+  static async backendModel(db: AiToolsDb, savedModel: string): Promise<string> {
+    const enabled = await AiModelService.enabledIds(db, "chat");
+    const keys = await AiProviderKeyAccess.savedProviders(db);
+    const c = AiFeatureRuntime.choiceOf("quick_capture", AiFeatureRuntime.routed(await AiFeatureRuntime.rows(db), enabled, keys.has("openai")));
+    return c.model && c.provider === "openai" && enabled.includes(c.model) ? c.model : savedModel;
+  }
+
   private static async model(db: AiToolsDb): Promise<string> {
     return AiModelService.featureModel(db, FEATURE);
   }
@@ -90,7 +103,7 @@ export class AiVoiceChatService {
     const sessionId = randomUUID();
     // Routed by the model's kind (AiModelKinds.voiceApi): gpt-live-* on the Live API, everything else on Realtime.
     const api = AiModelKinds.voiceApi(model);
-    if (api === "live" && !(await AiModelService.enabledIds(db, "chat")).includes(saved.model)) {
+    if (api === "live" && !(await AiModelService.enabledIds(db, "chat")).includes(await AiVoiceChatService.backendModel(db, saved.model))) {
       // Live delegates to a Responses backend: the saved writing-assistant model, which must be a chat model that is on.
       console.error("AI tools: voice session failed", { code: "model_off", api, model, reason: "no backend chat model" });
       return { ok: false, code: "model_off", message: AiToolsCopy.VOICE_BACKEND_MODEL_OFF };
@@ -169,9 +182,10 @@ export class AiVoiceChatService {
     const model = session.model ?? "";
     // The same instructions as the Realtime adapter (admin rules or built-in, plus tool contract, patient line, projects).
     const base = AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db));
-    const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel: saved.model, backendInstructions: base, tools: [...AiVoiceChat.TOOLS] }, sdp, args.fetchImpl);
+    const backendModel = await AiVoiceChatService.backendModel(db, saved.model);
+    const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel, backendInstructions: base, tools: [...AiVoiceChat.TOOLS] }, sdp, args.fetchImpl);
     if (r.ok) {
-      console.info("AI tools: voice live session started", { sessionId: session.suggestionId, model, backendModel: saved.model, liveSessionId: r.liveSessionId });
+      console.info("AI tools: voice live session started", { sessionId: session.suggestionId, model, backendModel, liveSessionId: r.liveSessionId });
       return { ok: true, sdp: r.sdp };
     }
     const code: AiVoiceErrorCode = r.modelUnavailable ? "model_unavailable" : "connect_failed";
@@ -291,7 +305,7 @@ export class AiVoiceChatService {
     if (backend) console.info("AI tools: voice live backend usage", { sessionId: session.suggestionId, model: session.model ?? null, ...backend });
     try {
       await db.aiUsageLog.create({
-        data: { id: randomUUID(), suggestionId: session.suggestionId, userEmail: viewer.email, projectId: null, feature: FEATURE, event: "session_ended", provider: session.provider, model: session.model, inputLength: 0, outputLength: null, numberCheckPassed: null, suggestedText: null, usageSeconds: seconds, costUsd, createdAt: at },
+        data: { id: randomUUID(), suggestionId: session.suggestionId, userEmail: viewer.email, projectId: null, feature: FEATURE, event: "session_ended", provider: session.provider, model: session.model, inputLength: 0, outputLength: null, numberCheckPassed: null, suggestedText: null, usageSeconds: seconds, costUsd, createdAt: at, ...(backend ? { inputTokens: backend.inputTokens, outputTokens: backend.outputTokens } : {}) },
       });
     } catch (e) {
       // Ended in parallel (the unique index refused the second row): report what is stored.

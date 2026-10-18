@@ -883,6 +883,11 @@ model AiUsageLog {
   usageSeconds      Int?
   /// Voice chat (0048): cost from the admin-entered per-minute price at the time; null when there is no such price
   costUsd           Decimal? @db.Decimal(12, 6)
+  /// 0059 (AI overhaul D): provider-counted prompt and reply tokens and the call's latency, on the run row
+  /// (suggested, proposed or failed; voice session_ended for the Live backend tokens). Null when unknown.
+  inputTokens       Int?
+  outputTokens      Int?
+  latencyMs         Int?
   createdAt         DateTime @default(now())
 
   @@index([userEmail, createdAt])
@@ -1028,6 +1033,10 @@ model AiFeatureSetting {
   /// 0054: the provider a text feature runs on: "openai" | "anthropic" | "xai" | "other" (DB check). voice_chat and
   /// dictation are always "openai" (DB check). With model null the feature uses the AI settings model, as before.
   provider  String   @default("openai")
+  /// 0059 (AI overhaul D): the Nick-approved default model for this feature (shown as "Recommended default"). Set by the
+  /// migration only; null for features without one. A feature whose model is this default and can't run (off under
+  /// Models or no OpenAI key) uses the AI settings model instead.
+  defaultModel String?
 
   @@map("ai_feature_settings")
 }

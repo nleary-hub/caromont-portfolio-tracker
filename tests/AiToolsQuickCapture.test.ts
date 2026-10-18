@@ -98,7 +98,8 @@ describe("step 6: dictation", () => {
     const db = await PGlite.create();
     for (const f of readdirSync(dir, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort()) await db.exec(readFileSync(path.join(dir, f, "migration.sql"), "utf8"));
     const rows = (await db.query(`SELECT "feature", "enabled", "model" FROM "ai_feature_settings" ORDER BY "feature"`)).rows;
-    expect(rows).toEqual(expect.arrayContaining([{ feature: "dictation", enabled: true, model: null }, { feature: "quick_capture", enabled: true, model: null }]));
+    // 0059 (item D) later seeds the command bar's default model; dictation keeps no model until an admin picks one.
+    expect(rows).toEqual(expect.arrayContaining([{ feature: "dictation", enabled: true, model: null }, { feature: "quick_capture", enabled: true, model: "gpt-6.1-sol" }]));
     await db.exec(`INSERT INTO "ai_settings_history" ("id", "field", "action", "changedBy") VALUES ('00000000-0000-4000-8000-000000000001', 'aiFeatureModel', 'changed', 'a@example.org')`).catch((e) => {
       throw e;
     });

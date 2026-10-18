@@ -160,6 +160,14 @@ export class AiCopy {
   static readonly FEATURE_MODEL_SAME_AS_ABOVE = "Uses the model chosen above";
   /** Caption under a text feature's Model picker when it uses the AI settings model (Figma Bro, Oct 17). */
   static readonly FEATURE_MODEL_DEFAULT = "Default";
+  /** Item D: caption under a text feature's Model picker when it holds the seeded (Nick-approved) default. */
+  static readonly FEATURE_MODEL_RECOMMENDED = "Recommended default";
+
+  /** Item D: the seeded default can't run, so the feature uses the AI settings model until it can. */
+  static modelFallback(reason: "model_off" | "no_key", using: string): string {
+    const now = using ? `using ${using} for now` : "using the model chosen above for now";
+    return reason === "no_key" ? `No OpenAI key; ${now}` : `Off under Models; ${now}`;
+  }
   static readonly HISTORY_MODEL_ABOVE = "the model chosen above";
   static readonly FEATURE_MODEL_TYPE_PLACEHOLDER = "Type a model ID";
   static readonly FEATURES_GRID_HEADERS = ["Feature", "Provider", "Model", "On"] as const;

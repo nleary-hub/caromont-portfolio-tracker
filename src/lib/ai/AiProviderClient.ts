@@ -14,8 +14,11 @@ export interface AiRuntimeConfig {
   allowedModels?: readonly string[];
 }
 
+/** Item D: the tokens the provider counted (OpenAI-style usage.prompt_tokens/completion_tokens, Anthropic input/output). */
+export type AiCallUsage = { inputTokens: number | null; outputTokens: number | null };
+
 export type AiCallResult =
-  | { ok: true; text: string; ms: number }
+  | { ok: true; text: string; ms: number; usage?: AiCallUsage }
   | { ok: false; kind: "timeout" | "http" | "network" | "empty" | "length" | "model_not_allowed"; status?: number; message: string; ms: number };
 
 export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{
@@ -61,7 +64,18 @@ export class AiProviderClient {
       if (AiProviderClient.hitLimit(config.provider, raw)) return { ok: false, kind: "length", status: res.status, message: AiCopy.OUT_OF_REPLY_LENGTH, ms: ms() };
       return { ok: false, kind: "empty", status: res.status, message: "The provider returned no text", ms: ms() };
     }
-    return { ok: true, text, ms: ms() };
+    return { ok: true, text, ms: ms(), usage: AiProviderClient.usageOf(raw) };
+  }
+
+  /** Item D: token counts from the response body (OpenAI, compatible and Anthropic shapes). Null when absent. */
+  static usageOf(raw: string): AiCallUsage {
+    const n = (v: unknown) => (typeof v === "number" && Number.isFinite(v) && v >= 0 ? Math.round(v) : null);
+    try {
+      const u = (JSON.parse(raw) as { usage?: Record<string, unknown> }).usage ?? {};
+      return { inputTokens: n(u.prompt_tokens ?? u.input_tokens), outputTokens: n(u.completion_tokens ?? u.output_tokens) };
+    } catch {
+      return { inputTokens: null, outputTokens: null };
+    }
   }
 
   /** URL, headers and JSON body for one call (exported for tests). */

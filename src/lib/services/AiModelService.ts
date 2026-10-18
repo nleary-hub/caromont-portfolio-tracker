@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { AiCopy } from "@/lib/ai/AiCopy";
+import type { AiModelPrice } from "@/lib/ai/AiRunMetrics";
 import { AiFeatureFlags, type AiToggleFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiProviders } from "@/lib/ai/AiProviders";
 import { AiModelKinds, type AiListedModel, type AiModelKind } from "@/lib/ai/AiModelKinds";
@@ -47,6 +48,8 @@ export interface AiFeatureRow {
   instructions?: string | null;
   /** 0054: the provider a text feature runs on ("openai" by default). Voice and dictation stay "openai". Absent before 0054. */
   provider?: string | null;
+  /** 0059 (item D): the seeded default model, shown as "Recommended default". Absent before 0059. */
+  defaultModel?: string | null;
 }
 
 /**
@@ -256,6 +259,18 @@ export class AiModelService {
       return AiModelService.enabledOf(await m.findMany({ orderBy: { id: "asc" } }), kind);
     } catch {
       return [];
+    }
+  }
+
+  /** Item D: a model's admin-entered prices, for the per-run cost estimate. Unknown model or unreadable table = null. */
+  static async priceOf(db: unknown, id: string): Promise<AiModelPrice | null> {
+    try {
+      const m = (db as Partial<AiModelDb>)?.aiModel;
+      if (!m || !id) return null;
+      const row = (await m.findMany({ orderBy: { id: "asc" } })).find((r) => r.id === id.trim());
+      return row ? { priceUnit: row.priceUnit ?? null, inputPrice: row.inputPrice ?? null, outputPrice: row.outputPrice ?? null } : null;
+    } catch {
+      return null;
     }
   }
 

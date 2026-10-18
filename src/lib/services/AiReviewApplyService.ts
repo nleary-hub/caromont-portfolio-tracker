@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AiRunMetrics } from "@/lib/ai/AiRunMetrics";
 import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
@@ -112,14 +113,17 @@ export class AiReviewApplyService {
 
     const proposalId = randomUUID();
     const inputLength = current.length + instruction.text.length;
+    // Item D: the call's tokens, latency and estimated cost, written on the run row once the call is back.
+    let run: Partial<AiUsageRow> = {};
     const log = (event: AiReviewEvent, extra: Partial<AiUsageRow> = {}) =>
       db.aiUsageLog.create({
-        data: { id: randomUUID(), suggestionId: proposalId, userEmail: user, projectId, feature, event, provider: config.provider, model: config.model, inputLength, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now(), ...extra },
+        data: { id: randomUUID(), suggestionId: proposalId, userEmail: user, projectId, feature, event, provider: config.provider, model: config.model, inputLength, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now(), ...run, ...extra },
       });
 
     AiReviewApplyService.inFlight.add(user);
     try {
       const result = await AiProviderClient.complete(config, AiReviewPrompts.build(feature, current, instruction.text), args.fetchImpl);
+      run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");
         console.error("AI review layer: provider call failed", { kind: result.kind, status: result.status, message: result.message });

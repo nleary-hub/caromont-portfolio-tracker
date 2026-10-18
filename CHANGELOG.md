@@ -4,6 +4,23 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### The right model for each job, and what each run costs (D: model routing and usage)
+- Each AI feature now starts on the model you approved, shown on its row in Admin > AI settings > Features as
+  "Recommended default". You can change any of them there, like any other pick:
+  - gpt-6.1-sol: Pre-meeting brief (becoming the Meeting Playbook), Meeting notes to updates, Quick capture (the
+    command bar, and the step behind voice chat that turns what you say into changes), Request to draft project.
+  - gpt-6-luna: Fit for report, Revise with AI and Draft from bullets (short rewrites).
+  - Unchanged: Voice chat keeps its live model and Dictation its transcription model. Bulk edit, Next step and
+    Template AI keep using the model chosen in AI settings.
+- A model you already picked for a feature is never replaced. Your list of models under Models is not touched: no
+  model is turned on and no key is added.
+- If a default's model is not on under Models (or there is no OpenAI key), that feature keeps working on the model
+  chosen in AI settings, and its row says so in amber ("Off under Models; using ... for now").
+- New "Usage" card on AI settings (last 30 days): for each feature, how many runs, lines proposed, applied and
+  rejected, the apply rate, tokens, average response time and estimated cost. Below it, the newest runs with the
+  model, tokens, response time and estimated cost of each. Costs are estimates from the prices under Models.
+- Dictation cleanup has no separate AI step today (dictation is transcription only), so there is nothing to route yet.
+
 ### Say yes before anything changes (C: confirmation)
 - Voice chat can now make the change for you. It proposes the change, reads it back in one sentence ("Status to Off
   track on Cortex EEG Upgrade; ... Apply?"), and applies it only after you clearly say yes. It says a change was

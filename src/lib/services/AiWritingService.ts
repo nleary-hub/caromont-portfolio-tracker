@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AiRunMetrics } from "@/lib/ai/AiRunMetrics";
 import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
@@ -37,6 +38,11 @@ export interface AiUsageRow {
   suggestedText: string | null;
   /** accepted_with_override only: how many numbers or dates were still not in the original (never the values). */
   unverifiedCount?: number | null;
+  /** Item D (0059): on the run row (suggested, proposed, failed): provider-counted tokens, latency and estimated cost. */
+  inputTokens?: number | null;
+  outputTokens?: number | null;
+  latencyMs?: number | null;
+  costUsd?: number | null;
   createdAt: Date;
 }
 
@@ -122,8 +128,10 @@ export class AiWritingService {
 
     const suggestionId = randomUUID();
     const base = { suggestionId, userEmail: viewer.email, projectId, feature, provider: config.provider, model: config.model, inputLength: text.length };
+    // Item D: the call's tokens, latency and estimated cost, written on the run row once the call is back.
+    let run: Partial<AiUsageRow> = {};
     const log = (event: AiUsageEvent, extra: Partial<AiUsageRow> = {}) =>
-      db.aiUsageLog.create({ data: { id: randomUUID(), ...base, event, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now(), ...extra } });
+      db.aiUsageLog.create({ data: { id: randomUUID(), ...base, event, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now(), ...run, ...extra } });
 
     // PHI guard first: nothing is sent, and the blocked text is not stored.
     const phi = AiPhiGuard.check(text);
@@ -141,6 +149,7 @@ export class AiWritingService {
     AiWritingService.inFlight.add(viewer.email);
     try {
       const result = await AiProviderClient.complete(config, AiPrompts.build(feature, text), args.fetchImpl);
+      run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");
         // The provider's message stays on the server (scrubbed of the key); the editor gets a friendly one.
