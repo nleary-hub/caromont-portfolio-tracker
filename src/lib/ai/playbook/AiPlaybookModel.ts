@@ -295,6 +295,12 @@ export class AiPlaybookModel {
     return [`Context: these notes are from the meeting "${AiPlaybookModel.meetingLabel(r.meetingType)}" on ${r.createdAt.slice(0, 10)} (${r.scopeLabel}). Turn agreed follow-ups into milestone or update changes.`, "Planned follow-ups:", ...lines, "Meeting notes:"].join("\n");
   }
 
+  /** Ends a clause with a period unless it already ends in ., ! or ? (never doubles a period). */
+  static sentence(s: string): string {
+    const t = s.trimEnd();
+    return /[.!?]["')\u201d\u2019]*$/.test(t) ? t : `${t}.`;
+  }
+
   static readonly NO_OWNER = "No owner assigned";
   static readonly NOTHING_CHANGED = "No change recorded since the last report";
 
@@ -306,7 +312,7 @@ export class AiPlaybookModel {
     L.push("1. Bottom line", p.bottomLine, "");
     L.push("2. Decisions and escalations needed");
     if (!p.decisions.length) L.push("None.");
-    for (const d of p.decisions) L.push(`- ${d.project.name}: ${d.decision} Who decides: ${d.who}. Ask: ${d.ask || "None"}. If it slips: ${d.ifSlips || "Not stated"}.`);
+    for (const d of p.decisions) L.push(`- ${d.project.name}: ${d.decision} Who decides: ${d.who}. Ask: ${AiPlaybookModel.sentence(d.ask || "None")} If it slips: ${AiPlaybookModel.sentence(d.ifSlips || "Not stated")}`);
     L.push("", "3. Agenda");
     p.agenda.forEach((a, i) => L.push(`${i + 1}. ${a.title} (${a.minutes} min)${a.projects.length ? `: ${a.projects.map((x) => x.name).join(", ")}` : ""}`));
     L.push("", "4. Project talking points");

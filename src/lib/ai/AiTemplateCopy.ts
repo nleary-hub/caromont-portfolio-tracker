@@ -18,7 +18,7 @@ export class AiTemplateCopy {
   /** Item 10: shown above the review when real checklists grounded the suggestion. */
   static basis(mode: "draft" | "edit", n: number): string {
     const p = `${n} project${n === 1 ? "" : "s"}`;
-    return mode === "edit" ? `Based on the checklists of ${p} that use this template.` : `Based on the milestone checklists of ${p} in this line.`;
+    return mode === "edit" ? `Based on the milestone checklists of ${p} that use this template.` : `Based on the milestone checklists of ${p} in this line.`;
   }
   static readonly DEFAULT_NAME = "New template";
 

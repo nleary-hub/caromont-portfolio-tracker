@@ -170,8 +170,8 @@ export class AiCopy {
 
   /** Item D: the seeded default can't run, so the feature uses the AI settings model until it can. */
   static modelFallback(reason: "model_off" | "no_key", using: string): string {
-    const now = using ? `using ${using} for now` : "using the model chosen above for now";
-    return reason === "no_key" ? `No OpenAI key; ${now}` : `Off under Models; ${now}`;
+    const now = `so it uses ${using || "the model chosen above"} for now.`;
+    return reason === "no_key" ? `No OpenAI key, ${now}` : `Off under Models, ${now}`;
   }
   static readonly HISTORY_MODEL_ABOVE = "the model chosen above";
   static readonly FEATURE_MODEL_TYPE_PLACEHOLDER = "Type a model ID";

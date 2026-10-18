@@ -4,6 +4,11 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Copy fixes (Writing Bot)
+- Clearer wording in the writing prompts (house report style), the template basis note, the dictation hint, the
+  blocker suggestions ("Suggest blockers for every project", "external blocker") and the model fallback captions; the
+  playbook's "Ask:" line no longer doubles a period.
+
 ### Dictation flows straight in (item 11)
 - In the command bar, what you dictate is sent as your message right away (unchanged from the command bar item).
 - In Meeting notes (AI menu, AI tools, and Process meeting notes on a playbook), dictated text lands in the notes box

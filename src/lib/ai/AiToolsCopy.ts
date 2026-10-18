@@ -187,13 +187,13 @@ export class AiToolsCopy {
   static readonly REQUEST_CREATED = "Project created as Not started. Open it on the dashboard to assign the owner.";
   /** Item 11: meeting notes shortcut line (dictated text lands in the box; no extra click to keep going). */
   static readonly MEETING_KEYS = "Ctrl+Enter (Cmd+Enter on a Mac) suggests updates.";
-  static readonly MEETING_KEYS_DICTATION = "Dictated text lands in the box, ready to keep talking or edit. Ctrl+Enter (Cmd+Enter on a Mac) suggests updates.";
+  static readonly MEETING_KEYS_DICTATION = "Dictated text goes into the box, so you can keep talking or edit it. Ctrl+Enter (Cmd+Enter on a Mac) suggests updates.";
   /** Item 8: AI blocker suggestions inside Dependencies (the related_links toggle, now "Dependency suggestions"). */
   static readonly DEPS_TITLE = "Suggest blockers with AI";
   static readonly DEPS_BUTTON = "Suggest blockers from updates";
-  static readonly DEPS_BUTTON_ALL = "Run the suggestion pass on every project";
-  static readonly DEPS_HELP = "Reads the Latest update for words like waiting on, pending, requires or until, and for other projects it names. Suggests a Blocked-by link (which project waits on which) or an outside blocker, each with the reason. Nothing is added until you apply it.";
-  static readonly DEPS_HELP_ALL = "One pass over every project's Latest update. You get one list of suggested Blocked-by links and outside blockers, each with its direction and reason. Nothing is added until you apply it.";
+  static readonly DEPS_BUTTON_ALL = "Suggest blockers for every project";
+  static readonly DEPS_HELP = "Checks each Latest update for waiting words (waiting on, pending, requires, until) and for other projects it names. Suggests a Blocked-by link (which project waits on which) or an external blocker, each with the reason. Nothing is added until you apply it.";
+  static readonly DEPS_HELP_ALL = "One pass over every project's Latest update. You get one list of suggested Blocked-by links and external blockers, each with its direction and reason. Nothing is added until you apply it.";
   static readonly DEPS_NOTHING_TO_CHECK = "No Latest update mentions waiting on anything or names another project. Nothing to suggest.";
   static readonly DEPS_NONE_FOUND = "The AI found no new blockers in the Latest updates. Nothing was changed.";
   static readonly DEPS_CHECKED = (n: number) => `Checked ${n} project${n === 1 ? "" : "s"} with waiting words or project names in the Latest update.`;

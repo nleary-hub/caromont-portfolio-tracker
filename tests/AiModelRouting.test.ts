@@ -146,7 +146,8 @@ describe("routing at call time", () => {
     expect(Object.keys(fb).sort()).toEqual(["meeting_brief", "meeting_notes", "quick_capture", "request_to_project"]);
     expect(fb.meeting_brief).toEqual({ seeded: "gpt-6.1-sol", using: "gpt-6-luna", reason: "model_off" });
     expect(AiFeatureRuntime.fallbacks(db.featureRows, ["gpt-6-luna", "gpt-6.1-sol"], false, "gpt-6-luna").fit_for_report).toEqual({ seeded: "gpt-6-luna", using: "gpt-6-luna", reason: "no_key" });
-    expect(AiCopy.modelFallback("model_off", "gpt-6-luna")).toBe("Off under Models; using gpt-6-luna for now");
+    expect(AiCopy.modelFallback("model_off", "gpt-6-luna")).toBe("Off under Models, so it uses gpt-6-luna for now.");
+    expect(AiCopy.modelFallback("no_key", "gpt-6-luna")).toBe("No OpenAI key, so it uses gpt-6-luna for now.");
     // Routed rows blank only the defaults that can't run; the stored rows are untouched.
     const routed = AiFeatureRuntime.routed(db.featureRows, ["gpt-6-luna"], true);
     expect(routed.find((r) => r.feature === "meeting_brief")?.model).toBeNull();

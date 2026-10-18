@@ -68,6 +68,10 @@ describe("prompts: house style, length and no new facts", () => {
       expect(s).toContain("next action and who owns it");
       expect(s).not.toContain("\u2014");
     }
+    const style = (who: string) => `- House report style: lead with what happened (past tense, for example "Vendor returned redlines Oct 12.") or where it stands now, then the next action and who owns it, when the ${who} say${who === "notes" ? "" : "s"} them.`;
+    expect(AiPrompts.DRAFT_SYSTEM).toContain(style("notes"));
+    expect(AiPrompts.FIT_SYSTEM).toContain(style("update"));
+    expect(AiReviewPrompts.REVISE_SYSTEM).toContain(style("update or the change"));
     expect(AiPrompts.DRAFT_SYSTEM).toContain("The biweekly report shows the first 200 characters");
     expect(AiPrompts.FIT_SYSTEM).toContain("200 characters or fewer");
     expect(AiPrompts.DRAFT_SYSTEM).toContain("Do not add facts");

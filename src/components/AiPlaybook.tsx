@@ -100,7 +100,7 @@ export function AiPlaybookView({ record }: { record: AiPlaybookRecord }) {
               <li key={i} className="type-table text-fg">
                 <P r={d.project} />: {d.decision}
                 <div className="text-muted type-caption">
-                  Who decides: {d.who}. Ask: {d.ask || C.PLAYBOOK_NONE} If it slips: {d.ifSlips || "Not stated."}
+                  Who decides: {d.who}. Ask: {d.ask ? AiPlaybookModel.sentence(d.ask) : C.PLAYBOOK_NONE} If it slips: {d.ifSlips || "Not stated."}
                 </div>
               </li>
             ))}

@@ -205,6 +205,25 @@ describe("the page: sections, links, exports, close the loop", () => {
     expect(AiPlaybookModel.wordHtml(evil)).not.toContain("<script>");
   });
 
+  it("decisions line: the ask ends with exactly one period in the page, the email text and the Word file", async () => {
+    const r = await record();
+    const d0 = r.content.decisions[0];
+    const asks = ["Approve the second vendor", "Approve the second vendor.", "Can we approve it?", "Approve it now!"];
+    const want = ["Approve the second vendor.", "Approve the second vendor.", "Can we approve it?", "Approve it now!"];
+    asks.forEach((ask, i) => {
+      const x = { ...r, content: { ...r.content, decisions: [{ ...d0, ask, ifSlips: "Go-live moves a month." }] } };
+      const h = renderToStaticMarkup(createElement(AiPlaybookView, { record: x }));
+      expect(h).toContain(`Ask: ${want[i]} If it slips:`);
+      const t = AiPlaybookModel.text(x);
+      expect(t).toContain(`Ask: ${want[i]} If it slips: Go-live moves a month.`);
+      expect(AiPlaybookModel.wordHtml(x)).toContain(`Ask: ${want[i]} If it slips: Go-live moves a month.</p>`);
+      for (const out of [h, t]) expect(out).not.toContain("..");
+    });
+    expect(AiPlaybookModel.sentence("Done.")).toBe("Done.");
+    expect(AiPlaybookModel.sentence("Done")).toBe("Done.");
+    expect(AiPlaybookModel.sentence("Ready?")).toBe("Ready?");
+  });
+
   it("Process meeting notes goes through Meeting notes to updates with the playbook's follow-ups as context", async () => {
     const r = await record();
     const prefix = AiPlaybookModel.notesPrefix(r);
