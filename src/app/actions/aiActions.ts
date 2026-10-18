@@ -9,6 +9,7 @@ import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { AiActionPortsLive } from "@/lib/services/AiActionPortsLive";
 import { AiActionService, type AiActionDb, type AiActionSource, type AiApplyResult, type AiProposeResult, type AiUndoResult } from "@/lib/services/AiActionService";
+import { AiBulkEditService, type AiBulkEditResult } from "@/lib/services/AiBulkEditService";
 import { AiCommandService, type AiCommandResult } from "@/lib/services/AiCommandService";
 import { AiMeetingNotesService, type AiMeetingNotesResult } from "@/lib/services/AiMeetingNotesService";
 import { AiToolsService } from "@/lib/services/AiToolsService";
@@ -77,6 +78,19 @@ export async function processAiMeetingNotes(notes: string, prefix: string | null
     return await AiMeetingNotesService.process({ ...c, notes: String(notes ?? "").slice(0, AiToolsService.INPUT_MAX), prefix: typeof prefix === "string" ? prefix : null });
   } catch (e) {
     console.error("AI actions failed: meeting notes", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
+  }
+}
+
+/** Item 4: plain-English bulk edit (a filter and one change; the lines come back as one confirm card). */
+export async function proposeAiBulkEdit(text: string, onlyIds: string[] | null = null): Promise<AiBulkEditResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    const ids = Array.isArray(onlyIds) ? onlyIds.filter((x) => typeof x === "string" && /^[0-9a-f-]{36}$/i.test(x)).slice(0, 500) : null;
+    return await AiBulkEditService.propose({ ...c, input: String(text ?? "").slice(0, AiToolsService.INPUT_MAX), onlyIds: ids });
+  } catch (e) {
+    console.error("AI actions failed: bulk edit", (e as Error)?.name);
     return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
   }
 }

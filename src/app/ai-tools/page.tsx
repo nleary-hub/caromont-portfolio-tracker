@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
+import { AiBulkEditPanel } from "@/components/AiBulkEditPanel";
 import { AiMeetingNotesPanel } from "@/components/AiMeetingNotesPanel";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
 import { AiVoiceChatPanel } from "@/components/AiVoiceChatPanel";
@@ -74,7 +75,7 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-bulk-heading" className="type-heading">
           {C.BULK_TITLE}
         </h2>
-        <AiToolsPanel feature="bulk_edit" label={C.BULK_LABEL} help={C.BULK_HELP} placeholder={C.BULK_PLACEHOLDER} disabledNote={notes.bulk_edit ?? null} rows={3} />
+        <AiBulkEditPanel disabledNote={notes.bulk_edit ?? null} />
       </section>
       )}
 

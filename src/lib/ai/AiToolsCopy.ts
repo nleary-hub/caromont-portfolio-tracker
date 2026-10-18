@@ -103,7 +103,11 @@ export class AiToolsCopy {
 
   // Step 5: Plain-English bulk edit.
   static readonly BULK_TITLE = "Plain-English bulk edit";
-  static readonly BULK_HELP = "Describe a change for many projects at once. The AI turns it into a filter and one change, and the app lists each matching project with before and after. It can change status, next milestone and dates, never the Latest update.";
+  static readonly BULK_HELP = "Describe one change for many projects at once. The AI turns it into a filter and one change; you see the filter in plain words, then each matching project with before and after. It can change status, next milestone, dates, owner, contracts lead, requester, department or the current milestone's owner, complete the current milestone, or mark projects reviewed, never the Latest update.";
+  static readonly BULK_UNREADABLE = "The AI couldn't turn that into one filter and one change. Nothing was changed. Try one change at a time, for example: Set the owner of every EP project with no owner to Avery Lin.";
+  static readonly BULK_NO_MATCH = "No project matches that filter. Nothing to change.";
+  static readonly BULK_NOTHING_TO_CHANGE = "Every matching project already has that value. Nothing to change.";
+  static readonly bulkAlready = (n: number) => (n === 1 ? "1 matching project already has that value." : `${n} matching projects already have that value.`);
   static readonly BULK_LABEL = "What should change?";
   static readonly BULK_FILTER_LABEL = "Filter";
   static readonly BULK_ACTION_LABEL = "Change";

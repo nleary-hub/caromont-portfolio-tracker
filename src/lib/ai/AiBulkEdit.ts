@@ -51,7 +51,13 @@ export class AiBulkEdit {
     const body = AiToolsModel.json(text) as { filter?: unknown; action?: unknown } | null;
     if (!body || typeof body.filter !== "object" || body.filter === null || typeof body.action !== "object" || body.action === null) return null;
     if ("changes" in body) return null;
-    const f = body.filter as Record<string, unknown>;
+    const filter = AiBulkEdit.parseFilter(body.filter as Record<string, unknown>);
+    const action = AiBulkEdit.parseAction(body.action as Record<string, unknown>);
+    return filter && action ? { filter, action } : null;
+  }
+
+  /** The filter keys of the original bulk edit (also read by the full-field bulk edit). Null = unreadable. */
+  static parseFilter(f: Record<string, unknown>): AiBulkFilter | null {
     const statuses: string[] = [];
     if (f.statuses !== undefined) {
       if (!Array.isArray(f.statuses)) return null;
@@ -67,30 +73,30 @@ export class AiBulkEdit {
     const targetTo = AiBulkEdit.date(f.targetTo);
     if (dueFrom === undefined || dueTo === undefined || targetFrom === undefined || targetTo === undefined) return null;
     const nameContains = typeof f.nameContains === "string" && f.nameContains.trim() ? f.nameContains.trim().slice(0, 100) : null;
-    const filter: AiBulkFilter = { statuses, dueFrom, dueTo, noDueDate: f.noDueDate === true, targetFrom, targetTo, nameContains };
+    return { statuses, dueFrom, dueTo, noDueDate: f.noDueDate === true, targetFrom, targetTo, nameContains };
+  }
 
-    const a = body.action as Record<string, unknown>;
-    let action: AiBulkAction;
+  /** The original four-field action (status, nextMilestone, dueDate, targetCompletion). Null = not one of these. */
+  static parseAction(a: Record<string, unknown>): AiBulkAction | null {
     if (a.field === "status") {
       const st = typeof a.set === "string" ? AiToolsModel.status(a.set) : null;
-      if (!st) return null;
-      action = { field: "status", set: st };
-    } else if (a.field === "nextMilestone") {
+      return st ? { field: "status", set: st } : null;
+    }
+    if (a.field === "nextMilestone") {
       const v = typeof a.set === "string" ? AiToolsModel.clean("nextMilestone", a.set) : null;
-      if (!v) return null;
-      action = { field: "nextMilestone", set: v };
-    } else if (a.field === "dueDate" || a.field === "targetCompletion") {
+      return v ? { field: "nextMilestone", set: v } : null;
+    }
+    if (a.field === "dueDate" || a.field === "targetCompletion") {
       const field = a.field;
       const int = (n: unknown) => (typeof n === "number" && Number.isInteger(n) && n !== 0 && Math.abs(n) <= SHIFT_MAX ? n : null);
       if (a.set !== undefined) {
         const d = AiBulkEdit.date(a.set);
-        if (!d) return null;
-        action = { field, set: d };
-      } else if (int(a.shiftDays) !== null) action = { field, shiftDays: int(a.shiftDays)! };
-      else if (int(a.shiftMonths) !== null && Math.abs(a.shiftMonths as number) <= 120) action = { field, shiftMonths: a.shiftMonths as number };
-      else return null;
-    } else return null;
-    return { filter, action };
+        return d ? { field, set: d } : null;
+      }
+      if (int(a.shiftDays) !== null) return { field, shiftDays: int(a.shiftDays)! };
+      if (int(a.shiftMonths) !== null && Math.abs(a.shiftMonths as number) <= 120) return { field, shiftMonths: a.shiftMonths as number };
+    }
+    return null;
   }
 
   private static inRange(v: string | null, from: string | null, to: string | null): boolean {

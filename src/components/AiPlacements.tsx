@@ -8,8 +8,8 @@ function Portal({ children }: { children: ReactNode }) {
   return typeof document === "undefined" ? <>{children}</> : createPortal(children, document.body);
 }
 import { AiCommandBar } from "@/components/AiCommandBar";
+import { AiBulkEditPanel } from "@/components/AiBulkEditPanel";
 import { AiMeetingNotesPanel } from "@/components/AiMeetingNotesPanel";
-import { AiToolsPanel } from "@/components/AiToolsPanel";
 import { AI_GHOST, Sparkle } from "@/components/AiToolsUi";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 
@@ -147,7 +147,7 @@ export function AiToolbarMenu({ notes, selected, visible, defaultOpen = false, d
       {tool && (
         <AiDrawer title={tool === "bulk_edit" ? C.BULK_TITLE : C.MEETING_TITLE} onClose={() => setTool(null)} testId={`ai-drawer-${tool}`}>
           {tool === "bulk_edit" ? (
-            <AiToolsPanel feature="bulk_edit" label={C.BULK_LABEL} help={C.BULK_HELP} placeholder={C.BULK_PLACEHOLDER} disabledNote={notes.bulk_edit ?? null} rows={3} context={{ line: C.selectionLine(selected.length, selected.map((p) => p.name).join(", ")), prefix: C.scopePrefix(selected.map((p) => p.name).join("; ")) }} />
+            <AiBulkEditPanel disabledNote={notes.bulk_edit ?? null} onlyIds={selected.map((p) => p.id)} context={{ line: C.selectionLine(selected.length, selected.map((p) => p.name).join(", ")) }} />
           ) : (
             <AiMeetingNotesPanel disabledNote={notes.meeting_notes ?? null} context={{ line: selected.length ? C.selectionLine(selected.length, selected.map((p) => p.name).join(", ")) : C.visibleLine(visible.length), prefix: C.scopePrefix(names) }} {...("dictation" in notes && notes.dictation !== C.FEATURE_OFF_NOTE ? { dictation: { disabledNote: notes.dictation ?? null } } : {})} />
           )}

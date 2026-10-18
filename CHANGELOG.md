@@ -4,6 +4,20 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Plain-English bulk edit (item 4)
+- Describe one change for many projects ("Make Avery Lin the owner of every IR project with no owner"). Besides
+  status, next milestone and dates, it can now set the owner, contracts lead, requester, department or the current
+  milestone's owner, complete each project's current milestone, or mark projects reviewed. It never touches the Latest
+  update.
+- New filters: department (full or short name), owner, no owner, overdue, blocked, plus the old status, date and name
+  filters.
+- First you see what the AI understood, in plain words ("Open projects where no owner is assigned"), with the change
+  and how many projects match. Then the same review card as everywhere else: Apply all, or line by line.
+- "Bulk edit selected (N)" from the AI menu now only ever touches the rows you selected. Before, the filter could
+  reach other projects too.
+- A person not on the People lists is refused for every row, never added. Projects that already have the value are
+  counted, not listed as changes.
+
 ### Meeting notes to updates
 - Paste or dictate your notes from a meeting (AI menu > Meeting notes to updates, AI tools, or Process meeting notes
   on a saved playbook). Dictated text lands in the notes box as you speak, no paste needed.
