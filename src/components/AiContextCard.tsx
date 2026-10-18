@@ -4,10 +4,14 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { addGlossaryTerm, removeGlossaryTerm, setAiRoleTitle, setGlossaryDefinition } from "@/app/actions/aiContext";
 import type { GlossaryView } from "@/lib/services/AiGlossaryService";
+import { AutoGrowTextarea } from "./AutoGrowTextarea";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = `h-7 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
-const AREA = `min-h-7 w-full min-w-0 resize-y rounded-control border border-line bg-input px-2.5 py-1 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
+/** A definition grows with its text up to 4 lines (4 x 16px + 8px padding + 2px border), then scrolls (Figma Bro, Oct 18). */
+const AREA = `block max-h-[74px] min-h-7 w-full min-w-0 resize-none rounded-control border border-line bg-input px-2.5 py-1 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
+/** The New term box takes the free width and shrinks, so Add term stays on the row inside the card at 880px. */
+const NEW_TERM = `h-7 min-w-0 flex-1 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
 const GHOST = `h-7 shrink-0 rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
 const LINK = `h-7 shrink-0 rounded-control px-2 text-muted type-table hover:bg-white/5 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
 
@@ -66,9 +70,9 @@ export function AiContextCard({ view, dbReady }: { view: GlossaryView; dbReady: 
         <span className="text-muted type-caption">{AiContextCopy.GLOSSARY_HINT}</span>
         <ul className="flex flex-col divide-y divide-line rounded-control border border-line bg-white/[0.02]" data-testid="ai-glossary">
           {view.terms.map((t) => (
-            <li key={t.id} className="flex items-start gap-2 px-3 py-2" data-testid="ai-glossary-row">
+            <li key={t.id} className="flex min-w-0 items-start gap-2 px-3 py-2" data-testid="ai-glossary-row">
               <span className="w-40 shrink-0 pt-1 type-table-strong text-fg">{t.term}</span>
-              <textarea className={AREA} rows={1} maxLength={500} value={defs[t.id] ?? ""} placeholder={AiContextCopy.DEFINITION_PLACEHOLDER} disabled={off} onChange={(e) => setDefs({ ...defs, [t.id]: e.target.value })} aria-label={`Definition of ${t.term}`} />
+              <AutoGrowTextarea className={AREA} style={{ overflow: "auto" }} rows={1} maxLength={500} value={defs[t.id] ?? ""} placeholder={AiContextCopy.DEFINITION_PLACEHOLDER} disabled={off} onChange={(e) => setDefs({ ...defs, [t.id]: e.target.value })} aria-label={`Definition of ${t.term}`} />
               <button type="button" className={GHOST} disabled={off || (defs[t.id] ?? "") === t.definition} onClick={() => run(() => setGlossaryDefinition(t.id, defs[t.id] ?? ""))}>
                 {AiContextCopy.SAVE}
               </button>
@@ -77,8 +81,8 @@ export function AiContextCard({ view, dbReady }: { view: GlossaryView; dbReady: 
               </button>
             </li>
           ))}
-          <li className="flex items-center gap-2 px-3 py-2">
-            <input className={`${INPUT} w-40 shrink-0`} value={term} maxLength={60} placeholder={AiContextCopy.ADD_PLACEHOLDER} disabled={off} onChange={(e) => setTerm(e.target.value)} data-testid="ai-glossary-new" />
+          <li className="flex min-w-0 items-center gap-2 px-3 py-2">
+            <input className={NEW_TERM} value={term} maxLength={60} placeholder={AiContextCopy.ADD_PLACEHOLDER} disabled={off} onChange={(e) => setTerm(e.target.value)} data-testid="ai-glossary-new" />
             <button type="button" className={GHOST} disabled={off || !term.trim()} onClick={() => run(() => addGlossaryTerm(term, ""), () => setTerm(""))} data-testid="ai-glossary-add">
               {AiContextCopy.ADD}
             </button>

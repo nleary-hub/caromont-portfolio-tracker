@@ -44,6 +44,7 @@ export function PickerSelect({
   maxMenuHeight,
   describedBy,
   invalid,
+  menuClassName,
 }: {
   /** The trigger's id (the field label points at it). */
   id: string;
@@ -78,6 +79,11 @@ export function PickerSelect({
   maxMenuHeight?: number;
   /** aria-describedby of the trigger (help or error text). */
   describedBy?: string;
+  /**
+   * Extra class on the menu surface. "vp-drawer" gives the nearly solid glass surface of the dashboard view menu, for
+   * menus that open over a blurred card (AI settings > Features), where the 72% glass alone reads as see-through.
+   */
+  menuClassName?: string;
   /** aria-invalid on the trigger. */
   invalid?: boolean;
 }) {
@@ -155,7 +161,7 @@ export function PickerSelect({
         </span>
       )}
       {open && (
-        <div className="vp-pop" style={trigger ? { left: 0, top: "calc(100% + 4px)", ...anchor, width: menuWidth ?? 160, padding: 4, zIndex: 40 } : menuWidth ? { left: 0, width: menuWidth, top: "calc(100% + 4px)", padding: 4 } : { left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
+        <div className={menuClassName ? `vp-pop ${menuClassName}` : "vp-pop"} style={trigger ? { left: 0, top: "calc(100% + 4px)", ...anchor, width: menuWidth ?? 160, padding: 4, zIndex: 40 } : menuWidth ? { left: 0, width: menuWidth, top: "calc(100% + 4px)", padding: 4 } : { left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
           <ul id={listId} role="listbox" aria-label={label} className="vp-list" style={maxMenuHeight ? { maxHeight: maxMenuHeight, overflowY: "auto" } : undefined}>
             {status && (
               <li role="presentation" className="px-2 text-muted type-caption">

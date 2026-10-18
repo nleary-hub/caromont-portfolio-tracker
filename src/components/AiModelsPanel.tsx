@@ -556,7 +556,7 @@ export function AiFeaturesPanel({
               const cap = fb ? "fallback" : seeded && base === null ? "recommended" : base;
               const words = cap === "fallback" ? C.modelFallback(fb!.reason, fb!.using) : cap === "recommended" ? C.FEATURE_MODEL_RECOMMENDED : cap === "default" ? C.FEATURE_MODEL_DEFAULT : C.MODEL_PICKER_OFF;
               return cap ? (
-                <p className={`col-start-3 row-start-2 -mt-1.5 truncate pb-1.5 pl-2 type-caption ${cap === "fallback" ? "text-(--status-at-risk-dark-fg)" : "text-muted"}`} title={words} data-testid={`ai-feature-${f.feature}-model-caption`} data-caption={cap}>
+                <p className={`col-start-3 row-start-2 -mt-1.5 min-w-0 whitespace-normal pb-1.5 pl-2 type-caption [overflow-wrap:anywhere] ${cap === "fallback" ? "text-(--status-at-risk-dark-fg)" : "text-muted"}`} title={words} data-testid={`ai-feature-${f.feature}-model-caption`} data-caption={cap}>
                   {words}
                 </p>
               ) : null;

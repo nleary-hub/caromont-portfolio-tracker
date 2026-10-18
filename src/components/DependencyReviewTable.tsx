@@ -10,7 +10,7 @@ export interface DependencyReviewRowDto {
 export class DependencyReviewCopy {
   static readonly PAGE_TITLE = "Dependencies review";
   static readonly INTRO =
-    "Every Blocked-by dependency in this service line, newest first. This page is read only. The Link button on AI Find related suggestions in the project drawer used to save the suggested project as Blocked by, so some of these rows may not be real dependencies. To fix one, open that project's drawer and edit it under Dependencies.";
+    "Every Blocked-by dependency in this service line, newest first. The list is read only. Some older rows were saved by a removed AI tool and may not be real dependencies. To fix one, open that project's drawer and edit it under Dependencies.";
   static readonly HEADERS = ["Project", "Blocked by", "Added", "Added by"] as const;
   static readonly EMPTY = "No dependencies yet.";
   static count(n: number): string {

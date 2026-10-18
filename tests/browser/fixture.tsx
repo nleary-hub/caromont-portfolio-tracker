@@ -18,6 +18,7 @@ import { TemplatesFixture } from "./templates-fixture";
 import { AiProviderFixture } from "./ai-provider-fixture";
 import { KeysFixture } from "./keys-fixture";
 import { DepsFixture } from "./deps-fixture";
+import { ConfirmFixture } from "./confirm-fixture";
 import { FreezeNowButton } from "../../src/components/FreezeNowButton";
 import { FreezeGuard } from "../../src/lib/report/FreezeGuard";
 import { DriveCheckButton } from "../../src/components/DriveCheckButton";
@@ -113,7 +114,9 @@ const reviewRows = [
 // ?links=1: the dashboard with the old related_links placement note passed in (as a stale flag would), to prove the
 // drawer offers no Find related and writes no dependency from it.
 const stalePlacements = new URLSearchParams(window.location.search).has("links") ? { aiPlacements: { related_links: null } as never } : {};
-createRoot(document.getElementById("root")!).render(new URLSearchParams(window.location.search).has("templates") ? (
+createRoot(document.getElementById("root")!).render(new URLSearchParams(window.location.search).has("confirm") ? (
+  <ConfirmFixture width={Number(new URLSearchParams(window.location.search).get("confirm")) || 440} />
+) : new URLSearchParams(window.location.search).has("templates") ? (
   <TemplatesFixture />
 ) : new URLSearchParams(window.location.search).has("aip") ? (
   <AiProviderFixture />

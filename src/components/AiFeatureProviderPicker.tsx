@@ -79,7 +79,7 @@ export function providerOptions(keyStates: AiProviderKeyStates | undefined): Pic
 export function ProviderPickerCell({ feature, value, keyStates, onChange, className = "" }: { feature: string; value: AiFeatureProvider; keyStates?: AiProviderKeyStates; onChange: (p: AiFeatureProvider) => void; className?: string }) {
   return (
     <div className={`w-[140px] ${className}`}>
-      <PickerSelect id={`ai-feature-${feature}-provider`} label={C.FEATURE_PROVIDER_LABEL} value={value} options={providerOptions(keyStates)} menuWidth={200} onChange={(v) => onChange(AiFeatureProviders.stored(v))} testId={`ai-feature-${feature}-provider`} />
+      <PickerSelect id={`ai-feature-${feature}-provider`} label={C.FEATURE_PROVIDER_LABEL} value={value} options={providerOptions(keyStates)} menuWidth={200} menuClassName="vp-drawer" onChange={(v) => onChange(AiFeatureProviders.stored(v))} testId={`ai-feature-${feature}-provider`} />
     </div>
   );
 }
@@ -206,6 +206,7 @@ export function TextModelCell({
         valueClassName={strong ? "text-fg" : "text-muted"}
         status={status}
         menuWidth={260}
+        menuClassName="vp-drawer"
         maxMenuHeight={256}
         disabled={disabled}
         title={inherits ? C.FEATURE_MODEL_SAME_AS_ABOVE : undefined}
