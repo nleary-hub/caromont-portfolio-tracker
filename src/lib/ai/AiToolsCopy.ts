@@ -16,7 +16,7 @@ export class AiToolsCopy {
     next_step: "Next-step suggestion",
     request_to_project: "Request to draft project",
     meeting_brief: "Pre-meeting brief",
-    related_links: "Related-project links",
+    related_links: "Dependency suggestions (AI blockers)",
     voice_chat: "Voice chat",
     template_ai: "Template AI assistant",
   };
@@ -185,6 +185,16 @@ export class AiToolsCopy {
   static readonly REQUEST_UPDATE_INSTEAD = (name: string) => `Update ${name} instead`;
   static readonly REQUEST_UPDATE_PREFIX = "This is a project request for the existing project listed above. Turn it into updates for that project only. Do not draft a new project.\nMeeting notes:";
   static readonly REQUEST_CREATED = "Project created as Not started. Open it on the dashboard to assign the owner.";
+  /** Item 8: AI blocker suggestions inside Dependencies (the related_links toggle, now "Dependency suggestions"). */
+  static readonly DEPS_TITLE = "Suggest blockers with AI";
+  static readonly DEPS_BUTTON = "Suggest blockers from updates";
+  static readonly DEPS_BUTTON_ALL = "Run the suggestion pass on every project";
+  static readonly DEPS_HELP = "Reads the Latest update for words like waiting on, pending, requires or until, and for other projects it names. Suggests a Blocked-by link (which project waits on which) or an outside blocker, each with the reason. Nothing is added until you apply it.";
+  static readonly DEPS_HELP_ALL = "One pass over every project's Latest update. You get one list of suggested Blocked-by links and outside blockers, each with its direction and reason. Nothing is added until you apply it.";
+  static readonly DEPS_NOTHING_TO_CHECK = "No Latest update mentions waiting on anything or names another project. Nothing to suggest.";
+  static readonly DEPS_NONE_FOUND = "The AI found no new blockers in the Latest updates. Nothing was changed.";
+  static readonly DEPS_CHECKED = (n: number) => `Checked ${n} project${n === 1 ? "" : "s"} with waiting words or project names in the Latest update.`;
+  static readonly DEPS_REFUSED_TITLE = "Not suggested";
   static readonly DRAFT_TITLE = "Review draft project";
   static readonly DRAFT_HELP = "Edit anything before you create it. It's created as Not started, with owner, physician champion, requester and department blank.";
   static readonly DRAFT_CREATE = "Create project";

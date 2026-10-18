@@ -65,6 +65,7 @@ export function DependenciesSection({
   initialView,
   flags = [],
   focus = false,
+  ai,
 }: {
   projectId: string;
   /** Only `load` is used when the view is read-only. */
@@ -79,6 +80,8 @@ export function DependenciesSection({
   flags?: readonly BlockerFlag[];
   /** 1b: opened from a dashboard blocker pill, so scroll the section into view once it shows. */
   focus?: boolean;
+  /** Item 8: AI blocker suggestions (admin, feature on). Gets a reload for after an apply. */
+  ai?: (reload: () => void) => ReactNode;
 }) {
   const rootRef = useRef<HTMLElement>(null);
   const [view, setView] = useState<DependencyView | null>(initialView ?? null);
@@ -88,6 +91,7 @@ export function DependenciesSection({
   const [form, setForm] = useState<Form>(null);
   const [resolving, setResolving] = useState<BlockerDto | null>(null);
   const [showResolved, setShowResolved] = useState(false);
+  const [nonce, setNonce] = useState(0);
 
   // Keyed on the load function, not the actions object (callers may pass a fresh object each render).
   const load = actions.load;
@@ -105,7 +109,7 @@ export function DependenciesSection({
     return () => {
       live = false;
     };
-  }, [projectId, load, initialView]);
+  }, [projectId, load, initialView, nonce]);
   useEffect(() => {
     if (view) onCount?.(view.blockedBy.length);
   }, [view, onCount]);
@@ -161,6 +165,7 @@ export function DependenciesSection({
           </ul>
         </div>
       )}
+      {canEdit && ai ? ai(() => setNonce((n) => n + 1)) : null}
       {view &&
         canEdit &&
         actions.clearCompleted &&

@@ -70,6 +70,7 @@ const AiQuickCapture = dynamic(() => import("./AiPlacements").then((m) => m.AiQu
 const AiRowMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiRowMenu));
 const AiToolbarMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiToolbarMenu));
 const AiNextStepPanel = dynamic(() => import("./AiNextStepPanel").then((m) => m.AiNextStepPanel));
+const AiDependencySuggestPanel = dynamic(() => import("./AiDependencySuggestPanel").then((m) => m.AiDependencySuggestPanel));
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
 const ProjectPeopleEditor = dynamic(() => import("./ProjectPeopleEditor").then((m) => m.ProjectPeopleEditor));
@@ -958,7 +959,7 @@ export function ProjectDashboard({
                   dependencies={
                     admin.dependencyActions ? (
                       // AI "Find related" is gone from the drawer: it saved related projects as Blocked by (same fix
-                      // as #86). AI blocker suggestions come back later with a direction and a reason.
+                      // as #86). Item 8: AI blocker suggestions live here, with a direction and a reason per line.
                       <DependenciesSection
                         key={`deps-${selected.id}`}
                         projectId={selected.id}
@@ -967,6 +968,7 @@ export function ProjectDashboard({
                         flags={BlockerSignals.flags(selected, selected.blockers, today)}
                         focus={focusDeps === selected.id}
                         onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))}
+                        {...(aiPlacements && "related_links" in aiPlacements ? { ai: (reload: () => void) => <AiDependencySuggestPanel projectId={selected.id} disabledNote={aiPlacements.related_links ?? null} onApplied={reload} /> } : {})}
                       />
                     ) : null
                   }

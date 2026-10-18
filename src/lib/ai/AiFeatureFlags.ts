@@ -63,10 +63,10 @@ export class AiFeatureFlags {
 
   /**
    * Toggles kept in the database, in code and in settings history, but not shown on Admin > AI settings because they
-   * do nothing now. related_links: its page section and drawer entry point were removed (PR 0); AI blocker
-   * suggestions replace it later. A stored value still loads, and saving other toggles never touches it.
+   * do nothing now. Empty since item 8: related_links is shown again as "Dependency suggestions (AI blockers)" (the
+   * blocker suggestions in Dependencies). A stored value still loads, and saving other toggles never touches it.
    */
-  static readonly HIDDEN_IN_SETTINGS: readonly AiToggleFeature[] = ["related_links"];
+  static readonly HIDDEN_IN_SETTINGS: readonly AiToggleFeature[] = [];
 
   /** The toggles Admin > AI settings shows, in display order (ALL without HIDDEN_IN_SETTINGS). */
   static readonly SETTINGS: readonly AiToggleFeature[] = AiFeatureFlags.ALL.filter((f) => !AiFeatureFlags.HIDDEN_IN_SETTINGS.includes(f));

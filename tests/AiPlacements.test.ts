@@ -170,7 +170,9 @@ describe("placement 5 removed: no Find related in the drawer (it saved related p
   const src = () => readFileSync("src/components/ProjectDashboard.tsx", "utf8");
   it("the drawer renders no AI links panel and no Suggested related projects subsection", () => {
     expect(src()).not.toContain("AiLinksPanel");
-    expect(src()).not.toContain("related_links");
+    // Item 8: related_links is now only the AI blocker suggestions, passed into the Dependencies section.
+    expect(src().match(/related_links/g)?.length).toBe(2);
+    expect(src()).toContain('"related_links" in aiPlacements ? { ai: (reload: () => void) => <AiDependencySuggestPanel');
     expect(src()).not.toContain("LINKS_SUGGESTED_TITLE");
     expect(src()).not.toContain("ai-related-section");
   });
@@ -178,8 +180,8 @@ describe("placement 5 removed: no Find related in the drawer (it saved related p
     expect(src()).not.toMatch(/dependencyActions!?\.add\(/);
     expect(src()).toContain("actions={admin.dependencyActions}");
   });
-  it("placement data never offers related_links, even with the feature and model on", async () => {
-    expect(AiPlacementData.FEATURES).not.toContain("related_links" as never);
+  it("placement data offers related_links (item 8: AI blocker suggestions) when the feature and model are on", async () => {
+    expect(AiPlacementData.FEATURES).toContain("related_links" as never);
     const db = {
       aiSettings: { findUnique: async () => ({ enabled: true, model: "gpt-example-mini", provider: "openai" }) },
       aiModel: { findMany: async () => [{ id: "gpt-example-mini", enabled: true, kind: "chat" }] },
@@ -187,7 +189,7 @@ describe("placement 5 removed: no Find related in the drawer (it saved related p
     } as never;
     const out = await AiPlacementData.load(db, {});
     expect("meeting_notes" in out).toBe(true);
-    expect("related_links" in out).toBe(false);
+    expect("related_links" in out).toBe(true);
   });
 });
 

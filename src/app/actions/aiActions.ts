@@ -11,6 +11,7 @@ import { AiActionPortsLive } from "@/lib/services/AiActionPortsLive";
 import { AiActionService, type AiActionDb, type AiActionSource, type AiApplyResult, type AiProposeResult, type AiUndoResult } from "@/lib/services/AiActionService";
 import { AiBulkEditService, type AiBulkEditResult } from "@/lib/services/AiBulkEditService";
 import { AiCommandService, type AiCommandResult } from "@/lib/services/AiCommandService";
+import { AiDependencySuggestService, type AiDependencySuggestResult } from "@/lib/services/AiDependencySuggestService";
 import { AiMeetingNotesService, type AiMeetingNotesResult } from "@/lib/services/AiMeetingNotesService";
 import { AiNextStepService, type AiNextStepResult } from "@/lib/services/AiNextStepService";
 import { AiRequestDraftService, type AiRequestDraftResult } from "@/lib/services/AiRequestDraftService";
@@ -205,6 +206,18 @@ export async function updateFromAiRequest(projectId: string, text: string): Prom
     return r.ok ? { ...r, drafts: [] } : r;
   } catch (e) {
     console.error("AI actions failed: request update", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
+  }
+}
+
+/** Item 8: AI blocker suggestions (one project from the drawer, or every project from Admin > Dependencies). Saves nothing. */
+export async function suggestAiBlockers(projectId: string | null): Promise<AiDependencySuggestResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    return await AiDependencySuggestService.suggest({ db: c.db, viewer: c.viewer, scope: c.scope, projectId: typeof projectId === "string" ? projectId : null });
+  } catch (e) {
+    console.error("AI actions failed: blocker suggestions", (e as Error)?.name);
     return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
   }
 }

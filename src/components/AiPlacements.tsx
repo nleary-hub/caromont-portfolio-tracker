@@ -20,7 +20,7 @@ const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
  * feature is off: its control is not rendered. A null note = ready; a string = model off (greyed, aria-disabled,
  * focusable, with that note).
  */
-export type AiPlacementNotes = Partial<Record<"meeting_notes" | "bulk_edit" | "quick_capture" | "dictation" | "next_step" | "meeting_brief", string | null>>;
+export type AiPlacementNotes = Partial<Record<"meeting_notes" | "bulk_edit" | "quick_capture" | "dictation" | "next_step" | "meeting_brief" | "related_links", string | null>>;
 
 type Named = { id: string; name: string };
 

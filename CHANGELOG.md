@@ -4,6 +4,19 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### AI blocker suggestions live in Dependencies (item 8)
+- The old "Related-project links" tool is gone for good (it saved related projects as Blocked by). Its AI settings
+  toggle is back, renamed "Dependency suggestions (AI blockers)".
+- In a project's Dependencies section, "Suggest blockers from updates" reads that project's Latest update and
+  suggests either a Blocked-by link (it says which project waits on which) or an outside blocker (vendor, committee,
+  contracts team and so on), each with the words from the update that show the wait.
+- Admin, Dependencies has "Run the suggestion pass on every project": the code first picks the projects whose Latest
+  update says "waiting on", "pending", "requires", "until" and the like, or names another project, and the AI checks
+  only those. You get one list to review.
+- Nothing is added until you apply a line. Each line goes through the same checks as adding it by hand (no cycles, no
+  duplicates of an existing blocker or link), and history tags it as a dependency suggestion. A project that is only
+  related is not suggested.
+
 ### Request to draft project picks the template and checks for duplicates (item 7)
 - Paste a request on AI tools and the draft now comes back with the template that fits (Admin, Templates). Create
   project adds that template's milestones to the new project, with the due date on the first one, in one save.
