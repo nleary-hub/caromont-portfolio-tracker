@@ -32,15 +32,17 @@ test("drawer: Dependencies stays, no Find related or suggested related projects,
   if (process.env.PR0_SHOTS) await page.screenshot({ path: `${process.env.PR0_SHOTS}/pr0-3-drawer-dependencies.png`, clip: { x: Math.max(0, box.x - 24), y: Math.max(0, box.y - 160), width: box.width + 48, height: box.height + 320 } });
 });
 
-test("AI settings: no Related-project links toggle; the rows around where it sat close up evenly", async ({ page }) => {
+test("AI settings: the old Related-project links toggle is back as Dependency suggestions (item 8); rows stay evenly spaced", async ({ page }) => {
   await page.goto("/?ai=list&features=all");
   const panelEl = page.getByTestId("ai-features");
   await expect(panelEl).toBeVisible();
-  await expect(page.getByTestId("ai-feature-toggle-related_links")).toHaveCount(0);
+  // Item 8: related_links now drives the AI blocker suggestions in Dependencies, under its new name.
+  await expect(page.getByTestId("ai-feature-toggle-related_links")).toHaveCount(1);
+  await expect(panelEl.getByText("Dependency suggestions (AI blockers)")).toBeVisible();
   await expect(page.getByText("Related-project links")).toHaveCount(0);
   await expect(page.getByTestId("ai-feature-toggle-meeting_brief")).toBeVisible();
   await expect(page.getByTestId("ai-feature-toggle-dictation")).toBeVisible();
-  // Every row is followed by the same gap, including Pre-meeting brief to Dictation where the toggle was.
+  // Every row is followed by the same gap, including around Dependency suggestions.
   // PR B: the rows are one grid (ai-feature-row-*), so measure those instead of the panel's direct children.
   const gaps = await panelEl.evaluate((el) => {
     const rows = [...el.querySelectorAll('[data-testid^="ai-feature-row-"]')].filter((c) => c.querySelector('[role="switch"]')).map((c) => c.getBoundingClientRect());
