@@ -9,8 +9,9 @@ const GHOST = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 t
 const MAX_MS = 120_000;
 
 /**
- * Step 6: records speech in the browser and puts the transcript into the text box for the person to read and edit.
- * The recording is sent once for transcription and then dropped. Nothing is suggested until they press the button.
+ * Step 6: records speech in the browser and hands the transcript to `onText`. The recording is sent once for
+ * transcription and then dropped. Item 11: in the command bar `onText` sends the line straight away (no extra click);
+ * in Meeting notes it lands in the notes box with the caret at the end, and Ctrl+Enter suggests.
  */
 export function AiDictationButton({ onText, disabledNote, mic = false, initialState = "idle" }: { onText: (text: string) => void; disabledNote: string | null; /** Quick capture popover: a mic icon button inside the text box (placement spec 3). */ mic?: boolean; initialState?: "idle" | "recording" | "sending" }) {
   const [state, setState] = useState<"idle" | "recording" | "sending">(initialState);

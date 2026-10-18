@@ -185,6 +185,9 @@ export class AiToolsCopy {
   static readonly REQUEST_UPDATE_INSTEAD = (name: string) => `Update ${name} instead`;
   static readonly REQUEST_UPDATE_PREFIX = "This is a project request for the existing project listed above. Turn it into updates for that project only. Do not draft a new project.\nMeeting notes:";
   static readonly REQUEST_CREATED = "Project created as Not started. Open it on the dashboard to assign the owner.";
+  /** Item 11: meeting notes shortcut line (dictated text lands in the box; no extra click to keep going). */
+  static readonly MEETING_KEYS = "Ctrl+Enter (Cmd+Enter on a Mac) suggests updates.";
+  static readonly MEETING_KEYS_DICTATION = "Dictated text lands in the box, ready to keep talking or edit. Ctrl+Enter (Cmd+Enter on a Mac) suggests updates.";
   /** Item 8: AI blocker suggestions inside Dependencies (the related_links toggle, now "Dependency suggestions"). */
   static readonly DEPS_TITLE = "Suggest blockers with AI";
   static readonly DEPS_BUTTON = "Suggest blockers from updates";

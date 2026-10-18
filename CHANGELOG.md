@@ -4,6 +4,12 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Dictation flows straight in (item 11)
+- In the command bar, what you dictate is sent as your message right away (unchanged from the command bar item).
+- In Meeting notes (AI menu, AI tools, and Process meeting notes on a playbook), dictated text lands in the notes box
+  with the cursor at the end, so you can keep talking or fix a word. Ctrl+Enter (Cmd+Enter on a Mac) suggests the
+  updates, no reach for the button. A short line under the box says so.
+
 ### Template AI assistant uses your real checklists (item 10)
 - Audit: before, Draft a template and Edit with AI used only what you typed plus the template itself, so they saved
   little work. Fixed rather than removed.

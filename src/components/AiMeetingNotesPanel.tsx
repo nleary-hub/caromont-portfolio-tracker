@@ -1,6 +1,6 @@
 "use client";
 
-import { useId, useState, useTransition } from "react";
+import { useId, useRef, useState, useTransition } from "react";
 import { processAiMeetingNotes } from "@/app/actions/aiActions";
 import { AiActionReview } from "@/components/AiActionReview";
 import { AiDictationButton } from "@/components/AiDictationButton";
@@ -17,6 +17,11 @@ const AREA = `min-h-24 w-full rounded-control border border-line bg-input px-2.5
 
 type Done = Extract<AiMeetingNotesResult, { ok: true }>;
 export type AiMeetingNotesState = { kind: "idle" } | { kind: "error"; message: string } | { kind: "done"; result: Done; review: AiActionReviewState | null };
+
+/** Item 11: Ctrl+Enter or Cmd+Enter in the notes box suggests, when there is text and nothing is running. */
+export function meetingNotesSubmits(key: { key: string; ctrlKey: boolean; metaKey: boolean; shiftKey?: boolean; altKey?: boolean }, s: { off: boolean; pending: boolean; text: string }): boolean {
+  return key.key === "Enter" && (key.ctrlKey || key.metaKey) && !key.altKey && !s.off && !s.pending && s.text.trim().length > 0;
+}
 
 /**
  * Meeting notes item: rough notes in, one confirm card out (every matched project, Apply all or per line), plus drafts
@@ -50,7 +55,18 @@ export function AiMeetingNotesPanel({
   const [state, setState] = useState<AiMeetingNotesState>(initial ?? { kind: "idle" });
   const [pending, start] = useTransition();
   const off = disabledNote !== null;
-  const add = (t: string) => setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t));
+  const area = useRef<HTMLTextAreaElement>(null);
+  // Item 11: dictated text lands in the box and the caret goes to its end, ready to keep talking, edit or press
+  // Ctrl+Enter. No extra click.
+  const add = (t: string) => {
+    setText((cur) => (cur.trim() ? `${cur.trimEnd()} ${t}` : t));
+    requestAnimationFrame(() => {
+      const el = area.current;
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(el.value.length, el.value.length);
+    });
+  };
 
   const run = () =>
     start(async () => {
@@ -68,10 +84,33 @@ export function AiMeetingNotesPanel({
           {context.line}
         </p>
       )}
-      <textarea id={`${id}-text`} className={AREA} rows={rows} value={text} onChange={(e) => setText(e.target.value)} placeholder={placeholder} disabled={off} aria-describedby={`${id}-help`} data-testid="ai-tool-meeting_notes-input" />
+      <textarea
+        ref={area}
+        id={`${id}-text`}
+        className={AREA}
+        rows={rows}
+        value={text}
+        onChange={(e) => setText(e.target.value)}
+        onKeyDown={(e) => {
+          if (meetingNotesSubmits(e, { off, pending, text })) {
+            e.preventDefault();
+            run();
+          }
+        }}
+        placeholder={placeholder}
+        disabled={off}
+        aria-describedby={`${id}-help ${id}-keys`}
+        aria-keyshortcuts="Control+Enter Meta+Enter"
+        data-testid="ai-tool-meeting_notes-input"
+      />
       <p id={`${id}-help`} className="text-muted type-caption">
         {help}
       </p>
+      {!off && (
+        <p id={`${id}-keys`} className="text-muted type-caption" data-testid="ai-tool-meeting_notes-keys">
+          {dictation ? C.MEETING_KEYS_DICTATION : C.MEETING_KEYS}
+        </p>
+      )}
       <AiOffNote id={`${id}-off`} note={disabledNote} testId="ai-tool-meeting_notes-off" />
       <div className="flex items-center gap-3">
         <button type="button" className={TOOL_PRIMARY} onClick={() => !off && run()} disabled={!off && (pending || !text.trim())} {...pausedProps(disabledNote, `${id}-off`)} data-testid="ai-tool-meeting_notes-propose">
