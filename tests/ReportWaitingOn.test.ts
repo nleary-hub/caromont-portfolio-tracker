@@ -69,6 +69,9 @@ describe("ReportRow.waitingOn (PDF 'Waiting on' line)", () => {
     // main @ c75b336, same harness (see the PR body). Update only on a deliberate PDF change.
     expect(sha(plain)).toBe("74404053aee5dcf007f9f9981754affd36f1578d506fd309c908de002b3dfd3e");
     expect(sha(on)).not.toBe(sha(plain));
+    // Option on, same fixture and settings as the approved 1c sample (ai-overhaul-samples/2026-10-17/after.pdf).
+    // Nick approved exactly this rendering. Update only with a new sample and his approval.
+    expect(sha(on)).toBe("dabd2387c017578a32b78bf8535b7c273242af3dadbd5c3a3ffe72187a0af0b3");
   }, 60000);
 });
 
