@@ -45,6 +45,11 @@ export class AiCopy {
   static readonly VOICE_INSTRUCTIONS_HELP = "Optional. Replaces the built-in voice chat rules. The project list, the rule for suggesting changes and the rule against patient details are always added. Up to 4,000 characters.";
   static readonly VOICE_INSTRUCTIONS_TOO_LONG = "Voice chat instructions can be up to 4,000 characters.";
   static readonly VOICE_INSTRUCTIONS_SAVED = "Voice chat instructions saved.";
+  static readonly VOICE_CAP_LABEL = "Session limit (minutes)";
+  static readonly VOICE_CAP_HELP = "Each voice chat ends after this many minutes, with a warning one minute before. 1 to 60. Leave empty for the default 15. Applies to chats started after you save.";
+  static readonly VOICE_CAP_SAVE = "Save limit";
+  static readonly VOICE_CAP_SAVED = "Session limit saved.";
+  static readonly VOICE_CAP_INVALID = "Enter whole minutes from 1 to 60, or leave it empty for the default 15.";
   static readonly VOICE_INSTRUCTIONS_SAVE = "Save instructions";
   /** "3 voice models listed", "1 chat model listed". */
   static modelsListed(n: number, kindLabel: string): string {

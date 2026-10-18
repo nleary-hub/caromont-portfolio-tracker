@@ -4,6 +4,18 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Type it or say it (voice chat and the command bar)
+- Quick capture (the button, or press Q) now opens the command bar: the same assistant as voice chat, in a text box,
+  for when talking out loud isn't possible. Ask questions ("Who owns the EEG upgrade?") or type changes in plain words.
+- One line can touch several projects ("REQ 4417 supply now in the review queue, EEG upgrade off track"). Projects are
+  matched by name, REQ number, vendor, department or owner.
+- Changes show as the same review card as voice chat. Nothing changes until you click Apply (all or per line) or type
+  yes. "Undo that" undoes the last apply. A new project request comes back as a draft to review and create.
+- Dictation in the command bar sends what you said straight away, no extra click.
+- Voice chat shows a running transcript (on screen only, never saved) next to the change cards.
+- The voice chat time limit is now a setting (Admin > AI settings, Voice chat row, 1 to 60 minutes, default 15), and
+  a "One minute left" warning shows before the chat ends.
+
 ### The right model for each job, and what each run costs (D: model routing and usage)
 - Each AI feature now starts on the model you approved, shown on its row in Admin > AI settings > Features as
   "Recommended default". You can change any of them there, like any other pick:

@@ -200,6 +200,15 @@ describe("live duration pricing, one usage row per session", () => {
     expect(rows(db).find((r) => r.event === "session_ended")).toMatchObject({ usageSeconds: 900, costUsd: 0.75 });
   });
 
+  it("an admin-set session limit (0060) is what start returns and what end bills up to", async () => {
+    const db = await setup(LIVE, { price: { priceUnit: "per_minute", inputPrice: 0.05 } });
+    (db.featureRows[0] as { maxSessionSeconds?: number }).maxSessionSeconds = 300;
+    const s = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: provider().f, now: () => T0 });
+    if (!s.ok) throw new Error("start failed");
+    expect(s.maxSeconds).toBe(300);
+    expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: s.sessionId, now: at(5000) })).toEqual({ ok: true, seconds: 300 });
+  });
+
   it("backend usage from the browser is clamped and ignored when empty", () => {
     expect(AiLiveClient.cleanUsage({ responses: -1, inputTokens: "x", outputTokens: 0 })).toBeNull();
     expect(AiLiveClient.cleanUsage({ responses: 1.7, inputTokens: 10, outputTokens: 5 })).toEqual({ responses: 1, inputTokens: 10, outputTokens: 5 });

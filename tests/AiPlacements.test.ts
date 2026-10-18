@@ -9,6 +9,7 @@ import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import { AiPlacementData } from "@/lib/services/AiToolsReadiness";
 
+vi.mock("@/app/actions/aiActions", () => ({ runAiCommand: vi.fn(), applyAiActions: vi.fn(), rejectAiActions: vi.fn() }));
 vi.mock("@/app/actions/aiTools", () => ({
   proposeAiToolChanges: vi.fn(),
   applyAiToolLine: vi.fn(),

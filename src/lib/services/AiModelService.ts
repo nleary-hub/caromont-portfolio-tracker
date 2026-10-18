@@ -48,6 +48,8 @@ export interface AiFeatureRow {
   instructions?: string | null;
   /** 0054: the provider a text feature runs on ("openai" by default). Voice and dictation stay "openai". Absent before 0054. */
   provider?: string | null;
+  /** 0060: the voice chat session limit in seconds (voice_chat only). Null or absent = the built-in 15 minutes. */
+  maxSessionSeconds?: number | null;
   /** 0059 (item D): the seeded default model, shown as "Recommended default". Absent before 0059. */
   defaultModel?: string | null;
 }
@@ -93,6 +95,8 @@ export interface AiFeatureView {
   model?: string;
   /** Voice chat only: the admin instructions ("" = the built-in rules). */
   instructions?: string;
+  /** Voice chat only: the session limit in seconds (the built-in 15 minutes when none is saved). */
+  maxSessionSeconds?: number;
 }
 
 /** The narrow slice of Prisma these services use (tests pass an in-memory fake). */
@@ -217,7 +221,7 @@ export class AiModelService {
         envName: AiFeatureFlags.FLAGS[feature],
       };
       const own: AiFeatureView = AiFeatureFlags.OWN_MODEL.includes(feature) ? { ...view, ownModel: true, model: row?.model ?? "" } : view;
-      return feature === "voice_chat" ? { ...own, instructions: row?.instructions ?? "" } : own;
+      return feature === "voice_chat" ? { ...own, instructions: row?.instructions ?? "", maxSessionSeconds: AiVoiceChat.cap(row?.maxSessionSeconds) } : own;
     });
   }
 
@@ -526,6 +530,35 @@ export class AiModelService {
     } catch {
       return "";
     }
+  }
+
+  /** The voice chat session limit in seconds (the built-in 15 minutes when none is saved). Unreadable table = built-in. */
+  static async voiceSessionCap(db: unknown): Promise<number> {
+    try {
+      const f = (db as Partial<AiModelDb>)?.aiFeatureSetting;
+      if (!f) return AiVoiceChat.MAX_SESSION_S;
+      return AiVoiceChat.cap((await f.findMany()).find((r) => r.feature === "voice_chat")?.maxSessionSeconds);
+    } catch {
+      return AiVoiceChat.MAX_SESSION_S;
+    }
+  }
+
+  /**
+   * Saves the voice chat session limit from whole minutes (1 to 60; "" = back to the built-in 15). Admin only. One
+   * history row with the old and new minutes. Applies to chats started after the save.
+   */
+  static async setVoiceSessionCap(db: AiModelDb, admin: Viewer, rawMinutes: unknown, now: Date = new Date()): Promise<AiAdminResult> {
+    AdminPolicy.assertAdmin(admin);
+    const seconds = AiVoiceChat.capFromMinutes(rawMinutes);
+    if (seconds === undefined) return { ok: false, error: AiCopy.VOICE_CAP_INVALID };
+    return db.$transaction(async (tx) => {
+      const before = (await tx.aiFeatureSetting.findMany()).find((r) => r.feature === "voice_chat")?.maxSessionSeconds ?? null;
+      if (before === seconds) return { ok: true, message: AiCopy.VOICE_CAP_SAVED };
+      await tx.aiFeatureSetting.upsert({ where: { feature: "voice_chat" }, create: { feature: "voice_chat", enabled: true, maxSessionSeconds: seconds, updatedAt: now, updatedBy: admin.email }, update: { maxSessionSeconds: seconds, updatedAt: now, updatedBy: admin.email } });
+      const mins = (s: number | null) => (s === null ? null : `${s / 60} min`);
+      await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiVoiceSessionCap", "changed", mins(before), mins(seconds), admin, now)] });
+      return { ok: true, message: AiCopy.VOICE_CAP_SAVED };
+    });
   }
 
   /**

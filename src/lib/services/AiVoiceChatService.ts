@@ -122,7 +122,7 @@ export class AiVoiceChatService {
       console.error("AI tools: voice session failed", { code, api, kind: r.kind, model, status: r.status ?? null, type: r.type ?? null, errorCode: r.code ?? null, message: r.message ?? null });
       return { ok: false, code, message: code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_TOKEN_FAILED };
     }
-    return { ok: true, sessionId, ticket: r.ticket, maxSeconds: AiVoiceChat.MAX_SESSION_S };
+    return { ok: true, sessionId, ticket: r.ticket, maxSeconds: await AiModelService.voiceSessionCap(db) };
   }
 
   /**
@@ -295,7 +295,7 @@ export class AiVoiceChatService {
     // A session that failed to connect already has its failed row; it never gets a session_ended row.
     if (await AiVoiceChatService.failedRow(db, viewer, session.suggestionId)) return { ok: true, seconds: 0 };
     const at = now();
-    const seconds = AiVoiceChat.seconds(session.createdAt, at);
+    const seconds = AiVoiceChat.seconds(session.createdAt, at, await AiModelService.voiceSessionCap(db));
     const price = await AiVoiceChatService.price(db, session.model ?? "");
     const live = AiModelKinds.voiceApi(session.model ?? "") === "live";
     // Live: duration pricing (per-minute price times seconds, billed per second). Realtime: the admin per-minute price.

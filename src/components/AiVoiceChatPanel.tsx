@@ -13,7 +13,8 @@ import { AiRealtimeBrowser, type AiRealtimeConnection } from "@/lib/ai/AiRealtim
 import { AiRefresh } from "@/lib/ai/AiRefresh";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import type { AiToolChange } from "@/lib/ai/AiToolsModel";
-import { AiVoiceErrors } from "@/lib/ai/AiVoiceChat";
+import { AiVoiceChat, AiVoiceErrors } from "@/lib/ai/AiVoiceChat";
+import { AiVoiceTranscript, type AiVoiceTranscriptLine } from "@/lib/ai/AiVoiceTranscript";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const GHOST = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
@@ -27,7 +28,7 @@ export type AiVoiceReview = { proposalId: string; changes: AiToolChange[] };
  * all, or per line). "Undo that" undoes the last apply. Audio goes from the browser to the provider only, never to this
  * app, and is never recorded. Paused (model off) keeps the button greyed and focusable with the note.
  */
-export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialReviews = [], initialError = null }: { disabledNote: string | null; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[]; initialError?: string | null }) {
+export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialReviews = [], initialError = null, initialTranscript = [], initialWarning = false }: { disabledNote: string | null; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[]; initialError?: string | null; /** Preview/tests. */ initialTranscript?: AiVoiceTranscriptLine[]; initialWarning?: boolean }) {
   const [phase, setPhase] = useState<AiVoicePhaseState>(initialPhase);
   const [error, setError] = useState<string | null>(initialError);
   const [reviews] = useState<AiVoiceReview[]>(initialReviews);
@@ -36,6 +37,15 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
   const conn = useRef<AiRealtimeConnection | null>(null);
   const session = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const warnTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  // Voice and command bar item: the running transcript (on screen only) and the one-minute warning.
+  const [transcript, setTranscript] = useState<AiVoiceTranscriptLine[]>(initialTranscript);
+  const [warning, setWarning] = useState(initialWarning);
+  const [limit, setLimit] = useState<number | null>(null);
+  const log = useRef<HTMLOListElement>(null);
+  useEffect(() => {
+    if (log.current) log.current.scrollTop = log.current.scrollHeight;
+  }, [transcript]);
   // Start can find the model off (turned off since the page loaded): show the greyed state, never a connect attempt.
   const [lateNote, setLateNote] = useState<string | null>(null);
   const note = disabledNote ?? lateNote;
@@ -43,6 +53,8 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
 
   const stop = async (message: string | null = null) => {
     if (timer.current) clearTimeout(timer.current);
+    if (warnTimer.current) clearTimeout(warnTimer.current);
+    setWarning(false);
     const c = conn.current;
     conn.current = null;
     const id = session.current;
@@ -56,6 +68,7 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
 
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
+    if (warnTimer.current) clearTimeout(warnTimer.current);
     void conn.current?.close();
     if (session.current) void endAiVoiceChat(session.current, conn.current?.backendUsage() ?? null);
   }, []);
@@ -63,6 +76,7 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
   const begin = async () => {
     if (off) return;
     setError(null);
+    setTranscript([]);
     if (!AiRealtimeBrowser.supported()) return setError(C.VOICE_NO_MIC);
     setPhase("connecting");
     let mic: MediaStream;
@@ -85,6 +99,7 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
     try {
       conn.current = await AiRealtimeBrowser.connect(r.ticket, mic, {
         onPhase: (p) => setPhase(p),
+        onTranscript: (who, text, final) => setTranscript((cur) => (final ? AiVoiceTranscript.done(cur, who, text) : AiVoiceTranscript.add(cur, who, text))),
         onDropped: () => void stop(C.VOICE_DROPPED),
         onIceFailed: (state) => {
           const f = AiVoiceErrors.ice(state);
@@ -113,6 +128,9 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
       return stop(c.message);
     }
     timer.current = setTimeout(() => void stop(C.VOICE_TIME_UP), r.maxSeconds * 1000);
+    setLimit(r.maxSeconds);
+    const warnAt = AiVoiceChat.warnAtMs(r.maxSeconds);
+    if (warnAt !== null) warnTimer.current = setTimeout(() => setWarning(true), warnAt);
   };
 
   const live = phase === "listening" || phase === "speaking";
@@ -136,9 +154,30 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
       </div>
       {/* Errors (no microphone, could not start, dropped) sit right under the Start button. */}
       {error && <AiAlert tone="danger" testId="ai-voice-error">{error}</AiAlert>}
-      <p className="text-muted type-caption">{C.VOICE_CHAT_HELP}</p>
+      {warning && live && (
+        <AiAlert tone="warning" testId="ai-voice-warning">
+          {C.VOICE_ONE_MINUTE}
+        </AiAlert>
+      )}
+      <p className="text-muted type-caption">
+        {C.VOICE_CHAT_HELP} {limit !== null ? C.voiceLimit(limit) : ""}
+      </p>
       <p className="text-muted type-caption" data-testid="ai-voice-privacy">{C.VOICE_PRIVACY}</p>
       <AiOffNote id="ai-voice-off" note={note} testId="ai-tool-voice_chat-off" />
+      {transcript.length > 0 && (
+        <section aria-label={C.VOICE_TRANSCRIPT} className="flex flex-col gap-1 rounded-card border border-line bg-input/60 p-2.5" data-testid="ai-voice-transcript">
+          <h3 className="text-muted type-label">{C.VOICE_TRANSCRIPT}</h3>
+          <ol ref={log} className="flex max-h-56 flex-col gap-1 overflow-y-auto pr-1">
+            {transcript.map((l, i) => (
+              <li key={i} className={`type-table ${l.who === "you" ? "text-muted" : "text-fg"}`} data-who={l.who}>
+                <span className="type-table-strong">{l.who === "you" ? C.VOICE_YOU : C.VOICE_AI}: </span>
+                {l.text}
+              </li>
+            ))}
+          </ol>
+          <p className="text-muted type-caption">{C.VOICE_TRANSCRIPT_NOTE}</p>
+        </section>
+      )}
       {said && (
         <p role="status" className="text-fg type-table" data-testid="ai-voice-applied">
           {said}

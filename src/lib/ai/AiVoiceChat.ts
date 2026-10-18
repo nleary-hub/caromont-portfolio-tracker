@@ -12,7 +12,13 @@ export class AiVoiceChat {
   /** The fields voice chat may suggest changes to (all of the review layer's fields; nothing saves without Apply). */
   static readonly FIELDS: readonly AiToolField[] = AiToolsModel.ALL_FIELDS;
   /** One conversation is capped here (the browser hangs up; the server bills no more than this). */
+  /** The built-in session limit (used until an admin sets one; 0060). */
   static readonly MAX_SESSION_S = 15 * 60;
+  /** The range an admin can set the limit to (the 0060 DB check). */
+  static readonly CAP_MIN_S = 60;
+  static readonly CAP_MAX_S = 60 * 60;
+  /** The warning shows this long before the limit. */
+  static readonly WARN_BEFORE_S = 60;
   /** Item C: the first tool voice uses for a change (the shared layer's propose_changes). */
   static readonly TOOL_NAME = AiActionTools.PROPOSE.name;
   /** The step 10 review-only tool, kept for the old propose path (proposeAiVoiceEdits). No longer sent to the model. */
@@ -106,9 +112,30 @@ export class AiVoiceChat {
   }
 
   /** Whole seconds between start and end, never below 0 or above the cap. */
-  static seconds(startedAt: Date, endedAt: Date): number {
+  static seconds(startedAt: Date, endedAt: Date, cap: number = AiVoiceChat.MAX_SESSION_S): number {
     const s = Math.round((endedAt.getTime() - startedAt.getTime()) / 1000);
-    return Math.max(0, Math.min(AiVoiceChat.MAX_SESSION_S, Number.isFinite(s) ? s : 0));
+    return Math.max(0, Math.min(cap, Number.isFinite(s) ? s : 0));
+  }
+
+  /** The saved session limit, or the built-in 15 minutes when none is saved or it is out of range. */
+  static cap(saved: unknown): number {
+    const n = typeof saved === "number" ? saved : NaN;
+    return Number.isInteger(n) && n >= AiVoiceChat.CAP_MIN_S && n <= AiVoiceChat.CAP_MAX_S ? n : AiVoiceChat.MAX_SESSION_S;
+  }
+
+  /** Minutes typed by an admin as seconds for the 0060 column. "" = back to the built-in limit (null). Undefined = invalid. */
+  static capFromMinutes(raw: unknown): number | null | undefined {
+    const t = typeof raw === "number" ? String(raw) : typeof raw === "string" ? raw.trim() : null;
+    if (t === null) return undefined;
+    if (t === "") return null;
+    if (!/^\d{1,2}$/.test(t)) return undefined;
+    const s = Number(t) * 60;
+    return s >= AiVoiceChat.CAP_MIN_S && s <= AiVoiceChat.CAP_MAX_S ? s : undefined;
+  }
+
+  /** When the one-minute warning shows (ms after start). Null when the limit is a minute or less. */
+  static warnAtMs(maxSeconds: number): number | null {
+    return maxSeconds > AiVoiceChat.WARN_BEFORE_S ? (maxSeconds - AiVoiceChat.WARN_BEFORE_S) * 1000 : null;
   }
 
   /**

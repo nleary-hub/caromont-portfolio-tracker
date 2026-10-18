@@ -8,6 +8,7 @@ function Portal({ children }: { children: ReactNode }) {
   return typeof document === "undefined" ? <>{children}</> : createPortal(children, document.body);
 }
 import { AiBriefPanel, type AiBriefState } from "@/components/AiBriefPanel";
+import { AiCommandBar } from "@/components/AiCommandBar";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
 import { AI_GHOST, Sparkle } from "@/components/AiToolsUi";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
@@ -167,9 +168,9 @@ export function AiQuickCapture({ note, dictationNote, defaultOpen = false, recor
       {!open && <Tip id="ai-capture-tip" text={note ?? C.CAPTURE_SHORTCUT} />}
       {open && !off && (
         <Portal>
-        <div role="dialog" aria-label={C.CAPTURE_TITLE} className="fixed z-50 w-[380px] rounded-card border border-line bg-card p-3 shadow-lg" style={{ top: pos.top, right: pos.right }} data-testid="ai-capture-popover">
-          <AiToolsPanel feature="quick_capture" label={C.CAPTURE_LABEL} help={C.CAPTURE_HELP} placeholder={C.CAPTURE_PLACEHOLDER} disabledNote={null} rows={3} {...(dictationNote !== undefined ? { dictation: { disabledNote: dictationNote, mic: true, ...(recording ? { initialState: "recording" as const } : {}) } } : {})} />
-        </div>
+          <div role="dialog" aria-label={C.COMMAND_TITLE} className="fixed z-50 flex w-[440px] max-w-[calc(100vw-1rem)] flex-col rounded-card border border-line bg-[rgba(23,26,33,0.78)] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur-[20px]" style={{ top: pos.top, right: pos.right, maxHeight: `calc(100vh - ${pos.top + 16}px)`, height: 560 }} data-testid="ai-capture-popover">
+            <AiCommandBar onClose={() => setOpen(false)} {...(dictationNote !== undefined ? { dictationNote, recording } : {})} />
+          </div>
         </Portal>
       )}
     </span>

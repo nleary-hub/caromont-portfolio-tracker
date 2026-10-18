@@ -1037,6 +1037,9 @@ model AiFeatureSetting {
   /// migration only; null for features without one. A feature whose model is this default and can't run (off under
   /// Models or no OpenAI key) uses the AI settings model instead.
   defaultModel String?
+  /// 0060 (AI overhaul, voice and command bar): the voice chat session limit in seconds (voice_chat only; 60 to 3600,
+  /// DB check). Null = the built-in 15 minutes.
+  maxSessionSeconds Int?
 
   @@map("ai_feature_settings")
 }

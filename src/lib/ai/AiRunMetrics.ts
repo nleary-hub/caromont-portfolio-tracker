@@ -11,6 +11,8 @@ export interface AiMetricsRow {
   feature: string;
   event: string;
   model: string | null;
+  /** Set on rows a model call wrote; null on proposals the action layer wrote for a voice or command run. */
+  provider?: string | null;
   outputLength: number | null;
   inputTokens?: number | null;
   outputTokens?: number | null;
@@ -23,7 +25,7 @@ export interface AiFeatureMetrics {
   feature: string;
   runs: number;
   failed: number;
-  /** Change lines proposed (proposed rows carry the line count) plus one per writing suggestion. */
+  /** Change lines proposed (line counts), one per draft or rewrite, plus one per writing suggestion. */
   proposed: number;
   applied: number;
   rejected: number;
@@ -47,8 +49,28 @@ const num = (p: Price): number | null => {
  * model defaults live in AiModelDefaults.
  */
 export class AiRunMetrics {
-  /** Rows that are one model run: a writing suggestion, a tool proposal, a failed call, a voice session. */
-  static readonly RUN_EVENTS: readonly string[] = ["suggested", "proposed", "failed", "session_started"];
+  /** Rows that are one model run: a writing suggestion or command run, a failed call, a voice session (plus see isRun). */
+  static readonly RUN_EVENTS: readonly string[] = ["suggested", "failed", "session_started"];
+  /** Proposed rows whose outputLength is a text length, not a line count: one proposal each. */
+  static readonly ONE_PROPOSAL: readonly string[] = ["request_to_project", "dictation", "revise_note"];
+  /** Tool features: a "suggested" row there is a command bar run (its proposals are separate rows), not a suggestion. */
+  static readonly TOOL_FEATURES: readonly string[] = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "request_to_project", "meeting_brief", "related_links", "template_ai"];
+
+  /**
+   * One model run. A proposed row is a run only when a model call wrote it (provider set): the proposals voice chat and
+   * the command bar make through the action layer belong to their session or command run, which is already counted.
+   */
+  static isRun(r: Pick<AiMetricsRow, "event" | "feature" | "provider">): boolean {
+    if (AiRunMetrics.RUN_EVENTS.includes(r.event)) return true;
+    return r.event === "proposed" && r.feature !== "voice_chat" && r.provider !== null && r.provider !== undefined;
+  }
+
+  /** Proposals a row adds: the line count, one per draft, dictation or rewrite, one per writing suggestion. */
+  static proposals(r: Pick<AiMetricsRow, "event" | "feature" | "outputLength">): number {
+    if (r.event === "proposed") return AiRunMetrics.ONE_PROPOSAL.includes(r.feature) ? 1 : Math.max(0, r.outputLength ?? 0);
+    if (r.event === "suggested") return AiRunMetrics.TOOL_FEATURES.includes(r.feature) ? 0 : 1;
+    return 0;
+  }
   static readonly APPLIED_EVENTS: readonly string[] = ["applied", "accepted", "edited", "accepted_with_override"];
   static readonly REJECTED_EVENTS: readonly string[] = ["rejected", "discarded"];
 
@@ -74,10 +96,9 @@ export class AiRunMetrics {
     for (const r of rows) {
       if (r.feature === "test_connection") continue;
       const m = by.get(r.feature) ?? { feature: r.feature, runs: 0, failed: 0, proposed: 0, applied: 0, rejected: 0, undone: 0, applyRate: null, inputTokens: 0, outputTokens: 0, avgLatencyMs: null, costUsd: 0, latencySum: 0, latencyN: 0 };
-      if (AiRunMetrics.RUN_EVENTS.includes(r.event)) m.runs += 1;
+      if (AiRunMetrics.isRun(r)) m.runs += 1;
       if (r.event === "failed") m.failed += 1;
-      if (r.event === "proposed") m.proposed += Math.max(0, r.outputLength ?? 0);
-      if (r.event === "suggested") m.proposed += 1;
+      m.proposed += AiRunMetrics.proposals(r);
       if (AiRunMetrics.APPLIED_EVENTS.includes(r.event)) m.applied += 1;
       if (AiRunMetrics.REJECTED_EVENTS.includes(r.event)) m.rejected += 1;
       if (r.event === "undone") m.undone += 1;

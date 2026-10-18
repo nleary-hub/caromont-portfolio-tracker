@@ -196,7 +196,7 @@ describe("per-run metrics", () => {
   it("summarize: runs, proposals, applied vs rejected, apply rate, tokens, latency and cost per feature", () => {
     const at = (m: number) => new Date(T0.getTime() + m * 60_000);
     const rows: AiMetricsRow[] = [
-      { feature: "meeting_notes", event: "proposed", model: "gpt-6.1-sol", outputLength: 4, inputTokens: 1000, outputTokens: 100, latencyMs: 2000, costUsd: "0.0025", createdAt: at(0) },
+      { feature: "meeting_notes", event: "proposed", model: "gpt-6.1-sol", provider: "openai", outputLength: 4, inputTokens: 1000, outputTokens: 100, latencyMs: 2000, costUsd: "0.0025", createdAt: at(0) },
       { feature: "meeting_notes", event: "applied", model: "gpt-6.1-sol", outputLength: null, createdAt: at(1) },
       { feature: "meeting_notes", event: "applied", model: "gpt-6.1-sol", outputLength: null, createdAt: at(1) },
       { feature: "meeting_notes", event: "applied", model: "gpt-6.1-sol", outputLength: null, createdAt: at(1) },
@@ -206,6 +206,17 @@ describe("per-run metrics", () => {
       { feature: "test_connection", event: "test_succeeded", model: "gpt-6-luna", outputLength: null, createdAt: at(5) },
     ];
     const s = AiRunMetrics.summarize(rows);
+    // A command bar run: one run row, and its action-layer proposal (no provider) adds lines but no second run.
+    const cmd = AiRunMetrics.summarize([
+      { feature: "quick_capture", event: "suggested", model: "gpt-6.1-sol", provider: "openai", outputLength: null, inputTokens: 900, outputTokens: 80, latencyMs: 1500, createdAt: at(6) },
+      { feature: "quick_capture", event: "proposed", model: null, provider: null, outputLength: 3, createdAt: at(6) },
+      { feature: "voice_chat", event: "session_started", model: "gpt-live-1", provider: "openai", outputLength: null, createdAt: at(7) },
+      { feature: "voice_chat", event: "proposed", model: "gpt-live-1", provider: "openai", outputLength: 2, createdAt: at(7) },
+      { feature: "request_to_project", event: "proposed", model: "gpt-6.1-sol", provider: "openai", outputLength: 412, createdAt: at(8) },
+    ]);
+    expect(cmd.find((m) => m.feature === "quick_capture")).toMatchObject({ runs: 1, proposed: 3 });
+    expect(cmd.find((m) => m.feature === "voice_chat")).toMatchObject({ runs: 1, proposed: 2 });
+    expect(cmd.find((m) => m.feature === "request_to_project")).toMatchObject({ runs: 1, proposed: 1 });
     expect(s.map((m) => m.feature)).toEqual(["meeting_notes", "fit_for_report"]);
     expect(s[0]).toMatchObject({ runs: 2, failed: 1, proposed: 4, applied: 3, rejected: 1, applyRate: 0.75, inputTokens: 1000, outputTokens: 100, avgLatencyMs: 3000, costUsd: 0.0025 });
     expect(s[1]).toMatchObject({ runs: 1, proposed: 1, applyRate: null, costUsd: 0.00004 });

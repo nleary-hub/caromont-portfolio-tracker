@@ -110,6 +110,19 @@ export class AiToolsCopy {
   static readonly CAPTURE_TITLE = "Quick capture";
   static readonly CAPTURE_HELP = "Type or dictate one rough line. The AI finds the project and drafts the update for you to review.";
   static readonly CAPTURE_LABEL = "Rough update";
+  static readonly COMMAND_TITLE = "Command bar";
+  static readonly COMMAND_HELP = "Ask about your projects or type changes in plain words, one project or several (names, REQ numbers or vendors). Changes show below for review and apply only after you click Apply or type yes.";
+  static readonly COMMAND_LABEL = "Request";
+  static readonly COMMAND_PLACEHOLDER = "For example: REQ-1042 drywall done, example vendor slipped to Nov 3";
+  static readonly COMMAND_SEND = "Send";
+  static readonly COMMAND_THINKING = "Working\u2026";
+  static readonly COMMAND_EMPTY = "Type a request first.";
+  static readonly COMMAND_UNREADABLE = "Sorry, I couldn't work that out. Try saying it another way.";
+  static readonly COMMAND_TOO_MANY = "That took too many steps. Try one request at a time.";
+  static readonly COMMAND_CLEAR = "New conversation";
+  static readonly COMMAND_YOU = "You";
+  static readonly CLOSE = "Close";
+  static readonly COMMAND_AI = "AI";
   static readonly CAPTURE_PLACEHOLDER = "For example: example clinic refresh slipped, vendor delay";
   static readonly DICTATE = "Dictate";
   static readonly DICTATE_STOP = "Stop and transcribe";
@@ -236,7 +249,17 @@ export class AiToolsCopy {
   static readonly VOICE_CONNECT_FAILED = "The voice connection couldn't be set up. Check your network, then try again.";
   static readonly VOICE_ICE_FAILED = "Voice couldn't connect. Your network may be blocking live audio. Try a different network.";
   static readonly VOICE_DROPPED = "The connection dropped. Start again to keep talking.";
-  static readonly VOICE_TIME_UP = "The chat reached its 15-minute limit. Start again to keep talking.";
+  static readonly VOICE_TIME_UP = "The chat reached its time limit. Start again to keep talking.";
+  static readonly VOICE_ONE_MINUTE = "One minute left in this chat.";
+  static readonly VOICE_TRANSCRIPT = "Transcript";
+  static readonly VOICE_TRANSCRIPT_NOTE = "Shown here only. The transcript is not saved.";
+  static readonly VOICE_YOU = "You";
+  static readonly VOICE_AI = "AI";
+  /** The chat's limit in the help line ("Chats end after 15 minutes."). */
+  static voiceLimit(seconds: number): string {
+    const m = Math.round(seconds / 60);
+    return `Chats end after ${m} ${m === 1 ? "minute" : "minutes"}.`;
+  }
   static readonly VOICE_SESSION_GONE = "This voice chat has ended. Start a new one.";
   static readonly VOICE_MODEL_LABEL = "Voice chat model";
   static readonly VOICE_BACKEND_MODEL_OFF = "Live voice models use the writing assistant model to answer. An admin needs to choose that model and turn it on in AI settings.";

@@ -9,6 +9,7 @@ import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import { AiActionPortsLive } from "@/lib/services/AiActionPortsLive";
 import { AiActionService, type AiActionDb, type AiActionSource, type AiApplyResult, type AiProposeResult, type AiUndoResult } from "@/lib/services/AiActionService";
+import { AiCommandService, type AiCommandResult } from "@/lib/services/AiCommandService";
 import { AiToolsService } from "@/lib/services/AiToolsService";
 
 /**
@@ -50,6 +51,20 @@ export async function runAiActionTool(from: string, name: string, args: string) 
   } catch (e) {
     console.error("AI actions failed: tool", (e as Error)?.name);
     return { output: JSON.stringify({ ok: false, error: AiToolsCopy.APPLY_FAILED }) };
+  }
+}
+
+/** Voice and command bar item: one typed message to the command bar (the browser keeps the conversation). */
+export async function runAiCommand(turns: unknown): Promise<AiCommandResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    const r = await AiCommandService.run({ ...c, turns });
+    if (r.ok && r.changed) refresh();
+    return r;
+  } catch (e) {
+    console.error("AI actions failed: command", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
   }
 }
 

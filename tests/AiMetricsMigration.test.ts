@@ -40,10 +40,10 @@ const models = async (db: PGlite) => Object.fromEntries((await db.query<{ featur
 const historyCount = async (db: PGlite) => (await db.query<{ n: number }>(`select count(*)::int as n from ai_settings_history`)).rows[0].n;
 
 describe("0059_ai_metrics (PGlite, example data)", () => {
-  it("comes right after 0058_ai_actions and is the newest migration", () => {
+  it("comes right after 0058_ai_actions; 0060_voice_session_cap follows", () => {
     const f = folders();
     expect(f[f.indexOf(M) - 1]).toBe("0058_ai_actions");
-    expect(f[f.length - 1]).toBe(M);
+    expect(f[f.indexOf(M) + 1]).toBe("0060_voice_session_cap");
   });
 
   it("adds columns and seeds settings only: no DROP, DELETE, TRUNCATE, ai_models, report or handoff tables; no em dash", () => {

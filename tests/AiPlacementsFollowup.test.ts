@@ -7,6 +7,7 @@ import { AiChangeReview } from "@/components/AiToolsPanel";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import type { AiToolChange } from "@/lib/ai/AiToolsModel";
 
+vi.mock("@/app/actions/aiActions", () => ({ runAiCommand: vi.fn(), runAiActionTool: vi.fn(), applyAiActions: vi.fn(), rejectAiActions: vi.fn() }));
 vi.mock("@/app/actions/aiTools", () => ({
   proposeAiToolChanges: vi.fn(),
   applyAiToolLine: vi.fn(),

@@ -49,7 +49,7 @@ class AiUsageReader {
   static recent(db: AiUsageReadDb, now: Date): Promise<AiMetricsRow[]> {
     return db.aiUsageLog.findMany({
       where: { createdAt: { gte: new Date(now.getTime() - AiUsageReader.DAYS * 86_400_000) } },
-      select: { feature: true, event: true, model: true, outputLength: true, inputTokens: true, outputTokens: true, latencyMs: true, costUsd: true, createdAt: true },
+      select: { feature: true, event: true, model: true, provider: true, outputLength: true, inputTokens: true, outputTokens: true, latencyMs: true, costUsd: true, createdAt: true },
       orderBy: { createdAt: "desc" },
       take: AiUsageReader.MAX_ROWS,
     });

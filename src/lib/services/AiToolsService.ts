@@ -169,7 +169,7 @@ export class AiToolsService {
     now?: () => Date;
     /** PR B: the provider keys (tests inject a fake; the app reads the Provider keys card's storage). */
     keys?: AiProviderKeySource;
-  }): Promise<{ ok: true; text: string; log: (event: string, extra?: Partial<AiToolUsageRow>) => Promise<unknown>; proposalId: string } | AiToolFailure> {
+  }): Promise<{ ok: true; text: string; log: (event: string, extra?: Partial<AiToolUsageRow>) => Promise<unknown>; proposalId: string; run: Partial<AiToolUsageRow> } | AiToolFailure> {
     const { db, viewer, feature } = args;
     const env = args.env ?? process.env;
     const now = args.now ?? (() => new Date());
@@ -207,7 +207,7 @@ export class AiToolsService {
         console.error("AI tools: provider call failed", { feature, kind: result.kind, status: result.status });
         return { ok: false, kind: result.kind === "timeout" ? "timeout" : "provider", message: result.kind === "timeout" ? AiToolsCopy.TIMEOUT : AiToolsCopy.PROVIDER_ERROR };
       }
-      return { ok: true, text: result.text, log, proposalId };
+      return { ok: true, text: result.text, log, proposalId, run };
     } finally {
       AiToolsService.inFlight.delete(user);
     }

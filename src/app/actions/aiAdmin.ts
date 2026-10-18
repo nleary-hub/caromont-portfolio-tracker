@@ -87,6 +87,11 @@ export async function setAiVoiceInstructions(text: string): Promise<AiAdminResul
   return run("setAiVoiceInstructions", (db, v) => AiModelService.setVoiceInstructions(db, v, text));
 }
 
+/** Voice and command bar item: the voice chat session limit in whole minutes ("" = the built-in 15). */
+export async function setAiVoiceSessionCap(minutes: string): Promise<AiAdminResult> {
+  return run("setAiVoiceSessionCap", (db, v) => AiModelService.setVoiceSessionCap(db, v, minutes));
+}
+
 export async function setAiFeatureEnabled(feature: string, enabled: boolean): Promise<AiAdminResult> {
   return run("setAiFeatureEnabled", (db, v) => AiModelService.setFeature(db, v, feature, Boolean(enabled)));
 }
