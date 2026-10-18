@@ -4,6 +4,13 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Quick capture is the command bar (item 5)
+- Quick capture and the command bar are one thing now: the header button, the Q key and the Quick capture section on
+  AI tools all open the same assistant. The old one-project capture box is gone from AI tools.
+- One rough line can touch several projects ("Northwind supply now in the review queue, 5102 rebate still waiting on
+  it"). Projects are found by name, REQ number or the vendor an outside blocker waits on, and the changes come back on
+  one review card.
+
 ### Plain-English bulk edit (item 4)
 - Describe one change for many projects ("Make Avery Lin the owner of every IR project with no owner"). Besides
   status, next milestone and dates, it can now set the owner, contracts lead, requester, department or the current

@@ -6,7 +6,7 @@ import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
 import { AiBulkEditPanel } from "@/components/AiBulkEditPanel";
 import { AiMeetingNotesPanel } from "@/components/AiMeetingNotesPanel";
-import { AiToolsPanel } from "@/components/AiToolsPanel";
+import { AiCommandBar } from "@/components/AiCommandBar";
 import { AiVoiceChatPanel } from "@/components/AiVoiceChatPanel";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
@@ -84,7 +84,16 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-capture-heading" className="type-heading">
           {C.CAPTURE_TITLE}
         </h2>
-        <AiToolsPanel feature="quick_capture" label={C.CAPTURE_LABEL} help={C.CAPTURE_HELP} placeholder={C.CAPTURE_PLACEHOLDER} disabledNote={notes.quick_capture ?? null} rows={2} dictation={dictationNote === C.FEATURE_OFF_NOTE ? undefined : { disabledNote: dictationNote }} />
+        {/* Item 5: Quick capture is the command bar (one line, several projects, REQ numbers and vendors), here inline. */}
+        {notes.quick_capture ? (
+          <p className="text-muted type-caption" data-testid="ai-tool-quick_capture-off">
+            {notes.quick_capture}
+          </p>
+        ) : (
+          <div className="h-[28rem]" data-testid="ai-tool-quick_capture">
+            <AiCommandBar {...(dictationNote === C.FEATURE_OFF_NOTE ? {} : { dictationNote })} />
+          </div>
+        )}
       </section>
       )}
 
