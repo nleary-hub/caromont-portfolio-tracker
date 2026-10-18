@@ -301,7 +301,7 @@ export class ProjectDependencyService {
    * Add "projectId is blocked by blockedById" with an optional note and milestone. Rejects self, duplicate (an open
    * row) and cycles against every open edge of the line. A soft-removed row for the same pair is re-used.
    */
-  static async addDependency(viewer: Viewer, scope: Scope, projectId: string, blockedById: string, input: DependencyInput = {}, db: WriteDb = Db.client, now: Date = new Date()): Promise<void> {
+  static async addDependency(viewer: Viewer, scope: Scope, projectId: string, blockedById: string, input: DependencyInput = {}, db: WriteDb = Db.client, now: Date = new Date(), comment: string | null = null): Promise<void> {
     await db.$transaction(async (raw) => {
       const tx = raw as unknown as Tx;
       await ProjectDependencyService.lock(raw, scope);
@@ -320,7 +320,7 @@ export class ProjectDependencyService {
       const data = { note: note.value, blockedMilestoneId: milestone?.id ?? null, removedAt: null, removedBy: null, updatedAt: now, updatedBy: viewer.email };
       if (existing) await tx.projectDependency.update({ where: { id: existing.id }, data: { ...data, createdAt: now, createdBy: viewer.email } });
       else await tx.projectDependency.create({ data: { serviceLineId: scope.id, projectId: p.id, blockedById: b.id, createdAt: now, createdBy: viewer.email, ...data } });
-      await ProjectDependencyService.history(tx, p.id, BlockerHistory.DEPENDENCY_ADDED, null, ProjectDependencyService.depValue(b, note.value, milestone?.name ?? null), viewer.email, now);
+      await ProjectDependencyService.history(tx, p.id, BlockerHistory.DEPENDENCY_ADDED, null, ProjectDependencyService.depValue(b, note.value, milestone?.name ?? null), viewer.email, now, comment);
     });
   }
 
@@ -389,7 +389,7 @@ export class ProjectDependencyService {
   }
 
   /** Add an external blocker; "since" is today (America/New_York). Returns its id. */
-  static async addBlocker(viewer: Viewer, scope: Scope, projectId: string, input: BlockerInput, db: WriteDb = Db.client, now: Date = new Date()): Promise<string> {
+  static async addBlocker(viewer: Viewer, scope: Scope, projectId: string, input: BlockerInput, db: WriteDb = Db.client, now: Date = new Date(), comment: string | null = null): Promise<string> {
     return db.$transaction(async (raw) => {
       const tx = raw as unknown as Tx;
       const p = await ProjectDependencyService.editable(viewer, scope, projectId, tx);
@@ -409,7 +409,7 @@ export class ProjectDependencyService {
         },
         select: { id: true },
       });
-      await ProjectDependencyService.history(tx, p.id, BlockerHistory.BLOCKER_ADDED, null, ProjectDependencyService.blockerValue(created.id, { ...f, milestone: f.milestone?.name ?? null }), viewer.email, now);
+      await ProjectDependencyService.history(tx, p.id, BlockerHistory.BLOCKER_ADDED, null, ProjectDependencyService.blockerValue(created.id, { ...f, milestone: f.milestone?.name ?? null }), viewer.email, now, comment);
       return created.id;
     });
   }
@@ -422,7 +422,7 @@ export class ProjectDependencyService {
   }
 
   /** Edit an open external blocker ("since" never changes). A no-op change writes nothing. */
-  static async updateBlocker(viewer: Viewer, scope: Scope, projectId: string, blockerId: string, input: BlockerInput, db: WriteDb = Db.client, now: Date = new Date()): Promise<void> {
+  static async updateBlocker(viewer: Viewer, scope: Scope, projectId: string, blockerId: string, input: BlockerInput, db: WriteDb = Db.client, now: Date = new Date(), comment: string | null = null): Promise<void> {
     await db.$transaction(async (raw) => {
       const tx = raw as unknown as Tx;
       const p = await ProjectDependencyService.editable(viewer, scope, projectId, tx);
@@ -464,12 +464,13 @@ export class ProjectDependencyService {
         ProjectDependencyService.blockerValue(b.id, { ...f, milestone: f.milestone?.name ?? null }),
         viewer.email,
         now,
+        comment,
       );
     });
   }
 
   /** Resolve an open external blocker with the required "What resolved it?" text. The row is kept. */
-  static async resolveBlocker(viewer: Viewer, scope: Scope, projectId: string, blockerId: string, resolution: unknown, db: WriteDb = Db.client, now: Date = new Date()): Promise<void> {
+  static async resolveBlocker(viewer: Viewer, scope: Scope, projectId: string, blockerId: string, resolution: unknown, db: WriteDb = Db.client, now: Date = new Date(), comment: string | null = null): Promise<void> {
     await db.$transaction(async (raw) => {
       const tx = raw as unknown as Tx;
       const p = await ProjectDependencyService.editable(viewer, scope, projectId, tx);
@@ -485,7 +486,7 @@ export class ProjectDependencyService {
         followUpOwner: b.followUpOwner,
         milestone: step?.name ?? null,
       });
-      await ProjectDependencyService.history(tx, p.id, BlockerHistory.BLOCKER_RESOLVED, value, { ...value, resolution: r.value }, viewer.email, now);
+      await ProjectDependencyService.history(tx, p.id, BlockerHistory.BLOCKER_RESOLVED, value, { ...value, resolution: r.value }, viewer.email, now, comment);
     });
   }
 

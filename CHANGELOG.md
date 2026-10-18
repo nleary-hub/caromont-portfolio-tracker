@@ -4,6 +4,23 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### One set of AI actions, checked like a manual edit (B: shared action layer)
+- Behind the scenes, every AI feature that changes projects now uses the same actions: find a project (by name, REQ
+  number, vendor, department or owner), read one project in full, propose changes, apply them after you say yes, undo
+  the last apply, draft a new project, and record a real Blocked-by.
+- The AI can now propose much more than the old five fields: owner, requester, contracts lead, department, a
+  milestone's owner or due date, completing, adding, moving or removing a milestone, Mark as reviewed, and adding,
+  changing or resolving blockers and Blocked-by links.
+- Every value is checked on the server against the line's lists before you see it. A person who is not on the People
+  lists, a department that is not in the line, or a date that does not exist is refused with a plain reason; the AI
+  never adds a new name.
+- Applied changes go through the same saves as the drawer, so they are validated, permission-checked, written to
+  History and mark the project Changed exactly like a manual edit. History says where they came from, for example
+  "Voice chat (AI), applied by Nick Leary".
+- Undo puts back the last apply (within a day). Anything that was changed again since is left alone and named.
+- "Related projects" are never saved as Blocked by: a link is saved only as a real dependency, with what it waits on.
+- Voice chat, the command bar and the review panels start using these actions in the next steps (C onward).
+
 ### Every AI feature now sees the whole picture (A: shared context)
 - One context builder feeds every AI tool (meeting notes, bulk edit, quick capture, next step, request to draft, the
   pre-meeting brief) and voice chat. Each project now comes with its REQ number, department, description, MFI and

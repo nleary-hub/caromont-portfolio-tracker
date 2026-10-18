@@ -1095,3 +1095,36 @@ model AiContextHistory {
   @@index([changedAt])
   @@map("ai_context_history")
 }
+
+/// One propose_changes call of the shared AI action layer (migration 0058, item B): the checked lines a person applies
+/// or rejects. Applies read lines from here only. Never deleted (trigger); scrubbed after 30 days (AiRetentionService).
+model AiProposal {
+  id            String   @id @db.Uuid
+  serviceLineId String   @db.Uuid
+  userEmail     String
+  feature       String
+  /// AiActionLine[] (src/lib/ai/actions/AiActionModel.ts)
+  lines         Json
+  createdAt     DateTime @default(now())
+
+  @@index([userEmail, createdAt])
+  @@map("ai_proposals")
+}
+
+/// One apply of AI action lines (migration 0058): what changed and how to undo it. Never deleted (trigger).
+model AiApply {
+  id            String    @id @db.Uuid
+  proposalId    String    @db.Uuid
+  serviceLineId String    @db.Uuid
+  userEmail     String
+  feature       String
+  /// AiAppliedLine[] (src/lib/ai/actions/AiActionModel.ts)
+  lines         Json
+  appliedAt     DateTime  @default(now())
+  undoneAt      DateTime?
+  undoneBy      String?
+
+  @@index([userEmail, appliedAt])
+  @@index([proposalId])
+  @@map("ai_applies")
+}

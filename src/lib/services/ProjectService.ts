@@ -499,9 +499,11 @@ export class ProjectService {
     admin: Viewer,
     db: PrismaClient = Db.client,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
+    /** History source tag (an AI apply passes "ai:voice_chat"); null for a drawer edit. */
+    comment: string | null = null,
   ): Promise<ProjectMilestone[]> {
     AdminPolicy.assertAdmin(admin);
-    const actor = ProjectService.actorOf(admin);
+    const actor = ProjectService.actorOf(admin, comment ?? undefined);
     return db.$transaction(async (tx) => {
       const at = new Date();
       const existing = await ProjectService.loadMutable(tx, id, scope);
@@ -753,6 +755,8 @@ export class ProjectService {
     admin: Viewer,
     db: PrismaClient = Db.client,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
+    /** History source tag (an AI apply passes "ai:voice_chat"); null for a drawer edit. */
+    comment: string | null = null,
   ): Promise<Project> {
     AdminPolicy.assertAdmin(admin);
     if (field === "owner" || field === "physicianChampion") {
@@ -764,7 +768,7 @@ export class ProjectService {
     const patch: Partial<ProjectInput> =
       field === "requesterNotApplicable" ? { requesterNotApplicable: value === "true" } : { [field]: value };
     // Clearing Not applicable leaves the requester "not yet addressed" (no name).
-    return ProjectService.update(id, patch, ProjectService.actorOf(admin), db, scope);
+    return ProjectService.update(id, patch, ProjectService.actorOf(admin, comment ?? undefined), db, scope);
   }
 
   /**

@@ -114,9 +114,9 @@ export class AiToolsService {
   /** ProjectHistory.comment on every save applied from a bulk edit (the bulk tag; existing column, no migration). */
   static readonly BULK_HISTORY_COMMENT = "ai:bulk_edit";
 
-  /** The history tag an applied line carries (null = a plain edit). */
+  /** The history tag an applied line carries (item B: every AI feature tags its saves, "ai:<feature>"). */
   static historyComment(feature: AiReviewableTool): string | null {
-    return feature === "bulk_edit" ? AiToolsService.BULK_HISTORY_COMMENT : null;
+    return feature === "bulk_edit" ? AiToolsService.BULK_HISTORY_COMMENT : `ai:${feature}`;
   }
 
   static fieldsOf(feature: AiReviewableTool): readonly AiToolField[] {

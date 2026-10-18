@@ -102,7 +102,7 @@ export async function createAiProjectDraft(proposalId: string, draft: unknown): 
       viewer: c.viewer,
       proposalId,
       draft,
-      create: async (input) => (await ProjectService.create(input as unknown as ProjectInput, { changedBy: c.viewer.email, comment: null }, Db.client, c.scope)).id,
+      create: async (input) => (await ProjectService.create(input as unknown as ProjectInput, { changedBy: c.viewer.email, comment: AiToolsService.historyComment("request_to_project") }, Db.client, c.scope)).id,
     });
     if (r.ok) revalidatePath("/");
     return r;

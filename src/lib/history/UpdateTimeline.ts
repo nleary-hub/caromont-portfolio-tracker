@@ -112,6 +112,28 @@ export class UpdateTimeline {
   static readonly PEOPLE_RENAME_COMMENT = "people_rename";
   /** ProjectHistory.comment on CSV-created projects (ImportService.SOURCE_CREATE). */
   static readonly CSV_IMPORT_COMMENT = "csv_import";
+  /** Item B: ProjectHistory.comment on saves an AI feature applied ("ai:voice_chat", "ai:command:undo"). */
+  static readonly AI_PREFIX = "ai:";
+  /** The feature names shown for an AI source tag. */
+  static readonly AI_SOURCES: Readonly<Record<string, string>> = {
+    voice_chat: "Voice chat",
+    command: "Command bar",
+    quick_capture: "Quick capture",
+    meeting_notes: "Meeting notes",
+    bulk_edit: "Bulk edit",
+    next_step: "Next step",
+    request_to_project: "Request to draft",
+    meeting_brief: "Meeting Playbook",
+    related_links: "Dependency suggestions",
+  };
+
+  /** The AI source of a save (any of its rows carries the tag), or null for a manual edit. */
+  static aiSource(rows: readonly Pick<TimelineRow, "comment">[]): { label: string; undo: boolean } | null {
+    const tag = rows.map((r) => r.comment).find((c): c is string => typeof c === "string" && c.startsWith(UpdateTimeline.AI_PREFIX));
+    if (!tag) return null;
+    const [, key, undo] = tag.split(":");
+    return { label: UpdateTimeline.AI_SOURCES[key] ?? "AI", undo: undo === "undo" };
+  }
   /** DepartmentCopy.deletedToast: "Cath deleted. 3 projects moved to CVSS." on each moved project's row. */
   private static readonly DEPARTMENT_DELETED = /^.+ deleted\. \d+ projects? moved to .+\.$/;
 
@@ -207,7 +229,8 @@ export class UpdateTimeline {
     const notes: NoteEntry[] = [];
     for (const g of HistoryEntries.group(rows)) {
       const who = UpdateTimeline.actor(g.changedBy, people);
-      const meta = C.meta(ReportFormat.dateTimeEt(g.changedAt), who);
+      const ai = UpdateTimeline.aiSource(g.rows);
+      const meta = C.meta(ReportFormat.dateTimeEt(g.changedAt), ai ? C.aiApplied(ai.label, who, ai.undo) : who);
       g.rows
         .filter((r) => UpdateTimeline.NOTE_FIELDS.has(r.field))
         .forEach((r, i) => notes.push({ key: `note|${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, who, text: r.newValue ? r.newValue : null, shortened: UpdateTimeline.isShortened(r.newValue) }));

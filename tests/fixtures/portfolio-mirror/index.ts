@@ -140,12 +140,12 @@ export const PROJECTS: MirrorProject[] = [...golden, ...filler];
 
 /** Open dependencies: Supply blocks Rebate and Consignment. */
 export const DEPENDENCIES = [
-  { projectId: P(GOLDEN.REBATE), blockedById: P(GOLDEN.SUPPLY), note: "Supply agreement", createdAt: new Date("2026-09-20T15:00:00Z") },
-  { projectId: P(GOLDEN.CONSIGNMENT), blockedById: P(GOLDEN.SUPPLY), note: null, createdAt: new Date("2026-10-05T15:00:00Z") },
+  { serviceLineId: LINE, projectId: P(GOLDEN.REBATE), blockedById: P(GOLDEN.SUPPLY), note: "Supply agreement", createdAt: new Date("2026-09-20T15:00:00Z") },
+  { serviceLineId: LINE, projectId: P(GOLDEN.CONSIGNMENT), blockedById: P(GOLDEN.SUPPLY), note: null, createdAt: new Date("2026-10-05T15:00:00Z") },
 ];
 
 /** One open external blocker with an overdue follow-up. */
-export const BLOCKERS = [{ projectId: P(GOLDEN.CORTEX_EEG), description: "Vendor redlines", waitingOn: "Cortex Medical", since: new Date("2026-10-08T00:00:00Z"), followUpOn: new Date("2026-10-15T00:00:00Z"), followUpOwner: "Taylor Quinn", resolvedAt: null }];
+export const BLOCKERS = [{ id: "71000000-0000-4000-8000-000000000001", serviceLineId: LINE, projectId: P(GOLDEN.CORTEX_EEG), description: "Vendor redlines", waitingOn: "Cortex Medical", since: new Date("2026-10-08T00:00:00Z"), followUpOn: new Date("2026-10-15T00:00:00Z"), followUpOwner: "Taylor Quinn", resolvedAt: null }];
 
 export const SNAPSHOTS = [new Date("2026-10-13T16:00:00Z"), new Date("2026-09-29T16:00:00Z")];
 
