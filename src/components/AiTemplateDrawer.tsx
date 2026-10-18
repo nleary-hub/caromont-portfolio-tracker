@@ -19,7 +19,7 @@ export type AiTemplateChoice = "apply" | "skip";
 export type AiTemplatePanelState =
   | { kind: "prompt" }
   | { kind: "loading" }
-  | { kind: "review"; proposalId: string; templateId: string | null; rows: AiTemplateRow[] };
+  | { kind: "review"; proposalId: string; templateId: string | null; rows: AiTemplateRow[]; basis?: number | null };
 
 /** The entry button (ghost AI style). note null = ready; a note = paused (model off) with the note as its tooltip. */
 export function AiTemplateButton({ label, note, compact = false, onClick, testId }: { label: string; note: string | null; compact?: boolean; onClick: () => void; testId: string }) {
@@ -164,7 +164,7 @@ export function AiTemplatePanel({
       return;
     }
     setChoices({});
-    setState({ kind: "review", proposalId: r.proposalId, templateId: r.templateId, rows: r.rows });
+    setState({ kind: "review", proposalId: r.proposalId, templateId: r.templateId, rows: r.rows, basis: r.basis ?? null });
   };
 
   const apply = async (keys: readonly string[]) => {
@@ -254,6 +254,11 @@ export function AiTemplatePanel({
         {state.kind === "review" && (
           <>
             <p className="text-muted type-caption">{C.REVIEW_HELP}</p>
+            {state.basis ? (
+              <p className="text-muted type-caption" data-testid="ai-template-basis">
+                {C.basis(mode, state.basis)}
+              </p>
+            ) : null}
             <ol className="flex flex-col" data-testid="ai-template-diff">
               {rows.map((r) => (
                 <AiTemplateDiffRow key={r.key} row={r} choice={r.issue ? null : (choices[r.key] ?? null)} onChoose={(c) => setChoices((m) => ({ ...m, [r.key]: c }))} />

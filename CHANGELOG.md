@@ -4,6 +4,17 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Template AI assistant uses your real checklists (item 10)
+- Audit: before, Draft a template and Edit with AI used only what you typed plus the template itself, so they saved
+  little work. Fixed rather than removed.
+- Edit with AI now sees what the projects built from that template actually did: the steps most of them dropped or
+  renamed, and the steps they kept adding by hand (counted by the tracker). Ask it to "match how we really run these"
+  and it proposes those changes in the projects' own wording.
+- Draft a template now sees the milestones that recur across the line's projects, so a new template starts from
+  steps you already use.
+- The review says what it was based on, for example "Based on the checklists of 4 projects that use this template."
+  Only counts and step names are sent, no people or dates. Nothing saves until you apply, as before.
+
 ### Writing assistant knows the project (item 9)
 - Draft from bullets, Fit for report and Revise with AI now get the project's facts (people, milestones, status,
   blockers) and its last 3 updates, so names, dates and terms stay the way the tracker has them.
