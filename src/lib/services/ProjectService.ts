@@ -98,6 +98,31 @@ export class ProjectService {
   }
 
   /**
+   * Item 7 (Request to draft project): the usual create (validation, the "created" history row with the actor's source
+   * tag) plus a checklist copied from a template, in one transaction. No steps = exactly ProjectService.create.
+   */
+  static async createWithMilestones(
+    input: ProjectInput,
+    milestones: MilestoneEdit,
+    actor: Actor,
+    db: PrismaClient = Db.client,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
+  ): Promise<Project> {
+    const drafts = milestones.drafts;
+    if (drafts.length === 0) return ProjectService.create(input, actor, db, scope);
+    const plan = await ProjectService.withMilestoneErrors(async () => MilestoneRules.plan([], drafts, DateOnly.today(), milestones.applied ?? null));
+    const mirror = MilestoneProgress.mirror(plan.result);
+    const full: ProjectInput = { ...input, nextMilestone: mirror.nextMilestone, dueDate: HistoryDiff.serialize("dueDate", mirror.dueDate) };
+    const data = ProjectValidator.parse(full, ProjectValidator.rulesOf(scope));
+    return db.$transaction(async (tx) => {
+      const at = new Date();
+      const project = await ProjectService.createInTx(tx, full, actor, data, at, scope, { defaultMilestone: false });
+      await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, project.id, drafts, actor, at, milestones.applied ?? null, scope));
+      return project;
+    });
+  }
+
+  /**
    * Create inside a caller-owned transaction (e.g. an all-or-nothing CSV import).
    * Validates, inserts, and writes the "created" history row on the same transaction.
    */

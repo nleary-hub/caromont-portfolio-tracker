@@ -13,6 +13,9 @@ import { AiBulkEditService, type AiBulkEditResult } from "@/lib/services/AiBulkE
 import { AiCommandService, type AiCommandResult } from "@/lib/services/AiCommandService";
 import { AiMeetingNotesService, type AiMeetingNotesResult } from "@/lib/services/AiMeetingNotesService";
 import { AiNextStepService, type AiNextStepResult } from "@/lib/services/AiNextStepService";
+import { AiRequestDraftService, type AiRequestDraftResult } from "@/lib/services/AiRequestDraftService";
+import { ProjectService } from "@/lib/services/ProjectService";
+import type { ProjectInput } from "@/lib/validation/ProjectValidator";
 import { AiToolsService } from "@/lib/services/AiToolsService";
 
 /**
@@ -154,5 +157,54 @@ export async function undoLastAiApply(): Promise<AiUndoResult> {
   } catch (e) {
     console.error("AI actions failed: undo", (e as Error)?.name);
     return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+  }
+}
+
+/** Item 7: Request to draft project (template match, named people pre-filled, duplicate check). Saves nothing. */
+export async function proposeAiRequestDraft(text: string): Promise<AiRequestDraftResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    return await AiRequestDraftService.propose({ db: c.db, viewer: c.viewer, scope: c.scope, input: String(text ?? "").slice(0, AiToolsService.INPUT_MAX) });
+  } catch (e) {
+    console.error("AI actions failed: request draft", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
+  }
+}
+
+/** Item 7: Create project from the reviewed request draft: the normal create plus the template's milestones, one transaction. */
+export async function createAiRequestDraft(proposalId: string, draft: unknown) {
+  try {
+    const c = await context();
+    if (!c) return { ok: false as const, message: AiCopy.NOT_AUTHORIZED };
+    const r = await AiRequestDraftService.create({
+      db: c.db,
+      viewer: c.viewer,
+      scope: c.scope,
+      proposalId,
+      draft,
+      write: async (input, milestones) =>
+        (await ProjectService.createWithMilestones(input as unknown as ProjectInput, milestones, { changedBy: c.viewer.email, comment: AiToolsService.historyComment("request_to_project") }, Db.client, c.scope)).id,
+    });
+    if (r.ok) refresh();
+    return r;
+  } catch (e) {
+    console.error("AI actions failed: request create", (e as Error)?.name);
+    return { ok: false as const, message: AiToolsCopy.APPLY_FAILED };
+  }
+}
+
+/** Item 7: the request matches an existing project: turn it into change lines for that project only (meeting notes on one row). */
+export async function updateFromAiRequest(projectId: string, text: string): Promise<AiMeetingNotesResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    const projects = c.projects.filter((p) => p.id === projectId);
+    if (!projects.length) return { ok: false, message: AiCopy.PROJECT_GONE };
+    const r = await AiMeetingNotesService.process({ ...c, projects, notes: String(text ?? "").slice(0, AiToolsService.INPUT_MAX), prefix: AiToolsCopy.REQUEST_UPDATE_PREFIX });
+    return r.ok ? { ...r, drafts: [] } : r;
+  } catch (e) {
+    console.error("AI actions failed: request update", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
   }
 }

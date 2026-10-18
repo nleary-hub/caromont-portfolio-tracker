@@ -2,11 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
-import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
 import { AiBulkEditPanel } from "@/components/AiBulkEditPanel";
 import { AiMeetingNotesPanel } from "@/components/AiMeetingNotesPanel";
 import { AiCommandBar } from "@/components/AiCommandBar";
 import { AiVoiceChatPanel } from "@/components/AiVoiceChatPanel";
+import { AiRequestDraftPanel } from "@/components/AiRequestDraftPanel";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -108,7 +108,7 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-request-heading" className="type-heading">
           {C.REQUEST_TITLE}
         </h2>
-        <AiDraftProjectPanel disabledNote={notes.request_to_project ?? null} />
+        <AiRequestDraftPanel disabledNote={notes.request_to_project ?? null} />
       </section>
       )}
 

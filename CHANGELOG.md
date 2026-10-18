@@ -4,6 +4,17 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Request to draft project picks the template and checks for duplicates (item 7)
+- Paste a request on AI tools and the draft now comes back with the template that fits (Admin, Templates). Create
+  project adds that template's milestones to the new project, with the due date on the first one, in one save.
+- It fills in the department, the requester (the physician champion field) and the REQ number when the request names
+  them and the name is on your lists. A field stays blank only when the request doesn't say. Owner is always left
+  for you to assign.
+- It checks the tracker for the same project first: the AI's pick, plus a check in code for the same REQ number or a
+  shared vendor or device name (for example two "Northwind" projects). Each match has an "Update it instead" button
+  that turns the request into updates for that project on the usual confirm card, and no new project is created.
+- You can still change any field, the department, requester and template before you create it.
+
 ### Next-step suggestion reads the plan (item 6)
 - "Recommend next milestone" (the row's ... menu, or the project drawer) now reads the project's whole milestone plan,
   the template its milestones came from, its blockers and its updates, not just the Latest update.

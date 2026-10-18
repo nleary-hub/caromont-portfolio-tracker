@@ -172,6 +172,19 @@ export class AiToolsCopy {
   static readonly REQUEST_LABEL = "Project request";
   static readonly REQUEST_PLACEHOLDER = "For example: Example Clinic asks for a second ultrasound room by June 30. Needs a vendor quote first.";
   static readonly REQUEST_PROPOSE = "Draft project";
+  /** Item 7: the request tool now matches a template, pre-fills named people and checks for duplicates. */
+  static readonly REQUEST_HELP_FULL =
+    "Paste a project request. The AI drafts a new project, picks the template that fits, fills in the department, requester and REQ number when the request names them, and checks whether the project is already in the tracker. Nothing is created until you click Create project.";
+  static readonly REQUEST_DRAFT_HELP = "Edit anything before you create it. It's created as Not started with no owner. A field is blank only when the request didn't say.";
+  static readonly REQUEST_LABELS: Readonly<Record<string, string>> = { department: "Department", requester: "Requester (physician champion)", inforRequestNumber: "REQ number", templateId: "Template" };
+  static readonly REQUEST_NOT_SET = "Not set";
+  static readonly REQUEST_NO_TEMPLATE = "No template (one milestone from Next milestone)";
+  static readonly REQUEST_TEMPLATE_STEPS = (n: number) => `Milestones from the template (${n}). The first one gets the due date.`;
+  static readonly REQUEST_DUPLICATE_TITLE = "This may already be in the tracker";
+  static readonly REQUEST_DUPLICATE_HELP = "Update the existing project from this request instead, or create the new project anyway.";
+  static readonly REQUEST_UPDATE_INSTEAD = (name: string) => `Update ${name} instead`;
+  static readonly REQUEST_UPDATE_PREFIX = "This is a project request for the existing project listed above. Turn it into updates for that project only. Do not draft a new project.\nMeeting notes:";
+  static readonly REQUEST_CREATED = "Project created as Not started. Open it on the dashboard to assign the owner.";
   static readonly DRAFT_TITLE = "Review draft project";
   static readonly DRAFT_HELP = "Edit anything before you create it. It's created as Not started, with owner, physician champion, requester and department blank.";
   static readonly DRAFT_CREATE = "Create project";
