@@ -2,7 +2,6 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
-import { AiBriefPanel } from "@/components/AiBriefPanel";
 import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
@@ -108,9 +107,13 @@ export default async function AiToolsPage() {
       {shown("meeting_brief") && (
       <section className={section} aria-labelledby="ai-tool-brief-heading" id="meeting-brief">
         <h2 id="ai-tool-brief-heading" className="type-heading">
-          {C.BRIEF_TITLE}
+          {C.PLAYBOOK_TITLE}
         </h2>
-        <AiBriefPanel disabledNote={notes.meeting_brief ?? null} />
+        {/* Meeting Playbook item: the brief became the playbook, on its own full-width page. */}
+        <p className="text-muted type-caption">{C.PLAYBOOK_INTRO}</p>
+        <Link href="/playbook" className="self-start rounded-control border border-line px-3.5 py-1.5 text-fg type-table-strong hover:border-accent" data-testid="ai-tools-playbook-link">
+          {C.PLAYBOOK_OPEN}
+        </Link>
       </section>
       )}
 

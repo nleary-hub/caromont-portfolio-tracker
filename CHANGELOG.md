@@ -4,6 +4,24 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Meeting Playbook (replaces the pre-meeting brief)
+- New full-width Meeting Playbook page. Pick the meeting (Biweekly review with your senior director, department or
+  manager huddle, governance or SIVAT prep, contracts or vendor sync, 1:1 with a manager), what it covers (the whole
+  line, a department, an owner, or the rows you selected or filtered on the dashboard), 15, 30 or 60 minutes, and an
+  optional focus.
+- Eight sections: bottom line; decisions and escalations (who decides, your ask, what happens if it slips); a timed
+  agenda that fits the length; talking points per project (what changed since the last report, the real blocker, the
+  owner, the question and who to ask, the next step with a date); the watchlist; dependencies and patterns (what each
+  blocker project holds up, and outside blockers grouped by who they wait on); wins; and a follow-up tracker.
+- The watchlist and blocker lists are computed by the tracker, the same as the dashboard. Every project name links to
+  the project. A person the tracker doesn't name shows as "No owner assigned"; dates in the past are dropped.
+- Each playbook is saved with its time, meeting type and scope so you can reopen it. Copy, Print or PDF (your
+  browser's print, not the biweekly report), Export to Word, or email-ready text.
+- "Process meeting notes" on a saved playbook sends your notes through Meeting notes to updates with the playbook's
+  follow-ups as context. Nothing changes until you apply it.
+- The brief card above the dashboard table is gone. Open the playbook from the AI menu (for selected or filtered rows),
+  the Playbook button in a project's drawer, or AI tools.
+
 ### Type it or say it (voice chat and the command bar)
 - Quick capture (the button, or press Q) now opens the command bar: the same assistant as voice chat, in a text box,
   for when talking out loud isn't possible. Ask questions ("Who owns the EEG upgrade?") or type changes in plain words.

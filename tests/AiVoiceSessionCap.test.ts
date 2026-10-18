@@ -36,10 +36,10 @@ async function before(): Promise<PGlite> {
 }
 
 describe("0060_voice_session_cap (PGlite, example data)", () => {
-  it("follows 0059_ai_metrics and is the newest; add-only, no em dash", () => {
+  it("follows 0059_ai_metrics; add-only, no em dash", () => {
     const f = folders();
     expect(f[f.indexOf(M) - 1]).toBe("0059_ai_metrics");
-    expect(f.at(-1)).toBe(M);
+    expect(f[f.indexOf(M) + 1]).toBe("0061_ai_playbooks");
     const code = sql().split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
     expect(code).not.toMatch(/\bDELETE\b|\bTRUNCATE\b|\bUPDATE\b|DROP COLUMN|DROP TABLE|report_artifacts|handoff|"ReportSnapshot"/i);
     expect(sql()).not.toContain("\u2014");

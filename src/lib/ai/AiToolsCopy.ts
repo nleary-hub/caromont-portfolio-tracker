@@ -169,6 +169,44 @@ export class AiToolsCopy {
   };
 
   // Step 8: Pre-meeting brief.
+  static readonly PLAYBOOK_TITLE = "Meeting Playbook";
+  static readonly PLAYBOOK_INTRO = "Pick the meeting, who it covers and how long it is. The AI drafts the playbook from your projects; the watchlist and blocker lists are computed by the tracker. Saved playbooks can be reopened below.";
+  static readonly PLAYBOOK_TYPE = "Meeting type";
+  static readonly PLAYBOOK_SCOPE = "Covers";
+  static readonly PLAYBOOK_SCOPE_LINE = "All projects in this line";
+  static readonly PLAYBOOK_SCOPE_DEPT = "A department";
+  static readonly PLAYBOOK_SCOPE_OWNER = "An owner";
+  static readonly PLAYBOOK_SCOPE_PICKED = "Projects from the dashboard";
+  static readonly PLAYBOOK_LENGTH = "Length";
+  static readonly PLAYBOOK_FOCUS = "Focus (optional)";
+  static readonly PLAYBOOK_FOCUS_PLACEHOLDER = "For example: the supply contract and what it holds up";
+  static readonly PLAYBOOK_MAKE = "Make playbook";
+  static readonly PLAYBOOK_MAKING = "Making playbook\u2026";
+  static readonly PLAYBOOK_SAVED = "Saved playbooks";
+  static readonly PLAYBOOK_NONE_SAVED = "No saved playbooks yet.";
+  static readonly PLAYBOOK_INVALID = "Pick a meeting type, who it covers and a length.";
+  static readonly PLAYBOOK_NO_PROJECTS = "No projects match that choice in this line.";
+  static readonly PLAYBOOK_COPY = "Copy";
+  static readonly PLAYBOOK_COPIED = "Copied.";
+  static readonly PLAYBOOK_PRINT = "Print or PDF";
+  static readonly PLAYBOOK_WORD = "Export to Word";
+  static readonly PLAYBOOK_EMAIL = "Email-ready text";
+  static readonly PLAYBOOK_PROCESS = "Process meeting notes";
+  static readonly PLAYBOOK_PROCESS_HELP = "Paste or dictate your notes from this meeting. They go through Meeting notes to updates with this playbook's follow-ups as context. Nothing changes until you apply it.";
+  static readonly PLAYBOOK_SECTIONS = ["Bottom line", "Decisions and escalations needed", "Agenda", "Project talking points", "Watchlist", "Dependencies and patterns", "Wins to recognize", "Follow-up tracker"] as const;
+  static readonly PLAYBOOK_NOTE = "AI-written from the tracker's data. The watchlist and blocker lists are computed by the tracker. Check the linked projects before the meeting.";
+  static readonly PLAYBOOK_NONE = "None.";
+  static readonly PLAYBOOK_FOLLOW_HEADERS = ["Action", "Owner", "Due", "Project"] as const;
+  static readonly PLAYBOOK_OPEN = "Meeting Playbook";
+  static readonly PLAYBOOK_NEW = "New playbook";
+  static readonly PLAYBOOK_BUTTON = "Playbook";
+  static readonly AI_MENU_PLAYBOOK = (n: number) => (n ? `Meeting Playbook for ${n} selected` : "Meeting Playbook for these projects");
+  static selectionLabel(n: number): string {
+    return `${n} selected ${n === 1 ? "project" : "projects"} from the dashboard`;
+  }
+  static filterLabel(n: number): string {
+    return `${n} ${n === 1 ? "project" : "projects"} in the dashboard filter`;
+  }
   static readonly BRIEF_TITLE = "Pre-meeting brief";
   static readonly BRIEF_HELP = "One click makes a one-page brief from the projects in this service line: what moved, what's stuck and what to ask. It's shown here only. It isn't saved, emailed or added to any report.";
   static readonly BRIEF_LABEL = "Focus (optional)";

@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { AiBriefButton, AiBriefCard, AiQuickCapture, AiRowMenu, AiToolbarMenu, type AiPlacementNotes } from "@/components/AiPlacements";
+import { AiBriefButton, AiPlacementLinks, AiQuickCapture, AiRowMenu, AiToolbarMenu, type AiPlacementNotes } from "@/components/AiPlacements";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
 import { AiDictationButton } from "@/components/AiDictationButton";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
@@ -142,28 +142,27 @@ describe("placement 3: Quick capture and dictation", () => {
   });
 });
 
-describe("placement 4: Pre-meeting brief", () => {
-  it("card ready: Make brief enabled", () => {
-    const h = html(createElement(AiBriefCard, { note: null, focusOptions: ["Imaging"] }));
-    expect(h).toContain(C.BRIEF_CARD_TITLE);
-    expect(h).toContain("ai-brief-focus-options");
-    expectReady(h, "ai-tool-meeting_brief-propose");
-  });
-  it("card model off: greyed with the note", () => {
-    const h = html(createElement(AiBriefCard, { note: OFF, focusOptions: [] }));
-    expect(h).toMatch(/aria-disabled="true"[^>]*aria-describedby="ai-brief-off"|aria-describedby="ai-brief-off"[^>]*aria-disabled="true"/);
-  });
-  it("drawer Brief button: ready and model off", () => {
-    expectReady(html(createElement(AiBriefButton, { note: null, projectName: "Example Clinic refresh" })), "ai-brief-button");
-    expectPaused(html(createElement(AiBriefButton, { note: OFF, projectName: "Example Clinic refresh" })), "ai-brief-button", OFF);
-  });
-  it("feature off: neither the card nor the Brief button is rendered", () => {
+describe("placement 4: Meeting Playbook (replaces the pre-meeting brief card)", () => {
+  it("no brief card above the table any more; the drawer button and the AI menu open the playbook page", () => {
     const src = readFileSync("src/components/ProjectDashboard.tsx", "utf8");
-    expect(src).toMatch(/aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard/);
-    expect(src).toMatch(/"meeting_brief" in aiPlacements \? \{ headerAction: <AiBriefButton/);
-    // The tiles are always their own full-width row; the brief is a separate row under them.
+    expect(src).not.toContain("<AiBriefCard");
+    expect(src).toMatch(/"meeting_brief" in aiPlacements \? \{ headerAction: <AiBriefButton note=\{aiPlacements.meeting_brief \?\? null\} projectId=\{selected.id\}/);
     expect(src).not.toContain("grid-cols-[minmax(0,1fr)_380px]");
     expect(src).toContain("{!emptyLine && tileTemplate && (");
+  });
+  it("drawer Playbook button: a link scoped to the project when ready, greyed with the note when the model is off", () => {
+    const h = html(createElement(AiBriefButton, { note: null, projectId: "10000000-0000-4000-8000-0000000000a1", projectName: "Example Clinic refresh" }));
+    expectReady(h, "ai-brief-button");
+    expect(h).toContain('href="/playbook?ids=10000000-0000-4000-8000-0000000000a1&amp;label=Example%20Clinic%20refresh"');
+    expect(h).toContain(C.PLAYBOOK_BUTTON);
+    expectPaused(html(createElement(AiBriefButton, { note: OFF, projectId: "x", projectName: "Example Clinic refresh" })), "ai-brief-button", OFF);
+  });
+  it("the AI menu offers the playbook for the selection or the current filter; long lists scope to the whole line", () => {
+    const h = html(createElement(AiToolbarMenu, { notes: { meeting_brief: null }, selected: [], visible: rows, defaultOpen: true }));
+    expect(h).toContain('data-testid="ai-menu-playbook"');
+    expect(h).toContain("/playbook?ids=p1,p2,p3&amp;label=3%20projects%20in%20the%20dashboard%20filter");
+    expect(AiPlacementLinks.playbook(Array.from({ length: 151 }, (_, i) => ({ id: String(i), name: "x" })), "x")).toBe("/playbook");
+    expectPaused(html(createElement(AiToolbarMenu, { notes: { meeting_brief: OFF }, selected: [], visible: rows, defaultOpen: true })), "ai-menu-playbook", OFF);
   });
 });
 

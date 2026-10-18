@@ -1123,6 +1123,29 @@ model AiProposal {
   @@map("ai_proposals")
 }
 
+/// A saved Meeting Playbook (migration 0061). Reopened from the Meeting Playbook page.
+model AiPlaybook {
+  id            String   @id @db.Uuid
+  serviceLineId String   @db.Uuid
+  userEmail     String
+  /// biweekly_review | huddle | governance | contracts | one_on_one (DB check)
+  meetingType   String
+  scopeLabel    String
+  /// AiPlaybookScope (src/lib/ai/playbook/AiPlaybookModel.ts)
+  scope         Json
+  /// 15 | 30 | 60 (DB check)
+  lengthMinutes Int
+  focus         String?
+  /// AiPlaybook (src/lib/ai/playbook/AiPlaybookModel.ts)
+  content       Json
+  provider      String?
+  model         String?
+  createdAt     DateTime @default(now())
+
+  @@index([userEmail, createdAt])
+  @@map("ai_playbooks")
+}
+
 /// One apply of AI action lines (migration 0058): what changed and how to undo it. Never deleted (trigger).
 model AiApply {
   id            String    @id @db.Uuid

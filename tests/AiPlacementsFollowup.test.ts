@@ -2,7 +2,6 @@ import { readFileSync } from "node:fs";
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { describe, expect, it, vi } from "vitest";
-import { AiBriefCard } from "@/components/AiPlacements";
 import { AiChangeReview } from "@/components/AiToolsPanel";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import type { AiToolChange } from "@/lib/ai/AiToolsModel";
@@ -72,32 +71,12 @@ describe("drawer review table (single project)", () => {
   });
 });
 
-describe("brief card row", () => {
-  const card = () => html(createElement(AiBriefCard, { note: null, focusOptions: [] }));
-  it("is its own full-width row under the status cards, not in the tiles grid", () => {
+describe("brief card row removed (Meeting Playbook item)", () => {
+  it("the dashboard has no brief card row under the status cards; the playbook is its own page", () => {
     const src = readFileSync("src/components/ProjectDashboard.tsx", "utf8");
-    const tiles = src.indexOf('aria-label="Status summary"'), brief = src.indexOf("<AiBriefCard");
-    expect(brief).toBeGreaterThan(src.indexOf("</section>", tiles));
+    expect(src).not.toContain("<AiBriefCard");
     expect(src).not.toContain("grid-cols-[minmax(0,1fr)_380px]");
-    expect(src).not.toContain("capped");
-  });
-  it("one compact line: heading, Focus label and field, Make brief", () => {
-    const h = card();
-    const line = h.match(/<div class="flex items-center gap-3" data-testid="ai-brief-line">.*?<\/button><\/div>/)?.[0] ?? "";
-    expect(line).toContain(`>${C.BRIEF_CARD_TITLE}</h2>`);
-    expect(line).toContain(`>${C.BRIEF_LABEL}</label>`);
-    expect(line).toContain('id="ai-brief-focus"');
-    expect(line).toContain('data-testid="ai-tool-meeting_brief-propose"');
-    // The help line is kept for screen readers (aria-describedby) but takes no row.
-    expect(h).toMatch(/<p id="ai-brief-help" class="sr-only">/);
-    expect(h).not.toContain("absolute inset-0");
-    expect(h).not.toContain("72px");
-  });
-  it("a returned brief shows below, capped at 160px with scrolling, and keeps Open full", () => {
-    const h = html(createElement(AiBriefCard, { note: null, focusOptions: [], initial: { kind: "brief", brief: { moved: [], stuck: [], ask: [] } } as never }));
-    expect(h).toMatch(/max-h-\[160px\] overflow-y-auto" data-testid="ai-tool-brief"/);
-    expect(h.indexOf('data-testid="ai-tool-brief"')).toBeGreaterThan(h.indexOf('data-testid="ai-brief-line"'));
-    expect(h).toContain('data-testid="ai-brief-open-full"');
+    expect(readFileSync("src/app/playbook/page.tsx", "utf8")).toContain("max-w-[1400px]");
   });
 });
 

@@ -66,7 +66,6 @@ import { AiWritingModel } from "@/lib/ai/AiWritingModel";
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 // AI placements use server actions: loaded on demand so importing the dashboard never pulls them in (tests, non-AI views).
 const AiBriefButton = dynamic(() => import("./AiPlacements").then((m) => m.AiBriefButton));
-const AiBriefCard = dynamic(() => import("./AiPlacements").then((m) => m.AiBriefCard));
 const AiQuickCapture = dynamic(() => import("./AiPlacements").then((m) => m.AiQuickCapture));
 const AiRowMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiRowMenu));
 const AiToolbarMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiToolbarMenu));
@@ -750,7 +749,6 @@ export function ProjectDashboard({
             {heartbeat && <SummaryHeartbeat tilesKey={tiles.join(",")} />}
           </section>
         )}
-        {!emptyLine && aiPlacements && "meeting_brief" in aiPlacements && <AiBriefCard note={aiPlacements.meeting_brief ?? null} focusOptions={[...new Set([...(line?.departments ?? []).map((d) => d.name), ...rows.map((r) => r.name)])]} />}
 
         {!emptyLine && (
         <section className="flex flex-col gap-1.5" aria-label="Filters">
@@ -907,7 +905,7 @@ export function ProjectDashboard({
             {...(!admin && dependencyLoadAction
               ? { dependencies: <DependenciesSection key={`deps-ro-${selected.id}`} projectId={selected.id} actions={{ load: dependencyLoadAction }} onOpenProject={setSelectedId} flags={BlockerSignals.flags(selected, selected.blockers, today)} focus={focusDeps === selected.id} /> }
               : {})}
-            {...(aiPlacements && "meeting_brief" in aiPlacements ? { headerAction: <AiBriefButton note={aiPlacements.meeting_brief ?? null} projectName={selected.name} /> } : {})}
+            {...(aiPlacements && "meeting_brief" in aiPlacements ? { headerAction: <AiBriefButton note={aiPlacements.meeting_brief ?? null} projectId={selected.id} projectName={selected.name} /> } : {})}
             peopleEditor={
               admin ? (
                 <ProjectPeopleEditor
