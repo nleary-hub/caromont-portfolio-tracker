@@ -151,6 +151,18 @@ export class AiToolsCopy {
   static readonly NEXT_PROJECT_NONE = "Choose a project";
   static readonly NEXT_PROPOSE = "Suggest next step";
   static readonly NEXT_INSTRUCTION = "Suggest the next milestone for this project.";
+  static readonly NEXT_MILESTONE_LABEL = "Next milestone";
+  static readonly NEXT_OWNER_LABEL = "Owner";
+  static readonly NEXT_DUE_LABEL = "Due";
+  static readonly NEXT_THIS_WEEK_LABEL = "This week";
+  static readonly NEXT_WHY_LABEL = "Why";
+  static readonly NEXT_TEMPLATE_LABEL = "Template";
+  static readonly NEXT_IN_PLAN = "in the plan";
+  static readonly NEXT_NEW = "new milestone";
+  static readonly NEXT_NO_OWNER = "No owner assigned";
+  static readonly NEXT_NO_DATE = "No date suggested";
+  static readonly NEXT_ALREADY = "The plan already has this as the current milestone, with this owner and date. Nothing to change.";
+  static readonly NEXT_MOVED = "Next-step suggestion is now on each project: the row's ... menu (Recommend next milestone) and the project drawer. It reads the milestone plan and template, not just the Latest update.";
   static readonly PICK_PROJECT = "Choose a project first.";
   static readonly NO_PROJECTS = "No open projects in this service line.";
 

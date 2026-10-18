@@ -12,6 +12,7 @@ import { AiActionService, type AiActionDb, type AiActionSource, type AiApplyResu
 import { AiBulkEditService, type AiBulkEditResult } from "@/lib/services/AiBulkEditService";
 import { AiCommandService, type AiCommandResult } from "@/lib/services/AiCommandService";
 import { AiMeetingNotesService, type AiMeetingNotesResult } from "@/lib/services/AiMeetingNotesService";
+import { AiNextStepService, type AiNextStepResult } from "@/lib/services/AiNextStepService";
 import { AiToolsService } from "@/lib/services/AiToolsService";
 
 /**
@@ -91,6 +92,18 @@ export async function proposeAiBulkEdit(text: string, onlyIds: string[] | null =
     return await AiBulkEditService.propose({ ...c, input: String(text ?? "").slice(0, AiToolsService.INPUT_MAX), onlyIds: ids });
   } catch (e) {
     console.error("AI actions failed: bulk edit", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
+  }
+}
+
+/** Item 6: next-step suggestion for one project, from its milestone plan and template. */
+export async function suggestAiNextStep(projectId: string): Promise<AiNextStepResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    return await AiNextStepService.suggest({ db: c.db, viewer: c.viewer, scope: c.scope, projectId });
+  } catch (e) {
+    console.error("AI actions failed: next step", (e as Error)?.name);
     return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
   }
 }

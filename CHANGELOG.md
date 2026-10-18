@@ -4,6 +4,16 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Next-step suggestion reads the plan (item 6)
+- "Recommend next milestone" (the row's ... menu, or the project drawer) now reads the project's whole milestone plan,
+  the template its milestones came from, its blockers and its updates, not just the Latest update.
+- It says which milestone is really next: the first open one, an earlier step still open, or a step the template has
+  and the plan skipped (a new milestone). It also suggests the owner (only someone the tracker already names), a
+  realistic due date (never in the past), and one concrete action for this week.
+- Apply puts it in the plan the same way the drawer does: moves that milestone up to current, or adds the missing one,
+  and sets its owner and date. The action for this week is shown, not saved.
+- The standalone Next-step section on AI tools is gone; it points you to the row menu and the drawer instead.
+
 ### Quick capture is the command bar (item 5)
 - Quick capture and the command bar are one thing now: the header button, the Q key and the Quick capture section on
   AI tools all open the same assistant. The old one-project capture box is gone from AI tools.

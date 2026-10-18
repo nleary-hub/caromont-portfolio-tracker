@@ -62,12 +62,10 @@ describe("drawer review table (single project)", () => {
     expect(h).toContain("Example Clinic refresh</span>");
     expect(h).not.toContain("ai-tool-reason-1");
   });
-  it("only the edit drawer (inline next step) uses single mode", () => {
+  it("item 6: the drawer's next step uses the shared confirm card, not the old single-mode review", () => {
     const src = readFileSync("src/components/AiNextStepPanel.tsx", "utf8");
-    expect(src.match(/ single \/>/g)?.length).toBe(1);
-    expect(src.indexOf(" single />")).toBeLessThan(
-      src.indexOf('data-testid="ai-tool-next_step"'),
-    );
+    expect(src).not.toContain(" single />");
+    expect(src).toContain("<AiActionReview");
   });
 });
 
