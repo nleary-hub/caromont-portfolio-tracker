@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
+import { AiRefreshListener } from "@/components/AiRefreshListener";
 import { ClientErrorReporter } from "@/components/ClientErrorReporter";
 
 export const metadata: Metadata = {
@@ -13,6 +14,7 @@ export default function RootLayout({ children }: Readonly<{ children: React.Reac
     <html lang="en" className="dark h-full">
       <body className="min-h-full bg-bg text-fg">
         <ClientErrorReporter />
+        <AiRefreshListener />
         {children}
       </body>
     </html>

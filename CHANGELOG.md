@@ -4,6 +4,15 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Say yes before anything changes (C: confirmation)
+- Voice chat can now make the change for you. It proposes the change, reads it back in one sentence ("Status to Off
+  track on Cortex EEG Upgrade; ... Apply?"), and applies it only after you clearly say yes. It says a change was
+  applied only after the save worked; if a line could not be applied it tells you why.
+- Say "undo that" to undo the last apply.
+- Every review card now has Apply all next to the per-line Apply and Reject (and Edit on the text tools). Voice chat
+  shows the same card, so you can also apply or reject by clicking.
+- After an apply or undo the dashboard refreshes by itself, so the change shows right away.
+
 ### One set of AI actions, checked like a manual edit (B: shared action layer)
 - Behind the scenes, every AI feature that changes projects now uses the same actions: find a project (by name, REQ
   number, vendor, department or owner), read one project in full, propose changes, apply them after you say yes, undo

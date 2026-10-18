@@ -1,14 +1,19 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { endAiVoiceChat, proposeAiVoiceEdits, reportAiVoiceFailure, startAiVoiceChat } from "@/app/actions/aiTools";
+import { runAiActionTool } from "@/app/actions/aiActions";
+import { endAiVoiceChat, reportAiVoiceFailure, startAiVoiceChat } from "@/app/actions/aiTools";
+import { AiActionReview } from "@/components/AiActionReview";
+import { AiActionReviewState } from "@/lib/ai/actions/AiActionReviewState";
+import { AiVoiceOutput } from "@/lib/ai/actions/AiVoiceOutput";
 import { AiChangeReview } from "@/components/AiToolsPanel";
 import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiRealtimeBrowser, type AiRealtimeConnection } from "@/lib/ai/AiRealtimeBrowser";
+import { AiRefresh } from "@/lib/ai/AiRefresh";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import type { AiToolChange } from "@/lib/ai/AiToolsModel";
-import { AiVoiceChat, AiVoiceErrors } from "@/lib/ai/AiVoiceChat";
+import { AiVoiceErrors } from "@/lib/ai/AiVoiceChat";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const GHOST = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
@@ -17,14 +22,17 @@ export type AiVoicePhaseState = "idle" | "connecting" | "listening" | "speaking"
 export type AiVoiceReview = { proposalId: string; changes: AiToolChange[] };
 
 /**
- * Step 10: voice chat. Talk about the projects you can see; any change the model suggests is listed in the same review
- * list as the text tools (apply or reject each line). Audio goes from the browser to the provider only, never to this
+ * Step 10: voice chat. Talk about the projects you can see. Item C: a change is proposed through the shared action
+ * layer, read back in one sentence, and applied only after a spoken yes (apply_changes) or a click on the card (Apply
+ * all, or per line). "Undo that" undoes the last apply. Audio goes from the browser to the provider only, never to this
  * app, and is never recorded. Paused (model off) keeps the button greyed and focusable with the note.
  */
 export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialReviews = [], initialError = null }: { disabledNote: string | null; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[]; initialError?: string | null }) {
   const [phase, setPhase] = useState<AiVoicePhaseState>(initialPhase);
   const [error, setError] = useState<string | null>(initialError);
-  const [reviews, setReviews] = useState<AiVoiceReview[]>(initialReviews);
+  const [reviews] = useState<AiVoiceReview[]>(initialReviews);
+  const [actions, setActions] = useState<AiActionReviewState[]>([]);
+  const [said, setSaid] = useState<string | null>(null);
   const conn = useRef<AiRealtimeConnection | null>(null);
   const session = useRef<string | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -84,11 +92,18 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
           void reportAiVoiceFailure({ sessionId: r.sessionId, code: f.code, type: f.type }).finally(() => void stop(f.message));
         },
         onToolCall: async (name, args) => {
-          if (name !== AiVoiceChat.TOOL_NAME || !session.current) return "Unknown tool.";
-          const p = await proposeAiVoiceEdits(session.current, args);
-          if (!p.ok) return p.message;
-          if (p.changes.length) setReviews((cur) => [{ proposalId: p.proposalId, changes: p.changes }, ...cur]);
-          return p.changes.length ? `Listed ${p.changes.length} suggested change(s) on screen for review. Nothing is saved until the person applies them.` : C.NO_CHANGES;
+          if (!session.current) return JSON.stringify({ ok: false, error: "The chat has ended." });
+          // Item C: every tool runs on the server through the shared action layer; the model gets the JSON back.
+          const r = await runAiActionTool("voice_chat", name, args);
+          const p = "proposal" in r ? r.proposal : undefined;
+          if (p) setActions((cur) => [AiActionReviewState.of(p), ...cur]);
+          if (name === "apply_changes" || name === "undo_last_apply") {
+            const o = AiVoiceOutput.read(r.output, args);
+            if (name === "apply_changes" && o.proposalId) setActions((cur) => cur.map((a) => (a.proposalId === o.proposalId ? AiActionReviewState.applied(a, o.applied, o.failed) : a)));
+            if (o.summary) setSaid(o.summary);
+          }
+          if ("changed" in r && r.changed) AiRefresh.notify();
+          return r.output;
         },
       }, r.sessionId);
     } catch (e) {
@@ -124,6 +139,14 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
       <p className="text-muted type-caption">{C.VOICE_CHAT_HELP}</p>
       <p className="text-muted type-caption" data-testid="ai-voice-privacy">{C.VOICE_PRIVACY}</p>
       <AiOffNote id="ai-voice-off" note={note} testId="ai-tool-voice_chat-off" />
+      {said && (
+        <p role="status" className="text-fg type-table" data-testid="ai-voice-applied">
+          {said}
+        </p>
+      )}
+      {actions.map((a) => (
+        <AiActionReview key={a.proposalId} review={a} from="voice_chat" onChange={(next) => setActions((cur) => cur.map((x) => (x.proposalId === next.proposalId ? next : x)))} />
+      ))}
       {reviews.map((r) => (
         <AiChangeReview key={r.proposalId} proposalId={r.proposalId} changes={r.changes} />
       ))}

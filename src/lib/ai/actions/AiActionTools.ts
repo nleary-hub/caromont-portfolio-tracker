@@ -43,7 +43,8 @@ export class AiActionTools {
     { changes: { type: "array", items: CHANGE_ITEM } },
     ["changes"],
   );
-  static readonly APPLY = fn("apply_changes", "Apply a proposal ONLY after the person clearly said yes to it. lines: 'all' or line numbers.", { proposalId: { type: "string" }, lines: { anyOf: [{ type: "string", enum: ["all"] }, { type: "array", items: { type: "integer" } }] } }, ["proposalId"]);
+  // lines is a plain integer array (no anyOf, which some realtime schemas reject); leaving it out applies every line.
+  static readonly APPLY = fn("apply_changes", "Apply a proposal ONLY after the person clearly said yes to it. Leave lines out to apply every line, or list the line numbers they agreed to.", { proposalId: { type: "string" }, lines: { type: "array", items: { type: "integer" } } }, ["proposalId"]);
   static readonly UNDO = fn("undo_last_apply", "Undo the person's most recent apply (when they say undo that).", {}, []);
   static readonly DRAFT = fn(
     "draft_project",

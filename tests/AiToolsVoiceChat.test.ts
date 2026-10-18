@@ -17,6 +17,7 @@ import { AiToolsService } from "@/lib/services/AiToolsService";
 import { AiVoiceChatService } from "@/lib/services/AiVoiceChatService";
 import { A, ADMIN, B, ENV, MEMBER, SCOPE, toolsSetup } from "./helpers/aiTools";
 
+vi.mock("@/app/actions/aiActions", () => ({ runAiActionTool: vi.fn(), proposeAiActions: vi.fn(), applyAiActions: vi.fn(), rejectAiActions: vi.fn(), undoLastAiApply: vi.fn() }));
 vi.mock("@/app/actions/aiTools", () => ({ proposeAiToolChanges: vi.fn(), applyAiToolLine: vi.fn(), rejectAiToolLine: vi.fn(), transcribeAiDictation: vi.fn(), startAiVoiceChat: vi.fn(), proposeAiVoiceEdits: vi.fn(), endAiVoiceChat: vi.fn(), reportAiVoiceFailure: vi.fn() }));
 vi.mock("@/app/actions/aiAdmin", () => ({ addAiModel: vi.fn(), setAiFeatureEnabled: vi.fn(), setAiModelEnabled: vi.fn(), setAiModelPrices: vi.fn(), setAiFeatureModel: vi.fn() }));
 

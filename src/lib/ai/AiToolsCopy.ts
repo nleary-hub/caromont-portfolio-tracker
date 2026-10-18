@@ -34,6 +34,14 @@ export class AiToolsCopy {
   static readonly APPLIED = "Applied";
   static readonly REJECTED = "Rejected";
   static readonly NO_CHANGES = "The AI found no changes to suggest.";
+  /** Item C: one click for every open line (the per-line Apply, Reject and Edit stay). */
+  static readonly APPLY_ALL = "Apply all";
+  static readonly REJECT_ALL = "Reject all";
+  static readonly APPLYING = "Applying...";
+  static readonly ACTION_HEADERS = ["Project", "Change", "Now", "New", ""] as const;
+  static readonly ACTION_REVIEW_HELP = "Apply all, or apply or reject each line. Applied changes are saved like a manual edit and show in History.";
+  static readonly UNDONE = "Undone";
+  static readonly NOT_APPLIED = "Not applied";
   static readonly EMPTY_VALUE = "\u2013";
   static readonly FEATURE_OFF_NOTE = "Turned off in AI settings.";
   static readonly AI_OFF_NOTE = "AI is turned off in AI settings.";
@@ -213,7 +221,7 @@ export class AiToolsCopy {
   static readonly selectionLine = (n: number, names: string) => `Working on ${n} selected ${n === 1 ? "project" : "projects"}: ${names}.`;
   static readonly visibleLine = (n: number) => `Working on the ${n} ${n === 1 ? "project" : "projects"} in view.`;
   static readonly scopePrefix = (names: string) => `Only change these projects: ${names}.`;
-  static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. Any change the AI suggests is listed below. Nothing is saved until you apply it.";
+  static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. The AI reads back any change and applies it only after you say yes. You can also apply or reject it below. Say 'undo that' to undo the last apply.";
   static readonly VOICE_START = "Start voice chat";
   static readonly VOICE_STOP = "End chat";
   static readonly VOICE_CONNECTING = "Connecting\u2026";

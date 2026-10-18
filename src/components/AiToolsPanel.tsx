@@ -6,6 +6,7 @@ import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { AiDictationButton } from "@/components/AiDictationButton";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import type { AiToolFeature } from "@/lib/ai/AiFeatureFlags";
+import { AiRefresh } from "@/lib/ai/AiRefresh";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import type { AiBulkSummary } from "@/lib/ai/AiBulkEdit";
 import type { AiToolChange } from "@/lib/ai/AiToolsModel";
@@ -137,6 +138,18 @@ export function AiChangeReview({ proposalId, changes, initialLines, bulk, single
   const errorId = (line: number) => `${proposalId}-line-${line}-error`;
   const invalid = (line: number, l: LineState) => (l.error ? { "aria-invalid": true as const, "aria-describedby": errorId(line) } : {});
   const label = (c: AiToolChange) => `${C.HEADERS[3]}, ${c.projectName}, ${C.fieldLabel(c.field)}`;
+  const openLines = changes.filter((c) => lines[c.line]?.status === "open" && !lines[c.line]?.error);
+  // Item C: Apply all applies every open line (with any edited value) through the same per-line apply, in order.
+  const applyAll = () =>
+    start(async () => {
+      let any = false;
+      for (const c of openLines) {
+        const r = await applyAiToolLine(proposalId, c.line, c.projectId, c.field, lines[c.line].value);
+        set(c.line, r.ok ? { status: "applied", error: undefined } : { error: r.message });
+        any = any || r.ok;
+      }
+      if (any) AiRefresh.notify();
+    });
 
   if (!changes.length) {
     return (
@@ -155,6 +168,11 @@ export function AiChangeReview({ proposalId, changes, initialLines, bulk, single
           {C.REVIEW_TITLE}
         </h3>
         <span className="rounded-pill bg-(--status-not-started-dark-bg) px-2 py-px text-(--status-not-started-dark-fg) type-label">{C.AI_LABEL}</span>
+        {openLines.length > 1 && (
+          <button type="button" className={`${GHOST} ml-auto`} disabled={busy} onClick={applyAll} data-testid="ai-tool-apply-all">
+            {busy ? C.APPLYING : C.APPLY_ALL}
+          </button>
+        )}
       </div>
       <p className="text-muted type-caption">{C.REVIEW_HELP}</p>
       {bulk && <AiBulkPreview bulk={bulk} />}
@@ -189,6 +207,7 @@ export function AiChangeReview({ proposalId, changes, initialLines, bulk, single
                             start(async () => {
                               const r = await applyAiToolLine(proposalId, c.line, c.projectId, c.field, l.value);
                               set(c.line, r.ok ? { status: "applied", error: undefined } : { error: r.message });
+                              if (r.ok) AiRefresh.notify();
                             })
                           }
                         >

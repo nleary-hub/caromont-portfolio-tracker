@@ -1,5 +1,6 @@
 import { AiToolsModel, type AiToolField, type AiToolProject } from "./AiToolsModel";
 import { AiToolsCopy } from "./AiToolsCopy";
+import { AiActionTools } from "./actions/AiActionTools";
 
 type Price = number | string | { toString(): string } | null | undefined;
 
@@ -12,12 +13,21 @@ export class AiVoiceChat {
   static readonly FIELDS: readonly AiToolField[] = AiToolsModel.ALL_FIELDS;
   /** One conversation is capped here (the browser hangs up; the server bills no more than this). */
   static readonly MAX_SESSION_S = 15 * 60;
-  static readonly TOOL_NAME = "suggest_project_changes";
+  /** Item C: the first tool voice uses for a change (the shared layer's propose_changes). */
+  static readonly TOOL_NAME = AiActionTools.PROPOSE.name;
+  /** The step 10 review-only tool, kept for the old propose path (proposeAiVoiceEdits). No longer sent to the model. */
+  static readonly LEGACY_TOOL_NAME = "suggest_project_changes";
   static readonly VOICE = "alloy";
+
+  /**
+   * Item C: the tools voice chat sends (Realtime in the browser, Live through the Responses backend). Every call runs
+   * on the server through the shared action layer (runAiActionTool). draft_project stays with the command bar.
+   */
+  static readonly TOOLS = [AiActionTools.PROPOSE, AiActionTools.APPLY, AiActionTools.UNDO, AiActionTools.SEARCH, AiActionTools.GET, AiActionTools.LINK] as const;
 
   static readonly TOOL = {
     type: "function",
-    name: AiVoiceChat.TOOL_NAME,
+    name: AiVoiceChat.LEGACY_TOOL_NAME,
     description: "Suggest changes to projects for the person to review. Nothing is saved until they apply each line on screen.",
     parameters: {
       type: "object",
@@ -44,7 +54,8 @@ export class AiVoiceChat {
   /** Admin voice chat instructions are capped here (validated on the server). */
   static readonly INSTRUCTIONS_MAX = 4000;
   /** Always sent, whatever the admin instructions say. */
-  static readonly TOOL_CONTRACT = "Never claim to have saved or changed anything. When the person asks for a change, call suggest_project_changes; the change is then listed on screen for them to apply or reject.";
+  static readonly TOOL_CONTRACT =
+    "For any change, first call propose_changes. Then say its readBack sentence and ask if you should apply it. Call apply_changes only after the person clearly says yes, and only with that proposalId. Say a change was applied only after apply_changes returns ok with applied lines, and then say what was applied. If it returns failed or refused lines, say why in plain words. If they say no, apply nothing. When they say undo that, call undo_last_apply. Use search_projects or get_project when you need more detail about a project.";
   static readonly PATIENT_LINE = "Do not ask for or repeat patient details.";
   static readonly BUILT_IN_RULES: readonly string[] = [
     "You are a voice assistant for a hospital project portfolio. Answer short questions about the projects listed below, in plain spoken English.",
@@ -64,11 +75,11 @@ export class AiVoiceChat {
   }
 
   /**
-   * The Live (gpt-live-*) voice prompt: the same instructions plus one line, because on the Live API the suggest tool
-   * runs in the Responses backend (which gets the same instructions), so the voice model delegates change requests.
+   * The Live (gpt-live-*) voice prompt: the same instructions plus one line, because on the Live API the tools
+   * run in the Responses backend (which gets the same instructions), so the voice model delegates change requests.
    */
   static liveInstructions(base: string): string {
-    return `${base}\nTo suggest changes, delegate the request to the backend, which calls suggest_project_changes.`;
+    return `${base}\nFor changes, delegate the request to the backend, which calls propose_changes and, after the person says yes, apply_changes.`;
   }
 
   /**

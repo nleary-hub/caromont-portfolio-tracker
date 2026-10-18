@@ -99,7 +99,7 @@ export class AiVoiceChatService {
       api === "live"
         ? // No token for the browser: the Live API has no ephemeral secret, so connect starts the session server side.
           { ok: true, ticket: { clientSecret: "", expiresAt: Math.floor(now().getTime() / 1000) + AiLiveClient.CONNECT_WINDOW_S, callsUrl: AiRealtimeClient.PROXY_PATH, model, api } }
-        : await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db)), tools: [AiVoiceChat.TOOL], voice: AiVoiceChat.VOICE }, args.fetchImpl);
+        : await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db)), tools: [...AiVoiceChat.TOOLS], voice: AiVoiceChat.VOICE }, args.fetchImpl);
     await db.aiUsageLog.create({
       data: { id: randomUUID(), suggestionId: sessionId, userEmail: user, projectId: null, feature: FEATURE, event: r.ok ? "session_started" : "failed", provider: saved.provider, model, inputLength: projects.length, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
     });
@@ -169,7 +169,7 @@ export class AiVoiceChatService {
     const model = session.model ?? "";
     // The same instructions as the Realtime adapter (admin rules or built-in, plus tool contract, patient line, projects).
     const base = AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db));
-    const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel: saved.model, backendInstructions: base, tools: [AiVoiceChat.TOOL] }, sdp, args.fetchImpl);
+    const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel: saved.model, backendInstructions: base, tools: [...AiVoiceChat.TOOLS] }, sdp, args.fetchImpl);
     if (r.ok) {
       console.info("AI tools: voice live session started", { sessionId: session.suggestionId, model, backendModel: saved.model, liveSessionId: r.liveSessionId });
       return { ok: true, sdp: r.sdp };
