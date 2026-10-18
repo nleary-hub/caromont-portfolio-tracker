@@ -93,7 +93,11 @@ export class AiToolsCopy {
 
   // Step 4: Meeting notes to updates.
   static readonly MEETING_TITLE = "Meeting notes to updates";
-  static readonly MEETING_HELP = "Paste notes from a meeting. The AI suggests status, next milestone, date and Latest update changes for the projects the notes mention.";
+  static readonly MEETING_HELP = "Paste or dictate notes from a meeting. The AI matches each note to its project (by name, REQ number, vendor or owner) and suggests status, people, milestone, blocker and Latest update changes, one line per project. New projects come back as drafts, and notes it could not match are listed. Nothing changes until you apply it.";
+  static readonly MEETING_REFUSED_TITLE = "Not suggested";
+  static readonly MEETING_DRAFTS_TITLE = (n: number) => (n === 1 ? "New project mentioned (draft)" : `New projects mentioned (${n} drafts)`);
+  static readonly MEETING_UNMATCHED_TITLE = (n: number) => (n === 1 ? "1 note matched no project" : `${n} notes matched no project`);
+  static readonly MEETING_UNMATCHED_HELP = "Nothing was suggested for these. Add them by hand or name the project and try again.";
   static readonly MEETING_LABEL = "Meeting notes";
   static readonly MEETING_PLACEHOLDER = "For example: Example Clinic refresh is on hold until the vendor confirms. Sample Lab move, due date now Dec 1.";
 

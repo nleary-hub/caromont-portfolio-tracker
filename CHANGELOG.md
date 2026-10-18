@@ -4,6 +4,24 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
+### Meeting notes to updates
+- Paste or dictate your notes from a meeting (AI menu > Meeting notes to updates, AI tools, or Process meeting notes
+  on a saved playbook). Dictated text lands in the notes box as you speak, no paste needed.
+- Each note is matched to its project by name, REQ number (a note that only says "5123" still finds the project),
+  vendor or owner. One paragraph can cover many projects.
+- It handles more than the Latest update: status, owner and other people, completing or adding milestones, a
+  milestone's owner or due date, and outside blockers. "Drywall is done" completes the Drywall milestone.
+- Several notes about the same project become one line, with one Latest update written in the same voice and length
+  as that project's earlier updates (what happened, then the next step and who owns it). No facts that aren't in your
+  notes.
+- Everything shows on one review card with Apply all, or apply and reject line by line. History tags each saved change
+  "Meeting notes (AI), applied by ..." and marks the project Changed like a manual edit.
+- A new project mentioned in the notes comes back as a draft to review and create. Notes it could not match to any
+  project are listed, so nothing said in the meeting gets lost. A person not on the People lists is never added; that
+  line is listed under "Not suggested" with the reason.
+- From a playbook, the planned follow-ups go along with your notes, and the ones the notes agree to become milestone or
+  update suggestions.
+
 ### Meeting Playbook (replaces the pre-meeting brief)
 - New full-width Meeting Playbook page. Pick the meeting (Biweekly review with your senior director, department or
   manager huddle, governance or SIVAT prep, contracts or vendor sync, 1:1 with a manager), what it covers (the whole

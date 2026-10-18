@@ -16,7 +16,8 @@ import { Factory } from "./helpers/factories";
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ push: vi.fn(), refresh: vi.fn() }) }));
 vi.mock("@/app/actions/aiPlaybook", () => ({ makeAiPlaybook: vi.fn() }));
-vi.mock("@/app/actions/aiTools", () => ({ proposeAiToolChanges: vi.fn(), applyAiToolLine: vi.fn(), rejectAiToolLine: vi.fn(), transcribeAiDictation: vi.fn() }));
+vi.mock("@/app/actions/aiActions", () => ({ processAiMeetingNotes: vi.fn(), applyAiActions: vi.fn(), rejectAiActions: vi.fn() }));
+vi.mock("@/app/actions/aiTools", () => ({ proposeAiToolChanges: vi.fn(), applyAiToolLine: vi.fn(), rejectAiToolLine: vi.fn(), transcribeAiDictation: vi.fn(), proposeAiProjectDraft: vi.fn(), createAiProjectDraft: vi.fn() }));
 
 // Meeting Playbook item, on the fictional 33-project mirror. Example data only.
 const ADMIN = { email: "director@example.org", isAdmin: true };
@@ -211,7 +212,8 @@ describe("the page: sections, links, exports, close the loop", () => {
     expect(prefix).toContain("Escalate to the vendor rep");
     const h = renderToStaticMarkup(createElement(AiPlaybookNotes, { record: r, disabledNote: null }));
     expect(h).toContain('data-testid="ai-playbook-process"');
-    expect(readFileSync("src/components/AiPlaybook.tsx", "utf8")).toContain('feature="meeting_notes"');
+    // Meeting notes item: the playbook uses the reworked Meeting notes panel (one confirm card, drafts, unmatched notes).
+    expect(readFileSync("src/components/AiPlaybook.tsx", "utf8")).toMatch(/<AiMeetingNotesPanel [^>]*prefix/);
   });
 
   it("saved playbooks list with type, scope, length and time; the current one is marked", async () => {

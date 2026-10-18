@@ -3,7 +3,8 @@ import { AI_ACTION_FIELDS, AI_ACTION_OPS } from "./AiActionModel";
 /** Item B: the shared tool names (voice chat, the command bar and the text features all use these). */
 export type AiActionToolName = "search_projects" | "get_project" | "propose_changes" | "apply_changes" | "undo_last_apply" | "draft_project" | "link_projects";
 
-const CHANGE_ITEM = {
+/** One propose_changes line (also used by the meeting notes prompt to describe the change objects). */
+export const CHANGE_ITEM = {
   type: "object",
   properties: {
     ref: { type: "string", description: "The project ref from the context, like P3." },

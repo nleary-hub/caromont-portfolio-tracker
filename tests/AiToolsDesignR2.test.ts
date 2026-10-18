@@ -55,7 +55,8 @@ describe("AI tools: design review r2", () => {
     expect(C.DICTATION_NO_MODEL).toBe("No dictation model is chosen in AI settings.");
     expect(C.MODEL_OFF_NOTE).toBe("The AI model is turned off. An admin can turn one on in AI settings.");
     expect(C.PARSE_FAILED).toBe("The AI reply couldn't be read. Nothing was changed. Try again.");
-    expect(C.MEETING_HELP).toContain("status, next milestone, date and Latest update changes");
+    // Meeting notes item: the help now names the wider change set (people, milestones, blockers) and the unmatched list.
+    expect(C.MEETING_HELP).toContain("status, people, milestone, blocker and Latest update changes, one line per project");
     expect(C.BULK_HELP.endsWith("never the Latest update.")).toBe(true);
     expect(C.REQUEST_HELP).toContain("Owner, physician champion, requester and department stay blank for you to fill in.");
     expect(C.DRAFT_HELP).toContain("created as Not started, with owner, physician champion, requester and department blank.");

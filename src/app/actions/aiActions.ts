@@ -10,6 +10,7 @@ import { Db } from "@/lib/db/Db";
 import { AiActionPortsLive } from "@/lib/services/AiActionPortsLive";
 import { AiActionService, type AiActionDb, type AiActionSource, type AiApplyResult, type AiProposeResult, type AiUndoResult } from "@/lib/services/AiActionService";
 import { AiCommandService, type AiCommandResult } from "@/lib/services/AiCommandService";
+import { AiMeetingNotesService, type AiMeetingNotesResult } from "@/lib/services/AiMeetingNotesService";
 import { AiToolsService } from "@/lib/services/AiToolsService";
 
 /**
@@ -64,6 +65,18 @@ export async function runAiCommand(turns: unknown): Promise<AiCommandResult> {
     return r;
   } catch (e) {
     console.error("AI actions failed: command", (e as Error)?.name);
+    return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
+  }
+}
+
+/** Meeting notes item: rough notes to checked change lines, drafts for new projects, and the notes that matched nothing. */
+export async function processAiMeetingNotes(notes: string, prefix: string | null = null): Promise<AiMeetingNotesResult> {
+  try {
+    const c = await context();
+    if (!c) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
+    return await AiMeetingNotesService.process({ ...c, notes: String(notes ?? "").slice(0, AiToolsService.INPUT_MAX), prefix: typeof prefix === "string" ? prefix : null });
+  } catch (e) {
+    console.error("AI actions failed: meeting notes", (e as Error)?.name);
     return { ok: false, message: AiToolsCopy.PROVIDER_ERROR };
   }
 }

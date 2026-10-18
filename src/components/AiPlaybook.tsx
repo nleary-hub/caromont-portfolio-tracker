@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition, type ReactNode } from "react";
 import { makeAiPlaybook } from "@/app/actions/aiPlaybook";
 import { AiAlert } from "@/components/AiNoteAssistant";
-import { AiToolsPanel } from "@/components/AiToolsPanel";
+import { AiMeetingNotesPanel } from "@/components/AiMeetingNotesPanel";
 import { AiOffNote, pausedProps, TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import { AiPlaybookModel, type AiMeetingType, type AiPlaybookLength, type AiPlaybookRecord, type AiPlaybookRef, type AiPlaybookScope } from "@/lib/ai/playbook/AiPlaybookModel";
@@ -265,7 +265,7 @@ export function AiPlaybookNotes({ record, disabledNote, dictationNote }: { recor
         </button>
       </div>
       <AiOffNote id="ai-playbook-notes-off" note={disabledNote} testId="ai-playbook-notes-off-note" />
-      {open && !disabledNote && <AiToolsPanel feature="meeting_notes" label={C.MEETING_LABEL} help={C.PLAYBOOK_PROCESS_HELP} placeholder={C.MEETING_PLACEHOLDER} disabledNote={null} rows={8} context={{ line: `${C.PLAYBOOK_TITLE}: ${record.scopeLabel}`, prefix }} {...(dictationNote !== undefined ? { dictation: { disabledNote: dictationNote } } : {})} />}
+      {open && !disabledNote && <AiMeetingNotesPanel help={C.PLAYBOOK_PROCESS_HELP} disabledNote={null} context={{ line: `${C.PLAYBOOK_TITLE}: ${record.scopeLabel}`, prefix }} {...(dictationNote !== undefined ? { dictation: { disabledNote: dictationNote } } : {})} />}
     </section>
   );
 }

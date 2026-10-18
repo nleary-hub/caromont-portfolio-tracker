@@ -4,6 +4,7 @@ import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
 import { AiNextStepPanel } from "@/components/AiNextStepPanel";
+import { AiMeetingNotesPanel } from "@/components/AiMeetingNotesPanel";
 import { AiToolsPanel } from "@/components/AiToolsPanel";
 import { AiVoiceChatPanel } from "@/components/AiVoiceChatPanel";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
@@ -64,7 +65,7 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-meeting-heading" className="type-heading">
           {C.MEETING_TITLE}
         </h2>
-        <AiToolsPanel feature="meeting_notes" label={C.MEETING_LABEL} help={C.MEETING_HELP} placeholder={C.MEETING_PLACEHOLDER} disabledNote={notes.meeting_notes ?? null} rows={8} />
+        <AiMeetingNotesPanel disabledNote={notes.meeting_notes ?? null} {...(dictationNote === C.FEATURE_OFF_NOTE ? {} : { dictation: { disabledNote: dictationNote } })} />
       </section>
       )}
 
