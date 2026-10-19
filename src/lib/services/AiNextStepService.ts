@@ -3,6 +3,7 @@ import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import type { AiActionLine, AiActionRefusal } from "@/lib/ai/actions/AiActionModel";
 import { AiNextStepModel, type AiNextStep, type AiNextStepTemplate } from "@/lib/ai/nextstep/AiNextStepModel";
+import { DateOnly } from "@/lib/domain/DateOnly";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiActionService, type AiActionDb } from "@/lib/services/AiActionService";
 import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
@@ -54,7 +55,7 @@ export class AiNextStepService {
     const context = await AiToolsService.contextFor(args.db, args.scope, args.viewer, projects, args.now);
     const r = await AiToolsService.call({ db: args.db, viewer: args.viewer, feature: AiNextStepService.FEATURE, projectId: args.projectId, input: AiToolsCopy.NEXT_INSTRUCTION, build: (input) => ({ system: AiNextStepModel.system(context, t.list), user: input, maxTokens: AiNextStepModel.MAX_TOKENS }), env: args.env, fetchImpl: args.fetchImpl, keys: args.keys, now: args.now });
     if (!r.ok) return { ok: false, message: r.message };
-    const today = (args.now?.() ?? new Date()).toISOString().slice(0, 10);
+    const today = DateOnly.inZone(args.now?.() ?? new Date());
     const s = AiNextStepModel.parse(r.text, today);
     if (!s) {
       await r.log("failed");

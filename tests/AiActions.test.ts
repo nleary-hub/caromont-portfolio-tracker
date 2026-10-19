@@ -196,6 +196,16 @@ describe("AiActionService: propose, apply after a yes, undo", () => {
     expect(db.row(P(GOLDEN.CORTEX_EEG)).status).toBe("OnHold");
   });
 
+  it("a field saved again after the card was made is not overwritten by the stale suggestion", async () => {
+    const p = await AiActionService.propose({ ...base(), feature: "voice_chat", changes: golden().slice(0, 2) });
+    if (!p.ok) throw new Error(p.message);
+    db.row(P(GOLDEN.CORTEX_EEG)).status = "OnHold";
+    const a = await AiActionService.apply({ ...base(), proposalId: p.proposalId, lines: "all", ports });
+    expect(a).toMatchObject({ ok: true, applied: [{ line: 1 }], failed: [{ line: 0, message: "Status was changed after this suggestion was made (it is now On hold). Nothing was saved. Ask again for a fresh suggestion." }] });
+    expect(db.row(P(GOLDEN.CORTEX_EEG)).status).toBe("OnHold");
+    expect(db.usage.filter((u) => u.event === "applied").map((u) => u.lineIndex)).toEqual([1]);
+  });
+
   it("only the person who got the proposal can apply it; non-admins and a feature turned off are refused", async () => {
     const p = await AiActionService.propose({ ...base(), feature: "voice_chat", changes: golden() });
     if (!p.ok) throw new Error(p.message);

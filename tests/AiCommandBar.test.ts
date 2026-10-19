@@ -122,6 +122,40 @@ describe("AiCommandService: one message, several projects, apply only after a ye
     expect(s.inputs[0]).toContain(`[proposals: ${id} (s)]`);
   });
 
+  it("a yes only confirms the proposal on the latest card: an older open proposal, or any proposal when no card was shown, is refused", async () => {
+    script([JSON.stringify({ say: "", calls: [{ name: "propose_changes", arguments: { changes: golden() } }] }), JSON.stringify({ say: "Apply?", calls: [] })]);
+    const older = await run([{ role: "user", text: "Cortex EEG off track and supply note" }]);
+    if (!older.ok) throw new Error(older.message);
+    vi.restoreAllMocks();
+    script([JSON.stringify({ say: "", calls: [{ name: "propose_changes", arguments: { changes: golden().slice(0, 1) } }] }), JSON.stringify({ say: "Apply?", calls: [] })]);
+    const latest = await run([{ role: "user", text: "Cortex EEG off track" }]);
+    if (!latest.ok) throw new Error(latest.message);
+    vi.restoreAllMocks();
+    const oldId = older.proposals[0].proposalId;
+    const newId = latest.proposals[0].proposalId;
+    const turns = [
+      { role: "user", text: "a" },
+      { role: "assistant", text: "Apply?", proposals: [{ proposalId: oldId, summary: "old" }] },
+      { role: "user", text: "b" },
+      { role: "assistant", text: "Apply?", proposals: [{ proposalId: newId, summary: "new" }] },
+      { role: "user", text: "yes" },
+    ];
+    expect([...AiCommandModel.offered(AiCommandModel.turns(turns)!)]).toEqual([newId.toLowerCase()]);
+
+    const s = script([JSON.stringify({ say: "", calls: [{ name: "apply_changes", arguments: { proposalId: oldId } }] }), JSON.stringify({ say: "Not that one.", calls: [] })]);
+    const wrong = await run(turns);
+    expect(wrong.ok && wrong.applied).toEqual([]);
+    expect(ports.calls).toEqual([]);
+    expect(s.inputs[1]).toContain(AiCommandModel.NOT_OFFERED);
+    vi.restoreAllMocks();
+
+    // No card shown before this yes: nothing can be confirmed (a proposal made during this message was never seen).
+    script([JSON.stringify({ say: "", calls: [{ name: "apply_changes", arguments: { proposalId: newId } }] }), JSON.stringify({ say: "Done.", calls: [] })]);
+    const unseen = await run([{ role: "user", text: "yes" }]);
+    expect(unseen.ok && unseen.applied).toEqual([]);
+    expect(ports.calls).toEqual([]);
+  });
+
   it("undo only when asked; a draft comes back as a card; non-admins and empty input are refused", async () => {
     script([JSON.stringify({ say: "", calls: [{ name: "undo_last_apply", arguments: {} }] }), JSON.stringify({ say: "Nothing undone.", calls: [] })]);
     const r = await run([{ role: "user", text: "how is Cortex EEG doing" }]);

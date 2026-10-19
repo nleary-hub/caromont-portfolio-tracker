@@ -113,8 +113,10 @@ export class AiVoiceChatService {
         ? // No token for the browser: the Live API has no ephemeral secret, so connect starts the session server side.
           { ok: true, ticket: { clientSecret: "", expiresAt: Math.floor(now().getTime() / 1000) + AiLiveClient.CONNECT_WINDOW_S, callsUrl: AiRealtimeClient.PROXY_PATH, model, api } }
         : await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db)), tools: [...AiVoiceChat.TOOLS], voice: AiVoiceChat.VOICE }, args.fetchImpl);
+    // The limit in force when this chat starts: kept on the started row (outputLength, unused there) so End caps by it even if an admin changes it mid-call.
+    const maxSeconds = await AiModelService.voiceSessionCap(db);
     await db.aiUsageLog.create({
-      data: { id: randomUUID(), suggestionId: sessionId, userEmail: user, projectId: null, feature: FEATURE, event: r.ok ? "session_started" : "failed", provider: saved.provider, model, inputLength: projects.length, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
+      data: { id: randomUUID(), suggestionId: sessionId, userEmail: user, projectId: null, feature: FEATURE, event: r.ok ? "session_started" : "failed", provider: saved.provider, model, inputLength: projects.length, outputLength: r.ok ? maxSeconds : null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
     });
     if (!r.ok) {
       const code = r.modelUnavailable ? "model_unavailable" : "token";
@@ -122,7 +124,7 @@ export class AiVoiceChatService {
       console.error("AI tools: voice session failed", { code, api, kind: r.kind, model, status: r.status ?? null, type: r.type ?? null, errorCode: r.code ?? null, message: r.message ?? null });
       return { ok: false, code, message: code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_TOKEN_FAILED };
     }
-    return { ok: true, sessionId, ticket: r.ticket, maxSeconds: await AiModelService.voiceSessionCap(db) };
+    return { ok: true, sessionId, ticket: r.ticket, maxSeconds };
   }
 
   /**
@@ -295,7 +297,10 @@ export class AiVoiceChatService {
     // A session that failed to connect already has its failed row; it never gets a session_ended row.
     if (await AiVoiceChatService.failedRow(db, viewer, session.suggestionId)) return { ok: true, seconds: 0 };
     const at = now();
-    const seconds = AiVoiceChat.seconds(session.createdAt, at, await AiModelService.voiceSessionCap(db));
+    // The cap captured at start (older rows without one fall back to the current setting).
+    const startCap = session.outputLength;
+    const cap = typeof startCap === "number" && startCap > 0 ? AiVoiceChat.cap(startCap) : await AiModelService.voiceSessionCap(db);
+    const seconds = AiVoiceChat.seconds(session.createdAt, at, cap);
     const price = await AiVoiceChatService.price(db, session.model ?? "");
     const live = AiModelKinds.voiceApi(session.model ?? "") === "live";
     // Live: duration pricing (per-minute price times seconds, billed per second). Realtime: the admin per-minute price.

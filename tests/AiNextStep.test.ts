@@ -69,6 +69,13 @@ describe("AiNextStepModel", () => {
 });
 
 describe("AiNextStepService on the fictional mirror", () => {
+  it("a same-day due date is kept in the New York evening (the UTC date has already moved on)", async () => {
+    script(reply({ milestone: "Low-voltage cabling", existing: false, owner: "Quinn Harlow", dueDate: "2026-10-17", thisWeek: "", why: "Due today." }));
+    const r = await AiNextStepService.suggest({ db: db as never, viewer: Factory.ADMIN, scope: scope(), projectId: P(GOLDEN.SUITE_BUILD), env: {}, now: () => new Date("2026-10-18T01:30:00Z") });
+    if (!r.ok) throw new Error(r.message);
+    expect(r.suggestion.dueDate).toBe("2026-10-17");
+  });
+
   it("a step the template has and the plan skipped: added as the next milestone with owner and date, on the confirm card", async () => {
     const s = script(reply({ milestone: "Low-voltage cabling", existing: false, owner: "Quinn Harlow", dueDate: "2026-10-24", thisWeek: "Quinn Harlow books the cabling vendor walk-through.", why: "The template has cabling before flooring; the plan skips it." }));
     const r = await suggest(P(GOLDEN.SUITE_BUILD));

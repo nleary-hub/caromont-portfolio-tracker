@@ -290,10 +290,13 @@ export class AiActionService {
   }
 
   /** Runs one line against the project as stored now. Returns its undo record, or a plain-words error. */
-  private static async run(l: AiActionLine, p: AiActionProject, ports: AiActionPorts, comment: string): Promise<AiUndo | string> {
+  private static async run(l: AiActionLine, p: AiActionProject, ports: AiActionPorts, comment: string, lists: () => Promise<AiActionLists>): Promise<AiUndo | string> {
     switch (l.op) {
       case "set_field": {
         const field = l.field!;
+        // Someone saved this field after the card was made: never overwrite their edit with the stale suggestion.
+        const now = AiActionModel.beforeWords(p, field, await lists());
+        if (now !== l.before) return AiToolsCopy.fieldChanged(l.label, now);
         const before = AiActionService.saved(p, field);
         await AiActionService.setField(ports, p.id, field, l.value ?? "", comment);
         return { kind: "field", field, before, after: l.value ?? "" };
@@ -373,6 +376,8 @@ export class AiActionService {
     const applied: AiAppliedLine[] = [];
     const out: { line: number; text: string }[] = [];
     const failed: { line: number; message: string }[] = [];
+    let listsOnce: Promise<AiActionLists> | null = null;
+    const lists = () => (listsOnce ??= AiActionService.lists(args.db, args.scope));
     for (const l of AiActionService.pick(found.lines, args.lines)) {
       if (await AiActionService.closed(args.db, viewer, found.row.id, l.line)) continue;
       const listed = args.projects.find((p) => p.id === l.projectId);
@@ -389,7 +394,7 @@ export class AiActionService {
       const [p] = await AiActionService.load(args.db, args.scope, fresh);
       let undo: AiUndo | string;
       try {
-        undo = await AiActionService.run(l, p, args.ports, comment);
+        undo = await AiActionService.run(l, p, args.ports, comment, lists);
       } catch (e) {
         console.error("AI actions: apply failed", (e as Error)?.name);
         undo = AiActionService.failure(e);

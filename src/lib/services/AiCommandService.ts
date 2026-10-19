@@ -50,6 +50,7 @@ export class AiCommandService {
     const turns = AiCommandModel.turns(args.turns);
     if (!turns) return { ok: false, message: AiToolsCopy.COMMAND_EMPTY };
     const lastUser = turns.at(-1)!.text;
+    const offered = AiCommandModel.offered(turns);
     const context = await AiToolsService.contextFor(args.db, args.scope, args.viewer, args.projects, args.now);
     const system = AiCommandModel.system(context);
 
@@ -94,6 +95,10 @@ export class AiCommandService {
       for (const call of reply.calls) {
         if (call.name === "apply_changes" && !AiCommandModel.isYes(lastUser)) {
           results.push({ name: call.name, output: JSON.stringify({ ok: false, error: AiCommandModel.NEEDS_YES }) });
+          continue;
+        }
+        if (call.name === "apply_changes" && !offered.has(String(call.arguments.proposalId ?? "").toLowerCase())) {
+          results.push({ name: call.name, output: JSON.stringify({ ok: false, error: AiCommandModel.NOT_OFFERED }) });
           continue;
         }
         if (call.name === "undo_last_apply" && !/\bundo\b/i.test(lastUser)) {

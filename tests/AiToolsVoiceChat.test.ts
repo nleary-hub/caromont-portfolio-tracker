@@ -227,6 +227,24 @@ describe("step 10: privacy and usage", () => {
     expect(db.usage.at(-1)).toMatchObject({ event: "session_ended", usageSeconds: 900, costUsd: 0.9 });
   });
 
+  it("End caps by the limit in force when the chat started, not one an admin saved mid-call", async () => {
+    const db = await voiceSetup();
+    (db.featureRows[0] as { maxSessionSeconds?: number | null }).maxSessionSeconds = 900;
+    const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
+    if (!r.ok) throw new Error(r.message);
+    expect(r.maxSeconds).toBe(900);
+    expect(db.usage[0]).toMatchObject({ event: "session_started", outputLength: 900 });
+    (db.featureRows[0] as { maxSessionSeconds?: number | null }).maxSessionSeconds = 60;
+    expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: r.sessionId, now: () => new Date(T0.getTime() + 300_000) })).toEqual({ ok: true, seconds: 300 });
+    // A started row from before the cap was kept falls back to the current setting.
+    const old = await voiceSetup();
+    const s = await AiVoiceChatService.start({ db: old, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });
+    if (!s.ok) throw new Error(s.message);
+    (old.usage[0] as { outputLength: number | null }).outputLength = null;
+    (old.featureRows[0] as { maxSessionSeconds?: number | null }).maxSessionSeconds = 60;
+    expect(await AiVoiceChatService.end({ db: old, viewer: ADMIN, sessionId: s.sessionId, now: () => new Date(T0.getTime() + 300_000) })).toEqual({ ok: true, seconds: 60 });
+  });
+
   it("totals pair started and ended rows; a start with no end is abandoned", async () => {
     const db = await voiceSetup();
     const a = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: realtime().f, now: () => T0 });

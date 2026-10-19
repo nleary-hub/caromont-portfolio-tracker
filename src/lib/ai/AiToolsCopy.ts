@@ -69,6 +69,10 @@ export class AiToolsCopy {
   // Errors.
   static readonly INPUT_EMPTY = "Type or paste some text first.";
   static readonly APPLY_FAILED = "That change couldn't be saved. The project is unchanged.";
+  /** An Apply refused because the field was saved again after the review card was made. */
+  static fieldChanged(label: string, now: string): string {
+    return `${label} was changed after this suggestion was made (it is now ${now || "blank"}). Nothing was saved. Ask again for a fresh suggestion.`;
+  }
   static readonly VALUE_INVALID = "That value isn't valid for this field. Edit it or reject the line.";
   static readonly FEATURE_OFF = "This AI tool is turned off. Nothing was changed.";
   static readonly AI_OFF = "AI is turned off in AI settings. Nothing was changed.";

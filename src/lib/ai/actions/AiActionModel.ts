@@ -217,6 +217,12 @@ export class AiActionModel {
     }
   }
 
+  /** The field's current value in the words a review line stores as `before` (blank owner and requester read "To assign"). */
+  static beforeWords(p: AiActionProject, field: AiActionField, lists: AiActionLists): string {
+    const v = AiActionModel.current(p, field, lists);
+    return v || (field === "owner" || field === "requester" ? TO_ASSIGN : "");
+  }
+
   private static dateOrNull(v: string): string | null | "bad" {
     if (!v) return null;
     return AiToolsModel.validDate(v) ? v : "bad";
@@ -292,7 +298,7 @@ export class AiActionModel {
           }
         }
         if (after === before) return { ok: false, why: `${FIELD_LABEL[field]} is already ${after || "blank"}` };
-        return { ok: true, line: { ...base, field, value, label: FIELD_LABEL[field], before: before || (field === "owner" || field === "requester" ? TO_ASSIGN : ""), after: after || (field === "owner" || field === "requester" ? TO_ASSIGN : "") } };
+        return { ok: true, line: { ...base, field, value, label: FIELD_LABEL[field], before: AiActionModel.beforeWords(p, field, lists), after: after || (field === "owner" || field === "requester" ? TO_ASSIGN : "") } };
       }
       case "complete_milestone":
       case "skip_milestone":

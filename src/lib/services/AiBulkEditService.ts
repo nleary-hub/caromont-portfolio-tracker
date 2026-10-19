@@ -5,6 +5,7 @@ import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import type { AiToolProject } from "@/lib/ai/AiToolsModel";
 import type { AiActionLine, AiActionRefusal } from "@/lib/ai/actions/AiActionModel";
 import { AiBulkEditFull } from "@/lib/ai/bulk/AiBulkEditFull";
+import { DateOnly } from "@/lib/domain/DateOnly";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiActionService, type AiActionDb } from "@/lib/services/AiActionService";
 import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
@@ -44,7 +45,7 @@ export class AiBulkEditService {
     await r.log("suggested", { outputLength: null, suggestedText: JSON.stringify(plan).slice(0, 2000) });
     const state = await AiActionService.load(args.db, args.scope, args.projects);
     const lists = await AiActionService.lists(args.db, args.scope);
-    const today = (args.now?.() ?? new Date()).toISOString().slice(0, 10);
+    const today = DateOnly.inZone(args.now?.() ?? new Date());
     const { changes, matched } = AiBulkEditFull.changes(plan, state, today, lists, only);
     const onlyCount = only ? only.size : null;
     if (!changes.length) return { ok: true, bulk: AiBulkEditFull.summary(plan, matched, 0, onlyCount), proposal: null, refused: [], already: 0, message: matched ? AiToolsCopy.BULK_NOTHING_TO_CHANGE : AiToolsCopy.BULK_NO_MATCH };

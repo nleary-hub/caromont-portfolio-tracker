@@ -109,5 +109,19 @@ export class AiCommandModel {
     return !AiCommandModel.NO.test(t.replace(AiCommandModel.YES, ""));
   }
 
+  /**
+   * The proposals a yes can confirm: the cards on the latest assistant turn that showed any. A yes never reaches an
+   * older card, or one made during this same message that the person has not seen yet.
+   */
+  static offered(turns: readonly AiCommandTurn[]): Set<string> {
+    for (let i = turns.length - 2; i >= 0; i--) {
+      const t = turns[i];
+      if (t.role === "assistant" && t.proposals?.length) return new Set(t.proposals.map((p) => p.proposalId.toLowerCase()));
+    }
+    return new Set();
+  }
+
+  static readonly NOT_OFFERED = "Not applied: that is not the proposal the person just said yes to. Only apply the proposal on your latest card.";
+
   static readonly NEEDS_YES = "Not applied: the person has not clearly said yes to this proposal in their latest message. Read the summary back and ask.";
 }

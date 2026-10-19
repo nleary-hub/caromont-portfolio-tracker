@@ -74,6 +74,21 @@ describe("AiBulkEditFull: one filter and one action, never a value per row", () 
 });
 
 describe("AiBulkEditService on the fictional mirror", () => {
+  it("overdue uses the New York date: at 9:30 PM ET a project due that day is not overdue yet", async () => {
+    const id = P(GOLDEN.CORTEX_EEG);
+    Object.assign(db.row(id), { dueDate: new Date("2026-10-15T00:00:00Z"), status: "OnTrack" });
+    for (const r of db.rows) if (r.id !== id) Object.assign(r, { dueDate: null });
+    projects = await AiToolsService.projects(db as never, scope());
+    const evening = new Date("2026-10-16T01:30:00Z"); // Oct 15, 9:30 PM ET; already Oct 16 in UTC
+    script(plan({ overdue: true }, { op: "mark_reviewed" }));
+    const r = await AiBulkEditService.propose({ db: db as never, viewer: ADMIN, scope: scope(), projects, input: "Mark every overdue project reviewed", env: {}, now: () => evening });
+    expect(r).toMatchObject({ ok: true, proposal: null, message: AiToolsCopy.BULK_NO_MATCH });
+    vi.restoreAllMocks();
+    script(plan({ overdue: true }, { op: "mark_reviewed" }));
+    const next = await AiBulkEditService.propose({ db: db as never, viewer: ADMIN, scope: scope(), projects, input: "Mark every overdue project reviewed", env: {}, now: () => new Date("2026-10-16T04:30:00Z") });
+    expect(next.ok && next.proposal?.lines.map((l) => l.projectId)).toEqual([id]);
+  });
+
   it("owner for every unowned project: the filter in plain words, one checked line per match, Apply all tagged ai:bulk_edit", async () => {
     const s = script(plan({ ownerUnassigned: true }, { field: "owner", set: "avery lin" }));
     const r = await run("Make Avery the owner of everything with no owner");
