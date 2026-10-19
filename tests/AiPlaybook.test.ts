@@ -261,10 +261,10 @@ describe("0061_ai_playbooks (PGlite)", () => {
   const folders = () => readdirSync(DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
   const sql = (f: string = M) => readFileSync(path.join(DIR, f, "migration.sql"), "utf8");
 
-  it("follows 0060 and is the newest; add-only", () => {
+  it("follows 0060; add-only", () => {
     const f = folders();
     expect(f[f.indexOf(M) - 1]).toBe("0060_voice_session_cap");
-    expect(f.at(-1)).toBe(M);
+    expect(f[f.indexOf(M) + 1]).toBe("0062_voice_usage_seconds_cap");
     const code = sql().split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
     expect(code).not.toMatch(/\bDROP\b|\bDELETE\b|\bUPDATE\b|ALTER TABLE/i);
     expect(sql()).not.toContain("\u2014");

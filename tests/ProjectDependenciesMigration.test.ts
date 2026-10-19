@@ -37,7 +37,7 @@ describe("0037_project_dependencies (PGlite, example data)", () => {
   it("comes right after 0036_owner_name_lists; only the later AI migrations come after it", () => {
     const f = folders();
     expect(f[f.indexOf(M) - 1]).toBe("0036_owner_name_lists");
-    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0038_ai_review_apply", "0039_ai_models_features", "0040_ai_price_refresh", "0041_ai_tools_meeting_notes", "0042_ai_tools_bulk_edit", "0043_ai_tools_quick_capture", "0044_ai_tools_next_step", "0045_ai_tools_request_to_project", "0046_ai_tools_meeting_brief", "0047_ai_tools_related_links", "0048_ai_voice_chat", "0049_ai_model_kind", "0050_ai_voice_instructions", "0051_ai_template_assistant", "0052_project_mfi", "0053_ai_provider_keys", "0054_ai_feature_provider", "0055_project_blockers", "0056_dependency_prompt_dismissals", "0057_ai_context", "0058_ai_actions", "0059_ai_metrics", "0060_voice_session_cap", "0061_ai_playbooks"]);
+    expect(f.slice(f.indexOf(M) + 1)).toEqual(["0038_ai_review_apply", "0039_ai_models_features", "0040_ai_price_refresh", "0041_ai_tools_meeting_notes", "0042_ai_tools_bulk_edit", "0043_ai_tools_quick_capture", "0044_ai_tools_next_step", "0045_ai_tools_request_to_project", "0046_ai_tools_meeting_brief", "0047_ai_tools_related_links", "0048_ai_voice_chat", "0049_ai_model_kind", "0050_ai_voice_instructions", "0051_ai_template_assistant", "0052_project_mfi", "0053_ai_provider_keys", "0054_ai_feature_provider", "0055_project_blockers", "0056_dependency_prompt_dismissals", "0057_ai_context", "0058_ai_actions", "0059_ai_metrics", "0060_voice_session_cap", "0061_ai_playbooks", "0062_voice_usage_seconds_cap"]);
   });
 
   it("is add-only: only CREATE TABLE / CREATE INDEX, no DROP, ALTER, UPDATE, DELETE or report tables", () => {
