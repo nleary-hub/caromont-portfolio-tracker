@@ -7,8 +7,9 @@ import { createPortal } from "react-dom";
 function Portal({ children }: { children: ReactNode }) {
   return typeof document === "undefined" ? <>{children}</> : createPortal(children, document.body);
 }
-import { AiBriefPanel, type AiBriefState } from "@/components/AiBriefPanel";
-import { AiToolsPanel } from "@/components/AiToolsPanel";
+import { AiCommandBar } from "@/components/AiCommandBar";
+import { AiBulkEditPanel } from "@/components/AiBulkEditPanel";
+import { AiMeetingNotesPanel } from "@/components/AiMeetingNotesPanel";
 import { AI_GHOST, Sparkle } from "@/components/AiToolsUi";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 
@@ -19,7 +20,7 @@ const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visi
  * feature is off: its control is not rendered. A null note = ready; a string = model off (greyed, aria-disabled,
  * focusable, with that note).
  */
-export type AiPlacementNotes = Partial<Record<"meeting_notes" | "bulk_edit" | "quick_capture" | "dictation" | "next_step" | "meeting_brief", string | null>>;
+export type AiPlacementNotes = Partial<Record<"meeting_notes" | "bulk_edit" | "quick_capture" | "dictation" | "next_step" | "meeting_brief" | "related_links", string | null>>;
 
 type Named = { id: string; name: string };
 
@@ -78,7 +79,8 @@ export function AiToolbarMenu({ notes, selected, visible, defaultOpen = false, d
   const [tool, setTool] = useState<"bulk_edit" | "meeting_notes" | null>(defaultTool);
   const hasBulk = "bulk_edit" in notes;
   const hasMeeting = "meeting_notes" in notes;
-  if (!hasBulk && !hasMeeting) return null;
+  const hasPlaybook = "meeting_brief" in notes;
+  if (!hasBulk && !hasMeeting && !hasPlaybook) return null;
   const bulkBlocked = hasBulk && !notes.bulk_edit && selected.length === 0;
   const bulkNote = notes.bulk_edit ?? (bulkBlocked ? C.AI_MENU_SELECT_FIRST : null);
   const scope = selected.length ? selected : visible;
@@ -119,15 +121,35 @@ export function AiToolbarMenu({ notes, selected, visible, defaultOpen = false, d
               )}
             </div>
           )}
+          {hasPlaybook && (
+            <div className="flex flex-col">
+              {notes.meeting_brief ? (
+                <button type="button" role="menuitem" className={item} {...paused(notes.meeting_brief, "ai-menu-playbook-note")} data-testid="ai-menu-playbook">
+                  <Sparkle />
+                  {C.AI_MENU_PLAYBOOK(selected.length)}
+                </button>
+              ) : (
+                <a role="menuitem" href={AiPlacementLinks.playbook(scope, selected.length ? C.selectionLabel(selected.length) : C.filterLabel(visible.length))} className={item} data-testid="ai-menu-playbook">
+                  <Sparkle />
+                  {C.AI_MENU_PLAYBOOK(selected.length)}
+                </a>
+              )}
+              {notes.meeting_brief && (
+                <p id="ai-menu-playbook-note" className="px-3 pb-1.5 pl-[2.125rem] text-muted type-caption">
+                  {notes.meeting_brief}
+                </p>
+              )}
+            </div>
+          )}
           <p className="border-t border-line px-3 pt-1.5 pb-1 text-muted type-caption">{C.AI_MENU_SELECT_HINT}</p>
         </div>
       )}
       {tool && (
         <AiDrawer title={tool === "bulk_edit" ? C.BULK_TITLE : C.MEETING_TITLE} onClose={() => setTool(null)} testId={`ai-drawer-${tool}`}>
           {tool === "bulk_edit" ? (
-            <AiToolsPanel feature="bulk_edit" label={C.BULK_LABEL} help={C.BULK_HELP} placeholder={C.BULK_PLACEHOLDER} disabledNote={notes.bulk_edit ?? null} rows={3} context={{ line: C.selectionLine(selected.length, selected.map((p) => p.name).join(", ")), prefix: C.scopePrefix(selected.map((p) => p.name).join("; ")) }} />
+            <AiBulkEditPanel disabledNote={notes.bulk_edit ?? null} onlyIds={selected.map((p) => p.id)} context={{ line: C.selectionLine(selected.length, selected.map((p) => p.name).join(", ")) }} />
           ) : (
-            <AiToolsPanel feature="meeting_notes" label={C.MEETING_LABEL} help={C.MEETING_HELP} placeholder={C.MEETING_PLACEHOLDER} disabledNote={notes.meeting_notes ?? null} rows={8} context={{ line: selected.length ? C.selectionLine(selected.length, selected.map((p) => p.name).join(", ")) : C.visibleLine(visible.length), prefix: C.scopePrefix(names) }} />
+            <AiMeetingNotesPanel disabledNote={notes.meeting_notes ?? null} context={{ line: selected.length ? C.selectionLine(selected.length, selected.map((p) => p.name).join(", ")) : C.visibleLine(visible.length), prefix: C.scopePrefix(names) }} {...("dictation" in notes && notes.dictation !== C.FEATURE_OFF_NOTE ? { dictation: { disabledNote: notes.dictation ?? null } } : {})} />
           )}
         </AiDrawer>
       )}
@@ -167,9 +189,9 @@ export function AiQuickCapture({ note, dictationNote, defaultOpen = false, recor
       {!open && <Tip id="ai-capture-tip" text={note ?? C.CAPTURE_SHORTCUT} />}
       {open && !off && (
         <Portal>
-        <div role="dialog" aria-label={C.CAPTURE_TITLE} className="fixed z-50 w-[380px] rounded-card border border-line bg-card p-3 shadow-lg" style={{ top: pos.top, right: pos.right }} data-testid="ai-capture-popover">
-          <AiToolsPanel feature="quick_capture" label={C.CAPTURE_LABEL} help={C.CAPTURE_HELP} placeholder={C.CAPTURE_PLACEHOLDER} disabledNote={null} rows={3} {...(dictationNote !== undefined ? { dictation: { disabledNote: dictationNote, mic: true, ...(recording ? { initialState: "recording" as const } : {}) } } : {})} />
-        </div>
+          <div role="dialog" aria-label={C.COMMAND_TITLE} className="fixed z-50 flex w-[440px] max-w-[calc(100vw-1rem)] flex-col rounded-card border border-line bg-[rgba(23,26,33,0.78)] p-3 shadow-[0_12px_32px_rgba(0,0,0,0.35)] backdrop-blur-[20px]" style={{ top: pos.top, right: pos.right, maxHeight: `calc(100vh - ${pos.top + 16}px)`, height: 560 }} data-testid="ai-capture-popover">
+            <AiCommandBar onClose={() => setOpen(false)} {...(dictationNote !== undefined ? { dictationNote, recording } : {})} />
+          </div>
         </Portal>
       )}
     </span>
@@ -177,51 +199,37 @@ export function AiQuickCapture({ note, dictationNote, defaultOpen = false, recor
 }
 
 /** Dashboard top row, right column: Pre-meeting brief (max 8 lines in the card; Open full opens the drawer). */
-/** Dashboard row under the status cards: one compact line (heading, Focus, Make brief); the brief shows below it. */
-export function AiBriefCard({ note, focusOptions, initial }: { note: string | null; focusOptions: readonly string[]; initial?: AiBriefState }) {
-  const [full, setFull] = useState<{ state: AiBriefState; focus: string } | null>(null);
-  return (
-    <section aria-labelledby="ai-brief-card-title" className="rounded-card border border-line bg-card px-4 py-2" data-testid="ai-brief-card">
-      <AiBriefPanel
-        disabledNote={note}
-        focusOptions={focusOptions}
-        compact
-        heading={
-          <h2 id="ai-brief-card-title" className="flex shrink-0 items-center gap-1.5 type-table-strong text-fg">
-            <Sparkle />
-            {C.BRIEF_CARD_TITLE}
-          </h2>
-        }
-        onOpenFull={(state, focus) => setFull({ state, focus })}
-        {...(initial ? { initial } : {})}
-      />
-      {full && (
-        <AiDrawer title={C.BRIEF_CARD_TITLE} onClose={() => setFull(null)} testId="ai-drawer-brief">
-          <AiBriefPanel disabledNote={note} initial={full.state} initialFocus={full.focus} />
-        </AiDrawer>
-      )}
-    </section>
-  );
-}
 
 /** Project drawer header "Brief": opens the brief drawer focused on that project. */
-export function AiBriefButton({ note, projectName }: { note: string | null; projectName: string }) {
-  const [open, setOpen] = useState(false);
+export function AiBriefButton({ note, projectId, projectName }: { note: string | null; projectId: string; projectName: string }) {
+  // Meeting Playbook item: the drawer's button opens the playbook page scoped to this project.
   return (
     <span className="group relative">
-      <button type="button" className={AI_GHOST} {...paused(note, "ai-brief-button-note")} onClick={() => !note && setOpen(true)} data-testid="ai-brief-button">
-        <Sparkle />
-        {C.BRIEF_BUTTON}
-      </button>
-      {note && <Tip id="ai-brief-button-note" text={note} />}
-      {open && (
-        <AiDrawer title={C.BRIEF_CARD_TITLE} onClose={() => setOpen(false)} testId="ai-drawer-brief">
-          <AiBriefPanel disabledNote={null} initialFocus={projectName} />
-        </AiDrawer>
+      {note ? (
+        <button type="button" className={AI_GHOST} {...paused(note, "ai-brief-button-note")} data-testid="ai-brief-button">
+          <Sparkle />
+          {C.PLAYBOOK_BUTTON}
+        </button>
+      ) : (
+        <a href={AiPlacementLinks.playbook([{ id: projectId, name: projectName }], projectName)} className={AI_GHOST} data-testid="ai-brief-button">
+          <Sparkle />
+          {C.PLAYBOOK_BUTTON}
+        </a>
       )}
+      {note && <Tip id="ai-brief-button-note" text={note} />}
     </span>
   );
 }
+
+/** Links into the Meeting Playbook page with a scope (selected rows, the current filter, one project). */
+export const AiPlacementLinks = {
+  /** Above this many projects the link scopes to the whole line instead (keeps the URL short). */
+  MAX_IDS: 150,
+  playbook(projects: readonly Named[], label: string): string {
+    if (!projects.length || projects.length > AiPlacementLinks.MAX_IDS) return "/playbook";
+    return `/playbook?ids=${projects.map((p) => p.id).join(",")}&label=${encodeURIComponent(label.slice(0, 120))}`;
+  },
+};
 
 /** One shortcut in a row's "..." menu: note null = ready, a string = model off (greyed with that note). */
 export type AiRowShortcut = { key: "next_step" | "draft"; label: string; note: string | null };

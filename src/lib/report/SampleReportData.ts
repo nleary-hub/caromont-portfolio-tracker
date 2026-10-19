@@ -6,6 +6,7 @@ import type { CompletedRow, ReportRow } from "@/lib/domain/types";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import type { ReportDocInput } from "@/lib/report/pdf/ReportLayout";
+import { WaitingOnText, type WaitingOnItem } from "@/lib/report/WaitingOnText";
 
 type Seed = [DepartmentKey, string, ProjectStatus, string | null, string | null, string | null, boolean, ProjectStatus | null, string];
 
@@ -53,6 +54,13 @@ export class SampleReportData {
     ["IR", "Sample: Dialysis access clinic", "OnTrack", "Clinic template live", "2026-10-12", "Template built; go-live after scheduler training.", false, null, "2026-09-16"],
   ];
 
+  /** The row's waitingOn key: only with the option on and open blockers (WaitingOnText.build is null otherwise). */
+  private static waitingOn(i: number, mode: boolean | "none" | undefined): { waitingOn?: string } {
+    if (mode !== true) return {};
+    const text = WaitingOnText.build(SampleReportData.WAITING_ON[i] ?? []);
+    return text ? { waitingOn: text } : {};
+  }
+
   /** Fake Infor request numbers by seed index. The rest have none. */
   private static readonly INFOR: Readonly<Record<number, number>> = {
     0: 4656,
@@ -69,7 +77,35 @@ export class SampleReportData {
   /** Fictional contracts leads for the sample (Morgan Ellsworth is the longest, matching the longest live name). */
   static readonly CONTRACTS_LEADS: readonly string[] = ["Sam Delacroix", "Jesse Okafor", "Morgan Ellsworth", "Dana Whitlock", "Alex Rivera"];
 
-  static rows(): ReportRow[] {
+  /**
+   * Fictional open blockers ("Waiting on" line) by seed index, as WaitingOnText items: Blocked-by dependencies (the
+   * blocking project's name, plus the note when there is one) and external blockers. Applied only when rows() is
+   * asked for them, so the default sample (and every golden hash built from it) is unchanged. `createdAt` is only
+   * informational here: the line has no date filter, so a dependency added before the Dependencies review (#86) still
+   * prints. Seed 15 shows a note-less dependency: the blocking project's name only.
+   */
+  static readonly WAITING_ON: Readonly<Record<number, readonly (WaitingOnItem & { createdAt?: string })[]>> = {
+    1: [{ kind: "external", waitingOn: "Northbeam Interiors", description: "Revised bid for the 6-bay scope" }],
+    3: [
+      { kind: "project", name: "Sample: EP lab mapping system upgrade", note: "Shared interface engine cutover" },
+      { kind: "external", waitingOn: "Biomed", description: "Downtime plan sign-off" },
+    ],
+    4: [{ kind: "external", waitingOn: "Harborview IT security", description: "Security review of the mapping interface" }],
+    10: [{ kind: "external", waitingOn: "Pharmacy and therapeutics committee", description: "Contrast agent formulary approval" }],
+    // Note-less Blocked-by dependency, added Sep 24 (before #86): prints the blocking project's name only.
+    15: [{ kind: "project", name: "Sample: INU bed flow redesign", note: null, createdAt: "2026-09-24" }],
+    17: [{ kind: "external", waitingOn: "Dr. Sample M", description: "Neurology review of the referral criteria" }],
+    22: [
+      { kind: "project", name: "Sample: Dialysis access clinic", note: "Shared scheduler build has to finish first" },
+      { kind: "external", waitingOn: "Planning", description: "Market volume data for the certificate of need filing and the consultant contract signature" },
+    ],
+  };
+
+  /**
+   * Sample rows. `waitingOn`: true adds WAITING_ON (as ReportDataLoader does with the Report contents option on);
+   * `none` stands for the option on with zero open blockers, which must render exactly like the default.
+   */
+  static rows(opts: { waitingOn?: boolean | "none" } = {}): ReportRow[] {
     const letters = "ABCDEFGHJKLMNPQRSTUVWXYZ";
     const rows = SampleReportData.SEEDS.map(([area, name, status, next, due, note, changed, from, updatedOn], i): ReportRow => {
       const overdue = ReportBuilder.isOverdue(
@@ -99,6 +135,7 @@ export class SampleReportData {
         updatedOn,
         statusFrom: from,
         stale: ReportBuilder.isStale({ status, updatedOn }, SampleReportData.REPORT_DATE),
+        ...SampleReportData.waitingOn(i, opts.waitingOn),
       };
     });
     return ReportBuilder.sort(rows);
@@ -152,8 +189,8 @@ export class SampleReportData {
    * hidden). Rows include every sample project; ReportLayout lists and counts only visible statuses,
    * so passing other viewSettings in overrides shows the effect of turning a status on.
    */
-  static docInput(overrides: Partial<ReportDocInput> = {}): ReportDocInput {
-    const rows = SampleReportData.rows();
+  static docInput(overrides: Partial<ReportDocInput> = {}, opts: { waitingOn?: boolean | "none" } = {}): ReportDocInput {
+    const rows = SampleReportData.rows(opts);
     // Classic settings (no chips key: flags column, legend and inline owner, as every report before migration 0034).
     // Pass viewSettings with showStatusChips to see the Milestone owner column and the chips switch.
     const viewSettings = overrides.viewSettings ?? ViewSettings.normalize("report", null);

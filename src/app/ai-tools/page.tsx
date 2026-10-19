@@ -2,12 +2,11 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
-import { AiBriefPanel } from "@/components/AiBriefPanel";
-import { AiDraftProjectPanel } from "@/components/AiDraftProjectPanel";
-import { AiNextStepPanel } from "@/components/AiNextStepPanel";
-import { AiToolsPanel } from "@/components/AiToolsPanel";
+import { AiBulkEditPanel } from "@/components/AiBulkEditPanel";
+import { AiMeetingNotesPanel } from "@/components/AiMeetingNotesPanel";
+import { AiCommandBar } from "@/components/AiCommandBar";
 import { AiVoiceChatPanel } from "@/components/AiVoiceChatPanel";
-import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { AiRequestDraftPanel } from "@/components/AiRequestDraftPanel";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -15,7 +14,6 @@ import { Db } from "@/lib/db/Db";
 import type { AiModelDb } from "@/lib/services/AiModelService";
 import type { AiSettingsDb } from "@/lib/services/AiSettingsService";
 import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
-import { AiToolsService, type AiToolsDb } from "@/lib/services/AiToolsService";
 
 /** The provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
 export const maxDuration = 90;
@@ -32,14 +30,11 @@ export default async function AiToolsPage() {
   let notes: Record<string, string | null> = Object.fromEntries(AiFeatureFlags.TOOL_FEATURES.map((f) => [f, C.AI_OFF_NOTE]));
   let dictationNote: string | null = C.AI_OFF_NOTE;
   let voiceNote: string | null = C.AI_OFF_NOTE;
-  let projects: { id: string; name: string }[] = [];
   if (Db.isConfigured()) {
     try {
       notes = await AiToolsReadiness.notes(Db.client as unknown as AiModelDb & AiSettingsDb, AiFeatureFlags.TOOL_FEATURES);
       dictationNote = await AiToolsReadiness.dictationNote(Db.client as unknown as AiModelDb & AiSettingsDb);
       voiceNote = await AiToolsReadiness.voiceChatNote(Db.client as unknown as AiModelDb & AiSettingsDb);
-      const scope = await ServiceLineAccess.activeFor(viewer);
-      projects = (await AiToolsService.projects(Db.client as unknown as AiToolsDb, scope)).map((p) => ({ id: p.id, name: p.name }));
     } catch {
       // Tables not migrated yet (Vercel previews skip migrations): every tool shows disabled.
     }
@@ -65,7 +60,7 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-meeting-heading" className="type-heading">
           {C.MEETING_TITLE}
         </h2>
-        <AiToolsPanel feature="meeting_notes" label={C.MEETING_LABEL} help={C.MEETING_HELP} placeholder={C.MEETING_PLACEHOLDER} disabledNote={notes.meeting_notes ?? null} rows={8} />
+        <AiMeetingNotesPanel disabledNote={notes.meeting_notes ?? null} {...(dictationNote === C.FEATURE_OFF_NOTE ? {} : { dictation: { disabledNote: dictationNote } })} />
       </section>
       )}
 
@@ -74,7 +69,7 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-bulk-heading" className="type-heading">
           {C.BULK_TITLE}
         </h2>
-        <AiToolsPanel feature="bulk_edit" label={C.BULK_LABEL} help={C.BULK_HELP} placeholder={C.BULK_PLACEHOLDER} disabledNote={notes.bulk_edit ?? null} rows={3} />
+        <AiBulkEditPanel disabledNote={notes.bulk_edit ?? null} />
       </section>
       )}
 
@@ -83,7 +78,16 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-capture-heading" className="type-heading">
           {C.CAPTURE_TITLE}
         </h2>
-        <AiToolsPanel feature="quick_capture" label={C.CAPTURE_LABEL} help={C.CAPTURE_HELP} placeholder={C.CAPTURE_PLACEHOLDER} disabledNote={notes.quick_capture ?? null} rows={2} dictation={dictationNote === C.FEATURE_OFF_NOTE ? undefined : { disabledNote: dictationNote }} />
+        {/* Item 5: Quick capture is the command bar (one line, several projects, REQ numbers and vendors), here inline. */}
+        {notes.quick_capture ? (
+          <p className="text-muted type-caption" data-testid="ai-tool-quick_capture-off">
+            {notes.quick_capture}
+          </p>
+        ) : (
+          <div className="h-[28rem]" data-testid="ai-tool-quick_capture">
+            <AiCommandBar {...(dictationNote === C.FEATURE_OFF_NOTE ? {} : { dictationNote })} />
+          </div>
+        )}
       </section>
       )}
 
@@ -92,7 +96,10 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-next-heading" className="type-heading">
           {C.NEXT_TITLE}
         </h2>
-        <AiNextStepPanel projects={projects} disabledNote={notes.next_step ?? null} />
+        {/* Item 6: not a standalone tool any more; it lives on each project. */}
+        <p className="text-muted type-caption" data-testid="ai-tools-next-step-moved">
+          {C.NEXT_MOVED}
+        </p>
       </section>
       )}
 
@@ -101,16 +108,20 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-request-heading" className="type-heading">
           {C.REQUEST_TITLE}
         </h2>
-        <AiDraftProjectPanel disabledNote={notes.request_to_project ?? null} />
+        <AiRequestDraftPanel disabledNote={notes.request_to_project ?? null} />
       </section>
       )}
 
       {shown("meeting_brief") && (
       <section className={section} aria-labelledby="ai-tool-brief-heading" id="meeting-brief">
         <h2 id="ai-tool-brief-heading" className="type-heading">
-          {C.BRIEF_TITLE}
+          {C.PLAYBOOK_TITLE}
         </h2>
-        <AiBriefPanel disabledNote={notes.meeting_brief ?? null} />
+        {/* Meeting Playbook item: the brief became the playbook, on its own full-width page. */}
+        <p className="text-muted type-caption">{C.PLAYBOOK_INTRO}</p>
+        <Link href="/playbook" className="self-start rounded-control border border-line px-3.5 py-1.5 text-fg type-table-strong hover:border-accent" data-testid="ai-tools-playbook-link">
+          {C.PLAYBOOK_OPEN}
+        </Link>
       </section>
       )}
 

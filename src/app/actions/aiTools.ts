@@ -85,7 +85,7 @@ export async function proposeAiProjectDraft(input: string) {
   try {
     const c = await context();
     if (!c) return { ok: false as const, kind: "denied" as const, message: AiCopy.NOT_AUTHORIZED };
-    return await AiToolsService.proposeDraft({ db: c.db, viewer: c.viewer, input });
+    return await AiToolsService.proposeDraft({ db: c.db, viewer: c.viewer, scope: c.scope, input });
   } catch (e) {
     console.error("AI tools failed: draft", (e as Error)?.name);
     return { ok: false as const, kind: "provider" as const, message: AiToolsCopy.PROVIDER_ERROR };
@@ -102,7 +102,7 @@ export async function createAiProjectDraft(proposalId: string, draft: unknown): 
       viewer: c.viewer,
       proposalId,
       draft,
-      create: async (input) => (await ProjectService.create(input as unknown as ProjectInput, { changedBy: c.viewer.email, comment: null }, Db.client, c.scope)).id,
+      create: async (input) => (await ProjectService.create(input as unknown as ProjectInput, { changedBy: c.viewer.email, comment: AiToolsService.historyComment("request_to_project") }, Db.client, c.scope)).id,
     });
     if (r.ok) revalidatePath("/");
     return r;

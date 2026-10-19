@@ -5,18 +5,22 @@ import { useActionState, useState } from "react";
 import { saveReportOptions } from "@/app/actions/reports";
 import { TotalsGridPlacement, type TotalsGridMode } from "@/lib/domain/TotalsGridPlacement";
 import type { ReportOptionsFormState } from "@/lib/services/ReportOptionsForm";
+import { ReportSettingsCopy } from "@/lib/admin/ReportSettingsCopy";
 import { DepartmentChecklist } from "./DashboardFilterControls";
 
 /** Admin "Report" section: departments in report (checkbox list, one always checked) and the totals grid placement. */
 export function ReportSettingsForm({
   departments,
   totalsGrid,
+  showWaitingOn = true,
   options,
   list,
   scheduled = true,
 }: {
   departments: DepartmentKey[];
   totalsGrid: TotalsGridMode;
+  /** "Waiting on" line under blocked projects (on by default). */
+  showWaitingOn?: boolean;
   /** The active line's department filter options. */
   options?: readonly DepartmentKey[];
   /** The line's departments (checkbox labels). */
@@ -46,6 +50,15 @@ export function ReportSettingsForm({
           ))}
         </div>
         <p className="text-[12px] leading-4 text-(--dark-text-secondary)">{TotalsGridPlacement.HELP}</p>
+      </fieldset>
+      <fieldset className="flex flex-col gap-1.5">
+        <legend className="mb-1 type-label text-muted">{ReportSettingsCopy.WAITING_LEGEND}</legend>
+        <input type="hidden" name="waitingOnField" value="1" />
+        <label className="flex items-center gap-2 type-table">
+          <input type="checkbox" name="showWaitingOn" defaultChecked={showWaitingOn} data-testid="report-show-waiting-on" />
+          {ReportSettingsCopy.WAITING_LABEL}
+        </label>
+        <p className="text-[12px] leading-4 text-(--dark-text-secondary)">{ReportSettingsCopy.WAITING_HELP}</p>
       </fieldset>
       <div className="flex items-center gap-3">
         <button type="submit" disabled={pending} className="h-8 rounded-control bg-accent px-3.5 text-white type-table-strong disabled:opacity-60">

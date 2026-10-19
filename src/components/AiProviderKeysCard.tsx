@@ -8,7 +8,7 @@ import { AiKeyCopy as C, AiKeyProviders, type AiKeyActionResult, type AiKeyActio
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = `h-7 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 aria-invalid:border-danger ${FOCUS}`;
-const GHOST = `h-7 rounded-control px-2.5 text-muted type-table-strong hover:bg-white/5 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent ${FOCUS}`;
+const GHOST = `h-7 rounded-control px-2.5 text-muted type-table-strong hover:bg-white/5 hover:text-fg disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted ${FOCUS}`;
 const OUTLINE = `h-7 rounded-control border border-accent/70 px-3 text-accent type-table-strong hover:bg-accent/10 disabled:cursor-not-allowed disabled:opacity-40 ${FOCUS}`;
 const PRIMARY = `h-7 rounded-control btn-primary bg-accent-strong px-3 text-white type-table-strong disabled:cursor-not-allowed disabled:bg-(--status-not-started-dark-bg) disabled:text-muted ${FOCUS}`;
 const ICON = `grid size-7 place-items-center rounded-control text-muted hover:bg-(--status-off-track-dark-bg) hover:text-danger disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-transparent disabled:hover:text-muted ${FOCUS}`;
@@ -274,7 +274,7 @@ function KeyRow({ initial, readOnly, preview, canWrite, adminName, actions }: { 
                   <button type="button" className={GHOST} disabled={busy || mode.kind === "entry" || !canWrite} onClick={() => setMode({ kind: "entry", entry: "replace" })} data-testid="key-replace">
                     {C.REPLACE}
                   </button>
-                  <button type="button" className={`${GHOST}${rotating ? " opacity-40" : ""}`} disabled={busy || mode.kind === "entry" || !canWrite} aria-busy={rotating || undefined} onClick={() => setMode({ kind: "entry", entry: "rotate" })} data-testid="key-rotate" data-rotating={rotating || undefined}>
+                  <button type="button" className={GHOST} disabled={busy || mode.kind === "entry" || !canWrite} aria-busy={rotating || undefined} onClick={() => setMode({ kind: "entry", entry: "rotate" })} data-testid="key-rotate" data-rotating={rotating || undefined}>
                     {C.ROTATE}
                   </button>
                   <button ref={deleteButton} type="button" className={ICON} disabled={busy || mode.kind === "entry" || !canWrite} onClick={() => setConfirmDelete(true)} aria-label={`${C.DELETE}: ${label}`} title={C.DELETE} data-testid="key-delete">

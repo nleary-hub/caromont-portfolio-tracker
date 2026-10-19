@@ -7,6 +7,8 @@ import type { FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiTemplateCopy as C } from "@/lib/ai/AiTemplateCopy";
 import { AiTemplateModel, type AiTemplateDesired, type AiTemplateMode, type AiTemplateOp, type AiTemplateRow } from "@/lib/ai/AiTemplateModel";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
+import { AiTemplateEvidence, type AiTemplateEvidenceFacts, type AiTemplateStepFact } from "@/lib/ai/template/AiTemplateEvidence";
+import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
 import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
@@ -16,7 +18,7 @@ import { AiToolsService, type AiToolFailure, type AiToolsDb, type AiToolUsageRow
 type Env = Record<string, string | undefined>;
 type Scope = Pick<ServiceLineScope, "id">;
 
-export type AiTemplateProposeResult = { ok: true; proposalId: string; mode: AiTemplateMode; templateId: string | null; rows: AiTemplateRow[] } | AiToolFailure;
+export type AiTemplateProposeResult = { ok: true; proposalId: string; mode: AiTemplateMode; templateId: string | null; rows: AiTemplateRow[]; /** Item 10: how many projects' checklists grounded it (null = none). */ basis: number | null } | AiToolFailure;
 export type AiTemplateApplyResult = { ok: true; templateId: string; templates: TemplateDto[] } | { ok: false; message: string };
 
 /**
@@ -29,9 +31,30 @@ export type AiTemplateApplyResult = { ok: true; templateId: string; templates: T
 export class AiTemplateService {
   static readonly FEATURE = "template_ai" as const;
 
+  /**
+   * Item 10: the line's real checklists (project_milestones of open projects in the line and the viewer's departments),
+   * counted by AiTemplateEvidence. Read only; null when there is nothing to show or the read fails (the assistant then
+   * works on the request alone, as before).
+   */
+  static async evidence(db: unknown, scope: Pick<ServiceLineScope, "id" | "departmentLimit">, mode: AiTemplateMode, current: TemplateDto | null): Promise<AiTemplateEvidenceFacts | null> {
+    const d = db as { project?: { findMany?: (a: object) => Promise<{ id: string }[]> }; projectMilestone?: { findMany?: (a: object) => Promise<AiTemplateStepFact[]> } };
+    if (typeof d.project?.findMany !== "function" || typeof d.projectMilestone?.findMany !== "function") return null;
+    try {
+      const projects = await d.project.findMany({ where: { ...ServiceLineAccess.projectWhere(scope), archivedAt: null }, select: { id: true } });
+      if (!projects.length) return null;
+      const steps = await d.projectMilestone.findMany({ where: { projectId: { in: projects.map((p) => p.id) } }, select: { projectId: true, name: true, sourceTemplateId: true } });
+      return mode === "edit" ? (current ? AiTemplateEvidence.forTemplate(current, steps) : null) : AiTemplateEvidence.forDraft(steps);
+    } catch (e) {
+      console.error("Template AI: checklist evidence not loaded", (e as Error)?.name);
+      return null;
+    }
+  }
+
   static async propose(args: {
     db: AiToolsDb;
     viewer: Viewer | null;
+    /** Item 10: the active line, for the checklist evidence. Absent = no evidence (the request alone). */
+    scope?: Pick<ServiceLineScope, "id" | "departmentLimit">;
     mode: AiTemplateMode;
     input: unknown;
     /** The template being edited (edit mode), as stored now. */
@@ -44,11 +67,18 @@ export class AiTemplateService {
   }): Promise<AiTemplateProposeResult> {
     const { mode, current } = args;
     if (mode === "edit" && !current) return { ok: false, kind: "denied", message: AiCopy.NOT_AUTHORIZED };
+    const facts = args.viewer?.isAdmin && args.scope ? await AiTemplateService.evidence(args.db, args.scope, mode, current) : null;
+    const evidence = facts ? AiTemplateEvidence.text(mode, facts) : null;
     const r = await AiToolsService.call({
-      ...args,
+      db: args.db,
+      viewer: args.viewer,
+      env: args.env,
+      fetchImpl: args.fetchImpl,
+      now: args.now,
+      keys: args.keys,
       feature: AiTemplateService.FEATURE,
       input: typeof args.input === "string" ? args.input : "",
-      build: (input) => AiTemplateModel.build(mode, input, current),
+      build: (input) => AiTemplateModel.build(mode, input, current, evidence),
     });
     if (!r.ok) return r;
     const proposal = AiTemplateModel.parse(r.text, mode);
@@ -64,7 +94,7 @@ export class AiTemplateService {
     }
     const kept = JSON.stringify(proposal);
     await r.log("proposed", { outputLength: changed.length, suggestedText: AiPhiGuard.check(kept).ok ? kept : null });
-    return { ok: true, proposalId: r.proposalId, mode, templateId: current?.id ?? null, rows };
+    return { ok: true, proposalId: r.proposalId, mode, templateId: current?.id ?? null, rows, basis: facts?.projects ?? null };
   }
 
   /**

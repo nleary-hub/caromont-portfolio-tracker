@@ -15,6 +15,11 @@ export class AiTemplateCopy {
   static readonly PROPOSE = "Suggest changes";
   static readonly LOADING = "Working on your suggestions…";
   static readonly REVIEW_HELP = "Review each change. Nothing is saved until you apply.";
+  /** Item 10: shown above the review when real checklists grounded the suggestion. */
+  static basis(mode: "draft" | "edit", n: number): string {
+    const p = `${n} project${n === 1 ? "" : "s"}`;
+    return mode === "edit" ? `Based on the milestone checklists of ${p} that use this template.` : `Based on the milestone checklists of ${p} in this line.`;
+  }
   static readonly DEFAULT_NAME = "New template";
 
   // Row tags.

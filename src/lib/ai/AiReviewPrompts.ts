@@ -1,4 +1,4 @@
-import type { AiPrompt } from "./AiPrompts";
+import { AiPrompts, type AiPrompt } from "./AiPrompts";
 import type { AiReviewFeature } from "./AiFeatureFlags";
 
 /**
@@ -12,6 +12,7 @@ export class AiReviewPrompts {
     "You revise a project status update for a hospital service line portfolio tracker, following the user's requested change.",
     "Rules:",
     "- Make only the requested change. Keep everything else as it is.",
+    "- House report style: lead with what happened (past tense, for example \"Vendor returned redlines Oct 12.\") or where it stands now, then the next action and who owns it, when the update or the change says them.",
     "- Use only facts from the update and the requested change. Do not add facts, causes, opinions or names.",
     "- Keep every name, number, date, dollar amount and percentage exactly as written unless the requested change says otherwise.",
     "- Plain, neutral language. Never use em dashes. No headings, no bullet points, no greeting.",
@@ -21,12 +22,13 @@ export class AiReviewPrompts {
     "- Reply with the revised update text only.",
   ].join("\n");
 
-  static build(feature: AiReviewFeature, current: string, instruction: string): AiPrompt {
+  /** `context`: the project's facts and last 3 updates (item 9); null or absent = exactly as before. */
+  static build(feature: AiReviewFeature, current: string, instruction: string, context: string | null = null): AiPrompt {
     switch (feature) {
       case "revise_note":
         return {
-          system: AiReviewPrompts.REVISE_SYSTEM,
-          user: `Update:\n<update>\n${current}\n</update>\nRequested change:\n<change>\n${instruction}\n</change>`,
+          system: AiPrompts.withContext(AiReviewPrompts.REVISE_SYSTEM, context),
+          user: `${AiPrompts.facts(context)}Update:\n<update>\n${current}\n</update>\nRequested change:\n<change>\n${instruction}\n</change>`,
           maxTokens: AiReviewPrompts.REVISE_MAX_TOKENS,
         };
     }

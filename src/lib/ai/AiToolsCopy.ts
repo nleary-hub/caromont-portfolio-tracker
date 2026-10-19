@@ -16,7 +16,7 @@ export class AiToolsCopy {
     next_step: "Next-step suggestion",
     request_to_project: "Request to draft project",
     meeting_brief: "Pre-meeting brief",
-    related_links: "Related-project links",
+    related_links: "Dependency suggestions (AI blockers)",
     voice_chat: "Voice chat",
     template_ai: "Template AI assistant",
   };
@@ -34,6 +34,14 @@ export class AiToolsCopy {
   static readonly APPLIED = "Applied";
   static readonly REJECTED = "Rejected";
   static readonly NO_CHANGES = "The AI found no changes to suggest.";
+  /** Item C: one click for every open line (the per-line Apply, Reject and Edit stay). */
+  static readonly APPLY_ALL = "Apply all";
+  static readonly REJECT_ALL = "Reject all";
+  static readonly APPLYING = "Applying...";
+  static readonly ACTION_HEADERS = ["Project", "Change", "Now", "New", ""] as const;
+  static readonly ACTION_REVIEW_HELP = "Apply all, or apply or reject each line. Applied changes are saved like a manual edit and show in History.";
+  static readonly UNDONE = "Undone";
+  static readonly NOT_APPLIED = "Not applied";
   static readonly EMPTY_VALUE = "\u2013";
   static readonly FEATURE_OFF_NOTE = "Turned off in AI settings.";
   static readonly AI_OFF_NOTE = "AI is turned off in AI settings.";
@@ -61,6 +69,10 @@ export class AiToolsCopy {
   // Errors.
   static readonly INPUT_EMPTY = "Type or paste some text first.";
   static readonly APPLY_FAILED = "That change couldn't be saved. The project is unchanged.";
+  /** An Apply refused because the field was saved again after the review card was made. */
+  static fieldChanged(label: string, now: string): string {
+    return `${label} was changed after this suggestion was made (it is now ${now || "blank"}). Nothing was saved. Ask again for a fresh suggestion.`;
+  }
   static readonly VALUE_INVALID = "That value isn't valid for this field. Edit it or reject the line.";
   static readonly FEATURE_OFF = "This AI tool is turned off. Nothing was changed.";
   static readonly AI_OFF = "AI is turned off in AI settings. Nothing was changed.";
@@ -85,13 +97,21 @@ export class AiToolsCopy {
 
   // Step 4: Meeting notes to updates.
   static readonly MEETING_TITLE = "Meeting notes to updates";
-  static readonly MEETING_HELP = "Paste notes from a meeting. The AI suggests status, next milestone, date and Latest update changes for the projects the notes mention.";
+  static readonly MEETING_HELP = "Paste or dictate notes from a meeting. The AI matches each note to its project (by name, REQ number, vendor or owner) and suggests status, people, milestone, blocker and Latest update changes, one line per project. New projects come back as drafts, and notes it could not match are listed. Nothing changes until you apply it.";
+  static readonly MEETING_REFUSED_TITLE = "Not suggested";
+  static readonly MEETING_DRAFTS_TITLE = (n: number) => (n === 1 ? "New project mentioned (draft)" : `New projects mentioned (${n} drafts)`);
+  static readonly MEETING_UNMATCHED_TITLE = (n: number) => (n === 1 ? "1 note matched no project" : `${n} notes matched no project`);
+  static readonly MEETING_UNMATCHED_HELP = "Nothing was suggested for these. Add them by hand or name the project and try again.";
   static readonly MEETING_LABEL = "Meeting notes";
   static readonly MEETING_PLACEHOLDER = "For example: Example Clinic refresh is on hold until the vendor confirms. Sample Lab move, due date now Dec 1.";
 
   // Step 5: Plain-English bulk edit.
   static readonly BULK_TITLE = "Plain-English bulk edit";
-  static readonly BULK_HELP = "Describe a change for many projects at once. The AI turns it into a filter and one change, and the app lists each matching project with before and after. It can change status, next milestone and dates, never the Latest update.";
+  static readonly BULK_HELP = "Describe one change for many projects at once. The AI turns it into a filter and one change; you see the filter in plain words, then each matching project with before and after. It can change status, next milestone, dates, owner, contracts lead, requester, department or the current milestone's owner, complete the current milestone, or mark projects reviewed, never the Latest update.";
+  static readonly BULK_UNREADABLE = "The AI couldn't turn that into one filter and one change. Nothing was changed. Try one change at a time, for example: Set the owner of every EP project with no owner to Avery Lin.";
+  static readonly BULK_NO_MATCH = "No project matches that filter. Nothing to change.";
+  static readonly BULK_NOTHING_TO_CHANGE = "Every matching project already has that value. Nothing to change.";
+  static readonly bulkAlready = (n: number) => (n === 1 ? "1 matching project already has that value." : `${n} matching projects already have that value.`);
   static readonly BULK_LABEL = "What should change?";
   static readonly BULK_FILTER_LABEL = "Filter";
   static readonly BULK_ACTION_LABEL = "Change";
@@ -102,6 +122,19 @@ export class AiToolsCopy {
   static readonly CAPTURE_TITLE = "Quick capture";
   static readonly CAPTURE_HELP = "Type or dictate one rough line. The AI finds the project and drafts the update for you to review.";
   static readonly CAPTURE_LABEL = "Rough update";
+  static readonly COMMAND_TITLE = "Command bar";
+  static readonly COMMAND_HELP = "Ask about your projects or type changes in plain words, one project or several (names, REQ numbers or vendors). Changes show below for review and apply only after you click Apply or type yes.";
+  static readonly COMMAND_LABEL = "Request";
+  static readonly COMMAND_PLACEHOLDER = "For example: REQ-1042 drywall done, example vendor slipped to Nov 3";
+  static readonly COMMAND_SEND = "Send";
+  static readonly COMMAND_THINKING = "Working\u2026";
+  static readonly COMMAND_EMPTY = "Type a request first.";
+  static readonly COMMAND_UNREADABLE = "Sorry, I couldn't work that out. Try saying it another way.";
+  static readonly COMMAND_TOO_MANY = "That took too many steps. Try one request at a time.";
+  static readonly COMMAND_CLEAR = "New conversation";
+  static readonly COMMAND_YOU = "You";
+  static readonly CLOSE = "Close";
+  static readonly COMMAND_AI = "AI";
   static readonly CAPTURE_PLACEHOLDER = "For example: example clinic refresh slipped, vendor delay";
   static readonly DICTATE = "Dictate";
   static readonly DICTATE_STOP = "Stop and transcribe";
@@ -122,6 +155,18 @@ export class AiToolsCopy {
   static readonly NEXT_PROJECT_NONE = "Choose a project";
   static readonly NEXT_PROPOSE = "Suggest next step";
   static readonly NEXT_INSTRUCTION = "Suggest the next milestone for this project.";
+  static readonly NEXT_MILESTONE_LABEL = "Next milestone";
+  static readonly NEXT_OWNER_LABEL = "Owner";
+  static readonly NEXT_DUE_LABEL = "Due";
+  static readonly NEXT_THIS_WEEK_LABEL = "This week";
+  static readonly NEXT_WHY_LABEL = "Why";
+  static readonly NEXT_TEMPLATE_LABEL = "Template";
+  static readonly NEXT_IN_PLAN = "in the plan";
+  static readonly NEXT_NEW = "new milestone";
+  static readonly NEXT_NO_OWNER = "No owner assigned";
+  static readonly NEXT_NO_DATE = "No date suggested";
+  static readonly NEXT_ALREADY = "The plan already has this as the current milestone, with this owner and date. Nothing to change.";
+  static readonly NEXT_MOVED = "Next-step suggestion is now on each project: the row's ... menu (Recommend next milestone) and the project drawer. It reads the milestone plan and template, not just the Latest update.";
   static readonly PICK_PROJECT = "Choose a project first.";
   static readonly NO_PROJECTS = "No open projects in this service line.";
 
@@ -131,6 +176,32 @@ export class AiToolsCopy {
   static readonly REQUEST_LABEL = "Project request";
   static readonly REQUEST_PLACEHOLDER = "For example: Example Clinic asks for a second ultrasound room by June 30. Needs a vendor quote first.";
   static readonly REQUEST_PROPOSE = "Draft project";
+  /** Item 7: the request tool now matches a template, pre-fills named people and checks for duplicates. */
+  static readonly REQUEST_HELP_FULL =
+    "Paste a project request. The AI drafts a new project, picks the template that fits, fills in the department, requester and REQ number when the request names them, and checks whether the project is already in the tracker. Nothing is created until you click Create project.";
+  static readonly REQUEST_DRAFT_HELP = "Edit anything before you create it. It's created as Not started with no owner. A field is blank only when the request didn't say.";
+  static readonly REQUEST_LABELS: Readonly<Record<string, string>> = { department: "Department", requester: "Requester (physician champion)", inforRequestNumber: "REQ number", templateId: "Template" };
+  static readonly REQUEST_NOT_SET = "Not set";
+  static readonly REQUEST_NO_TEMPLATE = "No template (one milestone from Next milestone)";
+  static readonly REQUEST_TEMPLATE_STEPS = (n: number) => `Milestones from the template (${n}). The first one gets the due date.`;
+  static readonly REQUEST_DUPLICATE_TITLE = "This may already be in the tracker";
+  static readonly REQUEST_DUPLICATE_HELP = "Update the existing project from this request instead, or create the new project anyway.";
+  static readonly REQUEST_UPDATE_INSTEAD = (name: string) => `Update ${name} instead`;
+  static readonly REQUEST_UPDATE_PREFIX = "This is a project request for the existing project listed above. Turn it into updates for that project only. Do not draft a new project.\nMeeting notes:";
+  static readonly REQUEST_CREATED = "Project created as Not started. Open it on the dashboard to assign the owner.";
+  /** Item 11: meeting notes shortcut line (dictated text lands in the box; no extra click to keep going). */
+  static readonly MEETING_KEYS = "Ctrl+Enter (Cmd+Enter on a Mac) suggests updates.";
+  static readonly MEETING_KEYS_DICTATION = "Dictated text goes into the box, so you can keep talking or edit it. Ctrl+Enter (Cmd+Enter on a Mac) suggests updates.";
+  /** Item 8: AI blocker suggestions inside Dependencies (the related_links toggle, now "Dependency suggestions"). */
+  static readonly DEPS_TITLE = "Suggest blockers with AI";
+  static readonly DEPS_BUTTON = "Suggest blockers from updates";
+  static readonly DEPS_BUTTON_ALL = "Suggest blockers for every project";
+  static readonly DEPS_HELP = "Checks each Latest update for waiting words (waiting on, pending, requires, until) and for other projects it names. Suggests a Blocked-by link (which project waits on which) or an external blocker, each with the reason. Nothing is added until you apply it.";
+  static readonly DEPS_HELP_ALL = "One pass over every project's Latest update. You get one list of suggested Blocked-by links and external blockers, each with its direction and reason. Nothing is added until you apply it.";
+  static readonly DEPS_NOTHING_TO_CHECK = "No Latest update mentions waiting on anything or names another project. Nothing to suggest.";
+  static readonly DEPS_NONE_FOUND = "The AI found no new blockers in the Latest updates. Nothing was changed.";
+  static readonly DEPS_CHECKED = (n: number) => `Checked ${n} project${n === 1 ? "" : "s"} with waiting words or project names in the Latest update.`;
+  static readonly DEPS_REFUSED_TITLE = "Not suggested";
   static readonly DRAFT_TITLE = "Review draft project";
   static readonly DRAFT_HELP = "Edit anything before you create it. It's created as Not started, with owner, physician champion, requester and department blank.";
   static readonly DRAFT_CREATE = "Create project";
@@ -148,6 +219,44 @@ export class AiToolsCopy {
   };
 
   // Step 8: Pre-meeting brief.
+  static readonly PLAYBOOK_TITLE = "Meeting Playbook";
+  static readonly PLAYBOOK_INTRO = "Pick the meeting, who it covers and how long it is. The AI drafts the playbook from your projects; the watchlist and blocker lists are computed by the tracker. Saved playbooks can be reopened below.";
+  static readonly PLAYBOOK_TYPE = "Meeting type";
+  static readonly PLAYBOOK_SCOPE = "Covers";
+  static readonly PLAYBOOK_SCOPE_LINE = "All projects in this line";
+  static readonly PLAYBOOK_SCOPE_DEPT = "A department";
+  static readonly PLAYBOOK_SCOPE_OWNER = "An owner";
+  static readonly PLAYBOOK_SCOPE_PICKED = "Projects from the dashboard";
+  static readonly PLAYBOOK_LENGTH = "Length";
+  static readonly PLAYBOOK_FOCUS = "Focus (optional)";
+  static readonly PLAYBOOK_FOCUS_PLACEHOLDER = "For example: the supply contract and what it holds up";
+  static readonly PLAYBOOK_MAKE = "Make playbook";
+  static readonly PLAYBOOK_MAKING = "Making playbook\u2026";
+  static readonly PLAYBOOK_SAVED = "Saved playbooks";
+  static readonly PLAYBOOK_NONE_SAVED = "No saved playbooks yet.";
+  static readonly PLAYBOOK_INVALID = "Pick a meeting type, who it covers and a length.";
+  static readonly PLAYBOOK_NO_PROJECTS = "No projects match that choice in this line.";
+  static readonly PLAYBOOK_COPY = "Copy";
+  static readonly PLAYBOOK_COPIED = "Copied.";
+  static readonly PLAYBOOK_PRINT = "Print or PDF";
+  static readonly PLAYBOOK_WORD = "Export to Word";
+  static readonly PLAYBOOK_EMAIL = "Email-ready text";
+  static readonly PLAYBOOK_PROCESS = "Process meeting notes";
+  static readonly PLAYBOOK_PROCESS_HELP = "Paste or dictate your notes from this meeting. They go through Meeting notes to updates with this playbook's follow-ups as context. Nothing changes until you apply it.";
+  static readonly PLAYBOOK_SECTIONS = ["Bottom line", "Decisions and escalations needed", "Agenda", "Project talking points", "Watchlist", "Dependencies and patterns", "Wins to recognize", "Follow-up tracker"] as const;
+  static readonly PLAYBOOK_NOTE = "AI-written from the tracker's data. The watchlist and blocker lists are computed by the tracker. Check the linked projects before the meeting.";
+  static readonly PLAYBOOK_NONE = "None.";
+  static readonly PLAYBOOK_FOLLOW_HEADERS = ["Action", "Owner", "Due", "Project"] as const;
+  static readonly PLAYBOOK_OPEN = "Meeting Playbook";
+  static readonly PLAYBOOK_NEW = "New playbook";
+  static readonly PLAYBOOK_BUTTON = "Playbook";
+  static readonly AI_MENU_PLAYBOOK = (n: number) => (n ? `Meeting Playbook for ${n} selected` : "Meeting Playbook for these projects");
+  static selectionLabel(n: number): string {
+    return `${n} selected ${n === 1 ? "project" : "projects"} from the dashboard`;
+  }
+  static filterLabel(n: number): string {
+    return `${n} ${n === 1 ? "project" : "projects"} in the dashboard filter`;
+  }
   static readonly BRIEF_TITLE = "Pre-meeting brief";
   static readonly BRIEF_HELP = "One click makes a one-page brief from the projects in this service line: what moved, what's stuck and what to ask. It's shown here only. It isn't saved, emailed or added to any report.";
   static readonly BRIEF_LABEL = "Focus (optional)";
@@ -213,7 +322,7 @@ export class AiToolsCopy {
   static readonly selectionLine = (n: number, names: string) => `Working on ${n} selected ${n === 1 ? "project" : "projects"}: ${names}.`;
   static readonly visibleLine = (n: number) => `Working on the ${n} ${n === 1 ? "project" : "projects"} in view.`;
   static readonly scopePrefix = (names: string) => `Only change these projects: ${names}.`;
-  static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. Any change the AI suggests is listed below. Nothing is saved until you apply it.";
+  static readonly VOICE_CHAT_HELP = "Ask about your projects out loud. The AI reads back any change and applies it only after you say yes. You can also apply or reject it below. Say 'undo that' to undo the last apply.";
   static readonly VOICE_START = "Start voice chat";
   static readonly VOICE_STOP = "End chat";
   static readonly VOICE_CONNECTING = "Connecting\u2026";
@@ -228,7 +337,17 @@ export class AiToolsCopy {
   static readonly VOICE_CONNECT_FAILED = "The voice connection couldn't be set up. Check your network, then try again.";
   static readonly VOICE_ICE_FAILED = "Voice couldn't connect. Your network may be blocking live audio. Try a different network.";
   static readonly VOICE_DROPPED = "The connection dropped. Start again to keep talking.";
-  static readonly VOICE_TIME_UP = "The chat reached its 15-minute limit. Start again to keep talking.";
+  static readonly VOICE_TIME_UP = "The chat reached its time limit. Start again to keep talking.";
+  static readonly VOICE_ONE_MINUTE = "One minute left in this chat.";
+  static readonly VOICE_TRANSCRIPT = "Transcript";
+  static readonly VOICE_TRANSCRIPT_NOTE = "Shown here only. The transcript is not saved.";
+  static readonly VOICE_YOU = "You";
+  static readonly VOICE_AI = "AI";
+  /** The chat's limit in the help line ("Chats end after 15 minutes."). */
+  static voiceLimit(seconds: number): string {
+    const m = Math.round(seconds / 60);
+    return `Chats end after ${m} ${m === 1 ? "minute" : "minutes"}.`;
+  }
   static readonly VOICE_SESSION_GONE = "This voice chat has ended. Start a new one.";
   static readonly VOICE_MODEL_LABEL = "Voice chat model";
   static readonly VOICE_BACKEND_MODEL_OFF = "Live voice models use the writing assistant model to answer. An admin needs to choose that model and turn it on in AI settings.";

@@ -53,7 +53,7 @@ describe("Admin > Dependencies review (read only)", () => {
       { id: "r1", project: "Alpha fictional project", blockedBy: "Zulu fictional project", createdAt: new Date("2026-10-09T19:40:00Z"), createdBy: ADMIN.email },
       { id: "r3", project: "Sample Clinic refresh", blockedBy: "Alpha fictional project", createdAt: new Date("2026-10-01T15:00:00Z"), createdBy: ADMIN.email },
     ]);
-    expect(calls).toMatchObject([{ where: { serviceLineId: LINE }, orderBy: [{ createdAt: "desc" }, { id: "asc" }] }]);
+    expect(calls).toMatchObject([{ where: { serviceLineId: LINE, removedAt: null }, orderBy: [{ createdAt: "desc" }, { id: "asc" }] }]);
     expect(writes).toEqual([]);
   });
 
@@ -79,11 +79,12 @@ describe("Admin > Dependencies review (read only)", () => {
 
   it("intro: the exact Writing Bot copy, capped at 72ch", () => {
     expect(DependencyReviewCopy.INTRO).toBe(
-      "Every Blocked-by dependency in this service line, newest first. This page is read only. The Link button on AI Find related suggestions in the project drawer used to save the suggested project as Blocked by, so some of these rows may not be real dependencies. To fix one, open that project's drawer and edit it under Dependencies.",
+      "Every Blocked-by dependency in this service line, newest first. The list is read only. Some older rows were saved by a removed AI tool and may not be real dependencies. To fix one, open that project's drawer and edit it under Dependencies.",
     );
     const html = renderToStaticMarkup(createElement(DependencyReviewIntro));
     expect(html).toContain('class="max-w-[72ch] text-muted type-caption"');
-    expect(html).toContain("This page is read only.");
+    expect(html).toContain("The list is read only.");
+    expect(html).not.toContain("Link button");
     expect(readFileSync("src/app/admin/dependencies/page.tsx", "utf8")).toContain("<DependencyReviewIntro />");
   });
 

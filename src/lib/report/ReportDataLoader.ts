@@ -10,6 +10,7 @@ import { ChampionCheck } from "@/lib/report/ChampionCheck";
 import { CompletedFiscalYear } from "@/lib/report/CompletedFiscalYear";
 import { PeriodClosure } from "@/lib/report/PeriodClosure";
 import { ReportBuilder } from "@/lib/report/ReportBuilder";
+import { WaitingOnLoader } from "@/lib/report/WaitingOnLoader";
 import { MilestoneService } from "@/lib/services/MilestoneService";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLine, type ServiceLineScope, type ServiceLineValue } from "@/lib/domain/ServiceLine";
@@ -89,7 +90,7 @@ export class ReportDataLoader {
     const previousSnapshotGeneratedAt = previous?.generatedAt ?? null;
     // Completed since the previous freeze (every Complete project for the first report): regular rows; Changed only, never Overdue or Stale.
     const completedInPeriod = PeriodClosure.ids(projects, history, previousSnapshotGeneratedAt, now);
-    const { rows, header } = ReportBuilder.build({
+    const built = ReportBuilder.build({
       projects,
       history,
       previousSnapshotGeneratedAt,
@@ -98,6 +99,9 @@ export class ReportDataLoader {
       departments: line.departments,
       completedInPeriod,
     });
+    const header = built.header;
+    // "Waiting on" line (1c): only with the option on; rows with nothing open keep no key (bytes as before).
+    const rows = options.showWaitingOn ? WaitingOnLoader.apply(built.rows, await WaitingOnLoader.texts(db, built.rows.map((r) => r.projectId))) : built.rows;
     // Only visible rows: the list names projects, so hidden/deleted ones must not appear in it.
     const missingChampions = ChampionCheck.findMissing(
       VisibilityPolicy.visibleProjects(projects, "report", viewSettings),

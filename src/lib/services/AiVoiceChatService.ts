@@ -6,14 +6,16 @@ import { AiModelKinds } from "@/lib/ai/AiModelKinds";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiRealtimeClient, type AiRealtimeFetch, type AiRealtimeTicket } from "@/lib/ai/AiRealtimeClient";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
-import type { AiToolChange } from "@/lib/ai/AiToolsModel";
+import type { AiToolChange, AiToolProject } from "@/lib/ai/AiToolsModel";
 import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService, type AiModelRow } from "@/lib/services/AiModelService";
+import { AiFeatureRuntime, AiProviderKeyAccess } from "@/lib/services/AiFeatureProviderService";
 import { AiSettingsService } from "@/lib/services/AiSettingsService";
 import { AiToolsService, type AiToolsDb, type AiToolUsageRow } from "@/lib/services/AiToolsService";
 import { AiWritingService } from "@/lib/services/AiWritingService";
+import { PortfolioContextService } from "@/lib/services/PortfolioContextService";
 
 type Env = Record<string, string | undefined>;
 
@@ -44,6 +46,25 @@ const UUID = /^[0-9a-f-]{36}$/i;
  * for review; applying a line goes through AiToolsService.applyLine and ProjectService.update like every text tool.
  */
 export class AiVoiceChatService {
+  /** Item A: the shared portfolio context for the voice session, within the voice budget (session instructions). */
+  static readonly CONTEXT_TOKENS = 24_000;
+
+  static async context(db: AiToolsDb, scope: ServiceLineScope, viewer: Viewer, projects: readonly AiToolProject[], now: () => Date): Promise<string> {
+    return (await PortfolioContextService.build({ db, scope, viewer, projects, now: now(), maxTokens: AiVoiceChatService.CONTEXT_TOKENS })).text;
+  }
+
+  /**
+   * Item D: the Live backend model, the step that turns spoken requests into tool calls. It is the command bar's
+   * (Quick capture) model when that routes to an OpenAI chat model that is on under Models; otherwise the AI settings
+   * model, as before. The backend always runs on the AI settings OpenAI key (voice runs on OpenAI only).
+   */
+  static async backendModel(db: AiToolsDb, savedModel: string): Promise<string> {
+    const enabled = await AiModelService.enabledIds(db, "chat");
+    const keys = await AiProviderKeyAccess.savedProviders(db);
+    const c = AiFeatureRuntime.choiceOf("quick_capture", AiFeatureRuntime.routed(await AiFeatureRuntime.rows(db), enabled, keys.has("openai")));
+    return c.model && c.provider === "openai" && enabled.includes(c.model) ? c.model : savedModel;
+  }
+
   private static async model(db: AiToolsDb): Promise<string> {
     return AiModelService.featureModel(db, FEATURE);
   }
@@ -82,7 +103,7 @@ export class AiVoiceChatService {
     const sessionId = randomUUID();
     // Routed by the model's kind (AiModelKinds.voiceApi): gpt-live-* on the Live API, everything else on Realtime.
     const api = AiModelKinds.voiceApi(model);
-    if (api === "live" && !(await AiModelService.enabledIds(db, "chat")).includes(saved.model)) {
+    if (api === "live" && !(await AiModelService.enabledIds(db, "chat")).includes(await AiVoiceChatService.backendModel(db, saved.model))) {
       // Live delegates to a Responses backend: the saved writing-assistant model, which must be a chat model that is on.
       console.error("AI tools: voice session failed", { code: "model_off", api, model, reason: "no backend chat model" });
       return { ok: false, code: "model_off", message: AiToolsCopy.VOICE_BACKEND_MODEL_OFF };
@@ -91,9 +112,11 @@ export class AiVoiceChatService {
       api === "live"
         ? // No token for the browser: the Live API has no ephemeral secret, so connect starts the session server side.
           { ok: true, ticket: { clientSecret: "", expiresAt: Math.floor(now().getTime() / 1000) + AiLiveClient.CONNECT_WINDOW_S, callsUrl: AiRealtimeClient.PROXY_PATH, model, api } }
-        : await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(projects, await AiModelService.voiceInstructions(db)), tools: [AiVoiceChat.TOOL], voice: AiVoiceChat.VOICE }, args.fetchImpl);
+        : await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db)), tools: [...AiVoiceChat.TOOLS], voice: AiVoiceChat.VOICE }, args.fetchImpl);
+    // The limit in force when this chat starts: kept on the started row (outputLength, unused there) so End caps by it even if an admin changes it mid-call.
+    const maxSeconds = await AiModelService.voiceSessionCap(db);
     await db.aiUsageLog.create({
-      data: { id: randomUUID(), suggestionId: sessionId, userEmail: user, projectId: null, feature: FEATURE, event: r.ok ? "session_started" : "failed", provider: saved.provider, model, inputLength: projects.length, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
+      data: { id: randomUUID(), suggestionId: sessionId, userEmail: user, projectId: null, feature: FEATURE, event: r.ok ? "session_started" : "failed", provider: saved.provider, model, inputLength: projects.length, outputLength: r.ok ? maxSeconds : null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
     });
     if (!r.ok) {
       const code = r.modelUnavailable ? "model_unavailable" : "token";
@@ -101,7 +124,7 @@ export class AiVoiceChatService {
       console.error("AI tools: voice session failed", { code, api, kind: r.kind, model, status: r.status ?? null, type: r.type ?? null, errorCode: r.code ?? null, message: r.message ?? null });
       return { ok: false, code, message: code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_TOKEN_FAILED };
     }
-    return { ok: true, sessionId, ticket: r.ticket, maxSeconds: AiVoiceChat.MAX_SESSION_S };
+    return { ok: true, sessionId, ticket: r.ticket, maxSeconds };
   }
 
   /**
@@ -160,10 +183,11 @@ export class AiVoiceChatService {
     const projects = await AiToolsService.projects(db, args.scope);
     const model = session.model ?? "";
     // The same instructions as the Realtime adapter (admin rules or built-in, plus tool contract, patient line, projects).
-    const base = AiVoiceChat.instructions(projects, await AiModelService.voiceInstructions(db));
-    const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel: saved.model, backendInstructions: base, tools: [AiVoiceChat.TOOL] }, sdp, args.fetchImpl);
+    const base = AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db));
+    const backendModel = await AiVoiceChatService.backendModel(db, saved.model);
+    const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel, backendInstructions: base, tools: [...AiVoiceChat.TOOLS] }, sdp, args.fetchImpl);
     if (r.ok) {
-      console.info("AI tools: voice live session started", { sessionId: session.suggestionId, model, backendModel: saved.model, liveSessionId: r.liveSessionId });
+      console.info("AI tools: voice live session started", { sessionId: session.suggestionId, model, backendModel, liveSessionId: r.liveSessionId });
       return { ok: true, sdp: r.sdp };
     }
     const code: AiVoiceErrorCode = r.modelUnavailable ? "model_unavailable" : "connect_failed";
@@ -273,7 +297,10 @@ export class AiVoiceChatService {
     // A session that failed to connect already has its failed row; it never gets a session_ended row.
     if (await AiVoiceChatService.failedRow(db, viewer, session.suggestionId)) return { ok: true, seconds: 0 };
     const at = now();
-    const seconds = AiVoiceChat.seconds(session.createdAt, at);
+    // The cap captured at start (older rows without one fall back to the current setting).
+    const startCap = session.outputLength;
+    const cap = typeof startCap === "number" && startCap > 0 ? AiVoiceChat.cap(startCap) : await AiModelService.voiceSessionCap(db);
+    const seconds = AiVoiceChat.seconds(session.createdAt, at, cap);
     const price = await AiVoiceChatService.price(db, session.model ?? "");
     const live = AiModelKinds.voiceApi(session.model ?? "") === "live";
     // Live: duration pricing (per-minute price times seconds, billed per second). Realtime: the admin per-minute price.
@@ -283,7 +310,7 @@ export class AiVoiceChatService {
     if (backend) console.info("AI tools: voice live backend usage", { sessionId: session.suggestionId, model: session.model ?? null, ...backend });
     try {
       await db.aiUsageLog.create({
-        data: { id: randomUUID(), suggestionId: session.suggestionId, userEmail: viewer.email, projectId: null, feature: FEATURE, event: "session_ended", provider: session.provider, model: session.model, inputLength: 0, outputLength: null, numberCheckPassed: null, suggestedText: null, usageSeconds: seconds, costUsd, createdAt: at },
+        data: { id: randomUUID(), suggestionId: session.suggestionId, userEmail: viewer.email, projectId: null, feature: FEATURE, event: "session_ended", provider: session.provider, model: session.model, inputLength: 0, outputLength: null, numberCheckPassed: null, suggestedText: null, usageSeconds: seconds, costUsd, createdAt: at, ...(backend ? { inputTokens: backend.inputTokens, outputTokens: backend.outputTokens } : {}) },
       });
     } catch (e) {
       // Ended in parallel (the unique index refused the second row): report what is stored.

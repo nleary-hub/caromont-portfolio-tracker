@@ -8,6 +8,7 @@ import { AiModelService } from "@/lib/services/AiModelService";
 import { AiToolsService } from "@/lib/services/AiToolsService";
 import { A, ADMIN, ENV, MockProvider, SCOPE, toolsSetup } from "./helpers/aiTools";
 
+vi.mock("@/app/actions/aiActions", () => ({ suggestAiNextStep: vi.fn(), applyAiActions: vi.fn(), rejectAiActions: vi.fn() }));
 vi.mock("@/app/actions/aiTools", () => ({ proposeAiToolChanges: vi.fn(), applyAiToolLine: vi.fn(), rejectAiToolLine: vi.fn(), transcribeAiDictation: vi.fn() }));
 
 describe("step 7: next-step suggestion", () => {

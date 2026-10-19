@@ -66,7 +66,8 @@ describe("step 9: related-project links (table and service kept; no page or draw
     expect(page).not.toContain("related-links");
     expect(AdminMenu.definitions().map((d) => d.href).filter((h) => /related/i.test(h))).toEqual([]);
     expect(AiFeatureFlags.TOOL_FEATURES).toContain("related_links");
-    expect(AiToolsCopy.FEATURE_LABELS.related_links).toBe("Related-project links");
+    // Item 8: the toggle now drives AI blocker suggestions inside Dependencies.
+    expect(AiToolsCopy.FEATURE_LABELS.related_links).toBe("Dependency suggestions (AI blockers)");
   });
 
   it("0047 creates the table add-only, with the delete trigger and the toggle seeded on (PGlite)", async () => {

@@ -15,14 +15,25 @@ export class ReportOptionsForm {
   static readonly NOT_AUTHORIZED = "Not authorized.";
 
   /** Form fields to a patch: every checked "departments" value (at least one; none means all) and "totalsGrid". */
-  static parse(input: { departments: unknown[]; totalsGrid: unknown }, options: readonly DepartmentKey[] = DepartmentFilter.OPTIONS): Pick<ReportOptionsValue, "departments" | "totalsGrid"> {
-    return { departments: DepartmentFilter.normalize(input.departments, options), totalsGrid: TotalsGridPlacement.normalize(input.totalsGrid) };
+  /**
+   * `showWaitingOn` is read only when the form sent its marker field (`waitingOnField`), so a form without the
+   * checkbox never turns the line off; then a checked box ("on") means on and an unchecked one (absent) means off.
+   */
+  static parse(
+    input: { departments: unknown[]; totalsGrid: unknown; waitingOnField?: unknown; showWaitingOn?: unknown },
+    options: readonly DepartmentKey[] = DepartmentFilter.OPTIONS,
+  ): Pick<ReportOptionsValue, "departments" | "totalsGrid"> & Partial<Pick<ReportOptionsValue, "showWaitingOn">> {
+    return {
+      departments: DepartmentFilter.normalize(input.departments, options),
+      totalsGrid: TotalsGridPlacement.normalize(input.totalsGrid),
+      ...(input.waitingOnField !== undefined && input.waitingOnField !== null ? { showWaitingOn: input.showWaitingOn === "on" } : {}),
+    };
   }
 
   /** Saves the report settings of `scope` (the admin's active line). */
   static async submit(
     viewer: Viewer | null,
-    input: { departments: unknown[]; totalsGrid: unknown },
+    input: { departments: unknown[]; totalsGrid: unknown; waitingOnField?: unknown; showWaitingOn?: unknown },
     db: PrismaClient = Db.client,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<ReportOptionsFormState> {

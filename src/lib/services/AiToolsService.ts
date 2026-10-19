@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AiRunMetrics } from "@/lib/ai/AiRunMetrics";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AiBulkEdit, type AiBulkSummary } from "@/lib/ai/AiBulkEdit";
@@ -17,6 +18,7 @@ import { AiModelService } from "@/lib/services/AiModelService";
 import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 import { AiWritingService, type AiUsageRow } from "./AiWritingService";
+import { PortfolioContextService } from "./PortfolioContextService";
 
 type Env = Record<string, string | undefined>;
 
@@ -101,11 +103,6 @@ const FIELDS: Partial<Record<AiReviewableTool, readonly AiToolField[]>> = {
   voice_chat: AiToolsModel.ALL_FIELDS,
 };
 
-/** Extra read-only fields a tool sees (it can't change them). */
-const CONTEXT_ONLY: Partial<Record<AiToolFeature, readonly AiToolField[]>> = {
-  next_step: ["status", "note"],
-};
-
 /**
  * The AI tools engine (steps 4 to 9): the AI proposes, a person applies or rejects each line, nothing auto-applies.
  * Admin only (the same people who can edit projects). Every proposal, apply, reject and failure is one ai_usage_log
@@ -118,9 +115,9 @@ export class AiToolsService {
   /** ProjectHistory.comment on every save applied from a bulk edit (the bulk tag; existing column, no migration). */
   static readonly BULK_HISTORY_COMMENT = "ai:bulk_edit";
 
-  /** The history tag an applied line carries (null = a plain edit). */
+  /** The history tag an applied line carries (item B: every AI feature tags its saves, "ai:<feature>"). */
   static historyComment(feature: AiReviewableTool): string | null {
-    return feature === "bulk_edit" ? AiToolsService.BULK_HISTORY_COMMENT : null;
+    return feature === "bulk_edit" ? AiToolsService.BULK_HISTORY_COMMENT : `ai:${feature}`;
   }
 
   static fieldsOf(feature: AiReviewableTool): readonly AiToolField[] {
@@ -150,6 +147,15 @@ export class AiToolsService {
     return rows.map(AiToolsService.toProject);
   }
 
+  /**
+   * Item A: the shared portfolio context (buildPortfolioContext) for `projects`, in their ref order: people,
+   * milestones, update history, change tracking, computed signals, blockers, plus today, the line, the user and the
+   * org glossary. Read-only. Every AI tool prompt uses this instead of the old 5-field list.
+   */
+  static async contextFor(db: AiToolsDb, scope: ServiceLineScope, viewer: Viewer | null, projects: readonly AiToolProject[], now?: () => Date): Promise<string> {
+    return (await PortfolioContextService.build({ db, scope, viewer, projects, now: now ? now() : undefined })).text;
+  }
+
   /** Shared guards and the provider call. Returns the reply text, or a failure to show. */
   static async call(args: {
     db: AiToolsDb;
@@ -163,7 +169,7 @@ export class AiToolsService {
     now?: () => Date;
     /** PR B: the provider keys (tests inject a fake; the app reads the Provider keys card's storage). */
     keys?: AiProviderKeySource;
-  }): Promise<{ ok: true; text: string; log: (event: string, extra?: Partial<AiToolUsageRow>) => Promise<unknown>; proposalId: string } | AiToolFailure> {
+  }): Promise<{ ok: true; text: string; log: (event: string, extra?: Partial<AiToolUsageRow>) => Promise<unknown>; proposalId: string; run: Partial<AiToolUsageRow> } | AiToolFailure> {
     const { db, viewer, feature } = args;
     const env = args.env ?? process.env;
     const now = args.now ?? (() => new Date());
@@ -186,19 +192,22 @@ export class AiToolsService {
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
 
     const proposalId = randomUUID();
+    // Item D: the call's tokens, latency and estimated cost, written on the run row (proposed or failed).
+    let run: Partial<AiToolUsageRow> = {};
     const log = (event: string, extra: Partial<AiToolUsageRow> = {}) =>
       db.aiUsageLog.create({
-        data: { id: randomUUID(), suggestionId: proposalId, userEmail: user, projectId: args.projectId ?? null, feature, event, provider: config.provider, model: config.model, inputLength: input.length, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now(), ...extra },
+        data: { id: randomUUID(), suggestionId: proposalId, userEmail: user, projectId: args.projectId ?? null, feature, event, provider: config.provider, model: config.model, inputLength: input.length, outputLength: null, numberCheckPassed: null, suggestedText: null, createdAt: now(), ...run, ...extra },
       });
     AiToolsService.inFlight.add(user);
     try {
       const result = await AiProviderClient.complete(config, args.build(input), args.fetchImpl);
+      run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");
         console.error("AI tools: provider call failed", { feature, kind: result.kind, status: result.status });
         return { ok: false, kind: result.kind === "timeout" ? "timeout" : "provider", message: result.kind === "timeout" ? AiToolsCopy.TIMEOUT : AiToolsCopy.PROVIDER_ERROR };
       }
-      return { ok: true, text: result.text, log, proposalId };
+      return { ok: true, text: result.text, log, proposalId, run };
     } finally {
       AiToolsService.inFlight.delete(user);
     }
@@ -226,10 +235,11 @@ export class AiToolsService {
     if (args.projectId !== undefined && args.projectId !== null && !/^[0-9a-f-]{36}$/i.test(args.projectId)) return { ok: false, kind: "denied", message: AiCopy.PROJECT_GONE };
     const projects = await AiToolsService.projects(args.db, args.scope, args.projectId ?? undefined);
     if (args.projectId && !projects.length) return { ok: false, kind: "denied", message: AiCopy.PROJECT_GONE };
+    const context = await AiToolsService.contextFor(args.db, args.scope, args.viewer, projects, args.now);
     const r = await AiToolsService.call({
       ...args,
       input: typeof args.input === "string" ? args.input : "",
-      build: (input) => AiToolsPrompts.build(args.feature, input, AiToolsModel.context(projects, [...fields, ...(CONTEXT_ONLY[args.feature] ?? [])])),
+      build: (input) => AiToolsPrompts.build(args.feature, input, context),
     });
     if (!r.ok) return r;
     if (args.feature === "bulk_edit") {
@@ -365,8 +375,10 @@ export class AiToolsService {
   }
 
   /** Step 7: a pasted request becomes a draft project to review. Saves nothing. */
-  static async proposeDraft(args: { db: AiToolsDb; viewer: Viewer | null; input: unknown; env?: Env; fetchImpl?: FetchLike; now?: () => Date }): Promise<{ ok: true; proposalId: string; draft: AiProjectDraft } | AiToolFailure> {
-    const r = await AiToolsService.call({ ...args, feature: "request_to_project", input: typeof args.input === "string" ? args.input : "", build: (input) => AiToolsPrompts.build("request_to_project", input, "") });
+  static async proposeDraft(args: { db: AiToolsDb; viewer: Viewer | null; input: unknown; scope?: ServiceLineScope; env?: Env; fetchImpl?: FetchLike; now?: () => Date }): Promise<{ ok: true; proposalId: string; draft: AiProjectDraft } | AiToolFailure> {
+    // Item A: the shared context (header, glossary and the line's projects) so the draft can see what already exists.
+    const context = args.scope && args.viewer?.isAdmin ? await AiToolsService.contextFor(args.db, args.scope, args.viewer, await AiToolsService.projects(args.db, args.scope), args.now) : "";
+    const r = await AiToolsService.call({ ...args, feature: "request_to_project", input: typeof args.input === "string" ? args.input : "", build: (input) => AiToolsPrompts.build("request_to_project", input, context) });
     if (!r.ok) return r;
     const draft = AiToolsModel.parseDraft(r.text);
     if (!draft) {
@@ -401,7 +413,8 @@ export class AiToolsService {
     if (!args.viewer?.isAdmin) return { ok: false, kind: "denied", message: AiCopy.NOT_AUTHORIZED };
     const projects = await AiToolsService.projects(args.db, args.scope);
     const focus = typeof args.input === "string" && args.input.trim() ? args.input : AiToolsCopy.BRIEF_DEFAULT;
-    const r = await AiToolsService.call({ ...args, feature: "meeting_brief", input: focus, build: (input) => AiToolsPrompts.build("meeting_brief", input, AiToolsModel.context(projects, AiToolsModel.ALL_FIELDS)) });
+    const context = await AiToolsService.contextFor(args.db, args.scope, args.viewer, projects, args.now);
+    const r = await AiToolsService.call({ ...args, feature: "meeting_brief", input: focus, build: (input) => AiToolsPrompts.build("meeting_brief", input, context) });
     if (!r.ok) return r;
     const brief = AiToolsModel.parseBrief(r.text, projects);
     if (!brief) {

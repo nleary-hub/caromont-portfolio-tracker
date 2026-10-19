@@ -50,7 +50,7 @@ describe("step 5: plain-English bulk edit", () => {
     expect(html).toContain("2 will become Changed when their lines are applied.");
   });
 
-  it("every save applied from a bulk edit carries the bulk tag in history; other tools don't", async () => {
+  it("every save applied from a bulk edit carries the bulk tag in history; other tools carry their own (item B)", async () => {
     const db = await toolsSetup();
     const reply = JSON.stringify({ filter: { statuses: ["AtRisk"] }, action: { field: "status", set: "OnHold" } });
     const r = await AiToolsService.proposeChanges({ db, viewer: Factory.ADMIN, scope: ServiceLine.defaultScope(), feature: "bulk_edit", input: "Put at-risk work on hold", env: ENV, fetchImpl: new MockProvider(reply).fetch });
@@ -59,7 +59,7 @@ describe("step 5: plain-English bulk edit", () => {
     const c = r.changes[0];
     expect(await AiToolsService.applyLine({ db, viewer: Factory.ADMIN, proposalId: r.proposalId, line: c.line, projectId: c.projectId, field: c.field, value: c.after, env: ENV, save: async (...a) => void saves.push(a) })).toEqual({ ok: true });
     expect(saves).toEqual([[B, { status: "OnHold" }, { comment: "ai:bulk_edit" }]]);
-    expect(AiToolsService.historyComment("meeting_notes")).toBeNull();
+    expect(AiToolsService.historyComment("meeting_notes")).toBe("ai:meeting_notes");
     const action = readFileSync("src/app/actions/aiTools.ts", "utf8");
     expect(action).toContain("comment: meta.comment");
   });

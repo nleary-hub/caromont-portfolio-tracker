@@ -26,7 +26,7 @@ export async function proposeAiTemplate(mode: string, input: string, templateId:
     const c = await context();
     if (!c || (mode !== "draft" && mode !== "edit")) return { ok: false, kind: "denied", message: AiCopy.NOT_AUTHORIZED };
     const current = mode === "edit" ? ((await MilestoneTemplateService.list(undefined, c.scope)).find((t) => t.id === String(templateId)) ?? null) : null;
-    return await AiTemplateService.propose({ db: c.db, viewer: c.viewer, mode, input, current });
+    return await AiTemplateService.propose({ db: c.db, viewer: c.viewer, scope: c.scope, mode, input, current });
   } catch (e) {
     console.error("Template AI failed: propose", (e as Error)?.name);
     return { ok: false, kind: "provider", message: AiToolsCopy.PROVIDER_ERROR };

@@ -2,9 +2,13 @@ import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
-import { AiFeaturesPanel, AiModelsPanel } from "@/components/AiModelsPanel";
+import { AiFeaturesPanel, AiModelsPanel, type AiModelFallback } from "@/components/AiModelsPanel";
 import { AiPriceRefresh } from "@/components/AiPriceRefresh";
 import { AiProviderKeysCard } from "@/components/AiProviderKeysCard";
+import { AiContextCard } from "@/components/AiContextCard";
+import { AiUsageCard } from "@/components/AiUsageCard";
+import type { AiMetricsRow } from "@/lib/ai/AiRunMetrics";
+import { AiGlossaryService, type GlossaryDb, type GlossaryView } from "@/lib/services/AiGlossaryService";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
 import { OpenAiModelListProvider } from "@/components/useOpenAiModelList";
 import { PROVIDER_KEYS_CARD_ID, ProviderModelListsProvider } from "@/components/AiFeatureProviderPicker";
@@ -35,6 +39,23 @@ class AiPageFormat {
   }
 }
 
+type AiUsageReadDb = { aiUsageLog: { findMany(args: object): Promise<AiMetricsRow[]> } };
+
+/** Item D: the last 30 days of ai_usage_log metadata (never a prompt, reply or key), newest first, capped. */
+class AiUsageReader {
+  static readonly DAYS = 30;
+  static readonly MAX_ROWS = 5000;
+
+  static recent(db: AiUsageReadDb, now: Date): Promise<AiMetricsRow[]> {
+    return db.aiUsageLog.findMany({
+      where: { createdAt: { gte: new Date(now.getTime() - AiUsageReader.DAYS * 86_400_000) } },
+      select: { feature: true, event: true, model: true, provider: true, outputLength: true, inputTokens: true, outputTokens: true, latencyMs: true, costUsd: true, createdAt: true },
+      orderBy: { createdAt: "desc" },
+      take: AiUsageReader.MAX_ROWS,
+    });
+  }
+}
+
 /**
  * Admin > AI settings. Admins only: anyone else gets a 404 so the route is not revealed (limited users never see it,
  * and the admin menu lists it only for admins). The page never receives the API key or its ciphertext.
@@ -54,6 +75,23 @@ export default async function AiSettingsPage() {
   const preview = AiKeyCipher.isPreview();
   let keyStatuses: AiProviderKeyStatus[] = [];
   const names = new Map<string, string>();
+  // Item A: the role title and org glossary every AI prompt carries.
+  let glossary: GlossaryView = { roleTitle: "", terms: [] };
+  let glossaryReady = dbReady;
+  // Item D: seeded defaults that can't run now (the row names the model used instead), the rows as they route, and
+  // the last 30 days of run metadata for the Usage card.
+  let fallbacks: Record<string, AiModelFallback> = {};
+  let defaults: Record<string, string> = {};
+  let routedChoices: Record<string, AiFeatureChoice> = choices;
+  let usage: AiMetricsRow[] = [];
+  if (dbReady) {
+    try {
+      glossary = await AiGlossaryService.view(Db.client as unknown as GlossaryDb);
+    } catch {
+      // 0057 not applied yet (previews skip migrations): the card shows read-only defaults.
+      glossaryReady = false;
+    }
+  }
   if (dbReady) {
     try {
       const db = Db.client as unknown as AiSettingsDb;
@@ -68,6 +106,11 @@ export default async function AiSettingsPage() {
       features = AiModelService.settingsViews(featureRows);
       choices = AiModelService.featureChoices(featureRows);
       keyStates = AiProviderKeyAccess.statesOf(keyStatuses, preview);
+      const enabledChat = AiModelService.optionsOf(models, "chat");
+      const openAiKey = (await AiProviderKeyAccess.savedProviders(Db.client)).has("openai");
+      defaults = Object.fromEntries(featureRows.filter((r) => r.defaultModel).map((r) => [r.feature, r.defaultModel as string]));
+      fallbacks = AiFeatureRuntime.fallbacks(featureRows, enabledChat, openAiKey, view.model ?? "");
+      routedChoices = AiModelService.featureChoices(AiFeatureRuntime.routed(featureRows, enabledChat, openAiKey));
       // The saved model must be one an admin turned on, or the assistant isn't ready (the call would be refused).
       if (view.model && !models.some((m) => m.inUse && m.enabled)) view = { ...view, ready: false, modelOff: true };
       const setters = [...new Set(keyStatuses.map((k) => k.setBy).filter((e): e is string => Boolean(e && e.includes("@"))))];
@@ -79,13 +122,19 @@ export default async function AiSettingsPage() {
       // Tables not migrated yet (Vercel previews skip migrations): show the defaults, saving is disabled.
       dbReady = false;
     }
+    try {
+      usage = await AiUsageReader.recent(Db.client as unknown as AiUsageReadDb, new Date());
+    } catch {
+      // 0059 not applied yet: the Usage card shows no runs.
+      usage = [];
+    }
   }
   // Chat models that are on under Models, by the provider they were added under (the text feature model pickers).
   const chatModels: Partial<Record<AiFeatureProvider, string[]>> = Object.fromEntries(
     AiFeatureProviders.ALL.map((p) => [p, models.filter((m) => m.enabled && m.kind === "chat" && (m.provider ?? "openai") === p).map((m) => m.id)]),
   );
   // How many features that are on run on each provider's key (the Provider keys card's "Used by" count).
-  const featuresUsing = view.enabled ? AiFeatureRuntime.featuresUsing(features, choices, view.provider ?? "") : {};
+  const featuresUsing = view.enabled ? AiFeatureRuntime.featuresUsing(features, routedChoices, view.provider ?? "") : {};
   const keyRows: AiKeyRowView[] = AiProviderKeyService.rowViews(keyStatuses.length ? keyStatuses : AiProviderKeyService.emptyStatuses(), names, featuresUsing);
   const keySavedLine = view.key.set && view.key.setAt ? AiCopy.keySaved(AiPageFormat.when(view.key.setAt), view.key.setBy ?? "") : null;
   const section = "flex flex-col gap-3 rounded-card border border-line bg-card/80 p-4 backdrop-blur-[20px]";
@@ -143,10 +192,18 @@ export default async function AiSettingsPage() {
           {AiCopy.FEATURES_TITLE}
         </h2>
         <p className="text-muted type-caption">{AiCopy.FEATURES_INTRO}</p>
-        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} choices={choices} keyStates={keyStates} chatModels={chatModels} mainModel={view.model} />
+        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} choices={choices} keyStates={keyStates} chatModels={chatModels} mainModel={view.model} fallbacks={fallbacks} defaults={defaults} />
       </section>
       </ProviderModelListsProvider>
       </OpenAiModelListProvider>
+
+      <section className={section} aria-labelledby="ai-context-heading">
+        <AiContextCard view={glossary} dbReady={dbReady && glossaryReady} />
+      </section>
+
+      <section className={section} aria-labelledby="ai-usage-heading">
+        <AiUsageCard rows={usage} when={(d) => AiPageFormat.when(d)} />
+      </section>
 
       <section className="flex flex-col gap-2" aria-labelledby="ai-history-heading">
         <h2 id="ai-history-heading" className="type-heading">

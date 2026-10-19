@@ -17,10 +17,11 @@ import { SampleReportData } from "../../src/lib/report/SampleReportData";
 import { TemplatesFixture } from "./templates-fixture";
 import { AiProviderFixture } from "./ai-provider-fixture";
 import { KeysFixture } from "./keys-fixture";
+import { DepsFixture } from "./deps-fixture";
+import { ConfirmFixture } from "./confirm-fixture";
 import { FreezeNowButton } from "../../src/components/FreezeNowButton";
 import { FreezeGuard } from "../../src/lib/report/FreezeGuard";
 import { DriveCheckButton } from "../../src/components/DriveCheckButton";
-import { DependencyGraph, type DependencyEdge } from "../../src/lib/projects/DependencyGraph";
 import { AiFeatureFlags } from "../../src/lib/ai/AiFeatureFlags";
 import { AiCopy } from "../../src/lib/ai/AiCopy";
 import { DependencyReviewCopy, DependencyReviewIntro, DependencyReviewTable } from "../../src/components/DependencyReviewTable";
@@ -42,14 +43,11 @@ if (new URLSearchParams(window.location.search).has("sample")) {
   (window as unknown as { __pdfOrder?: string[] }).__pdfOrder = sample.map(r => r.projectId);
   rows.splice(0, rows.length, ...[...sample].reverse().map(r => ({ ...r, id: r.projectId, includeInReport: true, updatedOn: r.updatedOn ?? "2026-09-29" }) as unknown as DashboardRow));
 }
+// ?deps=demo|empty|fail: fictional projects with dependencies and external blockers (DepsFixture).
+const depsMode = new URLSearchParams(window.location.search).get("deps");
+const deps = new DepsFixture(depsMode ?? "demo");
+if (depsMode) rows.splice(0, rows.length, ...DepsFixture.rows(deps));
 const noop = async () => null;
-// Fictional dependencies: Zulu is blocked by Bravo, and Alpha is blocked by Zulu (so Zulu blocked by Alpha is a loop).
-let edges: DependencyEdge[] = [{ projectId: "fictional-0", blockedById: "fictional-2" }, { projectId: "fictional-1", blockedById: "fictional-0" }];
-const depView = (id: string) => {
-  const listed = new Set(edges.filter(e => e.projectId === id).map(e => e.blockedById));
-  const all = rows.map(r => ({ id: r.id, name: r.name })).sort((a, b) => a.name.localeCompare(b.name));
-  return { ok: true as const, view: { blockedBy: all.filter(r => listed.has(r.id)), options: all.filter(r => r.id !== id && !listed.has(r.id)) } };
-};
 const counts = { NotStarted: 0, OnTrack: 3, AtRisk: 0, OffTrack: 0, OnHold: 0, Complete: 0, Cancelled: 0 };
 const admin: AdminDashboardProps = {
   viewSettings: { dashboard: ViewSettings.defaults("dashboard"), report: ViewSettings.defaults("report") },
@@ -88,22 +86,7 @@ const admin: AdminDashboardProps = {
   },
   createProjectAction: async () => ({ ok: true, id: "fictional-new" }),
   saveColumnLayoutAction: noop, saveRowOrderAction: noop, resetRowOrderAction: noop,
-  dependencyActions: {
-    load: async id => depView(id),
-    // Every add is recorded on window.__depAdds so tests can prove nothing but the picker writes dependencies.
-    add: async (id, by) => {
-      const w = window as unknown as { __depAdds?: unknown[] };
-      (w.__depAdds ??= []).push({ id, by });
-      const problem = DependencyGraph.check(edges, id, by);
-      if (problem) return { ok: false, error: DependencyGraph.MESSAGES[problem] };
-      edges.push({ projectId: id, blockedById: by });
-      return depView(id);
-    },
-    remove: async (id, by) => {
-      edges = edges.filter(e => !(e.projectId === id && e.blockedById === by));
-      return depView(id);
-    },
-  },
+  dependencyActions: deps.actions(),
 };
 // ?ai=list or ?ai=failed: Admin > AI settings pickers with a fictional OpenAI model list, or the list-failed fallback.
 const aiMode = new URLSearchParams(window.location.search).get("ai");
@@ -121,7 +104,7 @@ const aiView = { baseUrl: "", azureEndpoint: "", azureDeployment: "", encryption
 const closedPage = new URLSearchParams(window.location.search).get("page") === "cancelled";
 const cancelledRows = rows.map(r => ({ ...r, status: "Cancelled", statusLabel: "Cancelled", fiscalYear: "FY27", closedOn: "2026-09-20" }));
 const fixtureHistory = async (id: string) => ({ title: "History (1)", previously: null, notes: [], steps: [], entries: [{ key: `history-${id}`, meta: "Fictional author", text: `History for ${id}`, hollow: false }] });
-// ?deps=1: Admin > Dependencies review (read only) with fictional rows.
+// ?depreview=1|empty: Admin > Dependencies review (read only) with fictional rows (?deps is the drawer fixture).
 const reviewRows = [
   { id: "fictional-dep-1", project: "Zulu fictional project", blockedBy: "Bravo fictional project", created: "Oct 14, 2026, 9:12 AM ET", createdBy: "fictional.admin@example.org" },
   { id: "fictional-dep-2", project: "Alpha fictional project", blockedBy: "Zulu fictional project", created: "Oct 9, 2026, 3:40 PM ET", createdBy: "fictional.admin@example.org" },
@@ -131,19 +114,21 @@ const reviewRows = [
 // ?links=1: the dashboard with the old related_links placement note passed in (as a stale flag would), to prove the
 // drawer offers no Find related and writes no dependency from it.
 const stalePlacements = new URLSearchParams(window.location.search).has("links") ? { aiPlacements: { related_links: null } as never } : {};
-createRoot(document.getElementById("root")!).render(new URLSearchParams(window.location.search).has("templates") ? (
+createRoot(document.getElementById("root")!).render(new URLSearchParams(window.location.search).has("confirm") ? (
+  <ConfirmFixture width={Number(new URLSearchParams(window.location.search).get("confirm")) || 440} />
+) : new URLSearchParams(window.location.search).has("templates") ? (
   <TemplatesFixture />
 ) : new URLSearchParams(window.location.search).has("aip") ? (
   <AiProviderFixture />
 ) : new URLSearchParams(window.location.search).has("keys") ? (
   <KeysFixture />
-) : new URLSearchParams(window.location.search).has("deps") ? (
+) : new URLSearchParams(window.location.search).has("depreview") ? (
   <main className="mx-auto flex max-w-[1100px] flex-col gap-5 px-6 py-6">
     <div className="flex items-center gap-3">
       <h1 className="type-title whitespace-nowrap">{DependencyReviewCopy.PAGE_TITLE}</h1>
     </div>
     <DependencyReviewIntro />
-    <DependencyReviewTable rows={new URLSearchParams(window.location.search).get("deps") === "empty" ? [] : reviewRows} />
+    <DependencyReviewTable rows={new URLSearchParams(window.location.search).get("depreview") === "empty" ? [] : reviewRows} />
   </main>
 ) : new URLSearchParams(window.location.search).has("freeze") ? (
   // ?freeze=1: the Report freeze controls as /reports renders them. FreezeGuard.disabled() reads VERCEL_ENV, which the
@@ -183,13 +168,14 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
   </main>
 ) : (
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}
-    today="2026-10-04" userEmail="fictional@example.org" userName="Fictional Reviewer"
+    today={depsMode ? DepsFixture.TODAY : "2026-10-04"} userEmail="fictional@example.org" userName="Fictional Reviewer"
     latestReport={null} loadError={null} serviceLine={ServiceLine.SEED} {...stalePlacements}
     // ?line=1: a fictional active line with its own contracts-lead pick-list.
     {...(new URLSearchParams(window.location.search).has("line") ? { line: { ...ServiceLine.defaultScope(), owners: ["Fictional Owner"], requesters: ["Fictional Requester"], contractsLeads: ["Fictional Lead One", "Fictional Lead Two"] } } : {})}
     // ?viewer=readonly: the same dashboard for a non-admin (the drawer shows the fields read-only).
     admin={new URLSearchParams(window.location.search).get("viewer") === "readonly" ? undefined : admin}
     completedFiscalYear={new URLSearchParams(window.location.search).has("fy") ? { label: "FY27", start: "2026-07-01", count: 4 } : undefined}
+    dependencyLoadAction={deps.readOnlyLoad}
     signOutAction={async () => {}} historyAction={async id => {
       // A late result must never reintroduce a previous project's history.
       await new Promise(resolve => setTimeout(resolve, id === "fictional-0" ? 120 : 20));

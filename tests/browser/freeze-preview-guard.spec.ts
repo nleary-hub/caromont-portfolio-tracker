@@ -1,7 +1,7 @@
 import { test, expect } from "@playwright/test";
 
 // Runs against the second harness started with VERCEL_ENV=preview (playwright.config.ts). Fictional data only.
-test.use({ baseURL: "http://127.0.0.1:4174" });
+test.use({ baseURL: `http://127.0.0.1:${process.env.PREVIEW_FIXTURE_PORT || 4174}` });
 
 test("on a preview deployment Freeze now and Check Drive are disabled and the note shows", async ({ page }, testInfo) => {
   let dialogs = 0;
@@ -35,7 +35,7 @@ test("on a preview deployment Freeze now and Check Drive are disabled and the no
 });
 
 test("outside preview the same controls are enabled with no note", async ({ page }) => {
-  await page.goto("http://127.0.0.1:4173/?freeze=1");
+  await page.goto(`http://127.0.0.1:${process.env.FIXTURE_PORT || 4173}/?freeze=1`);
   await expect(page.getByRole("button", { name: "Freeze now" })).toBeEnabled();
   await expect(page.getByTestId("freeze-disabled-note")).toHaveCount(0);
   await expect(page.getByTestId("drive-check")).toBeEnabled();

@@ -753,6 +753,26 @@ function Row({ row, y }: { row: RowLayout; y: number }) {
             {l.text}
           </Text>
         ))}
+      {row.waiting && (
+        // Optional "Waiting on:" line (only rows with ReportRow.waitingOn): amber label, then the blockers in the note color.
+        <Text
+          style={{
+            position: "absolute",
+            left: row.waiting.x,
+            top: row.waiting.y,
+            width: row.waiting.w + 12,
+            fontFamily: F,
+            fontSize: S.table,
+            lineHeight: G.TABLE_LH / S.table,
+            fontWeight: 400,
+            color: C.MUTED,
+            maxLines: 1,
+          }}
+        >
+          <Text style={{ fontWeight: ReportLayout.WAITING_LABEL_WEIGHT, color: C.STALE.fg }}>{`${row.waiting.label} `}</Text>
+          {row.waiting.text}
+        </Text>
+      )}
       <Rule y={row.height - G.ROW_PAD - G.ROW_BORDER} h={G.ROW_BORDER} color={C.DIVIDER} />
     </View>
   );

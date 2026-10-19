@@ -42,6 +42,11 @@ export class UpdateHistoryCopy {
     return `Show all ${count} changes`;
   }
 
+  /** Item B: the meta line's author for a save an AI feature applied ("Voice chat (AI), applied by Nick Leary"). */
+  static aiApplied(source: string, who: string, undo: boolean): string {
+    return undo ? `Undo of ${source} (AI), by ${who}` : `${source} (AI), applied by ${who}`;
+  }
+
   /** "Sep 27, 2026, 1:20 AM ET · Nick Leary" (the middle dot is intended). */
   static meta(when: string, who: string): string {
     return `${when} · ${who}`;

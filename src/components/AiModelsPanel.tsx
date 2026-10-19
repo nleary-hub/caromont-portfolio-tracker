@@ -2,17 +2,21 @@
 
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
-import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiFeatureProvider, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions } from "@/app/actions/aiAdmin";
+import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiFeatureProvider, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions, setAiVoiceSessionCap } from "@/app/actions/aiAdmin";
 import { LockedProviderChip, ProviderPickerCell, TextModelCell, textModelCaption, useProviderModelLists } from "@/components/AiFeatureProviderPicker";
 import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyStates } from "@/lib/ai/AiFeatureProviders";
 import { ModelField } from "@/components/AiModelPicker";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
+import { AiModelDefaults } from "@/lib/ai/AiModelDefaults";
 import { AiModelKinds, type AiModelKind } from "@/lib/ai/AiModelKinds";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 import { useOpenAiModelList, type OpenAiListState } from "@/components/useOpenAiModelList";
 import type { AiAdminResult, AiFeatureChoice, AiFeatureView, AiModelView } from "@/lib/services/AiModelService";
+
+/** Item D: a seeded default that is not running, and the AI settings model used instead. */
+export type AiModelFallback = { seeded: string; using: string; reason: "model_off" | "no_key" };
 
 /** The same 2px focus outline used across the AI settings page since #50. */
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
@@ -295,6 +299,60 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
   );
 }
 
+/** Voice and command bar item: the voice chat session limit in minutes (admin only; checked on the server, 0060). */
+function VoiceSessionCapField({ initialSeconds, disabled }: { initialSeconds: number; disabled: boolean }) {
+  const [text, setText] = useState(String(Math.round(initialSeconds / 60)));
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [saving, start] = useTransition();
+  return (
+    <div className="col-start-1 flex min-w-0 flex-col gap-1 pt-2" data-testid="ai-voice-cap">
+      <label htmlFor="ai-voice-cap-input" className="text-muted type-caption">
+        {C.VOICE_CAP_LABEL}
+      </label>
+      <div className="flex items-center gap-2">
+        <input
+          id="ai-voice-cap-input"
+          inputMode="numeric"
+          value={text}
+          maxLength={2}
+          onChange={(e) => {
+            setText(e.target.value);
+            setMsg(null);
+          }}
+          aria-describedby="ai-voice-cap-help"
+          aria-invalid={(msg && !msg.ok) || undefined}
+          disabled={disabled || saving}
+          className="h-7 w-16 rounded-control border border-line bg-input px-2.5 text-fg tabular-nums type-table focus:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent aria-invalid:border-danger disabled:cursor-not-allowed disabled:opacity-50"
+          data-testid="ai-voice-cap-input"
+        />
+        <button
+          type="button"
+          className="h-7 rounded-control border border-line px-3 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent"
+          disabled={disabled || saving}
+          onClick={() =>
+            start(async () => {
+              const r = await setAiVoiceSessionCap(text);
+              setMsg(r?.ok ? { ok: true, text: r.message ?? C.VOICE_CAP_SAVED } : { ok: false, text: r?.error ?? C.SAVE_FAILED });
+            })
+          }
+          data-testid="ai-voice-cap-save"
+        >
+          {C.VOICE_CAP_SAVE}
+        </button>
+        {msg?.ok && (
+          <span role="status" className="text-muted type-caption">
+            {msg.text}
+          </span>
+        )}
+      </div>
+      <p id="ai-voice-cap-help" className="text-muted type-caption">
+        {C.VOICE_CAP_HELP}
+      </p>
+      {msg && !msg.ok && <AiAlert tone="danger" testId="ai-voice-cap-error">{msg.text}</AiAlert>}
+    </div>
+  );
+}
+
 /**
  * Voice chat instructions (admin only). Empty by default (the built-in rules); the server checks the length and always
  * adds the project list, the suggest-changes rule and the patient-details rule.
@@ -398,6 +456,8 @@ export function AiFeaturesPanel({
   keyStates,
   chatModels = {},
   mainModel = "",
+  fallbacks = {},
+  defaults = {},
 }: {
   features: AiFeatureView[];
   dbReady: boolean;
@@ -407,6 +467,10 @@ export function AiFeaturesPanel({
   keyStates?: AiProviderKeyStates;
   chatModels?: Partial<Record<AiFeatureProvider, readonly string[]>>;
   mainModel?: string;
+  /** Item D: features whose seeded default can't run now, with the AI settings model they use instead. */
+  fallbacks?: Partial<Record<string, AiModelFallback>>;
+  /** Item D: each feature's seeded default model (0059 defaultModel), for the "Recommended default" caption. */
+  defaults?: Partial<Record<string, string>>;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -485,10 +549,15 @@ export function AiFeaturesPanel({
             {text && (() => {
               // Under the Model picker: "Default" when the row uses the AI settings model (shown at full strength), or
               // "Off under Models" when the model it would call is off (Figma Bro, Oct 17).
-              const cap = textModelCaption({ value: picking ? "" : choice.model, mainModel: shownProvider === "openai" ? mainModel : "", pending: picking, options: chatModels[shownProvider] ?? [] });
+              // Item D: a seeded default says so, and when it can't run the row names the model used instead.
+              const fb = !picking && choice.model && fallbacks[f.feature]?.seeded === choice.model ? fallbacks[f.feature] : undefined;
+              const seeded = !picking && shownProvider === "openai" && AiModelDefaults.isSeeded({ model: choice.model, defaultModel: defaults[f.feature] });
+              const base = textModelCaption({ value: picking ? "" : choice.model, mainModel: shownProvider === "openai" ? mainModel : "", pending: picking, options: chatModels[shownProvider] ?? [] });
+              const cap = fb ? "fallback" : seeded && base === null ? "recommended" : base;
+              const words = cap === "fallback" ? C.modelFallback(fb!.reason, fb!.using) : cap === "recommended" ? C.FEATURE_MODEL_RECOMMENDED : cap === "default" ? C.FEATURE_MODEL_DEFAULT : C.MODEL_PICKER_OFF;
               return cap ? (
-                <p className="col-start-3 row-start-2 -mt-1.5 truncate pb-1.5 pl-2 text-muted type-caption" data-testid={`ai-feature-${f.feature}-model-caption`} data-caption={cap}>
-                  {cap === "default" ? C.FEATURE_MODEL_DEFAULT : C.MODEL_PICKER_OFF}
+                <p className={`col-start-3 row-start-2 -mt-1.5 min-w-0 whitespace-normal pb-1.5 pl-2 type-caption [overflow-wrap:anywhere] ${cap === "fallback" ? "text-(--status-at-risk-dark-fg)" : "text-muted"}`} title={words} data-testid={`ai-feature-${f.feature}-model-caption`} data-caption={cap}>
+                  {words}
                 </p>
               ) : null;
             })()}
@@ -537,6 +606,7 @@ export function AiFeaturesPanel({
             {f.feature === "voice_chat" && (
               <div className="col-start-2 col-span-3 row-start-3 min-w-0 pt-2">
                 <VoiceInstructionsField initial={f.instructions ?? ""} disabled={!dbReady || pending} />
+                <VoiceSessionCapField initialSeconds={f.maxSessionSeconds ?? AiVoiceChat.MAX_SESSION_S} disabled={!dbReady || pending} />
               </div>
             )}
           </div>

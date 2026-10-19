@@ -17,9 +17,10 @@ export class AiToolsReadiness {
     const row = await AiSettingsService.row(db, env).catch(() => null);
     const enabled = await AiModelService.enabledIds(db, "chat");
     // PR B: a feature with its own model is ready when that model is on; the rest use the AI settings model, as before.
-    const rows = await AiFeatureRuntime.rows(db);
     // CTO item 4: a feature whose provider has no saved key row (existence only, no live test call) is unavailable.
     const saved = await AiProviderKeyAccess.savedProviders(db);
+    // Item D: a seeded default that can't run follows the AI settings model, as the call does.
+    const rows = AiFeatureRuntime.routed(await AiFeatureRuntime.rows(db), enabled, saved.has("openai"));
     const choices = Object.fromEntries(features.map((f) => [f, AiFeatureRuntime.choiceOf(f, rows)]));
     const note = (f: AiToggleFeature) => {
       if (AiToolsCopy.isPreview(env)) return AiToolsCopy.PREVIEW_OFF_NOTE;
@@ -43,7 +44,7 @@ export class AiToolsReadiness {
    */
   static async writing(db: AiModelDb & AiSettingsDb, mainPaused: boolean, env: Env = process.env): Promise<{ shown: AiWritingToggle[]; paused: boolean; unavailable: Partial<Record<AiWritingToggle, string>> }> {
     const notes = await AiToolsReadiness.notes(db, AiFeatureFlags.WRITING_FEATURES, env);
-    const rows = await AiFeatureRuntime.rows(db);
+    const rows = AiFeatureRuntime.routed(await AiFeatureRuntime.rows(db), await AiModelService.enabledIds(db, "chat"), (await AiProviderKeyAccess.savedProviders(db)).has("openai"));
     const shown = AiFeatureFlags.WRITING_FEATURES.filter((f) => notes[f] !== AiToolsCopy.FEATURE_OFF_NOTE);
     const unavailable: Partial<Record<AiWritingToggle, string>> = {};
     const followsMainPaused: AiWritingToggle[] = [];
@@ -86,8 +87,8 @@ export class AiToolsReadiness {
  * null = ready; a note = shown greyed with it (model off). AI off altogether = nothing (the caller skips this).
  */
 export class AiPlacementData {
-  /** related_links is not placed anywhere (it saved related projects as Blocked by); its flag key stays for settings history. */
-  static readonly FEATURES = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "meeting_brief"] as const;
+  /** related_links is now AI blocker suggestions inside Dependencies (item 8), with a direction and a reason per line. */
+  static readonly FEATURES = ["meeting_notes", "bulk_edit", "quick_capture", "next_step", "meeting_brief", "related_links"] as const;
 
   static async load(db: AiModelDb & AiSettingsDb, env: Env = process.env): Promise<Partial<Record<(typeof AiPlacementData.FEATURES)[number] | "dictation", string | null>>> {
     const notes = await AiToolsReadiness.notes(db, AiPlacementData.FEATURES, env);

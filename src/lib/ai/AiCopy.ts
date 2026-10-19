@@ -45,6 +45,11 @@ export class AiCopy {
   static readonly VOICE_INSTRUCTIONS_HELP = "Optional. Replaces the built-in voice chat rules. The project list, the rule for suggesting changes and the rule against patient details are always added. Up to 4,000 characters.";
   static readonly VOICE_INSTRUCTIONS_TOO_LONG = "Voice chat instructions can be up to 4,000 characters.";
   static readonly VOICE_INSTRUCTIONS_SAVED = "Voice chat instructions saved.";
+  static readonly VOICE_CAP_LABEL = "Session limit (minutes)";
+  static readonly VOICE_CAP_HELP = "Each voice chat ends after this many minutes, with a warning one minute before. 1 to 60. Leave empty for the default 15. Applies to chats started after you save.";
+  static readonly VOICE_CAP_SAVE = "Save limit";
+  static readonly VOICE_CAP_SAVED = "Session limit saved.";
+  static readonly VOICE_CAP_INVALID = "Enter whole minutes from 1 to 60, or leave it empty for the default 15.";
   static readonly VOICE_INSTRUCTIONS_SAVE = "Save instructions";
   /** "3 voice models listed", "1 chat model listed". */
   static modelsListed(n: number, kindLabel: string): string {
@@ -160,6 +165,14 @@ export class AiCopy {
   static readonly FEATURE_MODEL_SAME_AS_ABOVE = "Uses the model chosen above";
   /** Caption under a text feature's Model picker when it uses the AI settings model (Figma Bro, Oct 17). */
   static readonly FEATURE_MODEL_DEFAULT = "Default";
+  /** Item D: caption under a text feature's Model picker when it holds the seeded (Nick-approved) default. */
+  static readonly FEATURE_MODEL_RECOMMENDED = "Recommended default";
+
+  /** Item D: the seeded default can't run, so the feature uses the AI settings model until it can. */
+  static modelFallback(reason: "model_off" | "no_key", using: string): string {
+    const now = using ? `Using ${using}.` : "Using the default model.";
+    return reason === "no_key" ? `No OpenAI key. ${now}` : `Model is off. ${now}`;
+  }
   static readonly HISTORY_MODEL_ABOVE = "the model chosen above";
   static readonly FEATURE_MODEL_TYPE_PLACEHOLDER = "Type a model ID";
   static readonly FEATURES_GRID_HEADERS = ["Feature", "Provider", "Model", "On"] as const;

@@ -19,6 +19,9 @@ interface State {
   serviceLineSettings: Row[];
   serviceLineSettingsHistory: Row[];
   milestones: Row[];
+  /** project_dependencies and project_blockers (0055): read by the report's Waiting on line. */
+  dependencies: Row[];
+  blockers: Row[];
   templates: Row[];
   templateItems: Row[];
   templateHistory: Row[];
@@ -61,6 +64,8 @@ export class FakeDb {
     serviceLineSettings: [],
     serviceLineSettingsHistory: [],
     milestones: [],
+    dependencies: [],
+    blockers: [],
     templates: [],
     templateItems: [],
     templateHistory: [],
@@ -187,6 +192,8 @@ export class FakeDb {
       serviceLineSettings: c(state.serviceLineSettings),
       serviceLineSettingsHistory: c(state.serviceLineSettingsHistory),
       milestones: c(state.milestones),
+      dependencies: c(state.dependencies),
+      blockers: c(state.blockers),
       templates: c(state.templates),
       templateItems: c(state.templateItems),
       templateHistory: c(state.templateHistory),
@@ -554,6 +561,20 @@ export class FakeDb {
             .sort((a, b) => (b.changedAt as Date).getTime() - (a.changedAt as Date).getTime())
             .slice(0, take ?? undefined)
             .map((r) => ({ ...r })),
+      },
+      projectDependency: {
+        findMany: async ({ where }: { where?: Row } = {}) =>
+          this.state.dependencies
+            .filter((d) => matches(d, where))
+            .sort((a, b) => (a.createdAt as Date).getTime() - (b.createdAt as Date).getTime())
+            .map((d) => ({ ...d, blockedBy: { name: this.state.projects.find((p) => p.id === d.blockedById)?.name ?? "" } })),
+      },
+      projectBlocker: {
+        findMany: async ({ where }: { where?: Row } = {}) =>
+          this.state.blockers
+            .filter((b) => matches(b, where))
+            .sort((a, b) => String(a.since).localeCompare(String(b.since)))
+            .map((b) => ({ ...b })),
       },
       projectMilestone: {
         findMany: async ({ where }: { where?: Row } = {}) => {

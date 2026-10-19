@@ -9,7 +9,7 @@ export interface PickerOption {
   label: string;
   /** Greyed out and can't be picked (AI settings: a provider with no working key). */
   disabled?: boolean;
-  /** A short right-aligned note on the option ("No key"). With onHint it is a link-style button. */
+  /** A short right-aligned note on the option ("No key"). With onHint it is a button (not a link, so no underline). */
   hint?: string;
   onHint?: () => void;
   /** data-testid on the option (AI settings model pickers). */
@@ -44,6 +44,7 @@ export function PickerSelect({
   maxMenuHeight,
   describedBy,
   invalid,
+  menuClassName,
 }: {
   /** The trigger's id (the field label points at it). */
   id: string;
@@ -78,6 +79,11 @@ export function PickerSelect({
   maxMenuHeight?: number;
   /** aria-describedby of the trigger (help or error text). */
   describedBy?: string;
+  /**
+   * Extra class on the menu surface. "vp-drawer" gives the nearly solid glass surface of the dashboard view menu, for
+   * menus that open over a blurred card (AI settings > Features), where the 72% glass alone reads as see-through.
+   */
+  menuClassName?: string;
   /** aria-invalid on the trigger. */
   invalid?: boolean;
 }) {
@@ -155,7 +161,7 @@ export function PickerSelect({
         </span>
       )}
       {open && (
-        <div className="vp-pop" style={trigger ? { left: 0, top: "calc(100% + 4px)", ...anchor, width: menuWidth ?? 160, padding: 4, zIndex: 40 } : menuWidth ? { left: 0, width: menuWidth, top: "calc(100% + 4px)", padding: 4 } : { left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
+        <div className={menuClassName ? `vp-pop ${menuClassName}` : "vp-pop"} style={trigger ? { left: 0, top: "calc(100% + 4px)", ...anchor, width: menuWidth ?? 160, padding: 4, zIndex: 40 } : menuWidth ? { left: 0, width: menuWidth, top: "calc(100% + 4px)", padding: 4 } : { left: 0, right: 0, width: "auto", top: "calc(100% + 4px)", padding: 4 }}>
           <ul id={listId} role="listbox" aria-label={label} className="vp-list" style={maxMenuHeight ? { maxHeight: maxMenuHeight, overflowY: "auto" } : undefined}>
             {status && (
               <li role="presentation" className="px-2 text-muted type-caption">
@@ -184,7 +190,7 @@ export function PickerSelect({
                     {o.onHint ? (
                       <button
                         type="button"
-                        className="ml-auto shrink-0 cursor-pointer text-muted underline underline-offset-2 type-caption hover:text-fg"
+                        className="ml-auto shrink-0 cursor-pointer text-muted type-caption hover:text-fg focus-visible:outline-2 focus-visible:outline-(--color-accent)"
                         onClick={(e) => {
                           e.stopPropagation();
                           setOpen(false);

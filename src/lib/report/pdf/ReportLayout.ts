@@ -360,6 +360,11 @@ export interface RowLayout {
   note: { x: number; y: number; w: number; lines: TextLine[]; muted: boolean } | null;
   /** y of line 2 relative to the content top. */
   lineTwoY: number;
+  /**
+   * "Waiting on: ..." line (one line, clipped with an ellipsis) under the note, in the note's column. Set only when
+   * the row carries `waitingOn`, so every other row lays out exactly as before.
+   */
+  waiting?: { x: number; y: number; w: number; label: string; labelW: number; text: string };
 }
 
 export type BodyBlock =
@@ -946,8 +951,28 @@ export class ReportLayout {
         note.y = lineOneH + g.NOTE_GAP;
       }
     }
-    return { projectId: row.projectId, height: g.ROW_PAD * 2 + content + g.ROW_BORDER, cells, note, lineTwoY };
+    // "Waiting on" line: only when the row carries waitingOn, so rows without it keep their exact height and cells.
+    let waiting: RowLayout["waiting"];
+    const waitingText = row.waitingOn?.replace(/\s+/g, " ").trim();
+    if (waitingText) {
+      const labelW = m.width(`${ReportLayout.WAITING_LABEL} `, S.table, ReportLayout.WAITING_LABEL_WEIGHT);
+      const text = TextMeasure.fitLine(m, waitingText, Math.max(0, placement.w - labelW), S.table, 400);
+      const y = note
+        ? note.y + note.lines.length * g.TABLE_LH
+        : placement.underMilestone
+          ? Math.max(1, cells.find((c): c is Extract<RowCell, { kind: "nextMilestone" }> => c.kind === "nextMilestone")?.lines.length ?? 1) * g.TABLE_LH + g.NOTE_GAP
+          : placement.ownLine
+            ? content + g.NOTE_GAP
+            : lineOneH + g.NOTE_GAP;
+      waiting = { x: placement.x, y, w: placement.w, label: ReportLayout.WAITING_LABEL, labelW, text };
+      content = Math.max(content, y + g.TABLE_LH);
+    }
+    return { projectId: row.projectId, height: g.ROW_PAD * 2 + content + g.ROW_BORDER, cells, note, lineTwoY, ...(waiting ? { waiting } : {}) };
   }
+
+  /** Label of the optional "Waiting on" line (ReportRow.waitingOn). */
+  static readonly WAITING_LABEL = "Waiting on:";
+  static readonly WAITING_LABEL_WEIGHT = 600;
 
   /** Weight of the "Contracts:" label (the same as the name: both regular secondary). */
   static readonly CONTRACTS_PREFIX_WEIGHT = 400;

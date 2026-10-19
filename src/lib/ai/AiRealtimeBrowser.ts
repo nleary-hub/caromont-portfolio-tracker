@@ -1,4 +1,5 @@
 import type { AiLiveBackendUsage } from "./AiLiveClient";
+import { AiVoiceTranscript } from "./AiVoiceTranscript";
 import { AiRealtimeClient, type AiRealtimeErrorInfo, type AiRealtimeTicket } from "./AiRealtimeClient";
 
 /** The WebRTC handshake failed. Carries OpenAI's status and scrubbed error so the panel can report it for the log. */
@@ -13,6 +14,8 @@ export type AiVoicePhase = "listening" | "speaking";
 
 export interface AiRealtimeHandlers {
   onPhase(phase: AiVoicePhase): void;
+  /** A transcript event (on screen only): who spoke, the text, and whether their line is finished. */
+  onTranscript?(who: "you" | "ai", text: string, final: boolean): void;
   /** The model asked to suggest changes; return the text sent back to it as the tool result. */
   onToolCall(name: string, args: string): Promise<string>;
   onDropped(): void;
@@ -65,12 +68,14 @@ export class AiRealtimeBrowser {
       if (!closed && dc.readyState === "open") dc.send(JSON.stringify(o));
     };
     dc.onmessage = async (m) => {
-      let e: { type?: string; name?: string; call_id?: string; arguments?: string; event?: { type?: string; item?: { type?: string; name?: string; call_id?: string; arguments?: string }; response?: { usage?: { input_tokens?: number; output_tokens?: number } } } };
+      let e: { type?: string; delta?: unknown; transcript?: unknown; name?: string; call_id?: string; arguments?: string; event?: { type?: string; item?: { type?: string; name?: string; call_id?: string; arguments?: string }; response?: { usage?: { input_tokens?: number; output_tokens?: number } } } };
       try {
         e = JSON.parse(String(m.data));
       } catch {
         return;
       }
+      const said = AiVoiceTranscript.read(e);
+      if (said) h.onTranscript?.(said.who, said.text, said.final);
       if (live) {
         // Live API events (gpt-live-*): transcripts drive the phase; tool calls arrive from the Responses backend.
         if (e.type === "session.input_transcript.delta") h.onPhase("listening");
