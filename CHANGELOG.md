@@ -2,6 +2,10 @@
 
 Plain-language notes for Nick. Newest first.
 
+## Unreleased
+
+- Voice chat: a chat longer than 15 minutes under a raised session limit now saves when you press End chat (migration 0062 lets the stored length go up to 60 minutes, matching the limit an admin can set).
+
 ## Unreleased: Tracker AI overhaul (draft PR, stacked on the per-feature AI provider PR)
 
 ### Copy fixes (Writing Bot)

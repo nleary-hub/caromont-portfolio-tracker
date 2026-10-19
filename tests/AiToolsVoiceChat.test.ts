@@ -296,7 +296,8 @@ describe("step 10: migration and copy", () => {
     await ins("00000000-0000-4000-8000-000000000001", "session_started", "NULL");
     await ins("00000000-0000-4000-8000-000000000002", "session_ended", "90");
     await expect(ins("00000000-0000-4000-8000-000000000003", "session_ended", "30")).rejects.toThrow();
-    await expect(ins("00000000-0000-4000-8000-000000000004", "session_ended", "901")).rejects.toThrow();
+    // 0062 widened the 0048 upper limit from 900 to 3600 (the 0060 session limit); above that is still refused.
+    await expect(ins("00000000-0000-4000-8000-000000000004", "session_ended", "3601")).rejects.toThrow();
     // Still strictly append-only.
     await expect(db.exec(`UPDATE "ai_usage_log" SET "usageSeconds" = 5 WHERE "id" = '00000000-0000-4000-8000-000000000001'`)).rejects.toThrow();
     await expect(db.exec(`DELETE FROM "ai_usage_log" WHERE "id" = '00000000-0000-4000-8000-000000000001'`)).rejects.toThrow();
