@@ -316,9 +316,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 const r = await setProjectHidden(projectId, context, hidden);
                 return r.ok ? null : r.error;
               },
-              setPeopleFieldAction: async (projectId, field, value) => {
+              setPeopleFieldAction: async (projectId, field, value, opts) => {
                 "use server";
-                const r = await setProjectPeopleField(projectId, field, value);
+                const r = await setProjectPeopleField(projectId, field, value, opts?.once === true);
                 return r.ok ? null : r.error;
               },
               saveProjectFormAction: async (projectId, changes, milestones) => {

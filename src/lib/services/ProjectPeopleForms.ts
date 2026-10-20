@@ -22,8 +22,15 @@ export class ProjectPeopleForms {
   static readonly NOT_AUTHORIZED = "Not authorized.";
   static readonly INVALID = "Invalid value.";
   static readonly FAILED = "Could not save the change.";
+  /** Longest one-off contracts lead name. */
+  static readonly ONCE_MAX = 80;
 
-  static async setField(viewer: Viewer | null, projectId: string, field: string, value: string, db: PrismaClient = Db.client, scope?: ServiceLineScope): Promise<PeopleFieldResult> {
+  /**
+   * `once` (item 4, "Use once (don't save to list)"): the name is stored on this project only. Owner and requester
+   * skip rememberPerson; a contracts lead not on the line's list is accepted for this save only (the list is not
+   * changed; later saves keep it because an unchanged stored value is grandfathered).
+   */
+  static async setField(viewer: Viewer | null, projectId: string, field: string, value: string, db: PrismaClient = Db.client, scope?: ServiceLineScope, opts: { once?: boolean } = {}): Promise<PeopleFieldResult> {
     if (!ProjectService.isPeopleField(field)) return { ok: false, error: ProjectPeopleForms.UNKNOWN_FIELD };
     if (!viewer?.isAdmin) return { ok: false, error: ProjectPeopleForms.NOT_AUTHORIZED };
     let text = String(value ?? "");
@@ -31,8 +38,12 @@ export class ProjectPeopleForms {
       const line = scope ?? (await ServiceLineAccess.activeFor(viewer, db));
       // A typed name already on any of the line's lists (any case or spacing) is saved with that list's spelling.
       if (field === "owner" || field === "physicianChampion") text = await OwnerNamesService.savedSpelling(line, text, db);
-      await ProjectService.setPeopleField(projectId, field, text, viewer, db, line);
-      if (field === "owner" || field === "physicianChampion") {
+      const once = opts.once === true;
+      const name = text.trim().replace(/\s+/g, " ");
+      if (once && field === "contractsLead" && (!name || name.length > ProjectPeopleForms.ONCE_MAX)) return { ok: false, error: ProjectPeopleForms.INVALID };
+      const rulesScope = once && field === "contractsLead" ? { ...line, contractsLeads: [...line.contractsLeads, name] } : line;
+      await ProjectService.setPeopleField(projectId, field, once && field === "contractsLead" ? name : text, viewer, db, rulesScope);
+      if (!once && (field === "owner" || field === "physicianChampion")) {
         await PeopleService.rememberPerson(line, field === "owner" ? "owner" : "requester", text, viewer, db).catch((e) => console.error("Admin action failed: rememberPerson", e));
       }
       return { ok: true };

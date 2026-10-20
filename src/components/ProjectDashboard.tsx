@@ -97,7 +97,7 @@ export interface AdminDashboardProps {
   requesterSuggestions: string[];
   /** Milestone Owner picker names: Owners, Requesters, Contracts leads and the milestone-owner list (migration 0036). */
   milestoneOwnerOptions: string[];
-  setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
+  setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string, opts?: { once?: boolean }) => Promise<string | null>;
   /** Top bar admin menu items (`AdminMenu.itemsFor`, computed on the server). */
   menuItems: AdminMenuItem[];
   /** Drawer edit form values per listed project (stored values, as form strings). */

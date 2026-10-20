@@ -21,6 +21,9 @@ export class ContractsLead {
    */
   /** "No contract lead" (0065): like the requester's Not applicable, the line is hidden from the dashboard and report. */
   static readonly NONE_LABEL = "No contract lead";
+  /** One-off name (item 4): stored on the project only, never added to the line's list. */
+  static readonly ONCE_OPTION = "Other name, use once (don't save to list)";
+  static readonly ONCE_BUTTON = "Use once";
 
   /** Per-project role label (0066). */
   static readonly ROLES = ["contractLead", "projectManager"] as const;

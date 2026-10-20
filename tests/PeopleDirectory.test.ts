@@ -85,10 +85,10 @@ describe("PeopleComboboxModel: rows and keyboard", () => {
   it("typing filters; no match shows No match and Add last; highlight defaults to the first match, else Add", () => {
     const opts = ["Amy", "Bob", "Cara"];
     const typed = PeopleComboboxModel.rows("owner", opts, "a", true, UNSET);
-    expect(labels(typed)).toEqual(["Clear (To assign)", "---", "Amy", "Cara", "Add 'a'"]);
+    expect(labels(typed)).toEqual(["Clear (To assign)", "---", "Amy", "Cara", "Add 'a'", "Use 'a' once (don't save to list)"]);
     expect(PeopleComboboxModel.options(typed)[PeopleComboboxModel.defaultHighlight(typed, true)].label).toBe("Amy");
     const none = PeopleComboboxModel.rows("owner", opts, "  Zed   Q ", true, UNSET);
-    expect(labels(none)).toEqual(["Clear (To assign)", "---", "[No match]", "Add 'Zed Q'"]);
+    expect(labels(none)).toEqual(["Clear (To assign)", "---", "[No match]", "Add 'Zed Q'", "Use 'Zed Q' once (don't save to list)"]);
     const add = PeopleComboboxModel.options(none)[PeopleComboboxModel.defaultHighlight(none, true)];
     expect(add).toMatchObject({ variant: "add", value: { kind: "name", name: "Zed Q" } });
     // Exact match (ignoring case) hides Add.
@@ -103,6 +103,7 @@ describe("PeopleComboboxModel: rows and keyboard", () => {
       "---",
       "[No names yet. Type to add one.]",
       "Add 'Jo'",
+      "Use 'Jo' once (don't save to list)",
     ]);
   });
 

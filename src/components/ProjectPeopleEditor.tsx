@@ -30,7 +30,7 @@ export interface ProjectPeopleEditorProps {
   /** Requester combobox options: the line's Requesters list (Admin > People), cleaned by PeopleDirectory.merge. */
   requesterSuggestions: readonly string[];
   /** Resolves to an error message, or null on success. */
-  saveAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
+  saveAction: (projectId: string, field: PeopleFieldName, value: string, opts?: { once?: boolean }) => Promise<string | null>;
   /** The service line's contracts leads (default: the CVPSL list). A stored name not in the list stays selectable. */
   contractsLeads?: readonly string[];
   /** The service line's departments (default: ServiceAreaInfo.LEGACY). Open ones are offered; a stored archived one stays selectable. */
@@ -100,6 +100,8 @@ function Row({ label, htmlFor, state, children }: { label: string; htmlFor: stri
 /** Contracts lead: the service line's pick-list plus a blank "To assign" option. */
 /** Select value for "No contract lead" (never a real name: names are trimmed and cannot start with "__"). */
 export const NO_CONTRACT_LEAD = "__none__";
+/** Select value that opens the one-off name field (item 4). */
+export const ONCE_CONTRACT_LEAD = "__once__";
 
 function ContractsLeadSelect(props: ProjectPeopleEditorProps) {
   const [role, setRole] = useState<LeadRole>(props.leadRole ?? "contractLead");
@@ -146,6 +148,20 @@ function LeadRoleToggle({ projectId, role, setRole, saveAction }: { projectId: s
 function ContractsLeadPicker({ projectId, contractsLead, contractsLeadNotApplicable, contractsLeads, saveAction, label }: ProjectPeopleEditorProps & { label: string }) {
   const [value, setValue] = useState<string>(contractsLeadNotApplicable && !contractsLead ? NO_CONTRACT_LEAD : (contractsLead ?? ""));
   const [state, save] = useFieldState();
+  const [onceText, setOnceText] = useState("");
+  const [onceOpen, setOnceOpen] = useState(false);
+  const applyOnce = () => {
+    const name = onceText.trim().replace(/\s+/g, " ");
+    if (!name) return;
+    const prev = value;
+    setValue(name);
+    setOnceOpen(false);
+    void save(async () => {
+      const err = await saveAction(projectId, "contractsLead", name, { once: true });
+      if (err) setValue(prev);
+      return err;
+    });
+  };
   const id = `contractsLead-${projectId}`;
   return (
     <Row label={label} htmlFor={id} state={state}>
@@ -155,6 +171,7 @@ function ContractsLeadPicker({ projectId, contractsLead, contractsLeadNotApplica
         value={value}
         onChange={(e) => {
           const next = e.target.value;
+          if (next === ONCE_CONTRACT_LEAD) return setOnceOpen(true);
           const prev = value;
           setValue(next);
           void save(async () => {
@@ -166,12 +183,37 @@ function ContractsLeadPicker({ projectId, contractsLead, contractsLeadNotApplica
       >
         <option value="">{Assignee.TO_ASSIGN}</option>
         <option value={NO_CONTRACT_LEAD}>{ContractsLead.NONE_LABEL}</option>
-        {PickList.withCurrent(ContractsLead.pickerOptions(contractsLeads), contractsLead).map((n) => (
+        <option value={ONCE_CONTRACT_LEAD}>{ContractsLead.ONCE_OPTION}</option>
+        {PickList.withCurrent(ContractsLead.pickerOptions(contractsLeads), value && value !== NO_CONTRACT_LEAD ? value : contractsLead).map((n) => (
           <option key={n} value={n}>
             {n}
           </option>
         ))}
       </SelectControl>
+      {onceOpen && (
+        <span className="flex items-center gap-1" data-testid="contracts-lead-once">
+          <input
+            aria-label={ContractsLead.ONCE_OPTION}
+            value={onceText}
+            maxLength={80}
+            autoFocus
+            onChange={(e) => setOnceText(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                applyOnce();
+              } else if (e.key === "Escape") {
+                e.stopPropagation();
+                setOnceOpen(false);
+              }
+            }}
+            className="h-7 w-[150px] rounded-[6px] border border-line bg-input px-2 type-table"
+          />
+          <button type="button" onClick={applyOnce} className="type-caption text-accent">
+            {ContractsLead.ONCE_BUTTON}
+          </button>
+        </span>
+      )}
     </Row>
   );
 }
@@ -226,9 +268,10 @@ function usePeoplePicker(role: PeopleRole, props: ProjectPeopleEditorProps, init
     const shown: PeopleValue = next.kind === "name" ? { kind: "name", name: call.value } : next;
     setValue(shown);
     void save(async () => {
-      const err = await props.saveAction(props.projectId, call.field, call.value);
+      const err = call.once ? await props.saveAction(props.projectId, call.field, call.value, { once: true }) : await props.saveAction(props.projectId, call.field, call.value);
       if (err) setValue(prev);
-      else if (shown.kind === "name") setAdded((a) => [...a, shown.name]);
+      // A one-off name stays on this project only: it never joins the picker's list.
+      else if (shown.kind === "name" && !call.once) setAdded((a) => [...a, shown.name]);
       return err;
     });
   };
