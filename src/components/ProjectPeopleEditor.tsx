@@ -186,12 +186,12 @@ function ContractsLeadPicker({ projectId, contractsLead, contractsLeadNotApplica
       >
         <option value="">{Assignee.TO_ASSIGN}</option>
         <option value={NO_CONTRACT_LEAD}>{ContractsLead.NONE_LABEL}</option>
-        <option value={ONCE_CONTRACT_LEAD}>{ContractsLead.ONCE_OPTION}</option>
         {PickList.withCurrent(NameUsage.sort(ContractsLead.pickerOptions(contractsLeads), nameUsage?.contracts), value && value !== NO_CONTRACT_LEAD ? value : contractsLead).map((n) => (
           <option key={n} value={n}>
             {n}
           </option>
         ))}
+        <option value={ONCE_CONTRACT_LEAD}>{ContractsLead.ONCE_OPTION}</option>
       </SelectControl>
       {onceOpen && (
         <span className="flex items-center gap-1" data-testid="contracts-lead-once">

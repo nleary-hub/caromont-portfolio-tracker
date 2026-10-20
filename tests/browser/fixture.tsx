@@ -1,4 +1,5 @@
 import { createRoot } from "react-dom/client";
+import { PdfRowOrder } from "@/lib/report/PdfRowOrder";
 import { YearEndReportButton } from "../../src/components/YearEndReportButton";
 import { DriveCheckService } from "../../src/lib/services/DriveCheckService";
 import { YearEndPreviewCopy } from "../../src/lib/report/YearEndPreviewCopy";
@@ -40,7 +41,7 @@ const rows: DashboardRow[] = ["Zulu", "Alpha", "Bravo"].map((name, i) => ({
 // ?sample=1: the fictional PDF sample rows (SampleReportData), shuffled; window.__pdfOrder is the PDF's own order.
 if (new URLSearchParams(window.location.search).has("sample")) {
   const sample = SampleReportData.rows();
-  (window as unknown as { __pdfOrder?: string[] }).__pdfOrder = sample.map(r => r.projectId);
+  (window as unknown as { __pdfOrder?: string[] }).__pdfOrder = PdfRowOrder.apply(sample).map(r => r.projectId);
   rows.splice(0, rows.length, ...[...sample].reverse().map(r => ({ ...r, id: r.projectId, includeInReport: true, updatedOn: r.updatedOn ?? "2026-09-29" }) as unknown as DashboardRow));
 }
 // ?deps=demo|empty|fail: fictional projects with dependencies and external blockers (DepsFixture).
