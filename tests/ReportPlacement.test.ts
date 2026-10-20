@@ -281,7 +281,7 @@ describe("totals grid placement", () => {
 
     const extraList = [...ServiceAreaInfo.LEGACY, { id: "Vascular", name: "Vascular", shortName: "Vascular" }, { id: "Structural", name: "Structural", shortName: "Structural" }];
     const extraRows = [...SampleReportData.rows(), { ...SampleReportData.rows()[0], projectId: "extra-v", name: "Sample: Vascular", serviceArea: "Vascular" }, { ...SampleReportData.rows()[1], projectId: "extra-s", name: "Sample: Structural", serviceArea: "Structural" }];
-    const extra = Doc.layout({ totalsGrid: "lastPage", rows: extraRows, lineDepartments: extraList, header: ReportBuilder.header(extraRows), showKeyPage: true });
+    const extra = Doc.layout({ totalsGrid: "lastPage", rows: extraRows, lineDepartments: extraList, header: ReportBuilder.header(extraRows), showKeyPage: true, showUpdatedOn: true });
     expect(extra.pages.some((p) => p.keySummaryOnly)).toBe(true);
     expect(extra.pages.filter((p) => p.kind === "key")).toHaveLength(2);
   });

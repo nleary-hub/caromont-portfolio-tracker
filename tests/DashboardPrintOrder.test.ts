@@ -5,7 +5,6 @@ import { DashboardTable } from "@/components/DashboardTable";
 import type { DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { PrintOrder } from "@/lib/dashboard/PrintOrder";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
-import { ReportBuilder } from "@/lib/report/ReportBuilder";
 import { SampleReportData } from "@/lib/report/SampleReportData";
 import { ReportLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
@@ -33,7 +32,7 @@ describe("As it will print (dashboard order matches the PDF)", () => {
     const order = (html: string) => [...html.matchAll(/data-row-key="([^"]+)"/g)].map((m) => m[1]);
     const props = { rows, settings: ViewSettings.defaults("dashboard"), selectedId: null, onSelect: () => {}, today: "2026-10-04", emptyText: "", renderMeta: () => null, onSort: () => {} };
     const on = renderToStaticMarkup(createElement(DashboardTable, { ...props, printOrder: true }));
-    expect(order(on)).toEqual(ReportBuilder.sort(rows).map((r) => r.id));
+    expect(order(on)).toEqual(PrintOrder.rows(rows).map((r) => r.id));
     expect(on).toContain('data-sort-locked="true"');
     expect(on).toContain(PrintOrder.SORT_DISABLED_TOOLTIP);
     const off = renderToStaticMarkup(createElement(DashboardTable, { ...props, printOrder: false }));
@@ -60,6 +59,7 @@ describe("As it will print (dashboard order matches the PDF)", () => {
     const src = readFileSync("src/lib/dashboard/PrintOrder.ts", "utf8");
     expect(src).toContain('from "@/lib/report/ReportBuilder"');
     expect(src).toContain("ReportBuilder.sort(");
+    expect(src).toContain("PdfRowOrder.apply(");
     expect(src).not.toMatch(/severityRank|localeCompare/);
   });
 });

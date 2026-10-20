@@ -11,6 +11,7 @@ import { PeopleLabel } from "@/lib/domain/PeopleLabel";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { MilestoneOwner } from "@/lib/domain/MilestoneOwner";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
+import { PdfRowOrder } from "@/lib/report/PdfRowOrder";
 import { ServiceAreaInfo, type AreaGroup, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
@@ -1683,29 +1684,13 @@ export class ReportLayout {
     return g.CONTENT_H - headerHeight - g.COLHEAD_H - g.FOOTER_GAP - g.FOOTER_H;
   }
 
-  /**
-   * PDF default order of rows inside one department (Oct 20, 2026): completed MFI, completed, active MFI, On track,
-   * At risk, Off track, On hold, Not started (anything else last). Stable: ties keep the incoming report order.
-   */
+  /** PDF default order inside each department (PdfRowOrder, shared with the dashboard's As it will print). */
   static pdfRowRank(row: Pick<ReportRow, "status" | "isMfi">): number {
-    const complete = row.status === "Complete";
-    if (complete) return row.isMfi ? 0 : 1;
-    if (row.isMfi) return 2;
-    const i = (["OnTrack", "AtRisk", "OffTrack", "OnHold", "NotStarted"] as const).indexOf(row.status as never);
-    return i === -1 ? 8 : 3 + i;
+    return PdfRowOrder.rank(row);
   }
 
-  /** Rows in the PDF default order within each department; the order of departments is untouched. Pure. */
   static pdfDefaultOrder<R extends Pick<ReportRow, "status" | "isMfi" | "serviceArea">>(rows: readonly R[]): R[] {
-    const firstSeen = new Map<string, number>();
-    rows.forEach((r) => {
-      const g = String(ServiceAreaInfo.groupOf(r.serviceArea));
-      if (!firstSeen.has(g)) firstSeen.set(g, firstSeen.size);
-    });
-    return rows
-      .map((r, i) => ({ r, i, g: firstSeen.get(String(ServiceAreaInfo.groupOf(r.serviceArea)))! }))
-      .sort((a, b) => a.g - b.g || ReportLayout.pdfRowRank(a.r) - ReportLayout.pdfRowRank(b.r) || a.i - b.i)
-      .map((x) => x.r);
+    return PdfRowOrder.apply(rows);
   }
 
   /** Gap between the department name and the manager subtext in the bar. */

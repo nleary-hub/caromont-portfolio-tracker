@@ -541,7 +541,8 @@ describe("Task 5: completion date rules", () => {
 describe("Task 6: Infor slot", () => {
   it("the Updated date starts at one x on every row and page (see InforRequestNumber.test.ts for widths)", () => {
     const m = new TextMeasure();
-    const doc = SampleReportData.docInput();
+    // The Updated line is off by default on the PDF since Oct 20, 2026; this checks its slot with it on.
+    const doc = SampleReportData.docInput({ showUpdatedOn: true });
     const layout = ReportLayout.layout(doc, m);
     const xs = new Set<number>();
     let withNo = 0;

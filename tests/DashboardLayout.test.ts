@@ -41,7 +41,8 @@ describe("Grouping matches the PDF", () => {
     expect(groups.map((g) => g.area)).toEqual(pdfSections.map((s) => s.area));
     expect(groups.map((g) => g.countText)).toEqual(pdfSections.map((s) => ReportLayout.sectionCountText(s.count, s.completedCount)));
     const pdfRowOrder = blocks.flatMap((b) => (b.kind === "row" ? [b.row.projectId] : []));
-    expect(groups.flatMap((g) => g.rows.map((r) => r.projectId))).toEqual(pdfRowOrder);
+    // The dashboard keeps the report order (never auto-reordered); the PDF applies its default order within departments.
+    expect(ReportLayout.pdfDefaultOrder(groups.flatMap((g) => g.rows)).map((r) => r.projectId)).toEqual(pdfRowOrder);
   });
 
   it("departments in ServiceAreaInfo order with Unassigned last; empty departments are left out", () => {
