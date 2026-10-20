@@ -1,7 +1,6 @@
 "use client";
 
 import { MilestoneGhost } from "@/lib/ai/nextstep/MilestoneGhost";
-import { suggestAiNextStep } from "@/app/actions/aiActions";
 import type { NameUsageCounts } from "@/lib/people/NameUsage";
 import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { CompletionTag } from "./CompletionTag";
@@ -963,7 +962,7 @@ export function ProjectDashboard({
                   ownerOptions={admin.milestoneOwnerOptions}
                   today={today}
                   {...(aiPlacements && "next_step" in aiPlacements && aiPlacements.next_step == null
-                    ? { milestoneSuggest: async () => MilestoneGhost.fromResult(await suggestAiNextStep(selected.id)) }
+                    ? { milestoneSuggest: async () => MilestoneGhost.fromResult(await (await import("@/app/actions/aiActions")).suggestAiNextStep(selected.id)) }
                     : {})}
                   dependencies={
                     admin.dependencyActions ? (

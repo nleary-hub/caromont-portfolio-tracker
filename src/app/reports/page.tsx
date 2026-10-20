@@ -59,7 +59,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const options = viewer.isAdmin ? await ReportOptionsService.get(undefined, scope) : null;
   const today = DateOnly.today();
   // What the next freeze will use (0064): the latest on-demand report's display settings, read-only here.
-  const nextDisplay = viewer.isAdmin && scope.isDefault ? ReportDisplaySettings.parse((await Db.client.reportDisplaySettings.findUnique({ where: { serviceLineId: scope.id } }).catch(() => null))?.settingsJson ?? null) : undefined;
+  const nextDisplay = viewer.isAdmin && scope.isDefault ? ReportDisplaySettings.parse((await Promise.resolve(Db.client.reportDisplaySettings?.findUnique({ where: { serviceLineId: scope.id } })).catch(() => null))?.settingsJson ?? null) : undefined;
   const yearEndYears = viewer.isAdmin ? await YearEndReportService.years(viewer, scope).catch(() => [FiscalYear.of(today).label]) : [];
   const yearEnd = await YearEndReportService.list(scope).catch(() => []);
   // Deep link for review and screenshots: ?yearEnd=1 opens the dialog.
