@@ -1,5 +1,6 @@
 "use client";
 
+import type { NameUsageCounts } from "@/lib/people/NameUsage";
 import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { CompletionTag } from "./CompletionTag";
 import dynamic from "next/dynamic";
@@ -93,6 +94,8 @@ export interface AdminDashboardProps {
   deleteProjectAction: (projectId: string) => Promise<string | null>;
   /** Owner datalist for the drawer edit panel (department leaders plus existing owners). */
   ownerSuggestions: string[];
+  /** Name usage across the line's projects (item 5): pickers sort most used first. */
+  nameUsage?: NameUsageCounts;
   /** Existing requester names for the drawer requester picker (admin only). */
   requesterSuggestions: string[];
   /** Milestone Owner picker names: Owners, Requesters, Contracts leads and the milestone-owner list (migration 0036). */
@@ -922,6 +925,7 @@ export function ProjectDashboard({
                   serviceArea={selected.serviceArea}
                   {...(line ? { contractsLeads: line.contractsLeads, departments: line.departments } : {})}
                   ownerSuggestions={admin.ownerSuggestions}
+                  {...(admin.nameUsage ? { nameUsage: admin.nameUsage } : {})}
                   saveAction={admin.setPeopleFieldAction}
                 />
               ) : null
@@ -989,6 +993,7 @@ export function ProjectDashboard({
                       serviceArea={selected.serviceArea}
                       {...(line ? { contractsLeads: line.contractsLeads } : {})}
                       ownerSuggestions={admin.ownerSuggestions}
+                  {...(admin.nameUsage ? { nameUsage: admin.nameUsage } : {})}
                       saveAction={admin.setPeopleFieldAction}
                     />
                   }

@@ -6,6 +6,7 @@ import { ContractsLead, type LeadRole } from "@/lib/domain/ContractsLead";
 import { Requester } from "@/lib/domain/Requester";
 import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { PickList } from "@/lib/people/PickList";
+import { NameUsage, type NameUsageCounts } from "@/lib/people/NameUsage";
 import { PeopleComboboxModel, type PeopleValue } from "@/lib/people/PeopleComboboxModel";
 import { PeopleDirectory, type PeopleRole } from "@/lib/people/PeopleDirectory";
 import { SelectControl } from "./FieldControl";
@@ -27,6 +28,8 @@ export interface ProjectPeopleEditorProps {
   serviceArea: DepartmentKey | null;
   /** Owner combobox options: the line's Owners list (Admin > People), cleaned by PeopleDirectory.merge. */
   ownerSuggestions: readonly string[];
+  /** Usage counts across the line's projects (item 5): pickers list the most used names first, ties A to Z. */
+  nameUsage?: NameUsageCounts;
   /** Requester combobox options: the line's Requesters list (Admin > People), cleaned by PeopleDirectory.merge. */
   requesterSuggestions: readonly string[];
   /** Resolves to an error message, or null on success. */
@@ -145,7 +148,7 @@ function LeadRoleToggle({ projectId, role, setRole, saveAction }: { projectId: s
   );
 }
 
-function ContractsLeadPicker({ projectId, contractsLead, contractsLeadNotApplicable, contractsLeads, saveAction, label }: ProjectPeopleEditorProps & { label: string }) {
+function ContractsLeadPicker({ projectId, contractsLead, contractsLeadNotApplicable, contractsLeads, saveAction, label, nameUsage }: ProjectPeopleEditorProps & { label: string }) {
   const [value, setValue] = useState<string>(contractsLeadNotApplicable && !contractsLead ? NO_CONTRACT_LEAD : (contractsLead ?? ""));
   const [state, save] = useFieldState();
   const [onceText, setOnceText] = useState("");
@@ -184,7 +187,7 @@ function ContractsLeadPicker({ projectId, contractsLead, contractsLeadNotApplica
         <option value="">{Assignee.TO_ASSIGN}</option>
         <option value={NO_CONTRACT_LEAD}>{ContractsLead.NONE_LABEL}</option>
         <option value={ONCE_CONTRACT_LEAD}>{ContractsLead.ONCE_OPTION}</option>
-        {PickList.withCurrent(ContractsLead.pickerOptions(contractsLeads), value && value !== NO_CONTRACT_LEAD ? value : contractsLead).map((n) => (
+        {PickList.withCurrent(NameUsage.sort(ContractsLead.pickerOptions(contractsLeads), nameUsage?.contracts), value && value !== NO_CONTRACT_LEAD ? value : contractsLead).map((n) => (
           <option key={n} value={n}>
             {n}
           </option>
@@ -260,7 +263,7 @@ function usePeoplePicker(role: PeopleRole, props: ProjectPeopleEditorProps, init
   const [value, setValue] = useState<PeopleValue>(initial);
   const [added, setAdded] = useState<string[]>([]);
   const [state, save] = useFieldState();
-  const options = PeopleDirectory.merge([...suggestions, ...added]);
+  const options = NameUsage.sort(PeopleDirectory.merge([...suggestions, ...added]), props.nameUsage?.[role === "owner" ? "owner" : "requester"]);
   const onPick = (next: PeopleValue) => {
     const call = PeopleComboboxModel.saveFor(role, next, value);
     if (!call) return;
