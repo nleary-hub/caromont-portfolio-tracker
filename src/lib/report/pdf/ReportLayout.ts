@@ -76,6 +76,11 @@ export interface ReportDocInput {
    * ServiceAreaInfo.LEGACY, today's seven keyed by their old values (snapshots frozen before migration 0018).
    */
   lineDepartments?: DepartmentList;
+  /**
+   * Show the "Updated <date>" last-changed line under each project name. Off by default on the PDF (Oct 20, 2026);
+   * the dashboard keeps showing it. Pass true to bring the line (and its key entries) back.
+   */
+  showUpdatedOn?: boolean;
 }
 
 /** Geometry in PDF points (1 in = 72 pt). Mirrors portfolio-tracker-mockups/report.css. */
@@ -644,7 +649,7 @@ export class ReportLayout {
    * of rows listed because they were completed during the period (`listed`). The "Completed this period" line only explains
    * the old block, so it shows only for snapshots frozen with one (`completedBlock`).
    */
-  static key(m: Measurer, settings: ViewSettingsValue, listed: readonly ProjectStatus[] = [], completedBlock = true): KeyModel {
+  static key(m: Measurer, settings: ViewSettingsValue, listed: readonly ProjectStatus[] = [], completedBlock = true, showUpdatedOn = false): KeyModel {
     // Status chips off (report setting): no flag explanations at all, so the key is a status key.
     const chips = ViewSettings.isColumnVisible(settings, "flags") || !PdfReportLayout.hasOwnerColumn(settings);
     return {
@@ -661,8 +666,12 @@ export class ReportLayout {
         ...(ViewSettings.isColumnVisible(settings, "inforNumber")
           ? [{ sample: "REQ-4656", meaning: "Infor request number, when the project has one." }]
           : []),
-        { sample: "Updated Sep 22", meaning: "Date of the latest update to the project." },
-        { sample: "Updated Sep 1", meaning: `In amber when the project is stale (${AppConfig.STALE_AFTER_DAYS}+ days without an update).` },
+        ...(showUpdatedOn
+          ? [
+              { sample: "Updated Sep 22", meaning: "Date of the latest update to the project." },
+              { sample: "Updated Sep 1", meaning: `In amber when the project is stale (${AppConfig.STALE_AFTER_DAYS}+ days without an update).` },
+            ]
+          : []),
         { sample: "\u2193 from On track", meaning: "Status moved since the last report (\u2193 worse, \u2191 better)." },
         { sample: "No change.", meaning: "Nothing changed since the last report; the note is repeated." },
         { sample: "Due in red", meaning: "Overdue due date." },
@@ -1682,6 +1691,8 @@ export class ReportLayout {
     );
     const completedRows = departments && input.completed ? DepartmentFilter.apply(input.completed, departments, options) : input.completed;
     input = { ...input, rows, ...(completedRows ? { completed: completedRows } : {}), ...(departments ? { departments } : {}) };
+    // Last-changed date: off by default on the PDF (the row data keeps updatedOn; only the drawn line goes).
+    if (input.showUpdatedOn !== true) input = { ...input, rows: input.rows.map((r) => (r.updatedOn ? { ...r, updatedOn: null } : r)) };
     // Line layout: column order and widths ride on the settings, manual order within departments on the rows.
     // The default layout leaves both untouched (same objects), so the default PDF is exactly today's.
     if (input.layout && !LineLayout.isDefault(input.layout)) {
@@ -1777,7 +1788,7 @@ export class ReportLayout {
     }
 
     const key = showKey
-      ? ReportLayout.key(m, input.viewSettings, input.rows.filter((r) => r.completedInPeriod).map((r) => r.status), completed.length > 0)
+      ? ReportLayout.key(m, input.viewSettings, input.rows.filter((r) => r.completedInPeriod).map((r) => r.status), completed.length > 0, input.showUpdatedOn === true)
       : null;
     if (key) {
       if (model.totalsGrid === "lastPage") {
