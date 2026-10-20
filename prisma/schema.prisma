@@ -569,6 +569,8 @@ model Department {
   position      Int
   /// The ServiceArea value a seeded department replaced (maps pre-0018 data); null for departments added since.
   legacyKey     ServiceArea?
+  /// Optional department manager name (0063), shown as subtle subtext in the PDF department bar. Null = none.
+  managerName   String?
   archivedAt    DateTime?
   deletedAt     DateTime?
   deletedBy     String?

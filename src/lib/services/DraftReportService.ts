@@ -53,6 +53,7 @@ export class DraftReportService {
     }
     const data = await ReportDataLoader.load(db, now, line, departments);
     const period = ReportSchedule.upcomingPeriod(now);
+    const departmentManagers = await DraftReportService.managersFor(db, line.id);
     const bytes = await PdfReportRenderer.renderDocument({
       rows: data.rows,
       header: data.header,
@@ -70,8 +71,17 @@ export class DraftReportService {
       periodEnd: period.periodEnd,
       generatedAt: now,
       draft: true,
+      ...(departmentManagers ? { departmentManagers } : {}),
     });
     return { bytes, fileName: line.isDefault ? PdfReportRenderer.draftFileName(data.reportDate) : PdfReportRenderer.lineDraftFileName(line.shortName, data.reportDate) };
+  }
+
+  /** Department manager names (0063) by department id, or undefined when none is set. Read-only. */
+  static async managersFor(db: PrismaClient, serviceLineId: string): Promise<Record<string, string> | undefined> {
+    const rows = await db.department.findMany({ where: { serviceLineId, deletedAt: null, managerName: { not: null } }, select: { id: true, managerName: true } });
+    const out: Record<string, string> = {};
+    for (const r of rows) if (r.managerName?.trim()) out[r.id] = r.managerName.trim();
+    return Object.keys(out).length ? out : undefined;
   }
 
   /** An admin's narrowed selection, or undefined (every department or nothing valid: the admin report setting). */
