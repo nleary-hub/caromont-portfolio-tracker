@@ -1,5 +1,6 @@
 "use client";
 
+import { MilestoneGhost } from "@/lib/ai/nextstep/MilestoneGhost";
 import { useEffect, useRef, useState } from "react";
 import type { MilestoneSaveActionResult } from "@/app/actions/admin";
 import type { MilestoneEdit } from "@/lib/domain/MilestoneRules";
@@ -32,6 +33,11 @@ export interface MilestonesEditorProps {
   errors: string[];
   /** Owner picker names for each step (every People list of the line plus the milestone-owner list, OwnerNameLists.combined). Omit to hide the picker. */
   ownerOptions?: readonly string[];
+  /**
+   * Inline AI milestone suggestion (item 2): fetched once when the empty add input gets focus; shown as ghost text.
+   * Resolves to the suggested name, or null for none. Omit when AI is off for the drawer.
+   */
+  suggest?: () => Promise<string | null>;
 }
 
 const NEXT_ROW_BG = "#1A2233";
@@ -44,12 +50,23 @@ const DONE = "var(--status-complete-dark-fg)";
  * check, name (click to rename; it grows to fit, with a "23 / 2,000" counter), an Owner picker under each step, Next pill, the due date or "Done Sep 26", and a row menu
  * with Reopen and Delete. No inner scroll: the drawer scrolls as one piece.
  */
-export function MilestonesEditor({ initial, templates, today, checkerName, autosave, onStateChange, errors, ownerOptions }: MilestonesEditorProps) {
+export function MilestonesEditor({ initial, templates, today, checkerName, autosave, onStateChange, errors, ownerOptions, suggest }: MilestonesEditorProps) {
   const [state, setState] = useState(initial);
   const [saved, setSaved] = useState(initial);
   const [busy, setBusy] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
   const [newName, setNewName] = useState("");
+  const [ghost, setGhost] = useState<string | null>(null);
+  const [ghostDismissed, setGhostDismissed] = useState(false);
+  const [ghostAsked, setGhostAsked] = useState(false);
+  const askGhost = () => {
+    if (!suggest || ghostAsked) return;
+    setGhostAsked(true);
+    void suggest()
+      .then((s) => setGhost(s))
+      .catch(() => setGhost(null));
+  };
+  const ghostShown = MilestoneGhost.visible(ghost, newName, ghostDismissed);
   const [menuFor, setMenuFor] = useState<string | null>(null);
   const [pickerOpen, setPickerOpen] = useState(false);
   const [pending, setPending] = useState<TemplateDto | null>(null);
@@ -67,7 +84,6 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
   const nextKey = MilestoneEditorModel.nextKey(state);
   const stepErrors = MilestoneEditorModel.errors(state, saved);
   const from = MilestoneEditorModel.fromTemplate(state, templates);
-  const newTooLong = newName.trim().length > MilestoneEditorModel.NAME_MAX;
 
   useEffect(() => {
     if (!focusKey.current) return;
@@ -130,9 +146,9 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
     setAnnounce(`${moved.name} moved to position ${to + 1} of ${state.steps.length}`);
   };
 
-  const add = () => {
-    if (!newName.trim() || newTooLong) return;
-    void commit(MilestoneEditorModel.add(state, newName));
+  const add = (name: string = newName) => {
+    if (!name.trim() || name.length > MilestoneEditorModel.NAME_MAX) return;
+    void commit(MilestoneEditorModel.add(state, name));
     setNewName("");
   };
 
@@ -466,20 +482,45 @@ export function MilestonesEditor({ initial, templates, today, checkerName, autos
         </ol>
       )}
 
-      <div className="mt-2.5 flex flex-col">
+      <div className="relative mt-2.5 flex flex-col">
+        {ghostShown && (
+          <span aria-hidden="true" data-testid="milestone-ghost" className="pointer-events-none absolute top-[6px] left-[11px] right-2.5 truncate leading-[18px] text-muted/60 italic type-table">
+            {ghost}
+          </span>
+        )}
         <AutoGrowTextarea
           value={newName}
           rows={1}
-          onChange={(e) => setNewName(e.target.value)}
+          onFocus={askGhost}
+          onChange={(e) => {
+            setNewName(e.target.value);
+            if (e.target.value) setGhostDismissed(true);
+          }}
           onKeyDown={(e) => {
+            const g = MilestoneGhost.onKey(e.key, ghost, newName, ghostDismissed);
+            if (g === "accept") {
+              e.preventDefault();
+              setGhostDismissed(true);
+              add(ghost ?? "");
+              return;
+            }
+            if (g === "dismiss") {
+              if (e.key === "Escape") {
+                e.preventDefault();
+                e.stopPropagation();
+              }
+              setGhostDismissed(true);
+              if (e.key === "Escape") return;
+            }
             if (e.key === "Enter") {
               e.preventDefault();
               add();
             }
           }}
           disabled={busy}
-          placeholder="Add a milestone and press Enter"
+          placeholder={ghostShown ? "" : "Add a milestone and press Enter"}
           aria-label="New milestone name"
+          {...(ghostShown ? { "aria-description": `${MilestoneGhost.HINT} ${ghost}` } : {})}
           aria-describedby={newName ? "ms-new-count" : undefined}
           maxLength={MilestoneEditorModel.NAME_MAX}
           data-testid="new-milestone-input"

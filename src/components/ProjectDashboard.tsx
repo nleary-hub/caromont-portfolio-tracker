@@ -1,5 +1,7 @@
 "use client";
 
+import { MilestoneGhost } from "@/lib/ai/nextstep/MilestoneGhost";
+import { suggestAiNextStep } from "@/app/actions/aiActions";
 import type { NameUsageCounts } from "@/lib/people/NameUsage";
 import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { CompletionTag } from "./CompletionTag";
@@ -70,7 +72,6 @@ const AiBriefButton = dynamic(() => import("./AiPlacements").then((m) => m.AiBri
 const AiQuickCapture = dynamic(() => import("./AiPlacements").then((m) => m.AiQuickCapture));
 const AiRowMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiRowMenu));
 const AiToolbarMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiToolbarMenu));
-const AiNextStepPanel = dynamic(() => import("./AiNextStepPanel").then((m) => m.AiNextStepPanel));
 const AiDependencySuggestPanel = dynamic(() => import("./AiDependencySuggestPanel").then((m) => m.AiDependencySuggestPanel));
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
@@ -288,7 +289,7 @@ export function ProjectDashboard({
       leaveForm();
       setSelectedId(id);
       setMode("edit");
-      const testId = key === "next_step" ? "ai-tool-next_step-propose" : "ai-draft";
+      const testId = key === "next_step" ? "new-milestone-input" : "ai-draft";
       let tries = 0;
       const focus = () => {
         const el = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
@@ -961,7 +962,9 @@ export function ProjectDashboard({
                   templates={admin.templates}
                   ownerOptions={admin.milestoneOwnerOptions}
                   today={today}
-                  {...(aiPlacements && "next_step" in aiPlacements ? { aiNextStep: <AiNextStepPanel key={`next-${selected.id}`} inline projects={[{ id: selected.id, name: selected.name }]} initialProject={selected.id} disabledNote={aiPlacements.next_step ?? null} /> } : {})}
+                  {...(aiPlacements && "next_step" in aiPlacements && aiPlacements.next_step == null
+                    ? { milestoneSuggest: async () => MilestoneGhost.fromResult(await suggestAiNextStep(selected.id)) }
+                    : {})}
                   dependencies={
                     admin.dependencyActions ? (
                       // AI "Find related" is gone from the drawer: it saved related projects as Blocked by (same fix

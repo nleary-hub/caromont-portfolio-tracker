@@ -59,6 +59,8 @@ export interface ProjectEditFormProps {
   dependencies?: ReactNode;
   /** AI placements: "Recommend next milestone" under the milestones (Next milestone). Absent when the feature is off. */
   aiNextStep?: ReactNode;
+  /** Inline AI milestone suggestion for the Milestones add input (item 2). */
+  milestoneSuggest?: () => Promise<string | null>;
   /** The People editor (saves on pick). Null for a new project. */
   people: ReactNode;
   /** Delete project with its confirmation. Null for a new project. */
@@ -121,6 +123,7 @@ export function ProjectEditForm({
   startDateIsDefault,
   dependencies,
   aiNextStep,
+  milestoneSuggest,
   people,
   adminDelete,
   inforPreviously,
@@ -544,6 +547,7 @@ export function ProjectEditForm({
             }}
             errors={milestoneMessages}
             ownerOptions={ownerOptions}
+            {...(milestoneSuggest && !isNew ? { suggest: milestoneSuggest } : {})}
           />
           {aiNextStep}
           {/* % complete is hidden (the stored value is kept and never sent; CSV import and export still carry it). */}
