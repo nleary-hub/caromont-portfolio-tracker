@@ -1676,6 +1676,31 @@ export class ReportLayout {
     return g.CONTENT_H - headerHeight - g.COLHEAD_H - g.FOOTER_GAP - g.FOOTER_H;
   }
 
+  /**
+   * PDF default order of rows inside one department (Oct 20, 2026): completed MFI, completed, active MFI, On track,
+   * At risk, Off track, On hold, Not started (anything else last). Stable: ties keep the incoming report order.
+   */
+  static pdfRowRank(row: Pick<ReportRow, "status" | "isMfi">): number {
+    const complete = row.status === "Complete";
+    if (complete) return row.isMfi ? 0 : 1;
+    if (row.isMfi) return 2;
+    const i = (["OnTrack", "AtRisk", "OffTrack", "OnHold", "NotStarted"] as const).indexOf(row.status as never);
+    return i === -1 ? 8 : 3 + i;
+  }
+
+  /** Rows in the PDF default order within each department; the order of departments is untouched. Pure. */
+  static pdfDefaultOrder<R extends Pick<ReportRow, "status" | "isMfi" | "serviceArea">>(rows: readonly R[]): R[] {
+    const firstSeen = new Map<string, number>();
+    rows.forEach((r) => {
+      const g = String(ServiceAreaInfo.groupOf(r.serviceArea));
+      if (!firstSeen.has(g)) firstSeen.set(g, firstSeen.size);
+    });
+    return rows
+      .map((r, i) => ({ r, i, g: firstSeen.get(String(ServiceAreaInfo.groupOf(r.serviceArea)))! }))
+      .sort((a, b) => a.g - b.g || ReportLayout.pdfRowRank(a.r) - ReportLayout.pdfRowRank(b.r) || a.i - b.i)
+      .map((x) => x.r);
+  }
+
   static layout(input: ReportDocInput, m: Measurer = new TextMeasure()): DocumentLayout {
     const g = ReportGeometry;
     // Only statuses visible in the report view settings are listed or counted anywhere. Rows from
@@ -1693,6 +1718,9 @@ export class ReportLayout {
     input = { ...input, rows, ...(completedRows ? { completed: completedRows } : {}), ...(departments ? { departments } : {}) };
     // Last-changed date: off by default on the PDF (the row data keeps updatedOn; only the drawn line goes).
     if (input.showUpdatedOn !== true) input = { ...input, rows: input.rows.map((r) => (r.updatedOn ? { ...r, updatedOn: null } : r)) };
+    // PDF default order within each department (departments themselves keep their order). A department with a
+    // manual dashboard order (layout rows, set only by manual moves) uses that exact order below instead.
+    input = { ...input, rows: ReportLayout.pdfDefaultOrder(input.rows) };
     // Line layout: column order and widths ride on the settings, manual order within departments on the rows.
     // The default layout leaves both untouched (same objects), so the default PDF is exactly today's.
     if (input.layout && !LineLayout.isDefault(input.layout)) {
