@@ -44,7 +44,7 @@ describe("Project drawer: one drawer, single click", () => {
     expect(dash).toMatch(/inforPreviously=\{parts\.previously\}/);
     expect(dash).toMatch(/trailing=\{parts\.trailing\}/);
     expect(dash).toMatch(/<UpdateNotesSection/);
-    expect(dash).toMatch(/<ProjectHistorySection/);
+    expect(dash).toMatch(/<DrawerHistoryButtons/);
     expect(dash).toMatch(/adminExtra=\{parts\.admin\}/);
   });
 

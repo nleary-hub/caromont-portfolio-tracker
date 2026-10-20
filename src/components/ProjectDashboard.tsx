@@ -12,7 +12,7 @@ import type { ViewContext } from "@/generated/prisma/enums";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
-import { MilestoneStepsSection, PreviouslyLine, ProjectHistorySection, UpdateNotesSection, useProjectTimeline, type HistoryLoader } from "./ProjectHistory";
+import { DrawerHistoryButtons, MilestoneStepsSection, PreviouslyLine, UpdateNotesSection, useProjectTimeline, type HistoryLoader } from "./ProjectHistory";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { InforNumber } from "@/lib/domain/InforNumber";
@@ -1192,7 +1192,8 @@ export function ProjectDrawer({
         {!editing && <MilestoneStepsSection timeline={history.timeline} />}
         <UpdateNotesSection key={`notes-${row.id}`} timeline={history.timeline} />
         {/* People and History are siblings: their project-specific keys must have distinct namespaces. */}
-        <ProjectHistorySection key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />
+        {/* Item 3: compact "AI changes" and "History" buttons open panels instead of the long inline list. */}
+        <DrawerHistoryButtons key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />
       </>
     ) : null;
   const closeButton = (

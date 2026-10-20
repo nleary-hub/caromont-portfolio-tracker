@@ -46,6 +46,8 @@ export interface TimelineEntry extends TimelineLine {
   meta: string;
   /** System (Tracker) and before-this-tracker entries get a hollow dot. */
   hollow: boolean;
+  /** Item 3 (Oct 20, 2026): the save was applied by an AI feature (listed under the drawer's "AI changes"). */
+  ai?: true;
 }
 
 /** One past "Latest update" note edit (Update notes, task 4): read-only, the full text as saved. */
@@ -88,7 +90,7 @@ export interface Timeline {
 /** What the drawer receives (serializable: no Dates). */
 export interface TimelineDto {
   title: string;
-  entries: (TimelineLine & { key: string; meta: string; hollow: boolean })[];
+  entries: (TimelineLine & { key: string; meta: string; hollow: boolean; ai?: true })[];
   previously: string | null;
   notes: { key: string; meta: string; who: string; text: string | null; shortened: boolean }[];
   steps: TimelineStep[];
@@ -241,7 +243,7 @@ export class UpdateTimeline {
         if (first) notes.push({ key: `note|created|${g.changedAt.getTime()}|${g.changedBy}`, at: g.changedAt, meta, who, text: first, shortened: UpdateTimeline.isShortened(first) });
       }
       UpdateTimeline.lines(g.rows.filter((r) => !UpdateTimeline.NOTE_FIELDS.has(r.field))).forEach((line, i) => {
-        dated.push({ ...line, key: `${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, hollow: who === C.TRACKER });
+        dated.push({ ...line, key: `${g.changedAt.getTime()}|${g.changedBy}|${i}`, at: g.changedAt, meta, hollow: who === C.TRACKER, ...(ai ? { ai: true as const } : {}) });
       });
     }
     for (const p of prior) {
@@ -263,7 +265,7 @@ export class UpdateTimeline {
   static toDto(t: Timeline): TimelineDto {
     return {
       title: t.title,
-      entries: t.entries.map(({ key, meta, hollow, text, change, admin }) => ({ key, meta, hollow, text, ...(change ? { change } : {}), ...(admin ? { admin } : {}) })),
+      entries: t.entries.map(({ key, meta, hollow, text, change, admin, ai }) => ({ key, meta, hollow, text, ...(change ? { change } : {}), ...(admin ? { admin } : {}), ...(ai ? { ai } : {}) })),
       previously: t.previously,
       notes: t.notes.map(({ key, meta, who, text, shortened }) => ({ key, meta, who, text, shortened })),
       steps: t.steps,
