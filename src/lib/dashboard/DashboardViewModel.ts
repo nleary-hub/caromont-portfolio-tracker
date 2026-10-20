@@ -26,6 +26,8 @@ export interface DashboardRow {
   contractsLead: string | null;
   /** "No contract lead" (0065): the line is hidden. */
   contractsLeadNotApplicable?: boolean;
+  /** Role label (0066). Absent = Contracts lead. */
+  leadRole?: "projectManager";
   status: ProjectStatus;
   statusLabel: string;
   /** Derived next milestone (MilestoneProgress), else the legacy text. */
@@ -160,6 +162,7 @@ export class DashboardViewModel {
       ...(p.isMfi ? { isMfi: true } : {}),
       contractsLead: p.contractsLead ?? null,
       ...(p.contractsLeadNotApplicable ? { contractsLeadNotApplicable: true } : {}),
+      ...(p.leadRole === "projectManager" ? { leadRole: "projectManager" as const } : {}),
       status: p.status,
       statusLabel: ProjectStatusInfo.label(p.status),
       nextMilestone: p.nextMilestone,

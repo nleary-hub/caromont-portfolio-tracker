@@ -24,6 +24,7 @@ export interface PeopleFields {
   requesterNotApplicable?: boolean | null;
   contractsLead?: string | null;
   contractsLeadNotApplicable?: boolean | null;
+  leadRole?: string | null;
 }
 
 /**
@@ -47,7 +48,7 @@ export class PeopleStack {
     if (show.contracts && !row.contractsLeadNotApplicable) {
       const lead = row.contractsLead ?? null;
       const text = Assignee.label(lead);
-      lines.push({ kind: "contracts", label: PeopleLabel.CONTRACTS, text, muted: !Assignee.isAssigned(lead), primary: false, title: text });
+      lines.push({ kind: "contracts", label: PeopleLabel.contracts(row.leadRole), text, muted: !Assignee.isAssigned(lead), primary: false, title: text });
     }
     return lines;
   }

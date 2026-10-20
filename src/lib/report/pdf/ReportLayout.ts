@@ -874,7 +874,7 @@ export class ReportLayout {
           const requester = showsChampion ? Requester.display(row.physicianChampion, row.requesterNotApplicable) : null;
           const people = ReportLayout.peopleText(m, row.owner, requester?.text ?? null, inner);
           const champion = people.champion;
-          const contracts = PdfReportLayout.showsContracts(settings) && !row.contractsLeadNotApplicable ? ReportLayout.contractsLine(m, row.contractsLead ?? null, inner) : null;
+          const contracts = PdfReportLayout.showsContracts(settings) && !row.contractsLeadNotApplicable ? ReportLayout.contractsLine(m, row.contractsLead ?? null, inner, row.leadRole) : null;
           const stackH = (champion ? (1 + people.championMore.length) * g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
           if (stackH) lineTwoH = Math.max(lineTwoH, stackH);
           // A wrapped owner name takes more of line 1, so line 2 (requester, contracts) starts below it.
@@ -1044,9 +1044,9 @@ export class ReportLayout {
   }
 
   /** Lay out "Contracts <name or To assign>" at the requester size within `w`; wraps the name if needed. */
-  static contractsLine(m: Measurer, lead: string | null, w: number): ContractsLine {
+  static contractsLine(m: Measurer, lead: string | null, w: number, role?: string | null): ContractsLine {
     const S = ReportGeometry.SIZE;
-    const prefix = `${PeopleLabel.CONTRACTS} `;
+    const prefix = `${PeopleLabel.contracts(role)} `;
     const name = Assignee.label(lead);
     const prefixW = m.width(prefix, S.small, ReportLayout.CONTRACTS_PREFIX_WEIGHT);
     const lines: ContractsLine["lines"] = [];

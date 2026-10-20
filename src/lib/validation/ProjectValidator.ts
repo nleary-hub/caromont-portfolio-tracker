@@ -27,6 +27,8 @@ export interface ProjectInput {
   contractsLead?: string | null;
   /** "No contract lead" (0065). A contract lead name and this never coexist (the name wins on a patch). */
   contractsLeadNotApplicable?: boolean;
+  /** Role label (0066): "contractLead" (default) or "projectManager". */
+  leadRole?: string;
   status: ProjectStatus | string;
   nextMilestone?: string | null;
   dueDate?: string | null;
@@ -57,6 +59,7 @@ export interface ProjectData {
   requesterNotApplicable: boolean;
   contractsLead: string | null;
   contractsLeadNotApplicable: boolean;
+  leadRole: "contractLead" | "projectManager";
   status: ProjectStatus;
   nextMilestone: string | null;
   dueDate: Date | null;
@@ -309,6 +312,7 @@ export class ProjectValidator {
       requesterNotApplicable: project.requesterNotApplicable,
       contractsLead: project.contractsLead,
       contractsLeadNotApplicable: project.contractsLeadNotApplicable ?? false,
+      leadRole: project.leadRole ?? "contractLead",
       status: project.status,
       nextMilestone: project.nextMilestone,
       dueDate: DateOnly.fromDbDate(project.dueDate),
@@ -390,6 +394,7 @@ export class ProjectValidator {
         ),
         requesterNotApplicable: z.boolean().default(false),
         contractsLeadNotApplicable: z.boolean().default(false),
+        leadRole: z.preprocess((v) => (v === undefined || v === null || v === "" ? "contractLead" : v), z.enum(["contractLead", "projectManager"], { error: "Role label must be Contracts lead or Assigned project manager" })),
         status: z.enum(ProjectStatus, { error: "Status must be one of the defined statuses" }),
         nextMilestone: ProjectValidator.optionalText({
           label: "Next milestone",

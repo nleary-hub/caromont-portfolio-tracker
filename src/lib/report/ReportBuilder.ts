@@ -264,6 +264,7 @@ export class ReportBuilder {
       contractsLead: project.contractsLead ?? null,
       // Only when marked, so every other row's JSON is exactly as before.
       ...(project.contractsLeadNotApplicable ? { contractsLeadNotApplicable: true as const } : {}),
+      ...(project.leadRole === "projectManager" ? { leadRole: "projectManager" as const } : {}),
       // Only with a checklist, so rows of projects without steps are exactly as before.
       ...(project.milestoneProgress ? { milestoneProgress: project.milestoneProgress } : {}),
       // Only with an owner on the next open step, so every other row's JSON is exactly as before.

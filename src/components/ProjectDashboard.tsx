@@ -918,6 +918,7 @@ export function ProjectDashboard({
                   requesterSuggestions={admin.requesterSuggestions}
                   contractsLead={selected.contractsLead}
                   contractsLeadNotApplicable={selected.contractsLeadNotApplicable ?? false}
+                  {...(selected.leadRole ? { leadRole: selected.leadRole } : {})}
                   serviceArea={selected.serviceArea}
                   {...(line ? { contractsLeads: line.contractsLeads, departments: line.departments } : {})}
                   ownerSuggestions={admin.ownerSuggestions}
@@ -984,6 +985,7 @@ export function ProjectDashboard({
                       requesterSuggestions={admin.requesterSuggestions}
                       contractsLead={selected.contractsLead}
                       contractsLeadNotApplicable={selected.contractsLeadNotApplicable ?? false}
+                  {...(selected.leadRole ? { leadRole: selected.leadRole } : {})}
                       serviceArea={selected.serviceArea}
                       {...(line ? { contractsLeads: line.contractsLeads } : {})}
                       ownerSuggestions={admin.ownerSuggestions}

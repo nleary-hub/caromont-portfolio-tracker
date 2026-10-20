@@ -12,6 +12,11 @@ export class PeopleLabel {
   static readonly REQUESTER = `${Requester.LABEL}:`;
   static readonly CONTRACTS = `${ContractsLead.PREFIX}:`;
 
+  /** "Contracts:" or, for a project with the Assigned project manager label (0066), "Assigned project manager:". */
+  static contracts(role?: string | null): string {
+    return `${ContractsLead.ROLE_PREFIXES[ContractsLead.role(role)]}:`;
+  }
+
   static of(kind: PeopleLabelKind): string {
     return kind === "owner" ? PeopleLabel.OWNER : kind === "requester" ? PeopleLabel.REQUESTER : PeopleLabel.CONTRACTS;
   }

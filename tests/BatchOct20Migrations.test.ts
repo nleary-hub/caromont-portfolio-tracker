@@ -8,7 +8,7 @@ const DIR = path.resolve(__dirname, "../prisma/migrations");
 const folders = () => readdirSync(DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
 const sql = (f: string) => readFileSync(path.join(DIR, f, "migration.sql"), "utf8");
 const code = (s: string) => s.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
-export const BATCH = ["0063_department_manager", "0064_report_display_settings", "0065_contracts_lead_not_applicable"];
+export const BATCH = ["0063_department_manager", "0064_report_display_settings", "0065_contracts_lead_not_applicable", "0066_project_lead_role"];
 
 async function migrated(): Promise<PGlite> {
   const db = await PGlite.create();
@@ -43,6 +43,14 @@ describe("Oct 20 batch migrations", () => {
   it("0065 adds No contract lead, false on every existing project", async () => {
     const db = await migrated();
     expect(await column(db, "Project", "contractsLeadNotApplicable")).toMatchObject({ is_nullable: "NO", column_default: "false", data_type: "boolean" });
+  });
+
+  it("0066 adds the role label, Contracts lead by default, limited to the two roles", async () => {
+    const db = await migrated();
+    expect(await column(db, "Project", "leadRole")).toMatchObject({ is_nullable: "NO", data_type: "text" });
+    expect((await column(db, "Project", "leadRole")).column_default).toContain("contractLead");
+    const def = (await db.query<{ def: string }>(`SELECT pg_get_constraintdef(oid) AS def FROM pg_constraint WHERE conname = 'Project_lead_role'`)).rows[0].def;
+    expect(def).toContain("projectManager");
   });
 
   it("0063 adds a nullable department manager name and keeps existing rows as they were", async () => {

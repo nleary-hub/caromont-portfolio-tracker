@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { Assignee } from "@/lib/domain/Assignee";
-import { ContractsLead } from "@/lib/domain/ContractsLead";
+import { ContractsLead, type LeadRole } from "@/lib/domain/ContractsLead";
 import { Requester } from "@/lib/domain/Requester";
 import { ServiceAreaInfo, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { PickList } from "@/lib/people/PickList";
@@ -11,7 +11,7 @@ import { PeopleDirectory, type PeopleRole } from "@/lib/people/PeopleDirectory";
 import { SelectControl } from "./FieldControl";
 import { PeopleCombobox } from "./PeopleCombobox";
 
-export type PeopleFieldName = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "contractsLeadNotApplicable" | "serviceArea";
+export type PeopleFieldName = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "contractsLeadNotApplicable" | "leadRole" | "serviceArea";
 
 export interface ProjectPeopleEditorProps {
   projectId: string;
@@ -22,6 +22,8 @@ export interface ProjectPeopleEditorProps {
   contractsLead: string | null;
   /** "No contract lead" (0065): hidden from the dashboard and report. */
   contractsLeadNotApplicable?: boolean;
+  /** Role label (0066): Contracts lead (default) or Assigned project manager. */
+  leadRole?: LeadRole;
   serviceArea: DepartmentKey | null;
   /** Owner combobox options: the line's Owners list (Admin > People), cleaned by PeopleDirectory.merge. */
   ownerSuggestions: readonly string[];
@@ -99,12 +101,54 @@ function Row({ label, htmlFor, state, children }: { label: string; htmlFor: stri
 /** Select value for "No contract lead" (never a real name: names are trimmed and cannot start with "__"). */
 export const NO_CONTRACT_LEAD = "__none__";
 
-function ContractsLeadSelect({ projectId, contractsLead, contractsLeadNotApplicable, contractsLeads, saveAction }: ProjectPeopleEditorProps) {
+function ContractsLeadSelect(props: ProjectPeopleEditorProps) {
+  const [role, setRole] = useState<LeadRole>(props.leadRole ?? "contractLead");
+  return (
+    <>
+      <ContractsLeadPicker {...props} label={ContractsLead.ROLE_LABELS[role]} />
+      <LeadRoleToggle projectId={props.projectId} role={role} setRole={setRole} saveAction={props.saveAction} />
+    </>
+  );
+}
+
+/**
+ * Per-project role label (0066), tucked away under a small disclosure so it stays out of the everyday flow: switches
+ * the label between Contracts lead and Assigned project manager. Saved through the people action (history logged).
+ */
+function LeadRoleToggle({ projectId, role, setRole, saveAction }: { projectId: string; role: LeadRole; setRole: (r: LeadRole) => void; saveAction: ProjectPeopleEditorProps["saveAction"] }) {
+  const [state, save] = useFieldState();
+  const next: LeadRole = role === "projectManager" ? "contractLead" : "projectManager";
+  return (
+    <details className="ml-[138px] type-caption text-muted" data-testid="lead-role-toggle">
+      <summary className="cursor-pointer select-none hover:text-fg">Role label</summary>
+      <div className="mt-1 flex items-center gap-2">
+        <button
+          type="button"
+          className="text-accent hover:underline"
+          onClick={() => {
+            const prev = role;
+            setRole(next);
+            void save(async () => {
+              const err = await saveAction(projectId, "leadRole", next);
+              if (err) setRole(prev);
+              return err;
+            });
+          }}
+        >
+          {ContractsLead.toggleText(role)}
+        </button>
+        <Status state={state} />
+      </div>
+    </details>
+  );
+}
+
+function ContractsLeadPicker({ projectId, contractsLead, contractsLeadNotApplicable, contractsLeads, saveAction, label }: ProjectPeopleEditorProps & { label: string }) {
   const [value, setValue] = useState<string>(contractsLeadNotApplicable && !contractsLead ? NO_CONTRACT_LEAD : (contractsLead ?? ""));
   const [state, save] = useFieldState();
   const id = `contractsLead-${projectId}`;
   return (
-    <Row label="Contracts lead" htmlFor={id} state={state}>
+    <Row label={label} htmlFor={id} state={state}>
       <SelectControl
         id={id}
         name="contractsLead"
