@@ -1695,6 +1695,8 @@ export class ReportLayout {
 
   /** Gap between the department name and the manager subtext in the bar. */
   static readonly MANAGER_GAP = 6;
+  /** Label before the manager's name in the department bar (Nick, Oct 20, 2026). */
+  static readonly MANAGER_LABEL = "Department Manager:";
 
   /**
    * The manager subtext in a department bar: after the bar label (x = 7 + label width + gap), in the small size,
@@ -1707,7 +1709,8 @@ export class ReportLayout {
     const x = 7 + m.width(barLabel, g.SIZE.section, 600) + ReportLayout.MANAGER_GAP;
     const w = g.CONTENT_W - 205 - x - 4;
     if (w <= 10) return null;
-    return { text: TextMeasure.wrap(m, name, w, g.SIZE.small, 400, 1)[0] ?? name, x, w };
+    const text = `${ReportLayout.MANAGER_LABEL} ${name}`;
+    return { text: TextMeasure.wrap(m, text, w, g.SIZE.small, 400, 1)[0] ?? text, x, w };
   }
 
   static layout(input: ReportDocInput, m: Measurer = new TextMeasure()): DocumentLayout {
