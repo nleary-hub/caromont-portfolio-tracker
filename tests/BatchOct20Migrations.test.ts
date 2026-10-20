@@ -8,7 +8,7 @@ const DIR = path.resolve(__dirname, "../prisma/migrations");
 const folders = () => readdirSync(DIR, { withFileTypes: true }).filter((d) => d.isDirectory()).map((d) => d.name).sort();
 const sql = (f: string) => readFileSync(path.join(DIR, f, "migration.sql"), "utf8");
 const code = (s: string) => s.split("\n").filter((l) => !l.trim().startsWith("--")).join("\n");
-export const BATCH = ["0063_department_manager", "0064_report_display_settings"];
+export const BATCH = ["0063_department_manager", "0064_report_display_settings", "0065_contracts_lead_not_applicable"];
 
 async function migrated(): Promise<PGlite> {
   const db = await PGlite.create();
@@ -38,6 +38,11 @@ describe("Oct 20 batch migrations", () => {
     const guard = (await db.query<{ src: string }>(`SELECT prosrc AS src FROM pg_proc WHERE proname = 'portfolio_snapshot_guard'`)).rows[0].src;
     expect(guard).toContain('"displaySettingsJson"');
     expect(guard).toContain('"departmentsJson"');
+  });
+
+  it("0065 adds No contract lead, false on every existing project", async () => {
+    const db = await migrated();
+    expect(await column(db, "Project", "contractsLeadNotApplicable")).toMatchObject({ is_nullable: "NO", column_default: "false", data_type: "boolean" });
   });
 
   it("0063 adds a nullable department manager name and keeps existing rows as they were", async () => {

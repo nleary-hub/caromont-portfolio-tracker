@@ -23,6 +23,7 @@ export interface PeopleFields {
   physicianChampion: string | null;
   requesterNotApplicable?: boolean | null;
   contractsLead?: string | null;
+  contractsLeadNotApplicable?: boolean | null;
 }
 
 /**
@@ -43,7 +44,7 @@ export class PeopleStack {
       const d = Requester.display(row.physicianChampion, row.requesterNotApplicable);
       if (d) lines.push({ kind: "requester", label: PeopleLabel.REQUESTER, text: d.text, muted: d.muted, primary: false, title: d.text });
     }
-    if (show.contracts) {
+    if (show.contracts && !row.contractsLeadNotApplicable) {
       const lead = row.contractsLead ?? null;
       const text = Assignee.label(lead);
       lines.push({ kind: "contracts", label: PeopleLabel.CONTRACTS, text, muted: !Assignee.isAssigned(lead), primary: false, title: text });

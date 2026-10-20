@@ -917,6 +917,7 @@ export function ProjectDashboard({
                   requesterNotApplicable={selected.requesterNotApplicable}
                   requesterSuggestions={admin.requesterSuggestions}
                   contractsLead={selected.contractsLead}
+                  contractsLeadNotApplicable={selected.contractsLeadNotApplicable ?? false}
                   serviceArea={selected.serviceArea}
                   {...(line ? { contractsLeads: line.contractsLeads, departments: line.departments } : {})}
                   ownerSuggestions={admin.ownerSuggestions}
@@ -982,6 +983,7 @@ export function ProjectDashboard({
                       requesterNotApplicable={selected.requesterNotApplicable}
                       requesterSuggestions={admin.requesterSuggestions}
                       contractsLead={selected.contractsLead}
+                      contractsLeadNotApplicable={selected.contractsLeadNotApplicable ?? false}
                       serviceArea={selected.serviceArea}
                       {...(line ? { contractsLeads: line.contractsLeads } : {})}
                       ownerSuggestions={admin.ownerSuggestions}

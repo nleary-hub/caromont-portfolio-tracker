@@ -89,7 +89,7 @@ interface UpdateOptions {
  * The only write path for projects. Every mutation writes ProjectHistory rows in the
  * same transaction. There is intentionally no hard-delete method.
  */
-export type PeopleField = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "serviceArea";
+export type PeopleField = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "contractsLeadNotApplicable" | "serviceArea";
 
 export class ProjectService {
   static async create(input: ProjectInput, actor: Actor, db: PrismaClient = Db.client, scope: ServiceLineScope = ServiceLine.defaultScope()): Promise<Project> {
@@ -762,7 +762,7 @@ export class ProjectService {
 
   /** Admin per-project hide/unhide for one context. No-op when unchanged; otherwise audited. */
   /** Fields the admin drawer panel edits, one at a time (saved on change). */
-  static readonly PEOPLE_FIELDS = ["owner", "physicianChampion", "requesterNotApplicable", "contractsLead", "serviceArea"] as const;
+  static readonly PEOPLE_FIELDS = ["owner", "physicianChampion", "requesterNotApplicable", "contractsLead", "contractsLeadNotApplicable", "serviceArea"] as const;
 
   static isPeopleField(field: string): field is PeopleField {
     return (ProjectService.PEOPLE_FIELDS as readonly string[]).includes(field);
@@ -791,7 +791,13 @@ export class ProjectService {
       value = checked.name;
     }
     const patch: Partial<ProjectInput> =
-      field === "requesterNotApplicable" ? { requesterNotApplicable: value === "true" } : { [field]: value };
+      field === "requesterNotApplicable"
+        ? { requesterNotApplicable: value === "true" }
+        : field === "contractsLeadNotApplicable"
+          ? { contractsLeadNotApplicable: value === "true", ...(value === "true" ? { contractsLead: null } : {}) }
+          : field === "contractsLead"
+            ? { contractsLead: value, contractsLeadNotApplicable: false }
+            : { [field]: value };
     // Clearing Not applicable leaves the requester "not yet addressed" (no name).
     return ProjectService.update(id, patch, ProjectService.actorOf(admin, comment ?? undefined), db, scope);
   }
@@ -912,6 +918,7 @@ export class ProjectService {
     "physicianChampionEmail",
     "requesterNotApplicable",
     "contractsLead",
+    "contractsLeadNotApplicable",
     "status",
     "nextMilestone",
     "dueDate",

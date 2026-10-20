@@ -11,7 +11,7 @@ import { PeopleDirectory, type PeopleRole } from "@/lib/people/PeopleDirectory";
 import { SelectControl } from "./FieldControl";
 import { PeopleCombobox } from "./PeopleCombobox";
 
-export type PeopleFieldName = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "serviceArea";
+export type PeopleFieldName = "owner" | "physicianChampion" | "requesterNotApplicable" | "contractsLead" | "contractsLeadNotApplicable" | "serviceArea";
 
 export interface ProjectPeopleEditorProps {
   projectId: string;
@@ -20,6 +20,8 @@ export interface ProjectPeopleEditorProps {
   physicianChampion: string | null;
   requesterNotApplicable: boolean;
   contractsLead: string | null;
+  /** "No contract lead" (0065): hidden from the dashboard and report. */
+  contractsLeadNotApplicable?: boolean;
   serviceArea: DepartmentKey | null;
   /** Owner combobox options: the line's Owners list (Admin > People), cleaned by PeopleDirectory.merge. */
   ownerSuggestions: readonly string[];
@@ -94,8 +96,11 @@ function Row({ label, htmlFor, state, children }: { label: string; htmlFor: stri
 }
 
 /** Contracts lead: the service line's pick-list plus a blank "To assign" option. */
-function ContractsLeadSelect({ projectId, contractsLead, contractsLeads, saveAction }: ProjectPeopleEditorProps) {
-  const [value, setValue] = useState<string>(contractsLead ?? "");
+/** Select value for "No contract lead" (never a real name: names are trimmed and cannot start with "__"). */
+export const NO_CONTRACT_LEAD = "__none__";
+
+function ContractsLeadSelect({ projectId, contractsLead, contractsLeadNotApplicable, contractsLeads, saveAction }: ProjectPeopleEditorProps) {
+  const [value, setValue] = useState<string>(contractsLeadNotApplicable && !contractsLead ? NO_CONTRACT_LEAD : (contractsLead ?? ""));
   const [state, save] = useFieldState();
   const id = `contractsLead-${projectId}`;
   return (
@@ -109,13 +114,14 @@ function ContractsLeadSelect({ projectId, contractsLead, contractsLeads, saveAct
           const prev = value;
           setValue(next);
           void save(async () => {
-            const err = await saveAction(projectId, "contractsLead", next);
+            const err = next === NO_CONTRACT_LEAD ? await saveAction(projectId, "contractsLeadNotApplicable", "true") : await saveAction(projectId, "contractsLead", next);
             if (err) setValue(prev);
             return err;
           });
         }}
       >
         <option value="">{Assignee.TO_ASSIGN}</option>
+        <option value={NO_CONTRACT_LEAD}>{ContractsLead.NONE_LABEL}</option>
         {PickList.withCurrent(ContractsLead.pickerOptions(contractsLeads), contractsLead).map((n) => (
           <option key={n} value={n}>
             {n}

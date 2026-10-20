@@ -64,6 +64,8 @@ model Project {
   physicianChampionEmail    String?
   /// Requester (physicianChampion) marked Not applicable: renders blank. A name clears it.
   requesterNotApplicable    Boolean       @default(false)
+  /// "No contract lead" (0065): the contract lead line is left out of the dashboard and the report.
+  contractsLeadNotApplicable Boolean      @default(false)
   /// Contracts lead, one of the project's service line contractsLeads (null = "To assign").
   contractsLead             String?
   status                    ProjectStatus

@@ -25,6 +25,8 @@ export interface ProjectInput {
   requesterNotApplicable?: boolean;
   /** One of the service line's contracts leads (case/space tolerant) or blank. */
   contractsLead?: string | null;
+  /** "No contract lead" (0065). A contract lead name and this never coexist (the name wins on a patch). */
+  contractsLeadNotApplicable?: boolean;
   status: ProjectStatus | string;
   nextMilestone?: string | null;
   dueDate?: string | null;
@@ -54,6 +56,7 @@ export interface ProjectData {
   physicianChampionEmail: string | null;
   requesterNotApplicable: boolean;
   contractsLead: string | null;
+  contractsLeadNotApplicable: boolean;
   status: ProjectStatus;
   nextMilestone: string | null;
   dueDate: Date | null;
@@ -305,6 +308,7 @@ export class ProjectValidator {
       physicianChampionEmail: project.physicianChampionEmail,
       requesterNotApplicable: project.requesterNotApplicable,
       contractsLead: project.contractsLead,
+      contractsLeadNotApplicable: project.contractsLeadNotApplicable ?? false,
       status: project.status,
       nextMilestone: project.nextMilestone,
       dueDate: DateOnly.fromDbDate(project.dueDate),
@@ -385,6 +389,7 @@ export class ProjectValidator {
           z.email("Requester email is not a valid email").nullable(),
         ),
         requesterNotApplicable: z.boolean().default(false),
+        contractsLeadNotApplicable: z.boolean().default(false),
         status: z.enum(ProjectStatus, { error: "Status must be one of the defined statuses" }),
         nextMilestone: ProjectValidator.optionalText({
           label: "Next milestone",
@@ -428,7 +433,8 @@ export class ProjectValidator {
       // already cleared it when the patch set a name); "Not applicable" text in the name means NA.
       .transform((p) => {
         const na = p.requesterNotApplicable || Requester.isNotApplicableText(p.physicianChampion);
-        return { ...p, physicianChampion: na ? null : p.physicianChampion, requesterNotApplicable: na };
+        const noLead = p.contractsLeadNotApplicable && !p.contractsLead;
+        return { ...p, physicianChampion: na ? null : p.physicianChampion, requesterNotApplicable: na, contractsLeadNotApplicable: noLead };
       });
   }
 }

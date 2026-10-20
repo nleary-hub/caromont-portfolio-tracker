@@ -16,6 +16,9 @@ export class ContractsLead {
    * Canonical name for a list entry (case and whitespace tolerant), null for blank, undefined when the
    * value is not on the list.
    */
+  /** "No contract lead" (0065): like the requester's Not applicable, the line is hidden from the dashboard and report. */
+  static readonly NONE_LABEL = "No contract lead";
+
   static resolve(value: string | null | undefined, list: readonly string[] = ServiceLine.CVPSL_CONTRACTS_LEADS): string | null | undefined {
     if (value === null || value === undefined) return null;
     const key = ContractsLead.key(value);

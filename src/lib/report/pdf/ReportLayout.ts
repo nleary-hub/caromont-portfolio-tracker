@@ -874,7 +874,7 @@ export class ReportLayout {
           const requester = showsChampion ? Requester.display(row.physicianChampion, row.requesterNotApplicable) : null;
           const people = ReportLayout.peopleText(m, row.owner, requester?.text ?? null, inner);
           const champion = people.champion;
-          const contracts = PdfReportLayout.showsContracts(settings) ? ReportLayout.contractsLine(m, row.contractsLead ?? null, inner) : null;
+          const contracts = PdfReportLayout.showsContracts(settings) && !row.contractsLeadNotApplicable ? ReportLayout.contractsLine(m, row.contractsLead ?? null, inner) : null;
           const stackH = (champion ? (1 + people.championMore.length) * g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
           if (stackH) lineTwoH = Math.max(lineTwoH, stackH);
           // A wrapped owner name takes more of line 1, so line 2 (requester, contracts) starts below it.

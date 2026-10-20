@@ -24,6 +24,8 @@ export interface DashboardRow {
   isMfi?: boolean;
   /** One of AppConfig.CONTRACTS_LEADS, or null ("To assign"). */
   contractsLead: string | null;
+  /** "No contract lead" (0065): the line is hidden. */
+  contractsLeadNotApplicable?: boolean;
   status: ProjectStatus;
   statusLabel: string;
   /** Derived next milestone (MilestoneProgress), else the legacy text. */
@@ -157,6 +159,7 @@ export class DashboardViewModel {
       requesterNotApplicable: p.requesterNotApplicable,
       ...(p.isMfi ? { isMfi: true } : {}),
       contractsLead: p.contractsLead ?? null,
+      ...(p.contractsLeadNotApplicable ? { contractsLeadNotApplicable: true } : {}),
       status: p.status,
       statusLabel: ProjectStatusInfo.label(p.status),
       nextMilestone: p.nextMilestone,
