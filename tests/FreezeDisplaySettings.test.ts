@@ -57,3 +57,14 @@ describe("Freeze display settings (0064)", () => {
     expect(ReportDisplaySettings.summary(null)).not.toContain("\u2014");
   });
 });
+
+describe("Reports page: Next freeze will use", () => {
+  it("shows the summary in a compact dark glass line, admins and the scheduled line only", async () => {
+    const { readFileSync } = await import("node:fs");
+    const src = readFileSync("src/app/reports/page.tsx", "utf8");
+    expect(src).toContain('data-testid="next-freeze-display"');
+    expect(src).toContain("ReportDisplaySettings.summary(nextDisplay)");
+    expect(src).toMatch(/backdrop-blur/);
+    expect(src).toContain("viewer.isAdmin && scope.isDefault");
+  });
+});

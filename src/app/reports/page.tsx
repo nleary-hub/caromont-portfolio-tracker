@@ -26,6 +26,7 @@ import { YearEndCopy } from "@/lib/report/YearEndReportData";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
+import { ReportDisplaySettings } from "@/lib/report/ReportDisplaySettings";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +58,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const next = ReportSchedule.nextFreezeOnOrAfter(DateOnly.today());
   const options = viewer.isAdmin ? await ReportOptionsService.get(undefined, scope) : null;
   const today = DateOnly.today();
+  // What the next freeze will use (0064): the latest on-demand report's display settings, read-only here.
+  const nextDisplay = viewer.isAdmin && scope.isDefault ? ReportDisplaySettings.parse((await Db.client.reportDisplaySettings.findUnique({ where: { serviceLineId: scope.id } }).catch(() => null))?.settingsJson ?? null) : undefined;
   const yearEndYears = viewer.isAdmin ? await YearEndReportService.years(viewer, scope).catch(() => [FiscalYear.of(today).label]) : [];
   const yearEnd = await YearEndReportService.list(scope).catch(() => []);
   // Deep link for review and screenshots: ?yearEnd=1 opens the dialog.
@@ -92,6 +95,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             </a>
             <YearEndReportButton years={yearEndYears} current={FiscalYear.of(today).label} initialOpen={openYearEnd} disabledNote={FreezeGuard.disabled() ? YearEndPreviewCopy.NOTE : null} />
           </div>
+          {nextDisplay !== undefined && (
+            <p data-testid="next-freeze-display" className="self-start rounded-[8px] border border-white/10 bg-black/40 px-3 py-1.5 text-[12px] leading-4 text-(--dark-text-secondary) shadow-[inset_0_1px_0_rgba(255,255,255,.06)] backdrop-blur-md">
+              {ReportDisplaySettings.summary(nextDisplay)}
+            </p>
+          )}
           {scope.isDefault && <DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} disabledNote={FreezeGuard.disabled() ? DriveCheckService.PREVIEW_OFF : null} />}
           <form action={setShowKeyPageForm} className="flex flex-wrap items-end gap-4 type-table">
             <label className="flex items-center gap-2 pb-1">
