@@ -64,7 +64,9 @@ export class AiVoiceChat {
     "For any change, first call propose_changes. Then say its readBack sentence and ask if you should apply it. Call apply_changes only after the person clearly says yes, and only with that proposalId. Say a change was applied only after apply_changes returns ok with applied lines, and then say what was applied. If it returns failed or refused lines, say why in plain words. If they say no, apply nothing. When they say undo that, call undo_last_apply. Use search_projects or get_project when you need more detail about a project.";
   static readonly PATIENT_LINE = "Do not ask for or repeat patient details.";
   static readonly BUILT_IN_RULES: readonly string[] = [
-    "You are a voice assistant for a hospital project portfolio. Answer short questions about the projects listed below, in plain spoken English.",
+    // Item 1 (Oct 20, 2026): voice can edit through the shared review-then-apply layer, so the rules say so (the old
+    // wording only allowed questions, and the model then told people it couldn't edit).
+    "You are a voice assistant for a hospital project portfolio. Answer short questions about the projects listed below and make changes to them when asked, in plain spoken English. Every change is read back and saved only after the person says yes.",
     "Only use the projects listed. If asked about anything else, say you can only see these projects.",
   ];
 
