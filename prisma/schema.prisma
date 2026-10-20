@@ -201,6 +201,9 @@ model ReportSnapshot {
   /// DepartmentInfo[]: the line's departments at freeze (id, name, short name, in report order), so a frozen report
   /// keeps the names it was frozen with. Immutable. Null before migration 0018 (those use the legacy labels).
   departmentsJson      Json?
+  /// ReportDisplaySettingsValue the freeze used (migration 0064): the latest on-demand report's display settings.
+  /// Immutable. Null before 0064, and when no settings row existed (those render exactly as before).
+  displaySettingsJson  Json?
 
   artifacts   ReportArtifact[]
   deliveries  ReportDelivery[]
@@ -1164,4 +1167,15 @@ model AiApply {
   @@index([userEmail, appliedAt])
   @@index([proposalId])
   @@map("ai_applies")
+}
+
+/// Display settings of the most recent on-demand report, one row per service line (migration 0064). The next
+/// scheduled freeze reads it and records the exact value in ReportSnapshot.displaySettingsJson.
+model ReportDisplaySettings {
+  serviceLineId String   @id @db.Uuid
+  settingsJson  Json
+  savedAt       DateTime @default(now())
+  savedBy       String
+
+  @@map("report_display_settings")
 }

@@ -87,6 +87,8 @@ export interface ReportDocInput {
    * department bar after the department name. Absent or blank: nothing is shown.
    */
   departmentManagers?: Readonly<Record<string, string | null | undefined>>;
+  /** PDF default order within departments (PdfRowOrder). Absent = on. False = the report order, as before 0064. */
+  pdfDefaultOrder?: boolean;
 }
 
 /** Geometry in PDF points (1 in = 72 pt). Mirrors portfolio-tracker-mockups/report.css. */
@@ -1736,7 +1738,7 @@ export class ReportLayout {
     if (input.showUpdatedOn !== true) input = { ...input, rows: input.rows.map((r) => (r.updatedOn ? { ...r, updatedOn: null } : r)) };
     // PDF default order within each department (departments themselves keep their order). A department with a
     // manual dashboard order (layout rows, set only by manual moves) uses that exact order below instead.
-    input = { ...input, rows: ReportLayout.pdfDefaultOrder(input.rows) };
+    if (input.pdfDefaultOrder !== false) input = { ...input, rows: ReportLayout.pdfDefaultOrder(input.rows) };
     // Line layout: column order and widths ride on the settings, manual order within departments on the rows.
     // The default layout leaves both untouched (same objects), so the default PDF is exactly today's.
     if (input.layout && !LineLayout.isDefault(input.layout)) {

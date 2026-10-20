@@ -1,4 +1,6 @@
-import type { PrismaClient } from "@/generated/prisma/client";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { ReportDisplaySettings } from "@/lib/report/ReportDisplaySettings";
+import { ReportLog } from "@/lib/report/ReportLog";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
@@ -73,11 +75,25 @@ export class DraftReportService {
       draft: true,
       ...(departmentManagers ? { departmentManagers } : {}),
     });
+    await DraftReportService.saveDisplaySettings(db, line.id, viewer.email, now);
     return { bytes, fileName: line.isDefault ? PdfReportRenderer.draftFileName(data.reportDate) : PdfReportRenderer.lineDraftFileName(line.shortName, data.reportDate) };
   }
 
+  /**
+   * Saves the display settings this on-demand report used as the line's one row (0064), for the next freeze.
+   * Never fails the download: a write error is logged and the PDF is still returned.
+   */
+  static async saveDisplaySettings(db: PrismaClient, serviceLineId: string, by: string, now: Date): Promise<void> {
+    const settingsJson = ReportDisplaySettings.toStored(ReportDisplaySettings.CURRENT) as Prisma.InputJsonValue;
+    try {
+      await db.reportDisplaySettings?.upsert({ where: { serviceLineId }, create: { serviceLineId, settingsJson, savedAt: now, savedBy: by }, update: { settingsJson, savedAt: now, savedBy: by } });
+    } catch (e) {
+      ReportLog.warn("draft.display_settings.save_failed", { serviceLineId, error: e instanceof Error ? e.message : String(e) });
+    }
+  }
+
   /** Department manager names (0063) by department id, or undefined when none is set. Read-only. */
-  static async managersFor(db: PrismaClient, serviceLineId: string): Promise<Record<string, string> | undefined> {
+  static async managersFor(db: Pick<Prisma.TransactionClient, "department">, serviceLineId: string): Promise<Record<string, string> | undefined> {
     const rows = await db.department.findMany({ where: { serviceLineId, deletedAt: null, managerName: { not: null } }, select: { id: true, managerName: true } });
     const out: Record<string, string> = {};
     for (const r of rows) if (r.managerName?.trim()) out[r.id] = r.managerName.trim();
