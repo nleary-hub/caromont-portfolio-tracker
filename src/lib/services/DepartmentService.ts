@@ -15,6 +15,8 @@ export interface DepartmentAdminRow {
   id: string;
   name: string;
   shortName: string;
+  /** Optional manager name (0063). */
+  managerName: string | null;
   position: number;
   archived: boolean;
   /** Projects not deleted and not Complete or Cancelled. */
@@ -88,6 +90,7 @@ export class DepartmentService {
       id: r.id,
       name: r.name,
       shortName: r.shortName,
+      managerName: r.managerName ?? null,
       position: r.position,
       archived: r.archivedAt !== null,
       activeProjects: counts.get(r.id) ?? 0,
@@ -98,26 +101,38 @@ export class DepartmentService {
   }
 
   /** Create (no id) or edit name and short name. Unique per line among departments not deleted, ignoring case. */
-  static async save(scope: Scope, input: { id?: unknown; name?: unknown; shortName?: unknown }, admin: Viewer, db: PrismaClient = Db.client): Promise<DepartmentRow> {
+  static async save(scope: Scope, input: { id?: unknown; name?: unknown; shortName?: unknown; managerName?: unknown }, admin: Viewer, db: PrismaClient = Db.client): Promise<DepartmentRow> {
     AdminPolicy.assertAdmin(admin);
     const id = typeof input.id === "string" && input.id ? input.id : null;
     return db.$transaction(async (tx) => {
       const rows = await DepartmentService.rows(tx, scope.id);
       const others = rows.filter((r) => r.id !== id);
       const value = DepartmentRules.parse(input, others, scope.shortName);
+      // Manager (0063): only when the form sends it; absent keeps the stored value.
+      const hasManager = "managerName" in input;
+      const managerName = DepartmentCopy.manager(input.managerName);
       if (!id) {
         const position = rows.reduce((m, r) => Math.max(m, r.position), 0) + 1;
         const created = (await tx.department.create({
-          data: { serviceLineId: scope.id, name: value.name, shortName: value.shortName, position, updatedBy: admin.email },
+          data: { serviceLineId: scope.id, name: value.name, shortName: value.shortName, position, updatedBy: admin.email, ...(managerName ? { managerName } : {}) },
         })) as DepartmentRow;
-        await DepartmentService.log(tx, scope.id, created.id, DepartmentService.ACTIONS.created, null, { ...value, position }, admin);
+        await DepartmentService.log(tx, scope.id, created.id, DepartmentService.ACTIONS.created, null, { ...value, position, ...(managerName ? { managerName } : {}) }, admin);
         return created;
       }
       const before = rows.find((r) => r.id === id);
       if (!before) throw new DepartmentNotFoundError();
-      if (before.name === value.name && before.shortName === value.shortName) return before;
-      const updated = (await tx.department.update({ where: { id }, data: { name: value.name, shortName: value.shortName, updatedBy: admin.email } })) as DepartmentRow;
-      await DepartmentService.log(tx, scope.id, id, DepartmentService.ACTIONS.edited, { name: before.name, shortName: before.shortName }, value, admin);
+      const managerChanged = hasManager && (before.managerName ?? null) !== managerName;
+      if (before.name === value.name && before.shortName === value.shortName && !managerChanged) return before;
+      const updated = (await tx.department.update({ where: { id }, data: { name: value.name, shortName: value.shortName, updatedBy: admin.email, ...(managerChanged ? { managerName } : {}) } })) as DepartmentRow;
+      await DepartmentService.log(
+        tx,
+        scope.id,
+        id,
+        DepartmentService.ACTIONS.edited,
+        { name: before.name, shortName: before.shortName, ...(managerChanged ? { managerName: before.managerName ?? null } : {}) },
+        { ...value, ...(managerChanged ? { managerName } : {}) },
+        admin,
+      );
       return updated;
     });
   }
