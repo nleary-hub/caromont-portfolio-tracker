@@ -1694,7 +1694,11 @@ export class ReportLayout {
   }
 
   /** Gap between the department name and the manager subtext in the bar. */
-  static readonly MANAGER_GAP = 6;
+  static readonly MANAGER_GAP = 8;
+  /** Manager subtext size: 1.25 pt below the department name (SIZE.section 9), normal weight. */
+  static readonly MANAGER_SIZE = 7.75;
+  /** Manager subtext opacity over the bar's count color (muted). */
+  static readonly MANAGER_OPACITY = 0.8;
   /** Label before the manager's name in the department bar (Nick, Oct 20, 2026). */
   static readonly MANAGER_LABEL = "Department Manager:";
 
@@ -1710,7 +1714,7 @@ export class ReportLayout {
     const w = g.CONTENT_W - 205 - x - 4;
     if (w <= 10) return null;
     const text = `${ReportLayout.MANAGER_LABEL} ${name}`;
-    return { text: TextMeasure.wrap(m, text, w, g.SIZE.small, 400, 1)[0] ?? text, x, w };
+    return { text: TextMeasure.wrap(m, text, w, ReportLayout.MANAGER_SIZE, 400, 1)[0] ?? text, x, w };
   }
 
   static layout(input: ReportDocInput, m: Measurer = new TextMeasure()): DocumentLayout {

@@ -28,3 +28,15 @@ describe("PDF department header subtext (item 10)", () => {
     expect(strip(b)).toEqual(strip(a));
   });
 });
+
+describe("PDF department manager subtext style (Nick, Oct 20)", () => {
+  it("is smaller than the department name by 1 to 1.5 pt, muted, with a modest gap", async () => {
+    const { ReportGeometry } = await import("@/lib/report/pdf/ReportLayout");
+    const diff = ReportGeometry.SIZE.section - ReportLayout.MANAGER_SIZE;
+    expect(diff).toBeGreaterThanOrEqual(1);
+    expect(diff).toBeLessThanOrEqual(1.5);
+    expect(ReportLayout.MANAGER_OPACITY).toBeLessThan(1);
+    expect(ReportLayout.MANAGER_GAP).toBeGreaterThanOrEqual(6);
+    expect(ReportLayout.MANAGER_LABEL).toBe("Department Manager:");
+  });
+});
