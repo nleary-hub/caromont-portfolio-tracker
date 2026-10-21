@@ -115,7 +115,8 @@ describe("Completed during the period: stays in its department group", () => {
     expect((s.rowsJson as ReportRow[]).filter((r) => r.projectId !== done).every((r) => !("completedInPeriod" in r))).toBe(true);
     expect(s.completedJson).toEqual([]);
     const blocks = World.pdf(s);
-    expect(blocks.filter((b) => b.kind === "row").map((b) => b.name)).toEqual(["Alpha", "Charlie", "Bravo done"]);
+    // The frozen rows keep the report order above; the PDF lists completed rows first in their department (Oct 20, 2026).
+    expect(blocks.filter((b) => b.kind === "row").map((b) => b.name)).toEqual(["Bravo done", "Alpha", "Charlie"]);
     expect(blocks.some((b) => b.kind === "completed")).toBe(false);
     expect(blocks.filter((b) => b.kind === "section")).toHaveLength(1);
   });

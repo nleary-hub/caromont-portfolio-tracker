@@ -7,6 +7,8 @@ import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { ReportDataLoader } from "@/lib/report/ReportDataLoader";
 import { ProjectService } from "@/lib/services/ProjectService";
+import { ReportDisplaySettings } from "@/lib/report/ReportDisplaySettings";
+import { DraftReportService } from "@/lib/services/DraftReportService";
 
 export interface CreateSnapshotInput {
   /** YYYY-MM-DD */
@@ -53,6 +55,8 @@ export class SnapshotService {
           // Same transaction as the snapshot: projects completed during the period are listed in this report and
           // marked reported (all or nothing). completedJson stays an empty list (no separate block any more).
           await ProjectService.markCompletionReported(tx, data.completedInPeriodIds, generatedAt);
+          // Display settings of the latest on-demand report (0064). No row: nothing recorded, the pre-0064 PDF.
+          const displaySettingsJson = await SnapshotService.displaySettingsFor(tx, line.id);
           return tx.reportSnapshot.create({
             data: {
               serviceLineId: line.id,
@@ -72,6 +76,7 @@ export class SnapshotService {
               layoutJson: data.layout as unknown as Prisma.InputJsonValue,
               // The line's departments at freeze (ids, names, short names, order): headings never follow a later rename.
               departmentsJson: ServiceAreaInfo.freeze(line.departments) as unknown as Prisma.InputJsonValue,
+              ...(displaySettingsJson ? { displaySettingsJson: displaySettingsJson as Prisma.InputJsonValue } : {}),
             },
           });
         },
@@ -81,6 +86,15 @@ export class SnapshotService {
       if (SnapshotService.isUniqueViolation(e)) throw new SnapshotExistsError(input.periodStart, input.periodEnd);
       throw e;
     }
+  }
+
+  /** The exact display settings a new freeze records (saved row plus manager names now), or null without a row. */
+  static async displaySettingsFor(tx: Prisma.TransactionClient, serviceLineId: string): Promise<Record<string, unknown> | null> {
+    const row = await tx.reportDisplaySettings?.findUnique({ where: { serviceLineId } });
+    const saved = ReportDisplaySettings.parse(row?.settingsJson ?? null);
+    if (!saved) return null;
+    const managers = saved.showDepartmentManagers ? await DraftReportService.managersFor(tx, serviceLineId) : undefined;
+    return ReportDisplaySettings.forSnapshot(saved, managers);
   }
 
   static async findForPeriod(

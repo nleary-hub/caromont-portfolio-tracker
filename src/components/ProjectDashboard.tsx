@@ -1,5 +1,7 @@
 "use client";
 
+import { MilestoneGhost } from "@/lib/ai/nextstep/MilestoneGhost";
+import type { NameUsageCounts } from "@/lib/people/NameUsage";
 import { CompletionCopy } from "@/lib/projects/CompletionCopy";
 import { CompletionTag } from "./CompletionTag";
 import dynamic from "next/dynamic";
@@ -9,7 +11,7 @@ import type { ViewContext } from "@/generated/prisma/enums";
 import { DashboardViewModel, DateFormat, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
 import { Assignee } from "@/lib/domain/Assignee";
 import { Requester } from "@/lib/domain/Requester";
-import { MilestoneStepsSection, PreviouslyLine, ProjectHistorySection, UpdateNotesSection, useProjectTimeline, type HistoryLoader } from "./ProjectHistory";
+import { DrawerHistoryButtons, MilestoneStepsSection, PreviouslyLine, UpdateNotesSection, useProjectTimeline, type HistoryLoader } from "./ProjectHistory";
 import type { FiscalYearCount } from "@/lib/domain/types";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { InforNumber } from "@/lib/domain/InforNumber";
@@ -69,7 +71,6 @@ const AiBriefButton = dynamic(() => import("./AiPlacements").then((m) => m.AiBri
 const AiQuickCapture = dynamic(() => import("./AiPlacements").then((m) => m.AiQuickCapture));
 const AiRowMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiRowMenu));
 const AiToolbarMenu = dynamic(() => import("./AiPlacements").then((m) => m.AiToolbarMenu));
-const AiNextStepPanel = dynamic(() => import("./AiNextStepPanel").then((m) => m.AiNextStepPanel));
 const AiDependencySuggestPanel = dynamic(() => import("./AiDependencySuggestPanel").then((m) => m.AiDependencySuggestPanel));
 const ViewSettingsPicker = dynamic(() => import("./ViewSettingsPicker").then((m) => m.ViewSettingsPicker));
 const ProjectAdminControls = dynamic(() => import("./ProjectAdminControls").then((m) => m.ProjectAdminControls));
@@ -93,11 +94,13 @@ export interface AdminDashboardProps {
   deleteProjectAction: (projectId: string) => Promise<string | null>;
   /** Owner datalist for the drawer edit panel (department leaders plus existing owners). */
   ownerSuggestions: string[];
+  /** Name usage across the line's projects (item 5): pickers sort most used first. */
+  nameUsage?: NameUsageCounts;
   /** Existing requester names for the drawer requester picker (admin only). */
   requesterSuggestions: string[];
   /** Milestone Owner picker names: Owners, Requesters, Contracts leads and the milestone-owner list (migration 0036). */
   milestoneOwnerOptions: string[];
-  setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string) => Promise<string | null>;
+  setPeopleFieldAction: (projectId: string, field: PeopleFieldName, value: string, opts?: { once?: boolean }) => Promise<string | null>;
   /** Top bar admin menu items (`AdminMenu.itemsFor`, computed on the server). */
   menuItems: AdminMenuItem[];
   /** Drawer edit form values per listed project (stored values, as form strings). */
@@ -285,7 +288,7 @@ export function ProjectDashboard({
       leaveForm();
       setSelectedId(id);
       setMode("edit");
-      const testId = key === "next_step" ? "ai-tool-next_step-propose" : "ai-draft";
+      const testId = key === "next_step" ? "new-milestone-input" : "ai-draft";
       let tries = 0;
       const focus = () => {
         const el = document.querySelector<HTMLElement>(`[data-testid="${testId}"]`);
@@ -917,9 +920,12 @@ export function ProjectDashboard({
                   requesterNotApplicable={selected.requesterNotApplicable}
                   requesterSuggestions={admin.requesterSuggestions}
                   contractsLead={selected.contractsLead}
+                  contractsLeadNotApplicable={selected.contractsLeadNotApplicable ?? false}
+                  {...(selected.leadRole ? { leadRole: selected.leadRole } : {})}
                   serviceArea={selected.serviceArea}
                   {...(line ? { contractsLeads: line.contractsLeads, departments: line.departments } : {})}
                   ownerSuggestions={admin.ownerSuggestions}
+                  {...(admin.nameUsage ? { nameUsage: admin.nameUsage } : {})}
                   saveAction={admin.setPeopleFieldAction}
                 />
               ) : null
@@ -955,7 +961,9 @@ export function ProjectDashboard({
                   templates={admin.templates}
                   ownerOptions={admin.milestoneOwnerOptions}
                   today={today}
-                  {...(aiPlacements && "next_step" in aiPlacements ? { aiNextStep: <AiNextStepPanel key={`next-${selected.id}`} inline projects={[{ id: selected.id, name: selected.name }]} initialProject={selected.id} disabledNote={aiPlacements.next_step ?? null} /> } : {})}
+                  {...(aiPlacements && "next_step" in aiPlacements && aiPlacements.next_step == null
+                    ? { milestoneSuggest: async () => MilestoneGhost.fromResult(await (await import("@/app/actions/aiActions")).suggestAiNextStep(selected.id)) }
+                    : {})}
                   dependencies={
                     admin.dependencyActions ? (
                       // AI "Find related" is gone from the drawer: it saved related projects as Blocked by (same fix
@@ -982,9 +990,12 @@ export function ProjectDashboard({
                       requesterNotApplicable={selected.requesterNotApplicable}
                       requesterSuggestions={admin.requesterSuggestions}
                       contractsLead={selected.contractsLead}
+                      contractsLeadNotApplicable={selected.contractsLeadNotApplicable ?? false}
+                  {...(selected.leadRole ? { leadRole: selected.leadRole } : {})}
                       serviceArea={selected.serviceArea}
                       {...(line ? { contractsLeads: line.contractsLeads } : {})}
                       ownerSuggestions={admin.ownerSuggestions}
+                  {...(admin.nameUsage ? { nameUsage: admin.nameUsage } : {})}
                       saveAction={admin.setPeopleFieldAction}
                     />
                   }
@@ -1180,7 +1191,8 @@ export function ProjectDrawer({
         {!editing && <MilestoneStepsSection timeline={history.timeline} />}
         <UpdateNotesSection key={`notes-${row.id}`} timeline={history.timeline} />
         {/* People and History are siblings: their project-specific keys must have distinct namespaces. */}
-        <ProjectHistorySection key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />
+        {/* Item 3: compact "AI changes" and "History" buttons open panels instead of the long inline list. */}
+        <DrawerHistoryButtons key={`history-${row.id}`} timeline={history.timeline} loading={history.loading} />
       </>
     ) : null;
   const closeButton = (

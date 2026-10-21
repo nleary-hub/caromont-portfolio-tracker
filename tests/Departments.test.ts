@@ -117,6 +117,26 @@ describe("department list (report order, headings, Unassigned last)", () => {
 });
 
 describe("DepartmentService", () => {
+  it("department manager (0063): set, changed and cleared from the admin form, audited; absent keeps it", async () => {
+    const fake = new FakeDb();
+    const db = fake.asClient();
+    const scope = await Fx.scope(db);
+    const d = await DepartmentService.save(scope, { name: "Structural Heart", shortName: "SH", managerName: "  Riley   Sample " }, ADMIN, db);
+    expect((await DepartmentService.list(scope, ADMIN, db)).active.find((r) => r.id === d.id)?.managerName).toBe("Riley Sample");
+    await DepartmentService.save(scope, { id: d.id, name: "Structural Heart", shortName: "SH" }, ADMIN, db);
+    expect((await DepartmentService.list(scope, ADMIN, db)).active.find((r) => r.id === d.id)?.managerName).toBe("Riley Sample");
+    await DepartmentService.save(scope, { id: d.id, name: "Structural Heart", shortName: "SH", managerName: "Jordan Example" }, ADMIN, db);
+    await DepartmentService.save(scope, { id: d.id, name: "Structural Heart", shortName: "SH", managerName: "   " }, ADMIN, db);
+    expect((await DepartmentService.list(scope, ADMIN, db)).active.find((r) => r.id === d.id)?.managerName).toBeNull();
+    const edits = fake.state.departmentHistory.filter((h) => h.action === "edited");
+    expect(edits.map((h) => [(h.oldValue as { managerName?: string | null }).managerName, (h.newValue as { managerName?: string | null }).managerName])).toEqual([
+      ["Riley Sample", "Jordan Example"],
+      ["Jordan Example", null],
+    ]);
+    expect(DepartmentCopy.manager("x".repeat(200))).toHaveLength(DepartmentCopy.MANAGER_MAX);
+    expect(DepartmentCopy.MANAGER_HINT).not.toContain("\u2014");
+  });
+
   it("creates at the bottom, edits, and audits both; admin only", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();

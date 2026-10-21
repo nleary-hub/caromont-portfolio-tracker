@@ -13,6 +13,7 @@ import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import { ReportOptionsService, type ReportOptionsValue } from "@/lib/services/ReportOptionsService";
 import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import { ReportColorScheme } from "@/lib/report/ReportColorScheme";
+import { ReportDisplaySettings, type ReportDisplaySettingsValue } from "@/lib/report/ReportDisplaySettings";
 
 /** Everything the renderer needs, all taken from the frozen snapshot. */
 export interface ReportRenderInput {
@@ -38,6 +39,8 @@ export interface ReportRenderInput {
   generatedAt: Date;
   /** YYYY-MM-DD, America/New_York date of generatedAt. */
   reportDate: string;
+  /** Display settings the freeze used (0064). Null or absent: ReportDisplaySettings.LEGACY, the pre-0064 PDF. */
+  displaySettings?: ReportDisplaySettingsValue | null;
 }
 
 /**
@@ -52,7 +55,7 @@ export class PdfReportRenderer {
   /** Rebuild the render input from a stored snapshot (old snapshots fall back to report defaults). */
   static inputFromSnapshot(
     snapshot: Pick<ReportSnapshot, "id" | "rowsJson" | "headerJson" | "completedJson" | "viewSettingsJson" | "optionsJson" | "serviceLineJson" | "periodStart" | "periodEnd" | "generatedAt"> &
-      Partial<Pick<ReportSnapshot, "layoutJson" | "departmentsJson">>,
+      Partial<Pick<ReportSnapshot, "layoutJson" | "departmentsJson" | "displaySettingsJson">>,
   ): ReportRenderInput {
     // Frozen names, order and ids: a later rename, reorder or delete never changes this report.
     const departmentList = ServiceAreaInfo.fromStored(snapshot.departmentsJson ?? null);
@@ -74,6 +77,7 @@ export class PdfReportRenderer {
       periodEnd: DateOnly.fromDbDate(snapshot.periodEnd)!,
       generatedAt: snapshot.generatedAt,
       reportDate: DateOnly.inZone(snapshot.generatedAt),
+      displaySettings: ReportDisplaySettings.parse(snapshot.displaySettingsJson ?? null),
     };
   }
 
@@ -94,6 +98,8 @@ export class PdfReportRenderer {
       periodStart: input.periodStart,
       periodEnd: input.periodEnd,
       generatedAt: input.generatedAt,
+      // Frozen display settings; none recorded (before 0064, or no on-demand report saved) = the pre-0064 PDF.
+      ...ReportDisplaySettings.toDoc(input.displaySettings ?? null),
     };
   }
 

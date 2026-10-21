@@ -40,7 +40,7 @@ describe("ReportLayout pagination", () => {
 
   it("spans several pages and lists every visible row exactly once, in report order", () => {
     expect(layout.pages.length).toBeGreaterThan(3);
-    expect(Many.rowIds(layout)).toEqual(rows.map((r) => r.projectId));
+    expect(Many.rowIds(layout)).toEqual(ReportLayout.pdfDefaultOrder(rows).map((r) => r.projectId));
   });
 
   it("never splits a row across pages (every row fits inside its page body)", () => {
@@ -413,7 +413,7 @@ describe("ReportLayout stale flag", () => {
     try {
       cfg.STALE_AFTER_DAYS = 21;
       expect(ReportLayout.legendText("stale")).toBe("no update in 21+ days");
-      const key = ReportLayout.layout(SampleReportData.docInput(), m).key!;
+      const key = ReportLayout.layout(SampleReportData.docInput({ showUpdatedOn: true }), m).key!;
       expect(key.flags.find((f) => f.flag.kind === "stale")!.meaning).toBe("No update in 21 or more days before the report date.");
       expect(key.details.map((d) => d.meaning).join(" ")).toContain("21+ days");
       expect(JSON.stringify(key)).not.toMatch(/\b14\b/);

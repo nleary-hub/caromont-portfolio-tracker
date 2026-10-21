@@ -1,4 +1,5 @@
 import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
+import { NameUsage } from "@/lib/people/NameUsage";
 import { OwnerNameLists } from "@/lib/people/OwnerNameLists";
 import { OwnerNamesService } from "@/lib/services/OwnerNamesService";
 import { redirect } from "next/navigation";
@@ -216,6 +217,8 @@ class DashboardData {
               // The line's lists (Admin > People); blocked names are dropped even if stored.
               ownerSuggestions: PeopleDirectory.merge(scope.owners),
               requesterSuggestions: PeopleDirectory.merge(scope.requesters),
+              // Item 5: the pickers list the most used names first (ties A to Z), counted over the line's projects.
+              nameUsage: NameUsage.counts(stored),
               // Milestone owners: every list of the line plus the milestone-owner list (a typed new name joins that one).
               milestoneOwnerOptions: await OwnerNamesService.pickerOptions(scope, db),
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
@@ -316,9 +319,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 const r = await setProjectHidden(projectId, context, hidden);
                 return r.ok ? null : r.error;
               },
-              setPeopleFieldAction: async (projectId, field, value) => {
+              setPeopleFieldAction: async (projectId, field, value, opts) => {
                 "use server";
-                const r = await setProjectPeopleField(projectId, field, value);
+                const r = await setProjectPeopleField(projectId, field, value, opts?.once === true);
                 return r.ok ? null : r.error;
               },
               saveProjectFormAction: async (projectId, changes, milestones) => {

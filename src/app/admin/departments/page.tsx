@@ -17,7 +17,7 @@ class DepartmentRows {
   private static readonly DATE = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeZone: "America/New_York" });
 
   static of(d: DepartmentAdminRow): DepartmentRowDto {
-    return { id: d.id, name: d.name, shortName: d.shortName, activeProjects: d.activeProjects, updated: DepartmentRows.DATE.format(d.updatedAt), archived: d.archived };
+    return { id: d.id, name: d.name, shortName: d.shortName, managerName: d.managerName, activeProjects: d.activeProjects, updated: DepartmentRows.DATE.format(d.updatedAt), archived: d.archived };
   }
 }
 

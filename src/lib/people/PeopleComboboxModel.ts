@@ -1,14 +1,14 @@
 import { PeopleDirectory, type NameSegment, type PeopleRole } from "@/lib/people/PeopleDirectory";
 
 /** A people field's value as the combobox holds it. Owner never uses "na". */
-export type PeopleValue = { kind: "name"; name: string } | { kind: "na" } | { kind: "unset" };
+export type PeopleValue = { kind: "name"; name: string; once?: true } | { kind: "na" } | { kind: "unset" };
 
 /** A pickable row. */
 export interface ComboOption {
   type: "option";
   /** Stable DOM-safe key (used for aria-activedescendant). */
   key: string;
-  variant: "pinned" | "name" | "add";
+  variant: "pinned" | "name" | "add" | "once";
   label: string;
   /** Name split around the typed text (name rows only). */
   segments: NameSegment[];
@@ -32,6 +32,8 @@ export type ComboRow = ComboOption | { type: "divider" } | { type: "message"; te
 export interface PeopleSave {
   field: "owner" | "physicianChampion" | "requesterNotApplicable";
   value: string;
+  /** Use once (item 4): store on this project only, never add it to the line's list. */
+  once?: true;
 }
 
 /**
@@ -90,6 +92,11 @@ export class PeopleComboboxModel {
     return `Add '${name}'`;
   }
 
+  /** "Use once (don't save to list)" for a typed name not on the list (item 4). */
+  static onceLabel(name: string): string {
+    return `Use '${name}' once (don't save to list)`;
+  }
+
   /**
    * Rows for the open popover. `filtering` is false right after opening (the field still shows the
    * current name, so every name is listed); typing turns it on.
@@ -124,6 +131,15 @@ export class PeopleComboboxModel {
         label: PeopleComboboxModel.addLabel(add),
         segments: [{ text: PeopleComboboxModel.addLabel(add), match: false }],
         value: { kind: "name", name: add },
+        current: false,
+      });
+      rows.push({
+        type: "option",
+        key: "once",
+        variant: "once",
+        label: PeopleComboboxModel.onceLabel(add),
+        segments: [{ text: PeopleComboboxModel.onceLabel(add), match: false }],
+        value: { kind: "name", name: add, once: true },
         current: false,
       });
     }
@@ -165,12 +181,12 @@ export class PeopleComboboxModel {
     const field = role === "owner" ? "owner" : "physicianChampion";
     if (next.kind === "na") return role === "requester" ? { field: "requesterNotApplicable", value: "true" } : null;
     if (next.kind === "unset") return { field, value: "" };
-    return { field, value: PeopleDirectory.normalizeName(next.name) };
+    return { field, value: PeopleDirectory.normalizeName(next.name), ...(next.once ? { once: true as const } : {}) };
   }
 
   static same(a: PeopleValue, b: PeopleValue): boolean {
     if (a.kind !== b.kind) return false;
-    return a.kind !== "name" || b.kind !== "name" || a.name === b.name;
+    return a.kind !== "name" || b.kind !== "name" || (a.name === b.name && Boolean(a.once) === Boolean(b.once));
   }
 
   private static pinned(key: string, label: string, value: PeopleValue, current: boolean): ComboOption {

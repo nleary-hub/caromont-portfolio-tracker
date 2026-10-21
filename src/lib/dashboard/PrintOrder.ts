@@ -1,13 +1,14 @@
 import type { ProjectStatus } from "@/generated/prisma/enums";
 import type { DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ViewSettings, type ViewSettingsValue } from "@/lib/domain/ViewSettings";
+import { PdfRowOrder } from "@/lib/report/PdfRowOrder";
 import { ReportBuilder, type SortableRow } from "@/lib/report/ReportBuilder";
 import { DashboardGroups, type DashboardGroup } from "./DashboardGroups";
 import type { PrefsLine, PrefsStorage } from "./DashboardPrefs";
 
 /**
  * "As it will print": the dashboard in the PDF report's order. Read only: the order and the area grouping are
- * IMPORTED from the report code (ReportBuilder.sort, the same comparator the PDF rows go through, and
+ * IMPORTED from the report code (ReportBuilder.sort then PdfRowOrder, the same order the PDF rows go through, and
  * DashboardGroups, which groups by ServiceAreaInfo.groups like the PDF sections). Nothing here is a copy of them.
  * The switch is a per-user, per-line preference in localStorage (on by default), like the other dashboard prefs.
  */
@@ -18,13 +19,15 @@ export class PrintOrder {
   static readonly DEFAULT_ON = true;
 
   /** Rows in PDF order, grouped by area exactly as the report groups them. */
-  static groups<R extends SortableRow>(rows: readonly R[], departments?: DepartmentList): DashboardGroup<R>[] {
-    return DashboardGroups.group(ReportBuilder.sort(rows, departments), undefined, departments);
+  static groups<R extends SortableRow & { isMfi?: boolean }>(rows: readonly R[], departments?: DepartmentList): DashboardGroup<R>[] {
+    return DashboardGroups.group(PrintOrder.rows(rows, departments), undefined, departments);
   }
 
   /** Flat PDF order (for tests and the row-order check). */
-  static rows<R extends SortableRow>(rows: readonly R[], departments?: DepartmentList): R[] {
-    return ReportBuilder.sort(rows, departments);
+  static rows<R extends SortableRow & { isMfi?: boolean }>(rows: readonly R[], departments?: DepartmentList): R[] {
+    // Report order, then the PDF default order inside each department (PdfRowOrder, Oct 20, 2026). Only while the
+    // user has the toggle on; the dashboard is never reordered on its own.
+    return PdfRowOrder.apply(ReportBuilder.sort(rows, departments));
   }
 
   /** A row the report leaves out (hidden from the report, or its status hidden in the report view). Still listed on the dashboard. */

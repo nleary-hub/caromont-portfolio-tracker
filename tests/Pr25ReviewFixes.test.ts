@@ -107,7 +107,7 @@ describe("3. Contracts leads A to Z on Admin > People and in the drawer picker (
       }),
     );
     const select = html.slice(html.indexOf('name="contractsLead"'), html.indexOf("</select>", html.indexOf('name="contractsLead"')));
-    expect([...select.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1])).toEqual(["", "Alex Rivera", "Jesse Okafor", "Sam Delacroix"]);
+    expect([...select.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1])).toEqual(["", "__none__", "__once__", "Alex Rivera", "Jesse Okafor", "Sam Delacroix"]);
   });
 });
 

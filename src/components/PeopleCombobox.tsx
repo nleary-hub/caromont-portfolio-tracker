@@ -216,7 +216,7 @@ export function PeopleCombobox({ role, id, label, options, value, onPick, varian
                   </li>
                 );
               const isActive = active?.key === r.key;
-              const tone = r.variant === "add" ? "text-accent" : r.variant === "pinned" && r.value.kind === "unset" ? "text-muted" : "text-fg";
+              const tone = r.variant === "add" ? "text-accent" : r.variant === "once" ? "text-muted" : r.variant === "pinned" && r.value.kind === "unset" ? "text-muted" : "text-fg";
               return (
                 <li
                   key={r.key}

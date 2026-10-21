@@ -66,12 +66,14 @@ describe("ReportRow.waitingOn (PDF 'Waiting on' line)", () => {
     const none = await pinnedRender({ waitingOn: "none" });
     const on = await pinnedRender({ waitingOn: true });
     expect(sha(none)).toBe(sha(plain));
-    // main @ c75b336, same harness (see the PR body). Update only on a deliberate PDF change.
-    expect(sha(plain)).toBe("74404053aee5dcf007f9f9981754affd36f1578d506fd309c908de002b3dfd3e");
+    // Deliberate PDF change (Oct 20, 2026 batch, items 8 and 9: Updated line off by default, new order within
+    // departments). Was 74404053... on main @ 4081287. Sample: tracker-samples/2026-10-20. Same harness.
+    expect(sha(plain)).toBe("23f2ba9b685ebb578aeb6a28fe5f854745cce2b1ad97ba0c4989924bfbd9c81a");
     expect(sha(on)).not.toBe(sha(plain));
     // Option on, same fixture and settings as the approved 1c sample (ai-overhaul-samples/2026-10-17/after.pdf).
     // Nick approved exactly this rendering. Update only with a new sample and his approval.
-    expect(sha(on)).toBe("dabd2387c017578a32b78bf8535b7c273242af3dadbd5c3a3ffe72187a0af0b3");
+    // Oct 20, 2026 batch (items 8 and 9) changed it from dabd2387...; sample sent to Nick (tracker-samples/2026-10-20).
+    expect(sha(on)).toBe("a6494a23516fe816c39e3449bd85f4da9372e072dcf26777cd99dd574eabd75a");
   }, 60000);
 });
 

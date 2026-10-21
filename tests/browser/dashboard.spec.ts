@@ -12,14 +12,17 @@ test("repeated project switching replaces every drawer section", async ({ page }
     await expect(panel).toHaveCount(1);
     await expect(panel.locator("h2")).toHaveText(`${["Zulu", "Alpha", "Bravo"][i]} fictional project`);
     await expect(panel.getByRole("region", { name: "Edit project", exact: true })).toHaveCount(1);
-    await expect(panel.getByTestId("project-history")).toHaveCount(1);
-    await expect(panel.getByTestId("history-entry")).toHaveText(`Fictional authorHistory for fictional-${i}`);
+    await expect(panel.getByTestId("drawer-history-buttons")).toHaveCount(1);
+    // Item 3: History opens in a panel from the compact button.
+    await panel.getByTestId("drawer-history").click();
+    await expect(page.getByTestId("drawer-panel-history").getByTestId("history-entry")).toHaveText(`Fictional authorHistory for fictional-${i}`);
+    await page.getByTestId("drawer-panel-history").getByRole("button", { name: "Close" }).click();
     await expect(panel.getByText("Infor number", { exact: true })).toHaveCount(1);
   }
   await panel.getByRole("button", { name: "Close", exact: true }).click();
   await expect(panel).toHaveCount(0);
   await page.locator('tr[data-row-key="fictional-0"]').click({ position: { x: 120, y: 15 } });
-  await expect(panel.getByTestId("project-history")).toHaveCount(1);
+  await expect(panel.getByTestId("drawer-history-buttons")).toHaveCount(1);
   expect(errors).toEqual([]);
 });
 
@@ -31,9 +34,12 @@ test("rapid switching and late history responses leave only the final project", 
   }
   const panel = page.getByRole("complementary", { name: "Project detail", exact: true });
   await expect(panel.locator("h2")).toHaveText("Bravo fictional project");
-  await expect(panel.getByTestId("history-entry")).toHaveText("Fictional authorHistory for fictional-2");
+  // Item 3: History opens in a panel from the compact button.
+  await panel.getByTestId("drawer-history").click();
+  await expect(page.getByTestId("drawer-panel-history").getByTestId("history-entry")).toHaveText("Fictional authorHistory for fictional-2");
+  await page.getByTestId("drawer-panel-history").getByRole("button", { name: "Close" }).click();
   await expect(panel.getByRole("region", { name: "Edit project", exact: true })).toHaveCount(1);
-  await expect(panel.getByTestId("project-history")).toHaveCount(1);
+  await expect(panel.getByTestId("drawer-history-buttons")).toHaveCount(1);
 });
 
 test("spotlight follows sorting and filtering while the same project stays open", async ({ page }) => {

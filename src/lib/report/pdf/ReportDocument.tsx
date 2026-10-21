@@ -961,6 +961,11 @@ function Block({ block, top, h, bar }: { block: BodyBlock; top: number; h: Heade
     <View style={{ position: "absolute", left: 0, top: sy, width: G.CONTENT_W, height: G.SECTION_H, backgroundColor: bar.fill }}>
       <View style={{ position: "absolute", left: 0, top: 0, width: 2, height: G.SECTION_H, backgroundColor: stripe }} />
       <Line x={7} y={2} w={300} text={`${block.label}${block.continued ? " (continued)" : ""}`} size={S.section} weight={600} color={ink} lh={12} />
+      {block.manager ? (
+        <View style={{ position: "absolute", left: 0, top: 0, width: G.CONTENT_W, height: G.SECTION_H, opacity: ReportLayout.MANAGER_OPACITY }}>
+          <Line x={block.manager.x} y={3.5} w={block.manager.w} text={block.manager.text} size={ReportLayout.MANAGER_SIZE} weight={400} color={bar.count} lh={G.SMALL_LH} />
+        </View>
+      ) : null}
       <Line x={G.CONTENT_W - 205} y={4} w={200} text={count} size={S.small} color={bar.count} lh={G.SMALL_LH} align="right" />
     </View>
   );

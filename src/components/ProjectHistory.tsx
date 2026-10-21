@@ -1,6 +1,8 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
+import { DrawerPanels as P } from "@/lib/history/DrawerPanels";
 import { UpdateHistoryCopy as C } from "@/lib/history/UpdateHistoryCopy";
 import { UpdateTimeline, type TimelineDto } from "@/lib/history/UpdateTimeline";
 import { UpdateNotesCopy as N } from "@/lib/history/UpdateNotesCopy";
@@ -33,13 +35,13 @@ const HEADER = "uppercase tracking-[.04em] text-muted type-label";
  * History (N): the last drawer section, open by default. Entries sit on a 16px gutter with a 1px rail and a 6px dot on
  * the meta line (hollow for Tracker and "Before this tracker"). Ten entries, then "Show all N changes" expands in place.
  */
-export function ProjectHistorySection({ timeline, loading }: { timeline: TimelineDto | null; loading: boolean }) {
+export function ProjectHistorySection({ timeline, loading, emptyText, testId = "project-history" }: { timeline: TimelineDto | null; loading: boolean; emptyText?: string; testId?: string }) {
   const [open, setOpen] = useState(true);
   const [all, setAll] = useState(false);
   const count = timeline?.entries.length ?? 0;
   const shown = timeline ? (all ? timeline.entries : timeline.entries.slice(0, UpdateTimeline.INITIAL_ENTRIES)) : [];
   return (
-    <section aria-label="History" data-testid="project-history">
+    <section aria-label="History" data-testid={testId}>
       <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`mb-1.5 flex items-center gap-1.5 ${HEADER} hover:text-fg`}>
         <span aria-hidden className="inline-block w-2 text-[9px] leading-none">
           {open ? "▾" : "▸"}
@@ -50,7 +52,7 @@ export function ProjectHistorySection({ timeline, loading }: { timeline: Timelin
         (!timeline ? (
           <p className="text-muted type-body">{loading ? C.LOADING : C.LOAD_FAILED}</p>
         ) : count === 0 ? (
-          <p className="text-muted type-body">{C.EMPTY}</p>
+          <p className="text-muted type-body">{emptyText ?? C.EMPTY}</p>
         ) : (
           <>
             <ol className="flex flex-col gap-3">
@@ -193,4 +195,51 @@ export function MilestoneStepsSection({ timeline }: { timeline: TimelineDto | nu
 /** "Previously REQ-4656" directly under the Infor number: 12px secondary gray, 2px gap. */
 export function PreviouslyLine({ text }: { text: string | null | undefined }) {
   return text ? <div className="mt-0.5 font-sans text-muted type-table">{text}</div> : null;
+}
+
+/**
+ * Item 3 (Oct 20, 2026): the drawer's compact "AI changes" and "History" buttons. Each opens a panel over the drawer
+ * with the entries (Escape or the close button returns). Display only.
+ */
+export function DrawerHistoryButtons({ timeline, loading }: { timeline: TimelineDto | null; loading: boolean }) {
+  const [open, setOpen] = useState<"ai" | "history" | null>(null);
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setOpen(null);
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open]);
+  const ai = P.aiOnly(timeline);
+  const btn = "pb-ghost h-7 rounded-control border border-line px-2.5 text-muted type-table hover:text-fg";
+  const title = open === "ai" ? P.AI_LABEL : P.HISTORY_LABEL;
+  return (
+    <div className="flex items-center gap-2" data-testid="drawer-history-buttons">
+      <button type="button" className={btn} aria-haspopup="dialog" data-testid="drawer-ai-changes" onClick={() => setOpen("ai")}>
+        {P.label(P.AI_LABEL, ai ? ai.entries.length : null)}
+      </button>
+      <button type="button" className={btn} aria-haspopup="dialog" data-testid="drawer-history" onClick={() => setOpen("history")}>
+        {P.label(P.HISTORY_LABEL, timeline ? timeline.entries.length : null)}
+      </button>
+      {open &&
+        typeof document !== "undefined" &&
+        createPortal(
+          <div role="dialog" aria-modal="true" aria-label={title} data-testid={`drawer-panel-${open}`} className="pb-drawer fixed top-[208px] right-6 bottom-6 z-30 flex w-[440px] flex-col gap-3 overflow-y-auto rounded-card border border-line bg-card px-6 py-5 shadow-[-16px_0_40px_rgba(0,0,0,.45)]">
+            <div className="flex items-start justify-between gap-3">
+              <h2 className="type-heading text-base">{title}</h2>
+              <button type="button" aria-label="Close" onClick={() => setOpen(null)} className="pb-ghost size-7 rounded-[6px] border border-line text-xs text-muted hover:text-fg">
+                ✕
+              </button>
+            </div>
+            {open === "ai" ? (
+              <ProjectHistorySection timeline={ai} loading={loading} emptyText={P.AI_EMPTY} testId="project-ai-changes" />
+            ) : (
+              <ProjectHistorySection timeline={timeline} loading={loading} />
+            )}
+          </div>,
+          document.body,
+        )}
+    </div>
+  );
 }

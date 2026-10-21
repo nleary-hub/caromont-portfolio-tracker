@@ -10,7 +10,7 @@ test("one click opens the admin drawer in place, with History, Update notes and 
   await expect(panel).toHaveCount(1);
   await expect(panel).toHaveAttribute("data-mode", "edit");
   await expect(panel.getByTestId("edit-form")).toHaveCount(1);
-  await expect(panel.getByTestId("project-history")).toHaveCount(1);
+  await expect(panel.getByTestId("drawer-history-buttons")).toHaveCount(1);
   await expect(panel.getByText("Previously REQ-00042")).toHaveCount(1);
   await expect(panel.getByRole("checkbox", { name: "Hide from report" })).toHaveCount(1);
   await expect(panel.getByRole("button", { name: "Delete project" })).toHaveCount(1);
@@ -47,7 +47,7 @@ test("non-admins get the same drawer, read-only, with History", async ({ page })
   await expect(panel).toHaveAttribute("data-mode", "view");
   await expect(panel.getByTestId("drawer-readonly")).toHaveCount(1);
   await expect(panel.getByTestId("edit-form")).toHaveCount(0);
-  await expect(panel.getByTestId("project-history")).toHaveCount(1);
+  await expect(panel.getByTestId("drawer-history-buttons")).toHaveCount(1);
   await expect(panel.getByTestId("drawer-note")).toHaveText("Alpha unique note");
   // Plain text: no character counter in the read-only drawer.
   await expect(panel.getByTestId("drawer-note-counter")).toHaveCount(0);

@@ -13,7 +13,7 @@ class DepartmentRevalidate {
   }
 }
 
-export async function saveDepartment(input: { id?: string; name: string; shortName: string }): Promise<AdminListResult> {
+export async function saveDepartment(input: { id?: string; name: string; shortName: string; managerName?: string }): Promise<AdminListResult> {
   return DepartmentRevalidate.after(await DepartmentForms.save(await CurrentViewer.get(), input));
 }
 

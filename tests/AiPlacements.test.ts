@@ -85,9 +85,10 @@ describe("placement 2: Recommend next milestone and row shortcuts", () => {
     expectReady(h, "ai-tool-next_step-propose");
   });
   it("model off: greyed, focusable, with the note", () => expectPaused(next(OFF), "ai-tool-next_step-propose", OFF));
-  it("feature off: the edit form gets no aiNextStep (not rendered)", () => {
+  it("feature off: the edit form gets no inline milestone suggestion; the separate button is gone (item 2)", () => {
     const src = readFileSync("src/components/ProjectDashboard.tsx", "utf8");
-    expect(src).toMatch(/"next_step" in aiPlacements \? \{ aiNextStep:/);
+    expect(src).toMatch(/"next_step" in aiPlacements && aiPlacements\.next_step == null\s*\? \{ milestoneSuggest:/);
+    expect(src).not.toContain("aiNextStep: <AiNextStepPanel");
   });
   const menu = (items: Parameters<typeof AiRowMenu>[0]["items"]) => html(createElement(AiRowMenu, { rowName: "Example Clinic refresh", items, onPick: () => {}, defaultOpen: true }));
   it("row ... menu: no shortcuts (features off) = no menu at all", () => expect(menu([])).toBe(""));

@@ -21,7 +21,7 @@ export class DepartmentForms {
   static readonly FAILED = "Couldn't save the change. Try again.";
   static readonly GONE = "That department no longer exists. Refresh the page.";
 
-  static async save(viewer: Viewer | null, input: { id?: unknown; name?: unknown; shortName?: unknown }, db: PrismaClient = Db.client): Promise<AdminListResult> {
+  static async save(viewer: Viewer | null, input: { id?: unknown; name?: unknown; shortName?: unknown; managerName?: unknown }, db: PrismaClient = Db.client): Promise<AdminListResult> {
     return DepartmentForms.run(viewer, db, async (v, scope) => {
       await DepartmentService.save(scope, input, v, db);
       return { ok: true, message: DepartmentCopy.SAVED_TOAST };

@@ -4,6 +4,9 @@ import { ServiceLine } from "@/lib/domain/ServiceLine";
  * The Contracts lead pick-list rules. The list is per service line (service_line.contractsLeads); callers pass
  * the active line's list. The default argument is CVPSL's seeded list (for code without a database).
  */
+/** Contract lead role label (0066). */
+export type LeadRole = "contractLead" | "projectManager";
+
 export class ContractsLead {
   /** Prefix of the display line under owner and requester: "Contracts Shea Waldron". */
   static readonly PREFIX = "Contracts";
@@ -16,6 +19,25 @@ export class ContractsLead {
    * Canonical name for a list entry (case and whitespace tolerant), null for blank, undefined when the
    * value is not on the list.
    */
+  /** "No contract lead" (0065): like the requester's Not applicable, the line is hidden from the dashboard and report. */
+  static readonly NONE_LABEL = "No contract lead";
+  /** One-off name (item 4): stored on the project only, never added to the line's list. */
+  static readonly ONCE_OPTION = "Other name, use once (don't save to list)";
+  static readonly ONCE_BUTTON = "Use once";
+
+  /** Per-project role label (0066). */
+  static readonly ROLES = ["contractLead", "projectManager"] as const;
+  static readonly ROLE_LABELS: Readonly<Record<LeadRole, string>> = { contractLead: "Contracts lead", projectManager: "Assigned project manager" };
+  /** Line prefix on the dashboard and PDF ("Contracts:" stays exactly as before for the default role). */
+  static readonly ROLE_PREFIXES: Readonly<Record<LeadRole, string>> = { contractLead: "Contracts", projectManager: "Assigned project manager" };
+  static role(raw: unknown): LeadRole {
+    return raw === "projectManager" ? "projectManager" : "contractLead";
+  }
+  /** Drawer toggle text (switches to the other label). */
+  static toggleText(role: LeadRole): string {
+    return role === "projectManager" ? "Use the Contracts lead label" : "Use the Assigned project manager label";
+  }
+
   static resolve(value: string | null | undefined, list: readonly string[] = ServiceLine.CVPSL_CONTRACTS_LEADS): string | null | undefined {
     if (value === null || value === undefined) return null;
     const key = ContractsLead.key(value);

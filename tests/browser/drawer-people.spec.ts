@@ -24,7 +24,7 @@ test("MFI, Owner, Requester and Contracts lead sit at the top of the drawer, abo
 test("contracts lead offers the line's list and each picker saves", async ({ page }) => {
   const panel = await open(page);
   const lead = panel.locator("#contractsLead-fictional-1");
-  await expect(lead.locator("option")).toHaveText(["To assign", "Fictional Lead One", "Fictional Lead Two"]);
+  await expect(lead.locator("option")).toHaveText(["To assign", "No contract lead", "Fictional Lead One", "Fictional Lead Two", "Other name, use once (don't save to list)"]);
   await lead.selectOption("Fictional Lead Two");
 
   await panel.locator("#owner-fictional-1").click();

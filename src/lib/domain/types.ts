@@ -18,6 +18,10 @@ export interface ProjectRecord {
   requesterNotApplicable: boolean;
   /** One of AppConfig.CONTRACTS_LEADS, or null ("To assign"). */
   contractsLead: string | null;
+  /** "No contract lead" (0065): hidden from the dashboard and report. Absent = false. */
+  contractsLeadNotApplicable?: boolean;
+  /** Role label (0066): "contractLead" (default) or "projectManager". Absent = contractLead. */
+  leadRole?: string;
   status: ProjectStatus;
   /** After MilestoneProgress.applyAll: the derived next milestone (first step not done), else the legacy text. */
   nextMilestone: string | null;
@@ -100,6 +104,10 @@ export interface ReportRow {
   inforRequestNumber?: number | null;
   /** Contracts lead. Absent on snapshots frozen before 0013. */
   contractsLead?: string | null;
+  /** "No contract lead" (0065). Only present when true, so every other row's JSON is exactly as before. */
+  contractsLeadNotApplicable?: true;
+  /** "Assigned project manager" label (0066). Only present when set, so every other row's JSON is exactly as before. */
+  leadRole?: "projectManager";
   /**
    * Checklist done/total for the "X of Y" label (MilestoneProgress.progressLabel decides when it shows).
    * Absent for projects without steps and on snapshots frozen before 0015. Not part of handoff.json.

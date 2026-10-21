@@ -11,6 +11,7 @@ import { PeopleLabel } from "@/lib/domain/PeopleLabel";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { MilestoneOwner } from "@/lib/domain/MilestoneOwner";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
+import { PdfRowOrder } from "@/lib/report/PdfRowOrder";
 import { ServiceAreaInfo, type AreaGroup, type DepartmentKey, type DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import { ServiceLine, type ServiceLineValue } from "@/lib/domain/ServiceLine";
 import type { CompletedRow, ReportHeader, ReportRow } from "@/lib/domain/types";
@@ -76,6 +77,18 @@ export interface ReportDocInput {
    * ServiceAreaInfo.LEGACY, today's seven keyed by their old values (snapshots frozen before migration 0018).
    */
   lineDepartments?: DepartmentList;
+  /**
+   * Show the "Updated <date>" last-changed line under each project name. Off by default on the PDF (Oct 20, 2026);
+   * the dashboard keeps showing it. Pass true to bring the line (and its key entries) back.
+   */
+  showUpdatedOn?: boolean;
+  /**
+   * Department manager names by department id (migration 0063), shown as smaller subtle text inside the PDF
+   * department bar after the department name. Absent or blank: nothing is shown.
+   */
+  departmentManagers?: Readonly<Record<string, string | null | undefined>>;
+  /** PDF default order within departments (PdfRowOrder). Absent = on. False = the report order, as before 0064. */
+  pdfDefaultOrder?: boolean;
 }
 
 /** Geometry in PDF points (1 in = 72 pt). Mirrors portfolio-tracker-mockups/report.css. */
@@ -378,6 +391,8 @@ export type BodyBlock =
       /** Rows in this area's "Completed this period" block (not part of `count` or any status count). */
       completedCount: number;
       continued: boolean;
+      /** Department manager subtext (item 10): x offset inside the bar, after the label. Absent = no manager. */
+      manager?: { text: string; x: number; w: number };
     }
   | { kind: "completed"; y: number; height: number; area: AreaGroup; headerH: number; rows: CompletedRowLayout[] }
   | { kind: "row"; y: number; height: number; area: AreaGroup; row: RowLayout }
@@ -644,7 +659,7 @@ export class ReportLayout {
    * of rows listed because they were completed during the period (`listed`). The "Completed this period" line only explains
    * the old block, so it shows only for snapshots frozen with one (`completedBlock`).
    */
-  static key(m: Measurer, settings: ViewSettingsValue, listed: readonly ProjectStatus[] = [], completedBlock = true): KeyModel {
+  static key(m: Measurer, settings: ViewSettingsValue, listed: readonly ProjectStatus[] = [], completedBlock = true, showUpdatedOn = false): KeyModel {
     // Status chips off (report setting): no flag explanations at all, so the key is a status key.
     const chips = ViewSettings.isColumnVisible(settings, "flags") || !PdfReportLayout.hasOwnerColumn(settings);
     return {
@@ -661,8 +676,12 @@ export class ReportLayout {
         ...(ViewSettings.isColumnVisible(settings, "inforNumber")
           ? [{ sample: "REQ-4656", meaning: "Infor request number, when the project has one." }]
           : []),
-        { sample: "Updated Sep 22", meaning: "Date of the latest update to the project." },
-        { sample: "Updated Sep 1", meaning: `In amber when the project is stale (${AppConfig.STALE_AFTER_DAYS}+ days without an update).` },
+        ...(showUpdatedOn
+          ? [
+              { sample: "Updated Sep 22", meaning: "Date of the latest update to the project." },
+              { sample: "Updated Sep 1", meaning: `In amber when the project is stale (${AppConfig.STALE_AFTER_DAYS}+ days without an update).` },
+            ]
+          : []),
         { sample: "\u2193 from On track", meaning: "Status moved since the last report (\u2193 worse, \u2191 better)." },
         { sample: "No change.", meaning: "Nothing changed since the last report; the note is repeated." },
         { sample: "Due in red", meaning: "Overdue due date." },
@@ -855,7 +874,7 @@ export class ReportLayout {
           const requester = showsChampion ? Requester.display(row.physicianChampion, row.requesterNotApplicable) : null;
           const people = ReportLayout.peopleText(m, row.owner, requester?.text ?? null, inner);
           const champion = people.champion;
-          const contracts = PdfReportLayout.showsContracts(settings) ? ReportLayout.contractsLine(m, row.contractsLead ?? null, inner) : null;
+          const contracts = PdfReportLayout.showsContracts(settings) && !row.contractsLeadNotApplicable ? ReportLayout.contractsLine(m, row.contractsLead ?? null, inner, row.leadRole) : null;
           const stackH = (champion ? (1 + people.championMore.length) * g.SMALL_LH : 0) + (contracts ? contracts.lines.length * g.SMALL_LH : 0);
           if (stackH) lineTwoH = Math.max(lineTwoH, stackH);
           // A wrapped owner name takes more of line 1, so line 2 (requester, contracts) starts below it.
@@ -1025,9 +1044,9 @@ export class ReportLayout {
   }
 
   /** Lay out "Contracts <name or To assign>" at the requester size within `w`; wraps the name if needed. */
-  static contractsLine(m: Measurer, lead: string | null, w: number): ContractsLine {
+  static contractsLine(m: Measurer, lead: string | null, w: number, role?: string | null): ContractsLine {
     const S = ReportGeometry.SIZE;
-    const prefix = `${PeopleLabel.CONTRACTS} `;
+    const prefix = `${PeopleLabel.contracts(role)} `;
     const name = Assignee.label(lead);
     const prefixW = m.width(prefix, S.small, ReportLayout.CONTRACTS_PREFIX_WEIGHT);
     const lines: ContractsLine["lines"] = [];
@@ -1667,6 +1686,39 @@ export class ReportLayout {
     return g.CONTENT_H - headerHeight - g.COLHEAD_H - g.FOOTER_GAP - g.FOOTER_H;
   }
 
+  /** PDF default order inside each department (PdfRowOrder, shared with the dashboard's As it will print). */
+  static pdfRowRank(row: Pick<ReportRow, "status" | "isMfi">): number {
+    return PdfRowOrder.rank(row);
+  }
+
+  static pdfDefaultOrder<R extends Pick<ReportRow, "status" | "isMfi" | "serviceArea">>(rows: readonly R[]): R[] {
+    return PdfRowOrder.apply(rows);
+  }
+
+  /** Gap between the department name and the manager subtext in the bar. */
+  static readonly MANAGER_GAP = 8;
+  /** Manager subtext size: 1.25 pt below the department name (SIZE.section 9), normal weight. */
+  static readonly MANAGER_SIZE = 7.75;
+  /** Manager subtext opacity over the bar's count color (muted). */
+  static readonly MANAGER_OPACITY = 0.8;
+  /** Label before the manager's name in the department bar (Nick, Oct 20, 2026). */
+  static readonly MANAGER_LABEL = "Department Manager:";
+
+  /**
+   * The manager subtext in a department bar: after the bar label (x = 7 + label width + gap), in the small size,
+   * clipped before the count on the right (the count sits in the last 205 pt). Null without a manager.
+   */
+  static managerSubtext(m: Measurer, area: AreaGroup, barLabel: string, managers: ReportDocInput["departmentManagers"]): { text: string; x: number; w: number } | null {
+    const name = managers?.[String(area)]?.trim();
+    if (!name) return null;
+    const g = ReportGeometry;
+    const x = 7 + m.width(barLabel, g.SIZE.section, 600) + ReportLayout.MANAGER_GAP;
+    const w = g.CONTENT_W - 205 - x - 4;
+    if (w <= 10) return null;
+    const text = `${ReportLayout.MANAGER_LABEL} ${name}`;
+    return { text: TextMeasure.wrap(m, text, w, ReportLayout.MANAGER_SIZE, 400, 1)[0] ?? text, x, w };
+  }
+
   static layout(input: ReportDocInput, m: Measurer = new TextMeasure()): DocumentLayout {
     const g = ReportGeometry;
     // Only statuses visible in the report view settings are listed or counted anywhere. Rows from
@@ -1682,6 +1734,11 @@ export class ReportLayout {
     );
     const completedRows = departments && input.completed ? DepartmentFilter.apply(input.completed, departments, options) : input.completed;
     input = { ...input, rows, ...(completedRows ? { completed: completedRows } : {}), ...(departments ? { departments } : {}) };
+    // Last-changed date: off by default on the PDF (the row data keeps updatedOn; only the drawn line goes).
+    if (input.showUpdatedOn !== true) input = { ...input, rows: input.rows.map((r) => (r.updatedOn ? { ...r, updatedOn: null } : r)) };
+    // PDF default order within each department (departments themselves keep their order). A department with a
+    // manual dashboard order (layout rows, set only by manual moves) uses that exact order below instead.
+    if (input.pdfDefaultOrder !== false) input = { ...input, rows: ReportLayout.pdfDefaultOrder(input.rows) };
     // Line layout: column order and widths ride on the settings, manual order within departments on the rows.
     // The default layout leaves both untouched (same objects), so the default PDF is exactly today's.
     if (input.layout && !LineLayout.isDefault(input.layout)) {
@@ -1723,7 +1780,9 @@ export class ReportLayout {
     const list = ReportLayout.departmentList(input);
     const pushSection = (area: AreaGroup, count: number, completedCount: number, continued: boolean) => {
       const h = sectionH(y === 0);
-      page.blocks.push({ kind: "section", y, height: h, area, label: ServiceAreaInfo.label(area, list), count, completedCount, continued });
+      const label = ServiceAreaInfo.label(area, list);
+      const manager = ReportLayout.managerSubtext(m, area, `${label}${continued ? " (continued)" : ""}`, input.departmentManagers);
+      page.blocks.push({ kind: "section", y, height: h, area, label, count, completedCount, continued, ...(manager ? { manager } : {}) });
       y += h;
     };
 
@@ -1777,7 +1836,7 @@ export class ReportLayout {
     }
 
     const key = showKey
-      ? ReportLayout.key(m, input.viewSettings, input.rows.filter((r) => r.completedInPeriod).map((r) => r.status), completed.length > 0)
+      ? ReportLayout.key(m, input.viewSettings, input.rows.filter((r) => r.completedInPeriod).map((r) => r.status), completed.length > 0, input.showUpdatedOn === true)
       : null;
     if (key) {
       if (model.totalsGrid === "lastPage") {

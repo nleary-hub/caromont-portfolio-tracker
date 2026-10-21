@@ -159,8 +159,8 @@ export async function setProjectHidden(projectId: string, context: string, hidde
   return AdminAction.run("setProjectHidden", (admin, scope) => ProjectService.setHidden(projectId, context, Boolean(hidden), admin, undefined, scope));
 }
 
-export async function setProjectPeopleField(projectId: string, field: string, value: string): Promise<AdminActionResult> {
-  const result = await ProjectPeopleForms.setField(await CurrentViewer.get(), projectId, field, value);
+export async function setProjectPeopleField(projectId: string, field: string, value: string, once = false): Promise<AdminActionResult> {
+  const result = await ProjectPeopleForms.setField(await CurrentViewer.get(), projectId, field, value, undefined, undefined, { once: once === true });
   if (result.ok) revalidatePath("/");
   return result;
 }

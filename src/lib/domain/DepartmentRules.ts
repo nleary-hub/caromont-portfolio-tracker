@@ -11,6 +11,8 @@ export interface DepartmentRow {
   archivedAt: Date | null;
   deletedAt: Date | null;
   deletedBy?: string | null;
+  /** Optional manager name (0063), shown in the PDF department bar. */
+  managerName?: string | null;
   updatedAt?: Date;
   updatedBy?: string;
 }
@@ -90,6 +92,15 @@ export class DepartmentRules {
 /** Copy for the Departments admin page (Writing Bot), in one place so the page and tests agree. */
 export class DepartmentCopy {
   static readonly PAGE_TITLE = "Departments";
+  static readonly MANAGER_LABEL = "Department manager (optional)";
+  static readonly MANAGER_HINT = "Shown in the PDF department bar as \"Department Manager: <name>\". Leave blank for none.";
+  static readonly MANAGER_MAX = 80;
+  /** Trimmed manager name, or null when blank. Longer than MANAGER_MAX is cut. */
+  static manager(raw: unknown): string | null {
+    if (typeof raw !== "string") return null;
+    const v = raw.replace(/\s+/g, " ").trim().slice(0, DepartmentCopy.MANAGER_MAX);
+    return v || null;
+  }
   static readonly NEW_BUTTON = "+ New department";
   static readonly ORDER_NOTE = "This order sets the PDF and dashboard order. Unassigned always comes last.";
   static readonly EMPTY = "No departments yet. Add one to start assigning projects.";

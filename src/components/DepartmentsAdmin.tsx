@@ -15,6 +15,8 @@ export interface DepartmentRowDto {
   id: string;
   name: string;
   shortName: string;
+  /** Optional manager name (0063), shown in the PDF department bar. */
+  managerName?: string | null;
   activeProjects: number;
   /** "Sep 26, 2026" (ET). */
   updated: string;
@@ -491,6 +493,7 @@ function DepartmentDrawer({
   const dept = editing.kind === "edit" ? editing.dept : null;
   const [name, setName] = useState(dept?.name ?? "");
   const [shortName, setShortName] = useState(dept?.shortName ?? "");
+  const [managerName, setManagerName] = useState(dept?.managerName ?? "");
   const [errors, setErrors] = useState<Partial<Record<DepartmentField, string>>>({});
   const [pending, start] = useTransition();
   const nameRef = useRef<HTMLInputElement>(null);
@@ -499,7 +502,7 @@ function DepartmentDrawer({
 
   const save = () =>
     start(async () => {
-      const r = await saveDepartment({ ...(dept ? { id: dept.id } : {}), name, shortName });
+      const r = await saveDepartment({ ...(dept ? { id: dept.id } : {}), name, shortName, managerName });
       if (r.ok) return onSaved();
       setErrors(r.ok ? {} : (r.errors ?? { _form: r.message }));
     });
@@ -566,6 +569,18 @@ function DepartmentDrawer({
             <span>{DepartmentCopy.previewDashboard(previewShort)}</span>
             <span>{DepartmentCopy.previewGrid(previewShort)}</span>
           </span>
+        </label>
+        <label className="flex flex-col gap-1">
+          <span className="type-label text-muted">{DepartmentCopy.MANAGER_LABEL}</span>
+          <input
+            name="managerName"
+            value={managerName}
+            maxLength={DepartmentCopy.MANAGER_MAX}
+            onChange={(e) => setManagerName(e.target.value)}
+            className={INPUT}
+            data-testid="department-manager"
+          />
+          <span className="type-caption text-muted">{DepartmentCopy.MANAGER_HINT}</span>
         </label>
         {dept && (
           <section aria-label={DepartmentCopy.ADMIN_SECTION} className="mt-auto flex flex-col gap-2 rounded-[6px] border border-line bg-input px-3 py-2.5">
