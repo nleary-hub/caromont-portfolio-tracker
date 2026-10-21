@@ -4,6 +4,7 @@ Plain-language notes for Nick. Newest first.
 
 ## Unreleased
 
+- Tracker batch (Oct 20): voice chat can make edits (read back, then applied after you say yes), the next milestone suggestion shows as light text in the add box (Tab or Enter adds it, Esc or typing dismisses it), the drawer has compact AI changes and History buttons, names can be used once without saving them to the list, name lists sort by how often each name is used, a project can be marked No contract lead, each project can label its lead as Contracts lead or Assigned project manager, the PDF hides the Updated date by default and orders rows within each department, and the PDF department bar can show "Department Manager: <name>". Migrations 0063 to 0066 only add columns and a table.
 - Voice chat: a chat longer than 15 minutes under a raised session limit now saves when you press End chat (migration 0062 lets the stored length go up to 60 minutes, matching the limit an admin can set).
 
 ## Tracker AI overhaul (shipped in #87)
