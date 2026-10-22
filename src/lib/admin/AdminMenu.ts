@@ -1,4 +1,5 @@
 import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 
 /**
  * - link: normal navigation.
@@ -75,6 +76,9 @@ export class AdminMenu {
     { id: "ai-settings", group: "admin", kind: "link", icon: "sparkle", label: AdminMenu.AI_SETTINGS, href: "/admin/ai", shipped: true },
   ];
 
+  /** Menu items only the Owner sees (OwnerPolicy). */
+  static readonly OWNER_ONLY: readonly string[] = ["ai-tools", "ai-settings"];
+
   /** Every defined item, shipped or not (for tests and docs). */
   static definitions(): readonly (AdminMenuItem & { shipped: boolean })[] {
     return AdminMenu.DEFINITIONS;
@@ -83,7 +87,9 @@ export class AdminMenu {
   /** Shipped items for an admin; null for non-admins (render nothing). */
   static itemsFor(viewer: Viewer | null | undefined): AdminMenuItem[] | null {
     if (!viewer?.isAdmin) return null;
-    return AdminMenu.DEFINITIONS.filter((d) => d.shipped).map((d) => AdminMenu.toItem(d));
+    // AI tools and AI settings are Owner-only.
+    const owner = OwnerPolicy.isOwner(viewer);
+    return AdminMenu.DEFINITIONS.filter((d) => d.shipped && (owner || !AdminMenu.OWNER_ONLY.includes(d.id))).map((d) => AdminMenu.toItem(d));
   }
 
   private static toItem(d: AdminMenuDefinition): AdminMenuItem {

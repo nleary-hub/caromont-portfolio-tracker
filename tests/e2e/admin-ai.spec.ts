@@ -15,6 +15,16 @@ test("a non-admin gets a 404 for Admin > AI settings", async ({ page }) => {
   await expect(page.getByTestId("provider-keys")).toHaveCount(0);
 });
 
+test("an admin who is not the Owner gets 404 on every AI page, 403 from the voice route and no AI menu items", async ({ page }) => {
+  await signIn(page, "casey.lund@example.org");
+  for (const path of ["/admin/ai", "/ai-tools", "/playbook"]) expect((await page.goto(path))?.status(), path).toBe(404);
+  await expect(page.getByTestId("provider-keys")).toHaveCount(0);
+  const res = await page.request.post("/api/ai/voice/connect", { data: {} });
+  expect(res.status()).toBe(403);
+  await page.goto("/");
+  await expect(page.locator('a[href="/admin/ai"], a[href="/ai-tools"]')).toHaveCount(0);
+});
+
 test("preview guard: the admin sees AI disabled and a read-only Provider keys card at the top", async ({ page }) => {
   await signIn(page, "jordan.pike@example.org");
   const res = await page.goto("/admin/ai");

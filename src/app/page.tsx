@@ -31,6 +31,7 @@ import { AiVoiceChatDrawer } from "@/components/AiVoiceChatDrawer";
 import { AiModelService, type AiModelDb } from "@/lib/services/AiModelService";
 import { AiPlacementData, AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import type { AiOutcome } from "@/lib/services/AiWritingService";
 import { DashboardSettingsService } from "@/lib/services/DashboardSettingsService";
 import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
@@ -266,8 +267,9 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const today = DateOnly.today();
   const { rows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
+  // AI is Owner-only (OwnerPolicy): everyone else gets no AI buttons at all.
   // Off by default: no settings row, the switch off, an incomplete setup or no tables yet all mean no AI buttons.
-  const aiOn = Boolean(admin) && Db.isConfigured() ? await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb) : false;
+  const aiOn = Boolean(admin) && OwnerPolicy.isOwner(viewer) && Db.isConfigured() ? await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb) : false;
   // Draft and Fit paused: AI on, but its model is turned off under Models (the server refuses with MODEL_NOT_ALLOWED).
   const aiPaused = aiOn ? AiWritingModel.paused({ aiOn, modelOn: await AiSettingsService.modelOn(Db.client as unknown as AiSettingsDb, await AiModelService.enabledIds(Db.client, "chat")) }) : false;
   // PR B: Draft and Fit each have a row (toggle, env kill switch, provider and model). Off hides that button; no saved key

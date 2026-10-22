@@ -7,7 +7,9 @@ import { AdminMenu, MenuKeyboard } from "@/lib/admin/AdminMenu";
 import { AdminMenuButton } from "@/components/AdminMenuButton";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 
-const ADMIN = { email: "admin@example.org", isAdmin: true };
+// The fictional Owner (vitest OWNER_EMAIL): the only admin who sees AI tools and AI settings.
+const ADMIN = { email: "jordan.pike@example.org", isAdmin: true };
+const OTHER_ADMIN = { email: "admin@example.org", isAdmin: true };
 const MEMBER = { email: "member@example.org", isAdmin: false };
 
 describe("AdminMenu.itemsFor", () => {
@@ -32,6 +34,13 @@ describe("AdminMenu.itemsFor", () => {
       ["admin", "AI settings", "/admin/ai"],
     ]);
     expect(items.find((i) => i.id === "generate-pdf")).toMatchObject({ kind: "action", caption: "Draft" });
+  });
+
+  it("hides AI tools and AI settings from admins who are not the Owner", () => {
+    const ids = AdminMenu.itemsFor(OTHER_ADMIN)!.map((i) => i.id);
+    expect(ids).not.toContain("ai-tools");
+    expect(ids).not.toContain("ai-settings");
+    expect(ids).toEqual(AdminMenu.itemsFor(ADMIN)!.map((i) => i.id).filter((id) => !AdminMenu.OWNER_ONLY.includes(id)));
   });
 
   it("gives non-admins and signed-out viewers nothing", () => {

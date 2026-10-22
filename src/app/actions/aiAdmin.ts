@@ -3,7 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import type { AiListedModel } from "@/lib/ai/AiModelKinds";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiModelService, type AiAdminResult, type AiModelDb } from "@/lib/services/AiModelService";
 
@@ -12,7 +12,7 @@ import { AiModelService, type AiAdminResult, type AiModelDb } from "@/lib/servic
  * re-checks admin (Server Functions are reachable by direct POST). None of them returns or logs the API key.
  */
 async function run(name: string, fn: (db: AiModelDb, viewer: { email: string; isAdmin: boolean }) => Promise<AiAdminResult>): Promise<AiAdminResult> {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
   if (!Db.isConfigured()) return { ok: false, error: AiCopy.SAVE_FAILED };
   try {
@@ -38,7 +38,7 @@ export async function addAiModel(id: string, manual = false, provider?: string):
 
 /** PR B: one provider's model list for its saved key, by kind. Read-only; the key is never returned. */
 export async function listAiProviderModels(provider: string): Promise<{ ok: true; models: AiListedModel[] } | { ok: false; error: string }> {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
   if (!Db.isConfigured()) return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
   try {
@@ -59,7 +59,7 @@ export async function setAiFeatureProvider(feature: string, provider: string, mo
 
 /** OpenAI's model list for the saved key, by kind. Read-only; the key is never returned. */
 export async function listOpenAiModels(): Promise<{ ok: true; models: AiListedModel[] } | { ok: false; error: string }> {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
   if (!Db.isConfigured()) return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
   try {

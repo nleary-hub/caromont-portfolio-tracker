@@ -1,4 +1,4 @@
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
 import { AiCopy } from "@/lib/ai/AiCopy";
@@ -13,7 +13,7 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 30;
 
 export async function POST(request: Request) {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin || !Db.isConfigured()) return Response.json({ error: { message: AiCopy.NOT_AUTHORIZED } }, { status: 403, headers: { "cache-control": "no-store" } });
   return AiVoiceConnectRoute.handle(request, { db: Db.client as unknown as AiToolsDb, viewer, scope: await ServiceLineAccess.activeFor(viewer) });
 }

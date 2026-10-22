@@ -9,7 +9,7 @@ import { AiVoiceChatPanel } from "@/components/AiVoiceChatPanel";
 import { AiRequestDraftPanel } from "@/components/AiRequestDraftPanel";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import type { AiModelDb } from "@/lib/services/AiModelService";
 import type { AiSettingsDb } from "@/lib/services/AiSettingsService";
@@ -25,7 +25,7 @@ export const metadata: Metadata = { title: C.PAGE_TITLE };
  * rejects each line. Related-project links are no longer offered here (the table and the flag stay). Nothing here reads or writes snapshots, PDFs, report_artifacts or handoff.json.
  */
 export default async function AiToolsPage() {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) notFound();
   let notes: Record<string, string | null> = Object.fromEntries(AiFeatureFlags.TOOL_FEATURES.map((f) => [f, C.AI_OFF_NOTE]));
   let dictationNote: string | null = C.AI_OFF_NOTE;
