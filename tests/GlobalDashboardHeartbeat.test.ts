@@ -194,10 +194,11 @@ describe("global Dashboard heartbeat setting", () => {
 
   it("the sign-in render is unchanged (AuthStage markup pinned to main)", () => {
     const html = renderToStaticMarkup(
-      createElement(AuthStage, {
-        state: "error",
-        children: createElement("p", null, "Sample"),
-      }),
+      createElement(
+        AuthStage,
+        { state: "error" } as Parameters<typeof AuthStage>[0],
+        createElement("p", null, "Sample"),
+      ),
     );
     expect(createHash("sha256").update(html).digest("hex")).toBe(
       "ec1f6a890608e94eafb83b476e4e9cca79371110fc6146b2bb9ddfe50dc03241",

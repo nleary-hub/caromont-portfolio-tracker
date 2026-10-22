@@ -171,6 +171,8 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
   <ProjectDashboard rows={rows} columns={ViewSettings.visibleColumns(admin.viewSettings.dashboard)}
     today={depsMode ? DepsFixture.TODAY : "2026-10-04"} userEmail="fictional@example.org" userName="Fictional Reviewer"
     latestReport={null} loadError={null} serviceLine={ServiceLine.SEED} {...stalePlacements}
+    // ?beat=1: the global Admin > Settings > Dashboard heartbeat is On (default Off, migration 0067).
+    heartbeat={new URLSearchParams(window.location.search).has("beat")}
     // ?line=1: a fictional active line with its own contracts-lead pick-list.
     {...(new URLSearchParams(window.location.search).has("line") ? { line: { ...ServiceLine.defaultScope(), owners: ["Fictional Owner"], requesters: ["Fictional Requester"], contractsLeads: ["Fictional Lead One", "Fictional Lead Two"] } } : {})}
     // ?viewer=readonly: the same dashboard for a non-admin (the drawer shows the fields read-only).

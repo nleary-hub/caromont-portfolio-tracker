@@ -2,7 +2,7 @@ import { test, expect } from "@playwright/test";
 import sharp from "sharp";
 
 test("trace is above every tile surface, behind protected labels, and scrolls with the summary", async ({ page }, testInfo) => {
-  await page.goto("/?fy=1");
+  await page.goto("/?fy=1&beat=1");
   await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
   const geometry = () => page.evaluate(() => {
     const trace = document.querySelector(".pb-ecg")!.getBoundingClientRect();
@@ -42,7 +42,7 @@ async function seek(page: import("@playwright/test").Page, time: number) {
 }
 
 test("drawing head creates P-QRS-T sequentially with no future waveform and a fading trail", async ({ page }, testInfo) => {
-  await page.goto("/?fy=1");
+  await page.goto("/?fy=1&beat=1");
   await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
   for (const [x, y] of [[36,23], [68,30], [74,2], [80,36], [104,28], [133,19], [500,28], [794,2]]) {
     await seek(page, x / 1440 * 4000);
@@ -63,7 +63,7 @@ test("drawing head creates P-QRS-T sequentially with no future waveform and a fa
 });
 
 test("head drives assigned colored background washes without changing tile borders", async ({ page }, testInfo) => {
-  await page.goto("/?fy=1");
+  await page.goto("/?fy=1&beat=1");
   await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
   const result = [];
   for (const tile of await page.locator(".pb-summary .pb-tile").all()) {
@@ -94,7 +94,7 @@ test("head drives assigned colored background washes without changing tile borde
 });
 
 test("tile visibility changes re-synchronize the remaining trace and preserve link clicks", async ({ page }) => {
-  await page.goto("/?fy=1");
+  await page.goto("/?fy=1&beat=1");
   await page.getByRole("button", { name: "Show or hide tiles" }).click();
   const options = page.getByRole("dialog", { name: "Tiles", exact: true });
   await options.locator("label").filter({ hasText: /^On track$/ }).click();
@@ -116,7 +116,7 @@ test("tile visibility changes re-synchronize the remaining trace and preserve li
 
 test("reduced motion leaves only a static faint trace without tile pulses", async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "reduce" });
-  await page.goto("/?fy=1");
+  await page.goto("/?fy=1&beat=1");
   await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
   expect(await page.locator(".pb-summary").evaluate(el => el.getAnimations({ subtree: true }).length)).toBe(0);
   await expect(page.locator(".pb-ecg-pulse")).toBeHidden();
@@ -126,7 +126,7 @@ test("reduced motion leaves only a static faint trace without tile pulses", asyn
 });
 
 test("peak background washes retain rendered text contrast", async ({ page }, testInfo) => {
-  await page.goto("/?fy=1");
+  await page.goto("/?fy=1&beat=1");
   await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(1);
   const result = [];
   for (const tile of await page.locator(".pb-summary .pb-tile").all()) {
@@ -166,4 +166,15 @@ test("peak background washes retain rendered text contrast", async ({ page }, te
     result.push({ label: await label.innerText(), contrast });
   }
   await testInfo.attach("tile-label-contrast", { body: JSON.stringify(result), contentType: "application/json" });
+});
+
+test("global heartbeat Off (the default): no trace and no tile washes", async ({ page }) => {
+  await page.goto("/?fy=1");
+  await expect(page.locator(".pb-summary")).toHaveCount(1);
+  await expect(page.locator(".pb-summary[data-pb-beat]")).toHaveCount(0);
+  await expect(page.locator(".pb-ecg, .pb-tile-beat")).toHaveCount(0);
+  await page.getByTestId("account-menu-button").click();
+  await expect(page.getByTestId("account-menu")).toBeVisible();
+  await expect(page.getByTestId("account-menu").getByRole("switch")).toHaveCount(0);
+  await expect(page.getByTestId("heartbeat-switch")).toHaveCount(0);
 });
