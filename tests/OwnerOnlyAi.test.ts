@@ -3,6 +3,8 @@ import path from "node:path";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
+import { AdminMenu } from "@/lib/admin/AdminMenu";
 
 // AI and provider keys are Owner-only (CTO order, Oct 22, 2026). This suite ENUMERATES every AI Server Function file
 // (src/app/actions/ai*.ts) and every AI route (src/app/api/ai/**/route.ts) from disk and calls every export as a
@@ -35,14 +37,23 @@ const args = () => {
 describe("OwnerPolicy", () => {
   afterEach(() => vi.unstubAllEnvs());
 
-  it("falls back to Nick's existing admin account when OWNER_EMAIL is unset or blank, and needs admin", () => {
+  it("uses the fixed two-owner set when OWNER_EMAIL is unset or blank, trimmed and case-insensitive, and needs admin", () => {
     vi.stubEnv("OWNER_EMAIL", "");
-    expect(OwnerPolicy.ownerEmail()).toBe(OwnerPolicy.DEFAULT_OWNER_EMAIL);
+    expect(OwnerPolicy.ownerEmails()).toEqual([OwnerPolicy.DEFAULT_OWNER_EMAIL, "nicholas.leary@caromonthealth.org"]);
     expect(OwnerPolicy.DEFAULT_OWNER_EMAIL).toMatch(/^[a-z0-9.]+@gmail\.com$/);
+    expect(OwnerPolicy.WORK_OWNER_EMAIL).toBe("Nicholas.Leary@CaroMontHealth.org");
     expect(OwnerPolicy.isOwner({ email: OwnerPolicy.DEFAULT_OWNER_EMAIL.toUpperCase(), isAdmin: true })).toBe(true);
+    expect(OwnerPolicy.isOwner({ email: "  NICHOLAS.leary@caromonthealth.ORG ", isAdmin: true })).toBe(true);
     expect(OwnerPolicy.isOwner({ email: OwnerPolicy.DEFAULT_OWNER_EMAIL, isAdmin: false })).toBe(false);
+    expect(OwnerPolicy.isOwner({ email: OwnerPolicy.WORK_OWNER_EMAIL, isAdmin: false })).toBe(false);
     expect(OwnerPolicy.isOwner({ email: OWNER.email, isAdmin: true })).toBe(false);
     expect(OwnerPolicy.isOwner(null)).toBe(false);
+  });
+
+  it("OWNER_EMAIL, when set, replaces the whole set", () => {
+    expect(OwnerPolicy.ownerEmails()).toEqual([OWNER.email]);
+    expect(OwnerPolicy.isOwner({ email: OwnerPolicy.DEFAULT_OWNER_EMAIL, isAdmin: true })).toBe(false);
+    expect(OwnerPolicy.isOwner({ email: OwnerPolicy.WORK_OWNER_EMAIL, isAdmin: true })).toBe(false);
   });
 
   it("OWNER_EMAIL overrides (the test servers); other admins are never the Owner", () => {
@@ -142,5 +153,43 @@ describe("the Owner", () => {
     const { POST } = await import("@/app/api/ai/voice/connect/route");
     const res = await POST(new Request("http://127.0.0.1/x", { method: "POST", body: "{}" })).catch(() => null);
     expect(res?.status === 403 && h.touched.length === 0).toBe(false);
+  });
+});
+
+describe("the built-in two-owner set (OWNER_EMAIL unset): AI and provider keys", () => {
+  afterEach(() => { vi.unstubAllEnvs(); h.touched = []; });
+  const keysFns = async () => Object.entries((await import("@/app/actions/aiKeys")) as Record<string, unknown>).filter(([, v]) => typeof v === "function") as [string, (...a: unknown[]) => Promise<unknown>][];
+  const NICK_WORK = { email: "Nicholas.Leary@CaroMontHealth.org", isAdmin: true, name: "Nick" };
+
+  it.each([
+    ["the existing admin account", () => ({ email: OwnerPolicy.DEFAULT_OWNER_EMAIL, isAdmin: true, name: "Nick" })],
+    ["the CaroMont work address", () => NICK_WORK],
+    ["the work address in mixed case", () => ({ ...NICK_WORK, email: " nICHOLAS.LEARY@caromonthealth.Org " })],
+  ])("%s gets AI (gate and menu) and reaches the provider-key actions", async (_l, who) => {
+    vi.stubEnv("OWNER_EMAIL", "");
+    h.viewer = who();
+    expect(await OwnerGate.ownerViewer()).not.toBeNull();
+    expect(AdminMenu.itemsFor(h.viewer)?.map((i) => i.id)).toEqual(expect.arrayContaining(["ai-tools", "ai-settings"]));
+    let reached = 0;
+    for (const [, fn] of await keysFns()) {
+      h.touched = [];
+      const r = await Promise.resolve(fn(...args())).catch(() => undefined);
+      if (h.touched.length || (r != null && !DENIED.test(JSON.stringify(r)))) reached++;
+    }
+    expect(reached).toBeGreaterThan(0);
+  });
+
+  it.each([["a non-owner admin", OTHER_ADMIN], ["a viewer", VIEWER]])("%s gets no AI and no keys", async (_l, who) => {
+    vi.stubEnv("OWNER_EMAIL", "");
+    h.viewer = who;
+    expect(await OwnerGate.ownerViewer()).toBeNull();
+    expect((AdminMenu.itemsFor(who) ?? []).map((i) => i.id)).not.toEqual(expect.arrayContaining(["ai-settings"]));
+    expect((AdminMenu.itemsFor(who) ?? []).map((i) => i.id)).not.toContain("ai-tools");
+    for (const [name, fn] of await keysFns()) {
+      h.touched = [];
+      const r = (await fn(...args())) as { ok?: unknown } | null | undefined;
+      expect(h.touched, name).toEqual([]);
+      expect(r && typeof r === "object" ? r.ok : r, name).not.toBe(true);
+    }
   });
 });
