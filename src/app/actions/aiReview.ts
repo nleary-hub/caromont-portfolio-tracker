@@ -3,7 +3,7 @@
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiInputs } from "@/lib/ai/AiInput";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiReviewApplyService, type AiDecisionResult, type AiProposeResult } from "@/lib/services/AiReviewApplyService";
 import type { AiWritingDb } from "@/lib/services/AiWritingService";
@@ -13,7 +13,7 @@ import type { AiWritingDb } from "@/lib/services/AiWritingService";
  * (they are reachable by direct POST). None of them writes to a project: Apply fills the form draft only.
  */
 async function context() {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin || !Db.isConfigured()) return null;
   return { viewer, scope: await ServiceLineAccess.activeFor(viewer), db: Db.client as unknown as AiWritingDb };
 }

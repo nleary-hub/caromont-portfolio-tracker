@@ -1,13 +1,13 @@
 "use server";
 
 import { revalidatePath } from "next/cache";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiGlossaryService, type GlossaryDb, type GlossaryResult } from "@/lib/services/AiGlossaryService";
 
 /** Admin > AI settings > Context (item A). Each resolves the viewer from the session and re-checks admin. */
 async function run(name: string, fn: (db: GlossaryDb, viewer: { email: string; isAdmin: boolean }) => Promise<GlossaryResult>): Promise<GlossaryResult> {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
   if (!Db.isConfigured()) return { ok: false, error: "Couldn't save. Try again." };
   try {

@@ -21,7 +21,7 @@ import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
 import type { AiKeyRowView } from "@/lib/ai/AiKeyProviders";
 import { LineAccessService } from "@/lib/services/LineAccessService";
 import { AiProviderKeyService, type AiProviderKeyDb, type AiProviderKeyStatus } from "@/lib/services/AiProviderKeyService";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiModelService, type AiFeatureChoice, type AiFeatureView, type AiModelDb, type AiModelView } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb, type AiSettingsHistoryRow, type AiSettingsView } from "@/lib/services/AiSettingsService";
@@ -61,7 +61,7 @@ class AiUsageReader {
  * and the admin menu lists it only for admins). The page never receives the API key or its ciphertext.
  */
 export default async function AiSettingsPage() {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) notFound();
   let view: AiSettingsView = AiSettingsService.view(null);
   let history: AiSettingsHistoryRow[] = [];

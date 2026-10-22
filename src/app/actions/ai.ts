@@ -4,7 +4,7 @@ import { revalidatePath } from "next/cache";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiProviders } from "@/lib/ai/AiProviders";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
@@ -25,7 +25,7 @@ class AiActions {
   }
 
   static async admin() {
-    const viewer = await CurrentViewer.get();
+    const viewer = await OwnerGate.ownerViewer();
     return viewer?.isAdmin ? viewer : null;
   }
 }

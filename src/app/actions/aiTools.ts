@@ -5,7 +5,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiVoiceChatService } from "@/lib/services/AiVoiceChatService";
 import { AiToolsService, type AiToolLineResult, type AiToolProposeResult, type AiToolsDb } from "@/lib/services/AiToolsService";
@@ -17,7 +17,7 @@ import type { ProjectInput } from "@/lib/validation/ProjectValidator";
  * reachable by direct POST). Propose saves nothing. Apply saves one line through ProjectService.update.
  */
 async function context() {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin || !Db.isConfigured()) return null;
   return { viewer, scope: await ServiceLineAccess.activeFor(viewer), db: Db.client as unknown as AiToolsDb };
 }

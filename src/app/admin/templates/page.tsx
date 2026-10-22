@@ -1,3 +1,4 @@
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import type { Metadata } from "next";
 import Link from "next/link";
 import { notFound } from "next/navigation";
@@ -71,7 +72,7 @@ export default async function AdminTemplatesPage() {
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
   const templates = configured ? await MilestoneTemplateService.listOrEmpty(undefined, scope) : [];
   // Template AI: hidden when the feature or AI is off; paused with the model-off note when no model is on.
-  const aiNote = configured ? await templateAiNote() : undefined;
+  const aiNote = configured && OwnerPolicy.isOwner(viewer) ? await templateAiNote() : undefined;
   const history = configured ? await MilestoneTemplateService.history(viewer, 20, undefined, scope).catch(() => []) : [];
 
   return (

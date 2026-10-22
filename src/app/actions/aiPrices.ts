@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { AiCopy } from "@/lib/ai/AiCopy";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import type { AiModelDb } from "@/lib/services/AiModelService";
 import { AiPriceRefreshService, type AiPriceApplyResult, type AiPriceReviewResult } from "@/lib/services/AiPriceRefreshService";
@@ -13,7 +13,7 @@ import { AiPriceRefreshService, type AiPriceApplyResult, type AiPriceReviewResul
  * applyAiPriceRefresh saves only what the admin confirmed. Neither returns or logs the API key.
  */
 export async function reviewAiPriceRefresh(): Promise<AiPriceReviewResult> {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) return { ok: false, error: AiCopy.NOT_AUTHORIZED };
   if (!Db.isConfigured()) return { ok: false, error: AiCopy.SAVE_FAILED };
   try {
@@ -25,7 +25,7 @@ export async function reviewAiPriceRefresh(): Promise<AiPriceReviewResult> {
 }
 
 export async function applyAiPriceRefresh(changes: unknown): Promise<AiPriceApplyResult> {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) return { ok: false, error: AiCopy.NOT_AUTHORIZED };
   if (!Db.isConfigured()) return { ok: false, error: AiCopy.SAVE_FAILED };
   try {

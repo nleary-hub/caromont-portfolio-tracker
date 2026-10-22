@@ -5,7 +5,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiActionPortsLive } from "@/lib/services/AiActionPortsLive";
 import { AiActionService, type AiActionDb, type AiActionSource, type AiApplyResult, type AiProposeResult, type AiUndoResult } from "@/lib/services/AiActionService";
@@ -25,7 +25,7 @@ import { AiToolsService } from "@/lib/services/AiToolsService";
  * through the normal project services (AiActionPortsLive).
  */
 async function context() {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin || !Db.isConfigured()) return null;
   const scope = await ServiceLineAccess.activeFor(viewer);
   const db = Db.client as unknown as AiActionDb;

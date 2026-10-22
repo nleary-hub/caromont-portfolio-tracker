@@ -2,7 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { AiKeyCopy, type AiKeyActionResult } from "@/lib/ai/AiKeyProviders";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiProviderKeyService, type AiProviderKeyDb } from "@/lib/services/AiProviderKeyService";
 
@@ -12,7 +12,7 @@ import { AiProviderKeyService, type AiProviderKeyDb } from "@/lib/services/AiPro
  * status: never the key or its ciphertext. Errors are logged by name only.
  */
 async function run(name: string, fn: (db: AiProviderKeyDb, viewer: { email: string; isAdmin: boolean }) => Promise<AiKeyActionResult>): Promise<AiKeyActionResult> {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) return { ok: false, error: AiKeyCopy.NOT_AUTHORIZED };
   if (!Db.isConfigured()) return { ok: false, error: AiKeyCopy.SAVE_FAILED };
   try {

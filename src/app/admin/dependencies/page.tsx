@@ -12,6 +12,7 @@ import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { Db } from "@/lib/db/Db";
 import type { AiModelDb } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { AiPlacementData } from "@/lib/services/AiToolsReadiness";
 import { DependencyReviewService } from "@/lib/services/ProjectDependencyService";
 
@@ -29,7 +30,7 @@ export default async function DependenciesReviewPage() {
   if (!viewer?.isAdmin) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
-  const aiOn = await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb).catch(() => false);
+  const aiOn = OwnerPolicy.isOwner(viewer) ? await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb).catch(() => false) : false;
   const ai = aiOn ? await AiPlacementData.load(Db.client as unknown as AiModelDb & AiSettingsDb).catch(() => undefined) : undefined;
   const rows = (await DependencyReviewService.list(viewer, scope)).map((r) => ({ id: r.id, project: r.project, blockedBy: r.blockedBy, created: AuditText.when(r.createdAt), createdBy: AuditText.who(r.createdBy) }));
 

@@ -3,7 +3,7 @@
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiPlaybookService, type AiPlaybookDb, type AiPlaybookResult } from "@/lib/services/AiPlaybookService";
 
@@ -13,7 +13,7 @@ import { AiPlaybookService, type AiPlaybookDb, type AiPlaybookResult } from "@/l
  */
 export async function makeAiPlaybook(input: { meetingType: string; scope: unknown; length: number; focus: string }): Promise<AiPlaybookResult> {
   try {
-    const viewer = await CurrentViewer.get();
+    const viewer = await OwnerGate.ownerViewer();
     if (!viewer?.isAdmin || !Db.isConfigured()) return { ok: false, message: AiCopy.NOT_AUTHORIZED };
     const scope = await ServiceLineAccess.activeFor(viewer);
     return await AiPlaybookService.generate({ db: Db.client as unknown as AiPlaybookDb, viewer, scope, meetingType: input?.meetingType, playbookScope: input?.scope, length: input?.length, focus: input?.focus });

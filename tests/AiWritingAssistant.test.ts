@@ -215,7 +215,8 @@ describe("buttons: hidden when AI is off and for anyone who can't edit", () => {
     expect(await suggest(db, p, "Quote received", "draft_from_bullets", MEMBER)).toMatchObject({ ok: false, kind: "not_allowed" });
     expect(p.calls).toHaveLength(0);
     expect(AdminMenu.itemsFor(MEMBER)).toBeNull();
-    expect(AdminMenu.itemsFor(ADMIN)!.find((i) => i.href === "/admin/ai")).toMatchObject({ label: "AI settings", group: "admin" });
+    expect(AdminMenu.itemsFor(ADMIN)!.find((i) => i.href === "/admin/ai")).toBeUndefined();
+    expect(AdminMenu.itemsFor({ email: "jordan.pike@example.org", isAdmin: true })!.find((i) => i.href === "/admin/ai")).toMatchObject({ label: "AI settings", group: "admin" });
     // A project of another line (or a deleted one) is not editable.
     db.projects[0] = { ...db.projects[0], serviceLineId: "00000000-0000-4000-8000-0000000000a2" };
     expect(await suggest(db, p, "Quote received")).toMatchObject({ ok: false, kind: "not_allowed" });

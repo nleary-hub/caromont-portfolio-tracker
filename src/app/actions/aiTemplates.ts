@@ -5,7 +5,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiTemplateCopy } from "@/lib/ai/AiTemplateCopy";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiTemplateService, type AiTemplateApplyResult, type AiTemplateProposeResult } from "@/lib/services/AiTemplateService";
 import type { AiToolsDb } from "@/lib/services/AiToolsService";
@@ -16,7 +16,7 @@ import { MilestoneTemplateService } from "@/lib/services/MilestoneTemplateServic
  * reachable by direct POST). Propose saves nothing. Apply writes only through MilestoneTemplateService.
  */
 async function context() {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin || !Db.isConfigured()) return null;
   return { viewer, scope: await ServiceLineAccess.activeFor(viewer), db: Db.client as unknown as AiToolsDb };
 }

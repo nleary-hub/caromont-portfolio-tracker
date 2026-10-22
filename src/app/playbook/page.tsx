@@ -6,7 +6,7 @@ import { AiPlaybookForm, AiPlaybookNotes, AiPlaybookSaved, AiPlaybookView } from
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import type { AiPlaybookRecord } from "@/lib/ai/playbook/AiPlaybookModel";
-import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiActionService } from "@/lib/services/AiActionService";
 import type { AiModelDb } from "@/lib/services/AiModelService";
@@ -27,7 +27,7 @@ const one = (v: string | string[] | undefined) => (Array.isArray(v) ? v[0] : v);
  * filter. Nothing here reads or writes snapshots, PDFs, report_artifacts or handoff.json.
  */
 export default async function PlaybookPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
-  const viewer = await CurrentViewer.get();
+  const viewer = await OwnerGate.ownerViewer();
   if (!viewer?.isAdmin) notFound();
   const params = await searchParams;
   let note: string | null = C.AI_OFF_NOTE;
