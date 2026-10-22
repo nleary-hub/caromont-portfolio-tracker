@@ -21,7 +21,7 @@ const column = async (db: PGlite, table: string, name: string) =>
 describe("Oct 20 batch migrations", () => {
   it("are the newest, in order, add-only, with no em dash", () => {
     const f = folders();
-    expect(f.slice(f.indexOf("0062_voice_usage_seconds_cap") + 1)).toEqual(BATCH);
+    expect(f.slice(f.indexOf("0062_voice_usage_seconds_cap") + 1, f.indexOf("0066_project_lead_role") + 1)).toEqual(BATCH);
     for (const m of BATCH) {
       const body = code(sql(m)).replace(/\$\$[\s\S]*?\$\$/g, "$$$$");
       expect(sql(m)).not.toContain("\u2014");

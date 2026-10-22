@@ -32,8 +32,7 @@ import { AiModelService, type AiModelDb } from "@/lib/services/AiModelService";
 import { AiPlacementData, AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import type { AiOutcome } from "@/lib/services/AiWritingService";
-import { setDashboardHeartbeat } from "@/app/actions/preferences";
-import { DashboardPrefsService } from "@/lib/services/DashboardPrefsService";
+import { DashboardSettingsService } from "@/lib/services/DashboardSettingsService";
 import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
@@ -289,8 +288,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       today={today}
       userEmail={viewer.email}
       userName={viewer.name}
-      heartbeat={await DashboardPrefsService.heartbeat(viewer.email)}
-      setHeartbeatAction={setDashboardHeartbeat}
+      heartbeat={await DashboardSettingsService.heartbeat()}
       // Mark as reviewed: for viewers who may edit the line's projects (each row's editable flag; re-checked on the server).
       {...(ProjectEditPolicy.canEditLine(viewer) ? { review: { markAction: markProjectsReviewed, undoAction: undoProjectsReviewed } } : {})}
       latestReport={latestReport}

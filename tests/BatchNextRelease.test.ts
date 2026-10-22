@@ -105,11 +105,10 @@ describe("Task 1: Dashboard heartbeat switch (account menu)", () => {
         serviceLine: ServiceLine.defaults(),
         signOutAction: async () => {},
         heartbeat,
-        setHeartbeatAction: async (on: boolean) => on,
       }),
     );
 
-  it("On (default): the line and the tile washes render; the grid and dots too", () => {
+  it("On: the line and the tile washes render; the grid and dots too", () => {
     const html = render(true);
     expect(html).toContain('class="pb-ecg"');
     expect(html).toContain("pb-tile-beat");
@@ -124,9 +123,10 @@ describe("Task 1: Dashboard heartbeat switch (account menu)", () => {
     expect(html).toContain("pb-star");
   });
 
-  it("the switch sits in the account menu under the person's name (non-admins too); exact copy, no On/Off text", () => {
+  it("copy is unchanged; the account menu no longer has a switch (global admin setting since 0067)", () => {
     const html = render(true);
     expect(html).toContain("Kim Nguyen");
+    expect(html).not.toContain("heartbeat-switch");
     expect(HeartbeatCopy.LABEL).toBe("Dashboard heartbeat");
     expect(HeartbeatCopy.HELP).toBe("Shows the moving line and tile glow on the dashboard.");
     expect(HeartbeatCopy.HELP_REDUCED).toBe("Your device has reduced motion on, so the line stays still.");

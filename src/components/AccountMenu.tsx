@@ -1,40 +1,17 @@
 "use client";
 
-import { useEffect, useId, useRef, useState, useSyncExternalStore, type ReactNode } from "react";
-import { HeartbeatCopy } from "@/lib/dashboard/HeartbeatCopy";
-
-const REDUCED = "(prefers-reduced-motion: reduce)";
-
-/** Whether the device asks for reduced motion (false on the server). */
-function useReducedMotion(): boolean {
-  return useSyncExternalStore(
-    (on) => {
-      const q = window.matchMedia(REDUCED);
-      q.addEventListener("change", on);
-      return () => q.removeEventListener("change", on);
-    },
-    () => window.matchMedia(REDUCED).matches,
-    () => false,
-  );
-}
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 
 /**
- * The account menu: the person's name (top right) opens a small panel with their own settings. Today one: the
- * Dashboard heartbeat switch, for everyone (admins and limited users). Esc closes and returns focus to the name;
- * a click outside closes. The switch's accessible name is its visible label (label for=).
+ * The account menu: the person's name (top right) opens a small panel saying who is signed in. Esc closes and
+ * returns focus to the name; a click outside closes. The Dashboard heartbeat is no longer here: it is one global
+ * setting on Admin > Settings (Oct 22, 2026).
  */
 export function AccountMenu({
   name,
-  heartbeat,
-  onHeartbeatChange,
-  saveFailed = false,
   avatar,
 }: {
   name: string;
-  heartbeat: boolean;
-  onHeartbeatChange: (on: boolean) => void;
-  /** The last save failed: the switch keeps the choice for this page and an inline error says it was not saved. */
-  saveFailed?: boolean;
   /** Narrow top bar (below 1100px): this avatar is the trigger instead of the name (the name stays its accessible label). */
   avatar?: ReactNode;
 }) {
@@ -43,18 +20,19 @@ export function AccountMenu({
   const buttonRef = useRef<HTMLButtonElement>(null);
   const avatarRef = useRef<HTMLButtonElement>(null);
   // Escape returns focus to whichever trigger is showing at this width.
-  const trigger = () => (avatarRef.current && avatarRef.current.offsetParent !== null ? avatarRef.current : buttonRef.current);
-  const switchRef = useRef<HTMLButtonElement>(null);
+  const trigger = () =>
+    avatarRef.current && avatarRef.current.offsetParent !== null
+      ? avatarRef.current
+      : buttonRef.current;
+  const panelRef = useRef<HTMLDivElement>(null);
   const panelId = useId();
-  const switchId = useId();
-  const helpId = useId();
-  const reduced = useReducedMotion();
 
   useEffect(() => {
     if (!open) return;
-    switchRef.current?.focus();
+    panelRef.current?.focus();
     const onDown = (e: MouseEvent) => {
-      if (rootRef.current && !rootRef.current.contains(e.target as Node)) setOpen(false);
+      if (rootRef.current && !rootRef.current.contains(e.target as Node))
+        setOpen(false);
     };
     document.addEventListener("mousedown", onDown);
     return () => document.removeEventListener("mousedown", onDown);
@@ -99,35 +77,18 @@ export function AccountMenu({
         {name}
       </button>
       {open && (
-        <div id={panelId} role="group" aria-label={name} className="acct-panel" data-testid="account-menu">
-          <div className="acct-row">
-            <div className="min-w-0 flex-1">
-              <label htmlFor={switchId} className="acct-label">
-                {HeartbeatCopy.LABEL}
-              </label>
-              <p id={helpId} className="acct-help" data-testid="heartbeat-help">
-                {reduced ? HeartbeatCopy.HELP_REDUCED : HeartbeatCopy.HELP}
-              </p>
-            </div>
-            <button
-              ref={switchRef}
-              id={switchId}
-              type="button"
-              role="switch"
-              aria-checked={heartbeat}
-              aria-describedby={saveFailed ? `${helpId} ${helpId}-error` : helpId}
-              onClick={() => onHeartbeatChange(!heartbeat)}
-              className="acct-switch"
-              data-testid="heartbeat-switch"
-            >
-              <span aria-hidden className="acct-thumb" />
-            </button>
-          </div>
-          {saveFailed && (
-            <p id={`${helpId}-error`} role="alert" className="acct-error" data-testid="heartbeat-save-error">
-              {HeartbeatCopy.SAVE_FAILED}
-            </p>
-          )}
+        <div
+          ref={panelRef}
+          id={panelId}
+          role="group"
+          aria-label={name}
+          tabIndex={-1}
+          className="acct-panel"
+          data-testid="account-menu"
+        >
+          <p className="acct-help" data-testid="account-signed-in">
+            Signed in as {name}
+          </p>
         </div>
       )}
     </div>
