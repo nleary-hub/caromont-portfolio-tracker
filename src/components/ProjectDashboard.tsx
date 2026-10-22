@@ -201,6 +201,8 @@ interface Props {
   initialProjectId?: string;
   /** Admin > Settings > Dashboard heartbeat: one global value for every viewer (default Off, migration 0067). */
   heartbeat?: boolean;
+  /** Admin > Settings > Hide Changed tag: hides the Changed tag in the dashboard table (display only, default Off, migration 0068). */
+  hideChangedTag?: boolean;
   /**
    * "Mark as reviewed" and its Undo. Present when the viewer may edit projects of the line (ProjectEditPolicy); each
    * row's own `editable` decides whether it gets the button, and the server re-checks every project.
@@ -251,6 +253,7 @@ export function ProjectDashboard({
   aiPlacements,
   initialProjectId,
   heartbeat = false,
+  hideChangedTag = false,
   review,
 }: Props) {
   // Filters, search and sort (per user and line in localStorage, like Departments). The search box updates at once;
@@ -788,6 +791,7 @@ export function ProjectDashboard({
           <div data-pb-scroll className="max-h-[calc(100vh-260px)] overflow-auto">
             <DashboardTable
               rows={shownRows}
+              hideChangedTag={hideChangedTag}
               onSort={onSort}
               search={q.search}
               groupTotals={groupTotals}
@@ -826,7 +830,7 @@ export function ProjectDashboard({
             <span>
               {visible.length} of {rows.length} projects
             </span>
-            <span>Changed means edited since the last report or the last review.</span>
+            {!hideChangedTag && <span>Changed means edited since the last report or the last review.</span>}
           </div>
         </section>
         )}

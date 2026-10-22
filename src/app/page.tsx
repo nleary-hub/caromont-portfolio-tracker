@@ -291,6 +291,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       userEmail={viewer.email}
       userName={viewer.name}
       heartbeat={await DashboardSettingsService.heartbeat()}
+      hideChangedTag={await DashboardSettingsService.hideChangedTag()}
       // Mark as reviewed: for viewers who may edit the line's projects (each row's editable flag; re-checked on the server).
       {...(ProjectEditPolicy.canEditLine(viewer) ? { review: { markAction: markProjectsReviewed, undoAction: undoProjectsReviewed } } : {})}
       latestReport={latestReport}

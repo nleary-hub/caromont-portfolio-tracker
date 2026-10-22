@@ -37,6 +37,8 @@ const rows: DashboardRow[] = ["Zulu", "Alpha", "Bravo"].map((name, i) => ({
   changed: false, overdue: false, updatedOn: "2026-10-03", stale: false,
   // ?mfi=1: Alpha is a fictional Major Facility Investment (MFI chip, checked MFI box).
   ...(name === "Alpha" && new URLSearchParams(window.location.search).has("mfi") ? { isMfi: true } : {}),
+  // ?changed=1: Alpha and Bravo are fictional Changed projects (edited since the last report).
+  ...(name !== "Zulu" && new URLSearchParams(window.location.search).has("changed") ? { changed: true } : {}),
 }));
 // ?sample=1: the fictional PDF sample rows (SampleReportData), shuffled; window.__pdfOrder is the PDF's own order.
 if (new URLSearchParams(window.location.search).has("sample")) {
@@ -173,6 +175,8 @@ createRoot(document.getElementById("root")!).render(new URLSearchParams(window.l
     latestReport={null} loadError={null} serviceLine={ServiceLine.SEED} {...stalePlacements}
     // ?beat=1: the global Admin > Settings > Dashboard heartbeat is On (default Off, migration 0067).
     heartbeat={new URLSearchParams(window.location.search).has("beat")}
+    // ?hideChanged=1: the global Admin > Settings > Hide Changed tag is On (default Off, migration 0068).
+    hideChangedTag={new URLSearchParams(window.location.search).has("hideChanged")}
     // ?line=1: a fictional active line with its own contracts-lead pick-list.
     {...(new URLSearchParams(window.location.search).has("line") ? { line: { ...ServiceLine.defaultScope(), owners: ["Fictional Owner"], requesters: ["Fictional Requester"], contractsLeads: ["Fictional Lead One", "Fictional Lead Two"] } } : {})}
     // ?viewer=readonly: the same dashboard for a non-admin (the drawer shows the fields read-only).
