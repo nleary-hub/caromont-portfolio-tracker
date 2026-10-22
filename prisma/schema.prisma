@@ -1189,6 +1189,8 @@ model DashboardSettings {
   id        String   @id @default("dashboard")
   /// Admin > Settings > Dashboard heartbeat. Default off. Wins over app_user.dashboardHeartbeat (kept, unused).
   heartbeat Boolean  @default(false)
+  /// Admin > Settings > Hide Changed tag (migration 0068). Default off. Display only: the Changed flag itself is unchanged.
+  hideChangedTag Boolean @default(false)
   updatedAt DateTime @default(now()) @updatedAt
   updatedBy String
 
