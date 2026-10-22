@@ -6,7 +6,7 @@ import { useId, useState } from "react";
 export const HideChangedTagCopy = {
   LABEL: "Hide Changed tag",
   ADMIN_HELP:
-    "Hides the Changed tag on the dashboard for everyone. Display only: projects are still tracked as changed, and the report is not affected.",
+    "Hides the Changed tag, the '• Changed' note and the footer line on the dashboard for everyone. Off by default. Projects are still tracked as changed, and the report isn't affected.",
   SAVE_FAILED: "Could not save. Try again.",
 } as const;
 
