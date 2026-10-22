@@ -15,11 +15,18 @@ import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { ReportSettingsCopy } from "@/lib/admin/ReportSettingsCopy";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { ServiceLineService } from "@/lib/services/ServiceLineService";
+import { DashboardSettingsService } from "@/lib/services/DashboardSettingsService";
+import { DashboardHeartbeatSetting } from "@/components/DashboardHeartbeatSetting";
+import { setGlobalDashboardHeartbeat } from "@/app/actions/dashboardSettings";
 
 export const metadata: Metadata = { title: AdminMenu.REPORT_CONTENTS };
 
 class SettingsFormat {
-  private static readonly WHEN = new Intl.DateTimeFormat("en-US", { dateStyle: "medium", timeStyle: "short", timeZone: "America/New_York" });
+  private static readonly WHEN = new Intl.DateTimeFormat("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+    timeZone: "America/New_York",
+  });
 
   static when(d: Date): string {
     return `${SettingsFormat.WHEN.format(d)} ET`;
@@ -32,11 +39,19 @@ export default async function AdminSettingsPage() {
   if (!viewer?.isAdmin) notFound();
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
   const options = DepartmentFilter.optionsFor(scope);
-  const history = Db.isConfigured() ? await ServiceLineService.history(scope, viewer).catch(() => []) : [];
+  const history = Db.isConfigured()
+    ? await ServiceLineService.history(scope, viewer).catch(() => [])
+    : [];
   const reportOptions = Db.isConfigured()
-    ? await ReportOptionsService.get(undefined, scope).catch(() => ReportOptionsService.defaults(options))
+    ? await ReportOptionsService.get(undefined, scope).catch(() =>
+        ReportOptionsService.defaults(options),
+      )
     : ReportOptionsService.defaults(options);
-  const section = "flex flex-col gap-3 rounded-card border border-line bg-card p-4";
+  const heartbeat = Db.isConfigured()
+    ? await DashboardSettingsService.heartbeat()
+    : DashboardSettingsService.HEARTBEAT_DEFAULT;
+  const section =
+    "flex flex-col gap-3 rounded-card border border-line bg-card p-4";
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
@@ -44,7 +59,9 @@ export default async function AdminSettingsPage() {
         <div className="flex min-w-0 items-center gap-3">
           <ServiceLineSlot viewer={viewer} active={scope} />
           <div className="h-6 w-px bg-line" />
-          <h1 className="type-title whitespace-nowrap">{AdminMenu.REPORT_CONTENTS}</h1>
+          <h1 className="type-title whitespace-nowrap">
+            {AdminMenu.REPORT_CONTENTS}
+          </h1>
         </div>
         <div className="flex items-center gap-3">
           <AdminMenuSlot viewer={viewer} />
@@ -54,22 +71,59 @@ export default async function AdminSettingsPage() {
         </div>
       </div>
       <p className="text-muted type-caption">
-        Only admins can see this page. These settings are for {scope.name}. Rename it from{" "}
-        <Link href="/admin/service-lines" className="text-accent hover:underline">
+        Only admins can see this page. These settings are for {scope.name}.
+        Rename it from{" "}
+        <Link
+          href="/admin/service-lines"
+          className="text-accent hover:underline"
+        >
           Service lines
         </Link>
         . Every change is recorded below.
       </p>
-      {!Db.isConfigured() && <p className="text-danger type-caption">DATABASE_URL is not configured; showing the defaults.</p>}
+      {!Db.isConfigured() && (
+        <p className="text-danger type-caption">
+          DATABASE_URL is not configured; showing the defaults.
+        </p>
+      )}
 
-      <section id="report" className={section} aria-labelledby="report-settings">
+      <section
+        id="report"
+        className={section}
+        aria-labelledby="report-settings"
+      >
         <h2 id="report-settings" className="type-heading">
           Report
         </h2>
-        <ReportSettingsForm departments={reportOptions.departments} totalsGrid={reportOptions.totalsGrid} showWaitingOn={reportOptions.showWaitingOn} options={options} list={scope.departments} scheduled={scope.isDefault} />
+        <ReportSettingsForm
+          departments={reportOptions.departments}
+          totalsGrid={reportOptions.totalsGrid}
+          showWaitingOn={reportOptions.showWaitingOn}
+          options={options}
+          list={scope.departments}
+          scheduled={scope.isDefault}
+        />
       </section>
 
-      <section id="report-colors" className={section} aria-labelledby="report-colors-heading">
+      <section
+        id="dashboard"
+        className={section}
+        aria-labelledby="dashboard-settings"
+      >
+        <h2 id="dashboard-settings" className="type-heading">
+          Dashboard
+        </h2>
+        <DashboardHeartbeatSetting
+          initial={heartbeat}
+          saveAction={setGlobalDashboardHeartbeat}
+        />
+      </section>
+
+      <section
+        id="report-colors"
+        className={section}
+        aria-labelledby="report-colors-heading"
+      >
         <h2 id="report-colors-heading" className="type-heading">
           {ReportColorScheme.COPY.heading}
         </h2>
@@ -108,11 +162,19 @@ export default async function AdminSettingsPage() {
               )}
               {history.map((h, i) => (
                 <tr key={i} className="border-t border-line">
-                  <td className="px-3 py-2 whitespace-nowrap">{SettingsFormat.when(h.changedAt)}</td>
+                  <td className="px-3 py-2 whitespace-nowrap">
+                    {SettingsFormat.when(h.changedAt)}
+                  </td>
                   <td className="px-3 py-2">{h.changedBy}</td>
-                  <td className="px-3 py-2">{ServiceLineHistoryText.action(h.action)}</td>
-                  <td className="px-3 py-2 text-muted">{ServiceLineHistoryText.value(h.oldValue)}</td>
-                  <td className="px-3 py-2">{ServiceLineHistoryText.value(h.newValue)}</td>
+                  <td className="px-3 py-2">
+                    {ServiceLineHistoryText.action(h.action)}
+                  </td>
+                  <td className="px-3 py-2 text-muted">
+                    {ServiceLineHistoryText.value(h.oldValue)}
+                  </td>
+                  <td className="px-3 py-2">
+                    {ServiceLineHistoryText.value(h.newValue)}
+                  </td>
                 </tr>
               ))}
             </tbody>

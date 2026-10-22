@@ -199,10 +199,8 @@ interface Props {
   aiPlacements?: AiPlacementNotes;
   /** A project link (/?project=<id>) the server checked: its detail opens on load. */
   initialProjectId?: string;
-  /** Account menu > Dashboard heartbeat, as saved on the account (default On). */
+  /** Admin > Settings > Dashboard heartbeat: one global value for every viewer (default Off, migration 0067). */
   heartbeat?: boolean;
-  /** Saves the switch; resolves to the saved value, or null when the save failed (the switch goes back). */
-  setHeartbeatAction?: (on: boolean) => Promise<boolean | null>;
   /**
    * "Mark as reviewed" and its Undo. Present when the viewer may edit projects of the line (ProjectEditPolicy); each
    * row's own `editable` decides whether it gets the button, and the server re-checks every project.
@@ -252,28 +250,13 @@ export function ProjectDashboard({
   aiVoice,
   aiPlacements,
   initialProjectId,
-  heartbeat: heartbeatProp = true,
-  setHeartbeatAction,
+  heartbeat = false,
   review,
 }: Props) {
   // Filters, search and sort (per user and line in localStorage, like Departments). The search box updates at once;
   // the rows follow after DashboardQuery.SEARCH_DEBOUNCE_MS.
   const [q, setQState] = useState<DashboardQueryState>(() => DashboardQuery.empty());
   const [query, setQueryInput] = useState("");
-  // The dashboard follows the switch at once. A failed save keeps the choice on screen (until a reload) and shows an
-  // inline error in the account menu instead of silently putting the switch back. Only the latest click reports.
-  const [heartbeat, setHeartbeat] = useState(heartbeatProp);
-  const [heartbeatSaveFailed, setHeartbeatSaveFailed] = useState(false);
-  const heartbeatSeq = useRef(0);
-  const changeHeartbeat = (on: boolean) => {
-    setHeartbeat(on);
-    setHeartbeatSaveFailed(false);
-    const seq = ++heartbeatSeq.current;
-    const failed = () => seq === heartbeatSeq.current && setHeartbeatSaveFailed(true);
-    void setHeartbeatAction?.(on)
-      .then((saved) => saved === null && failed())
-      .catch(failed);
-  };
   const [selectedId, setSelectedId] = useState<string | null>(initialProjectId ?? null);
   // AI toolbar menu: rows picked with Ctrl or Cmd click for "Bulk edit selected (N)".
   // Row "..." AI shortcuts: open the edit drawer, then focus that field's AI button once the form is there.
@@ -714,7 +697,7 @@ export function ProjectDashboard({
               {/* Below 1100px the name drops and the avatar itself opens the account menu; Sign out stays beside it. */}
               <div className="max-[1100px]:hidden">{avatar}</div>
               <div className="flex flex-col type-caption max-[1100px]:flex-row max-[1100px]:items-center max-[1100px]:gap-2">
-                <AccountMenu name={userName ?? userEmail} heartbeat={heartbeat} onHeartbeatChange={changeHeartbeat} saveFailed={heartbeatSaveFailed} avatar={avatar} />
+                <AccountMenu name={userName ?? userEmail} avatar={avatar} />
                 <button type="submit" className="text-left hover:text-fg">
                   Sign out
                 </button>
@@ -749,7 +732,7 @@ export function ProjectDashboard({
                 </div>
               ),
             )}
-            {/* Heartbeat switch Off: no line, head, trail or washes are rendered and no animation runs. */}
+            {/* Global heartbeat Off (the default): no line, head, trail or washes are rendered and no animation runs. */}
             {heartbeat && <SummaryHeartbeat tilesKey={tiles.join(",")} />}
           </section>
         )}

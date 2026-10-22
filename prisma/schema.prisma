@@ -1183,3 +1183,14 @@ model ReportDisplaySettings {
 
   @@map("report_display_settings")
 }
+
+/// Global dashboard settings (migration 0067). One row, id "dashboard". No row = heartbeat off.
+model DashboardSettings {
+  id        String   @id @default("dashboard")
+  /// Admin > Settings > Dashboard heartbeat. Default off. Wins over app_user.dashboardHeartbeat (kept, unused).
+  heartbeat Boolean  @default(false)
+  updatedAt DateTime @default(now()) @updatedAt
+  updatedBy String
+
+  @@map("dashboard_settings")
+}
