@@ -107,7 +107,11 @@ describe("3. Contracts leads A to Z on Admin > People and in the drawer picker (
       }),
     );
     const select = html.slice(html.indexOf('name="contractsLead"'), html.indexOf("</select>", html.indexOf('name="contractsLead"')));
+    // Saved names A to Z between "No contract lead" (first) and the use-once option (last, since #90 cfac174).
     expect([...select.matchAll(/<option value="([^"]*)"/g)].map((m) => m[1])).toEqual(["", "__none__", "Alex Rivera", "Jesse Okafor", "Sam Delacroix", "__once__"]);
+    // "__once__" is only the internal value; people see the plain label.
+    expect([...select.matchAll(/<option[^>]*>([^<]*)</g)].map((m) => m[1])).not.toContain("__once__");
+    expect(select).toContain(">Other name, use once (don&#x27;t save to list)<");
   });
 });
 
