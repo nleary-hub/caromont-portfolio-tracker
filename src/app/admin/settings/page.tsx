@@ -17,7 +17,8 @@ import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { ServiceLineService } from "@/lib/services/ServiceLineService";
 import { DashboardSettingsService } from "@/lib/services/DashboardSettingsService";
 import { DashboardHeartbeatSetting } from "@/components/DashboardHeartbeatSetting";
-import { setGlobalDashboardHeartbeat } from "@/app/actions/dashboardSettings";
+import { setGlobalDashboardHeartbeat, setGlobalHideChangedTag } from "@/app/actions/dashboardSettings";
+import { HideChangedTagSetting } from "@/components/HideChangedTagSetting";
 
 export const metadata: Metadata = { title: AdminMenu.REPORT_CONTENTS };
 
@@ -50,6 +51,9 @@ export default async function AdminSettingsPage() {
   const heartbeat = Db.isConfigured()
     ? await DashboardSettingsService.heartbeat()
     : DashboardSettingsService.HEARTBEAT_DEFAULT;
+  const hideChangedTag = Db.isConfigured()
+    ? await DashboardSettingsService.hideChangedTag()
+    : DashboardSettingsService.HIDE_CHANGED_TAG_DEFAULT;
   const section =
     "flex flex-col gap-3 rounded-card border border-line bg-card p-4";
 
@@ -116,6 +120,10 @@ export default async function AdminSettingsPage() {
         <DashboardHeartbeatSetting
           initial={heartbeat}
           saveAction={setGlobalDashboardHeartbeat}
+        />
+        <HideChangedTagSetting
+          initial={hideChangedTag}
+          saveAction={setGlobalHideChangedTag}
         />
       </section>
 

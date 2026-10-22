@@ -28,6 +28,8 @@ import { InlineErrorRow, InlineSaveIndicator, InlineStatusChip, InlineUpdateLine
 import { StatusShape } from "./StatusShape";
 
 export interface DashboardTableProps {
+  /** Admin > Settings > Hide Changed tag: no Changed pill or cue in the table (display only; row.changed is unchanged). */
+  hideChangedTag?: boolean;
   /** Filtered regular rows, in report order. */
   rows: readonly DashboardRow[];
   /** Dashboard view settings (drives the one column model shared by every group). */
@@ -184,7 +186,7 @@ class TableMeasure {
  * flexible column. Admins resize from each header's right edge, drag headers (Project stays first) and drag
  * rows within their department; everyone else sees the same layout with no handles or grips.
  */
-export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiToggle, rowMenu, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, onBlockers, empty, printOrder = false, notInReport, inlineEdit }: DashboardTableProps) {
+export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiToggle, rowMenu, flashId = null, onSelect, today, emptyText, renderMeta, layout, departments, onSort, search = "", groupTotals, onReview, onBlockers, empty, printOrder = false, notInReport, inlineEdit, hideChangedTag = false }: DashboardTableProps) {
   const value = layout?.value ?? LineLayout.defaults();
   const effective = value.columns ? LineLayout.orderedSettings("dashboard", settings, value.columns.order) : settings;
   const baseOrder = value.columns?.order ?? LineLayout.orderFromSettings("dashboard", settings);
@@ -545,6 +547,7 @@ export function DashboardTable({ rows, settings, selectedId, multiIds, onMultiTo
                   people={people}
                   stack={stack}
                   dueFlags={dueFlags}
+                  hideChangedTag={hideChangedTag}
                   today={today}
                   selected={r.id === selectedId || r.id === flashId || Boolean(multiIds?.has(r.id))}
                   onSelect={onSelect}
@@ -693,6 +696,7 @@ function ProjectRow({
   lifted = false,
   animate = false,
   chips = true,
+  hideChangedTag = false,
   search = "",
   hit = null,
   onReview,
@@ -719,6 +723,7 @@ function ProjectRow({
   lifted?: boolean;
   animate?: boolean;
   chips?: boolean;
+  hideChangedTag?: boolean;
   search?: string;
   hit?: SearchHit | null;
   onReview?: () => void;
@@ -730,9 +735,10 @@ function ProjectRow({
   const row = inline.display;
   const shown = row;
   const td = `${CELL} ${selected ? "bg-row-selected" : lifted ? "bg-card" : ""}`;
-  // Chips hidden: a Changed row keeps a quiet cue (2px lilac inset rule and "• Changed" under the meta line).
-  const changedCue = !chips && row.changed;
-  const projectShadow = selected ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : changedCue ? "shadow-[inset_2px_0_0_#B9A3FF]" : "";
+  // Chips hidden: a Changed row keeps a quiet cue ("• Changed" under the meta line). No left-edge rule: an inset
+  // shadow on the project cell stacked row over row into a purple vertical line along the table's left margin.
+  const changedCue = !chips && row.changed && !hideChangedTag;
+  const projectShadow = selected ? "shadow-[inset_3px_0_0_var(--dark-accent)]" : "";
   return (
     <>
     <tr
@@ -828,7 +834,7 @@ function ProjectRow({
           case "dueFlags":
             return (
               <td key={c.key} data-col={c.key} className={td}>
-                <DueFlagsCellView cell={DueFlags.cell(row, dueFlags, today)} />
+                <DueFlagsCellView cell={DueFlagsDisplay.withoutChanged(DueFlags.cell(row, dueFlags, today), hideChangedTag)} />
               </td>
             );
           case "milestoneOwner":
@@ -1155,4 +1161,12 @@ function MilestoneMatches({ hit, search, span }: { hit: SearchHit; search: strin
       </td>
     </tr>
   );
+}
+
+/** Display only: with Hide Changed tag on, the Changed slot keeps its place but renders empty. */
+export class DueFlagsDisplay {
+  static withoutChanged(cell: DueFlagsCell, hide: boolean): DueFlagsCell {
+    if (!hide || !cell.slots) return cell;
+    return { ...cell, slots: cell.slots.map((s) => (s.kind === "changed" ? { ...s, flag: null } : s)) };
+  }
 }
