@@ -353,7 +353,7 @@ export function PeoplePanel(props: {
                       </div>
                     ) : p.pending ? (
                       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                        <span className={s.muted} style={{ fontSize: 12.5, width: 56 }}>
+                        <span className={s.muted} title={p.roleName} style={{ fontSize: 12.5, width: 64, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {p.roleName}
                         </span>
                         {p.canRevoke && (

@@ -27,6 +27,8 @@ test("the Owner invites a person with a role, then changes it; no email is sent"
   const row = page.getByTestId(`person-${INVITEE}`);
   await expect(row).toContainText("Pending");
   // A signed-in person's role changes from the picker (and back, so Riley stays a Viewer for the other checks).
+  // Other specs may add people, so narrow the list first.
+  await page.getByLabel("Filter by name or email").fill("riley");
   const riley = page.getByTestId("role-riley.moss@example.org");
   await riley.click();
   await page.getByTestId("role-menu").getByRole("option", { name: /Editor/ }).click();
@@ -36,6 +38,7 @@ test("the Owner invites a person with a role, then changes it; no email is sent"
   await page.getByTestId("role-menu").getByRole("option", { name: /Viewer/ }).click();
   await expect(riley).toContainText("Viewer");
   // The env Admin and the Owner have no picker.
+  await page.getByLabel("Filter by name or email").fill("example.org");
   await expect(page.getByTestId("role-casey.lund@example.org")).toHaveCount(0);
   await expect(page.getByTestId("role-jordan.pike@example.org")).toHaveCount(0);
 });
