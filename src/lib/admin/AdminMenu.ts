@@ -77,8 +77,8 @@ export class AdminMenu {
     { id: "ai-settings", group: "admin", kind: "link", icon: "sparkle", label: AdminMenu.AI_SETTINGS, href: "/admin/ai", shipped: true },
   ];
 
-  /** Menu items only the Owner sees (OwnerPolicy): AI, and the report freeze (Owner-only, invisible to others). */
-  static readonly OWNER_ONLY: readonly string[] = ["ai-tools", "ai-settings", "freeze"];
+  /** Menu items only the Owner sees (OwnerPolicy): AI, the report freeze and Report contents (Owner-only, invisible to others). */
+  static readonly OWNER_ONLY: readonly string[] = ["ai-tools", "ai-settings", "freeze", "service-line"];
 
   /** Every defined item, shipped or not (for tests and docs). */
   static definitions(): readonly (AdminMenuItem & { shipped: boolean })[] {

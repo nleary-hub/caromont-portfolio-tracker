@@ -192,8 +192,18 @@ describe("L5: wording visible to non-owners never mentions freezes", () => {
     }
   });
 
-  it("the Owner's menu keeps Report freeze", () => {
-    expect(AdminMenu.itemsFor(OWNER)?.map((i) => i.id)).toContain("freeze");
+  it("the Owner's menu keeps Report freeze and Report contents", () => {
+    const labels = AdminMenu.itemsFor(OWNER)?.map((i) => i.label);
+    expect(labels).toContain(AdminMenu.REPORT_FREEZE);
+    expect(labels).toContain(AdminMenu.REPORT_CONTENTS);
+  });
+
+  it("a non-owner admin sees neither Report freeze nor Report contents in the admin menu", () => {
+    const admin = { email: "casey.lund@example.org", isAdmin: true, roleId: "admin" };
+    const labels = (AdminMenu.itemsFor(admin as never) ?? []).map((i) => i.label);
+    expect(labels).toContain("Reports");
+    expect(labels).not.toContain(AdminMenu.REPORT_FREEZE);
+    expect(labels).not.toContain(AdminMenu.REPORT_CONTENTS);
   });
 });
 
