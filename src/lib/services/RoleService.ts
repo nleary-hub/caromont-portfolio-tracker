@@ -4,11 +4,12 @@ import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { OwnerLock } from "@/lib/permissions/OwnerLock";
 import { Permissions, type PermissionUser } from "@/lib/permissions/Permissions";
+import { RoleDescriptions, type RawDb } from "@/lib/permissions/RoleDescriptions";
 import { RoleEditPolicy } from "@/lib/permissions/RoleEditPolicy";
 import { SYSTEM_ROLE_DESCRIPTIONS } from "@/lib/permissions/RoleLabels";
 
 type Env = Record<string, string | undefined>;
-type RoleDb = Pick<PrismaClient, "role" | "rolePermission" | "roleHistory" | "userRoleHistory" | "appUser">;
+type RoleDb = Pick<PrismaClient, "role" | "rolePermission" | "roleHistory" | "userRoleHistory" | "appUser"> & RawDb;
 export type RoleTxDb = RoleDb & { $transaction<T>(fn: (tx: RoleDb) => Promise<T>): Promise<T> };
 
 export type RoleResult = { ok: true; message: string; roleId?: string } | { ok: false; message: string };
@@ -30,6 +31,8 @@ export interface RolesData {
   /** Keys the actor may turn on (Owner lock plus grant limit). */
   grantable: string[];
   ownerCount: number;
+  /** False until migration 0070 is applied: the editor hides the description field. */
+  descriptions: boolean;
 }
 
 const NAME_MAX = 40;
@@ -53,9 +56,11 @@ export class RoleService {
   }
 
   static async load(actor: PermissionUser, db: RoleDb = Db.client, env: Env = process.env): Promise<RolesData> {
-    const [roles, people] = await Promise.all([
+    const [roles, people, notes, descriptions] = await Promise.all([
       db.role.findMany({ include: { permissions: true }, orderBy: [{ isSystem: "desc" }, { rank: "desc" }, { name: "asc" }] }),
       db.appUser.findMany({ select: { email: true, name: true, roleId: true }, orderBy: [{ createdAt: "asc" }, { email: "asc" }] }),
+      RoleDescriptions.all(db),
+      RoleDescriptions.enabled(db),
     ]);
     const byRole = new Map<string, RoleUser[]>();
     for (const p of people) {
@@ -67,7 +72,7 @@ export class RoleService {
       roles: roles.map((r) => ({
         id: r.id,
         name: r.name,
-        description: r.description ?? SYSTEM_ROLE_DESCRIPTIONS[r.id] ?? "",
+        description: notes.get(r.id) ?? SYSTEM_ROLE_DESCRIPTIONS[r.id] ?? "",
         rank: r.rank,
         isSystem: r.isSystem,
         keys: r.permissions.map((p) => p.permission),
@@ -76,6 +81,7 @@ export class RoleService {
       })),
       grantable: RoleEditPolicy.grantableKeys(actor, env),
       ownerCount: 1,
+      descriptions,
     };
   }
 
@@ -122,7 +128,7 @@ export class RoleService {
     const taken = new Set((await db.role.findMany({ select: { name: true } })).map((r) => r.name.toLowerCase()));
     let name = `${source.name} copy`.slice(0, NAME_MAX);
     for (let i = 2; taken.has(name.toLowerCase()); i++) name = `${source.name} copy ${i}`.slice(0, NAME_MAX);
-    const description = source.description ?? SYSTEM_ROLE_DESCRIPTIONS[source.id] ?? null;
+    const description = (await RoleDescriptions.get(db, source.id)) ?? SYSTEM_ROLE_DESCRIPTIONS[source.id] ?? null;
     return RoleService.insert(actor, name, description, source.rank, keys, { from: source.id }, db);
   }
 
@@ -132,11 +138,14 @@ export class RoleService {
     return db.$transaction(async (tx) => {
       const role = await tx.role.findUnique({ where: { id: roleId } });
       if (!role || !RoleEditPolicy.canEdit(actor, role, env)) return { ok: false, message: RoleEditPolicy.NOT_FOUND };
-      const nextDescription = role.isSystem ? role.description : RoleService.cleanDescription(description);
+      const enabled = await RoleDescriptions.enabled(tx);
+      const currentDescription = enabled ? await RoleDescriptions.get(tx, roleId) : null;
+      const nextDescription = role.isSystem || !enabled ? currentDescription : RoleService.cleanDescription(description);
       const clash = await tx.role.findFirst({ where: { name: { equals: clean.value, mode: "insensitive" }, NOT: { id: roleId } } });
       if (clash) return { ok: false, message: "A role with that name already exists." };
-      if (clean.value === role.name && nextDescription === role.description) return { ok: true, message: "No changes." };
-      await tx.role.update({ where: { id: roleId }, data: { name: clean.value, description: nextDescription } });
+      if (clean.value === role.name && nextDescription === currentDescription) return { ok: true, message: "No changes." };
+      if (clean.value !== role.name) await tx.role.update({ where: { id: roleId }, data: { name: clean.value }, select: { id: true } });
+      if (nextDescription !== currentDescription) await RoleDescriptions.set(tx, roleId, nextDescription);
       await RoleService.history(tx, roleId, "rename", { from: role.name, to: clean.value, description: nextDescription }, actor.email);
       return { ok: true, message: "Saved.", roleId };
     });
@@ -164,7 +173,7 @@ export class RoleService {
         await tx.userRoleHistory.createMany({ data: holders.map((h) => ({ id: randomUUID(), email: h.email, fromRoleId: roleId, toRoleId: target!.id, actor: actor.email })) });
       }
       await RoleService.history(tx, roleId, "delete", { name: role.name, movedTo: target?.id ?? null, moved: holders.length }, actor.email);
-      await tx.role.delete({ where: { id: roleId } });
+      await tx.role.delete({ where: { id: roleId }, select: { id: true } });
       return { ok: true, message: "Role deleted." };
     });
   }
@@ -174,7 +183,8 @@ export class RoleService {
       const clash = await tx.role.findFirst({ where: { name: { equals: name, mode: "insensitive" } } });
       if (clash) return { ok: false, message: "A role with that name already exists." };
       const id = `custom-${randomUUID().slice(0, 8)}`;
-      await tx.role.create({ data: { id, name, description, rank, isSystem: false, allLines: false } });
+      await tx.role.create({ data: { id, name, rank, isSystem: false, allLines: false }, select: { id: true } });
+      if (description) await RoleDescriptions.set(tx, id, description);
       if (keys.length) await tx.rolePermission.createMany({ data: keys.map((permission) => ({ roleId: id, permission })) });
       await RoleService.history(tx, id, "create", { ...detail, name, rank, keys }, actor.email);
       return { ok: true, message: "Role created.", roleId: id };

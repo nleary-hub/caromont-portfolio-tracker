@@ -1,6 +1,7 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { RoleDescriptions } from "@/lib/permissions/RoleDescriptions";
 import { GRANTABLE_KEYS, HIDDEN_KEYS, OWNER_ONLY_KEYS, ROLE_DEFAULTS, VISIBLE_LOCKED_KEYS } from "@/lib/permissions";
 import { RoleEditPolicy } from "@/lib/permissions/RoleEditPolicy";
 import { KEY_LABELS } from "@/lib/permissions/RoleLabels";
@@ -11,6 +12,8 @@ vi.mock("@/app/actions/roles", () => ({ saveRoleKeys: vi.fn(), createRole: vi.fn
 
 // Roles & Permissions PR 3: the Roles editor's rank rule, grant limit, Owner lock, history and delete flow.
 // Fictional people only.
+beforeEach(() => RoleDescriptions.reset());
+
 const ENV = { OWNER_EMAIL: "jordan.pike@example.org", ADMIN_EMAILS: "jordan.pike@example.org casey.lund@example.org" };
 const seed = (id: string) => ROLE_DEFAULTS.find((r) => r.id === id)!;
 const OWNER = { email: "jordan.pike@example.org", isAdmin: true };
@@ -91,12 +94,19 @@ function fakeDb(initial: { roles: { id: string; name: string; rank: number; isSy
   const shape = (r: (typeof roles)[number]) => ({ ...r, permissions: r.keys.map((permission) => ({ permission })) });
   const nameMatch = (n: string, where: { name: { equals: string } }) => n.toLowerCase() === where.name.equals.toLowerCase();
   const db = {
+    // Raw SQL used by RoleDescriptions (column present, as after migration 0070).
+    $queryRawUnsafe: async (q: string, ...v: unknown[]) => {
+      if (q.includes("information_schema")) return [{ "?column?": 1 }];
+      if (q.includes('WHERE "id" = $1')) return roles.filter((r) => r.id === v[0]).map((r) => ({ description: r.description }));
+      return roles.filter((r) => r.description).map((r) => ({ id: r.id, description: r.description }));
+    },
+    $executeRawUnsafe: async (_q: string, description: unknown, id: unknown) => { const r = roles.find((x) => x.id === id); if (r) r.description = description as string | null; return r ? 1 : 0; },
     role: {
       findUnique: async ({ where }: { where: { id: string } }) => { const r = roles.find((x) => x.id === where.id); return r ? shape(r) : null; },
       findFirst: async ({ where }: { where: { name: { equals: string }; NOT?: { id: string } } }) => roles.find((r) => nameMatch(r.name, where) && r.id !== where.NOT?.id) ?? null,
       findMany: async () => roles.map(shape),
-      create: async ({ data }: { data: (typeof roles)[number] }) => { roles.push({ ...data, keys: [] }); return data; },
-      update: async ({ where, data }: { where: { id: string }; data: { name: string; description: string | null } }) => Object.assign(roles.find((r) => r.id === where.id)!, data),
+      create: async ({ data }: { data: Omit<(typeof roles)[number], "description" | "keys"> }) => { roles.push({ ...data, description: null, keys: [] }); return data; },
+      update: async ({ where, data }: { where: { id: string }; data: { name: string } }) => Object.assign(roles.find((r) => r.id === where.id)!, data),
       delete: async ({ where }: { where: { id: string } }) => roles.splice(roles.findIndex((r) => r.id === where.id), 1),
     },
     rolePermission: {

@@ -1206,8 +1206,9 @@ model DashboardSettings {
 model Role {
   id          String           @id
   name        String           @unique
-  /// One line under a custom role's name in the Roles editor (migration 0070, 80 characters max). NULL for system roles.
-  description String?
+  // "description" (migration 0070) is deliberately NOT in this model: deployed code must run before 0070 is applied,
+  // and Prisma selects and returns every scalar it knows. RoleDescriptions reads and writes it with raw SQL, only
+  // when the column exists.
   /// Higher ranks above lower; a person may only assign roles ranked strictly below their own. Owner is 100.
   rank        Int
   isSystem    Boolean          @default(false)

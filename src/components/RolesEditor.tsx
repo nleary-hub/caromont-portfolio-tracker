@@ -266,7 +266,7 @@ export function RolesEditor({ data, initialRoleId }: { data: RolesData; initialR
           title={dialog.kind === "new" ? "New role" : `Rename “${displayName(dialog.role)}”`}
           initialName={dialog.kind === "rename" ? dialog.role.name : ""}
           initialDescription={dialog.kind === "rename" ? dialog.role.description : ""}
-          showDescription={dialog.kind === "new" || !dialog.role.isSystem}
+          showDescription={data.descriptions && (dialog.kind === "new" || !dialog.role.isSystem)}
           pending={pending}
           onCancel={() => setDialog(null)}
           onSave={(name, description) =>
