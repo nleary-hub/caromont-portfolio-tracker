@@ -1,4 +1,5 @@
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { ReportHttp } from "@/lib/report/ReportHttp";
 import { DraftReportService } from "@/lib/services/DraftReportService";
 import { OnDemandPdfLink } from "@/lib/report/OnDemandPdfLink";
@@ -11,7 +12,10 @@ export const dynamic = "force-dynamic";
 export const maxDuration = 60;
 
 export async function GET(request: Request) {
-  const draft = await DraftReportService.render(await CurrentViewer.get(), undefined, undefined, undefined, OnDemandPdfLink.parse(request.url));
+  const viewer = await CurrentViewer.get();
+  // report.pdf.onDemand is checked here and again in render (defense in depth); same 404 as no line access.
+  if (!viewer || !Permissions.can(viewer, "report.pdf.onDemand")) return ReportHttp.notFound();
+  const draft = await DraftReportService.render(viewer, undefined, undefined, undefined, OnDemandPdfLink.parse(request.url));
   if (!draft) return ReportHttp.notFound();
   return ReportHttp.file(draft.bytes, "application/pdf", draft.fileName, "attachment");
 }
