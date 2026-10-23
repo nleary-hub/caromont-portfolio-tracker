@@ -38,7 +38,6 @@ import { DashboardSettingsService } from "@/lib/services/DashboardSettingsServic
 import { LineLayout, type LineLayoutValue } from "@/lib/layout/LineLayout";
 import { LineLayoutService } from "@/lib/services/LineLayoutService";
 import { ProjectDashboard, type AdminDashboardProps, type LatestReport } from "@/components/ProjectDashboard";
-import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { DashboardViewModel, type DashboardRow } from "@/lib/dashboard/DashboardViewModel";
@@ -63,6 +62,8 @@ import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
 import { ProjectEditPolicy } from "@/lib/access/ProjectEditPolicy";
+import { DashboardCapabilitiesPolicy } from "@/lib/access/DashboardCapabilities";
+import type { PermissionUser } from "@/lib/permissions/Permissions";
 import { OnDemandPdfLink } from "@/lib/report/OnDemandPdfLink";
 import { ViewerDashboard } from "@/components/rbac/ViewerDashboard";
 import { RbacShell } from "@/components/rbac/RbacShell";
@@ -93,7 +94,7 @@ class DashboardData {
     return { dashboard: ViewSettings.defaults("dashboard"), report: ViewSettings.defaults("report") };
   }
 
-  static empty(viewer: Viewer, error: string, scope: ServiceLineScope = ServiceLine.defaultScope()): DashboardLoad {
+  static empty(viewer: PermissionUser, error: string, scope: ServiceLineScope = ServiceLine.defaultScope()): DashboardLoad {
     const settings = DashboardData.defaultSettings();
     return {
       rows: [],
@@ -101,8 +102,8 @@ class DashboardData {
       latestReport: null,
       completedFiscalYear: null,
       layout: LineLayout.defaults(),
-      admin: viewer.isAdmin
-        ? { viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: PeopleDirectory.merge(scope.owners), requesterSuggestions: PeopleDirectory.merge(scope.requesters), milestoneOwnerOptions: OwnerNameLists.combined(scope, []), menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
+      admin: ProjectEditPolicy.canEditLine(viewer)
+        ? { can: DashboardCapabilitiesPolicy.for(viewer), viewSettings: settings, pickerCounts: DashboardViewModel.adminPickerCounts([]), hiddenFromReportIds: [], ownerSuggestions: PeopleDirectory.merge(scope.owners), requesterSuggestions: PeopleDirectory.merge(scope.requesters), milestoneOwnerOptions: OwnerNameLists.combined(scope, []), menuItems: AdminMenu.itemsFor(viewer) ?? [], formValues: {}, milestoneSteps: {}, templates: [] }
         : null,
       error,
     };
@@ -126,7 +127,7 @@ class DashboardData {
 
   /** Everything is filtered through VisibilityPolicy on the server; non-admins never receive hidden data. */
   /** Scoped to the viewer's active service line: projects, people, templates and the latest report. */
-  static async load(viewer: Viewer, today: string, scope: ServiceLineScope): Promise<DashboardLoad> {
+  static async load(viewer: PermissionUser, today: string, scope: ServiceLineScope): Promise<DashboardLoad> {
     if (!Db.isConfigured()) return DashboardData.empty(viewer, "DATABASE_URL is not configured.", scope);
     try {
       const db = Db.client;
@@ -214,8 +215,10 @@ class DashboardData {
               periodEnd: DateOnly.fromDbDate(latest.periodEnd)!,
             }
           : null,
-        admin: viewer.isAdmin
+        // Roles & Permissions 5b: the edit payload goes to anyone holding project.edit; its parts are gated per key.
+        admin: ProjectEditPolicy.canEditLine(viewer)
           ? {
+              can: DashboardCapabilitiesPolicy.for(viewer),
               viewSettings: settings,
               pickerCounts: DashboardViewModel.adminPickerCounts(projects),
               hiddenFromReportIds: visible.filter((p) => p.hiddenFromReport).map((p) => p.id),
@@ -229,7 +232,8 @@ class DashboardData {
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
               canChangeStatus: Permissions.can(viewer, "status.change"),
               // The form reads the stored legacy fields; the checklist comes separately.
-              formValues: DashboardData.formValues(stored, listedIds),
+              // Only projects this viewer may edit open in edit mode (department limits, line scope).
+              formValues: DashboardData.formValues(stored, listedIds.filter((id) => ProjectEditPolicy.canEdit(viewer, scope, stored.find((p) => p.id === id) ?? null))),
               milestoneSteps: MilestoneService.byProject(
                 steps.filter((s) => listedIds.includes(s.projectId)),
                 ServiceLine.peopleNames(scope),
@@ -319,8 +323,8 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
       key={scope.id}
       line={scope}
       {...(link.kind === "open" ? { initialProjectId: link.id } : {})}
-      // Admins: always the switcher (with Manage service lines). Others: the switcher for 2+ lines, a plain label for one.
-      switcher={viewer.isAdmin || lines.length > 1 ? <ServiceLineSwitcher lines={(lines.length ? lines : [scope]).map(ServiceLine.switcherEntry)} active={ServiceLine.switcherEntry(scope)} manage={viewer.isAdmin} /> : null}
+      // Service line managers (admin.serviceLines): always the switcher (with Manage service lines). Others: the switcher for 2+ lines, a plain label for one.
+      switcher={Permissions.can(viewer, "admin.serviceLines") || lines.length > 1 ? <ServiceLineSwitcher lines={(lines.length ? lines : [scope]).map(ServiceLine.switcherEntry)} active={ServiceLine.switcherEntry(scope)} manage={Permissions.can(viewer, "admin.serviceLines")} /> : null}
       // Spread so non-admins' payload does not even carry an "admin" key.
       {...(admin
         ? {
@@ -414,7 +418,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                 const r = await deleteProject(projectId);
                 return r.ok ? null : r.error;
               },
-              dependencyActions: {
+              ...(Permissions.can(viewer, "project.dependencies.edit") ? { dependencyActions: {
                 load: async (projectId: string) => {
                   "use server";
                   return loadProjectDependencies(projectId);
@@ -451,7 +455,7 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
                   "use server";
                   return dismissCompletionPrompt(projectId, blockedById);
                 },
-              },
+              } } : {}),
             },
           }
         : {})}

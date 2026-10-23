@@ -27,9 +27,9 @@ const env = {
   AUTH_DEV_LOGIN: "true",
   AUTH_TRUST_HOST: "true",
   AUTH_URL: `http://127.0.0.1:${port}`,
-  ALLOWED_EMAILS: "jordan.pike@example.org riley.moss@example.org casey.lund@example.org taylor.reed@example.org",
+  ALLOWED_EMAILS: "jordan.pike@example.org riley.moss@example.org casey.lund@example.org taylor.reed@example.org morgan.hale@example.org quinn.vale@example.org",
   ADMIN_EMAILS: "jordan.pike@example.org casey.lund@example.org",
-  // The fictional Owner (OwnerPolicy): only Jordan has AI; Casey is an admin without it, Riley a viewer.
+  // The fictional Owner (OwnerPolicy): only Jordan has AI; Casey is an admin without it, Riley a viewer, Morgan an Editor and Quinn a Viewer (set by their specs).
   OWNER_EMAIL: "jordan.pike@example.org",
   AI_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("base64"),
   VERCEL_ENV: "preview",
