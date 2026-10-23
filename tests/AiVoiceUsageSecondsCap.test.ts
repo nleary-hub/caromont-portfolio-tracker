@@ -60,7 +60,7 @@ describe("0062_voice_usage_seconds_cap: the migration file", () => {
     const f = folders();
     expect(f[f.indexOf(M) - 1]).toBe("0061_ai_playbooks");
     // Only the Oct 20 batch migrations come after it.
-    expect(f.slice(f.indexOf(M) + 1).every((x) => /^006[3-9]_/.test(x))).toBe(true);
+    expect(f.slice(f.indexOf(M) + 1).every((x) => /^00(6[3-9]|70)_/.test(x))).toBe(true);
     expect(sql()).not.toContain("\u2014");
     expect(sql()).toMatch(/^-- 0062_voice_usage_seconds_cap:/);
     expect(sql()).toMatch(/Why:/);

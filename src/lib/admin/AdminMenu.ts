@@ -97,6 +97,7 @@ export class AdminMenu {
     "service-line": "admin.settings",
     departments: "admin.departments",
     people: "people.view",
+    roles: "admin.roles",
     audit: "admin.audit",
     dependencies: "project.review",
     settings: "admin.layout",
