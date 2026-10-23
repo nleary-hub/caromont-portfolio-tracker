@@ -657,7 +657,7 @@ export function ProjectEditForm({
         {trailing}
 
 
-        {adminDelete && (
+        {(adminDelete || adminExtra) && (
           <div className="border-t border-line pt-4">
             <Section title="Admin">
               {adminExtra}

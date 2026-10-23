@@ -64,6 +64,7 @@ import { MfiCheckbox, MfiChip } from "./MfiChip";
 import type { AiPlacementNotes, AiRowShortcut } from "./AiPlacements";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiWritingModel } from "@/lib/ai/AiWritingModel";
+import { DashboardCapabilitiesPolicy, type DashboardCapabilities } from "@/lib/access/DashboardCapabilities";
 
 // Admin-only UI is code-split: the chunks load only when an admin renders them.
 // AI placements use server actions: loaded on demand so importing the dashboard never pulls them in (tests, non-AI views).
@@ -81,8 +82,10 @@ const ProjectEditForm = dynamic(() => import("./ProjectEditForm").then((m) => m.
 /** The latest frozen report (top bar chip). */
 export type LatestReport = TopBarReport;
 
-/** Only passed for admins. Non-admins receive none of this (no settings, counts or actions). */
+/** Only passed to viewers holding project.edit. Others receive none of this (no settings, counts or actions). */
 export interface AdminDashboardProps {
+  /** Per-key flags for the parts beyond the edit drawer (Roles & Permissions 5b). Absent = every part (legacy admin). */
+  can?: DashboardCapabilities;
   viewSettings: ViewSettingsByContext;
   /** Per-status counts for the picker (before status settings apply). */
   pickerCounts: Record<ViewContext, StatusCounts>;
@@ -293,6 +296,8 @@ export function ProjectDashboard({
   const focusSearchRef = useRef<() => void>(() => {});
   // Admin edit mode. The project drawer opens straight into the edit form for admins (no Edit click);
   // non-admins stay in "view" (there is no way to switch).
+  const can = admin ? (admin.can ?? DashboardCapabilitiesPolicy.all()) : null;
+  const layoutAdmin = can?.layout ? admin : undefined;
   const openMode = (id: string | null): DrawerMode => (id && admin?.formValues[id] ? "edit" : "view");
   const [mode, setMode] = useState<DrawerMode>(() => openMode(initialProjectId ?? null));
   const [confirmDiscard, setConfirmDiscard] = useState(false);
@@ -325,22 +330,22 @@ export function ProjectDashboard({
     return err ? LayoutCopy.SAVE_FAILED : null;
   };
   const saveColumns = (columns: ColumnLayoutValue | null) =>
-    admin ? persistLayout({ ...lineLayout, columns: LineLayout.isDefaultColumns(columns) ? null : columns }, () => admin.saveColumnLayoutAction(columns)) : Promise.resolve("Not authorized.");
+    layoutAdmin ? persistLayout({ ...lineLayout, columns: LineLayout.isDefaultColumns(columns) ? null : columns }, () => layoutAdmin.saveColumnLayoutAction(columns)) : Promise.resolve("Not authorized.");
   const saveRowOrder = (area: AreaGroup, ids: string[]) => {
-    if (!admin) return Promise.resolve("Not authorized.");
+    if (!layoutAdmin) return Promise.resolve("Not authorized.");
     const rowsNext = { ...lineLayout.rows };
     if (ids.length) rowsNext[area] = ids;
     else delete rowsNext[area];
-    return persistLayout({ ...lineLayout, rows: rowsNext }, () => admin.saveRowOrderAction(area, ids));
+    return persistLayout({ ...lineLayout, rows: rowsNext }, () => layoutAdmin.saveRowOrderAction(area, ids));
   };
-  const resetRows = () => (admin ? persistLayout({ ...lineLayout, rows: {} }, () => admin.resetRowOrderAction()) : Promise.resolve("Not authorized."));
+  const resetRows = () => (layoutAdmin ? persistLayout({ ...lineLayout, rows: {} }, () => layoutAdmin.resetRowOrderAction()) : Promise.resolve("Not authorized."));
   const notInReport = useMemo(() => {
     const hidden = new Set(admin?.hiddenFromReportIds ?? []);
     return new Set(rows.filter((r) => PrintOrder.notInReport(r, hidden, settings?.report)).map((r) => r.id));
   }, [rows, admin?.hiddenFromReportIds, settings?.report]);
   const layoutControl: DashboardLayoutControl = {
     value: lineLayout,
-    canEdit: Boolean(admin),
+    canEdit: Boolean(layoutAdmin),
     sort,
     onColumns: (next) => void saveColumns(next),
     onRowOrder: (area, ids) => void saveRowOrder(area, ids),
@@ -468,7 +473,7 @@ export function ProjectDashboard({
   // The side panel slides in when it opens, not when it switches between detail and edit.
   // Edit drawer header "Blocked by n" (from the Dependencies section once it loads).
   const [blockedCount, setBlockedCount] = useState<{ id: string; n: number } | null>(null);
-  const drawerOpen = (mode === "new" && Boolean(admin)) || Boolean(selected);
+  const drawerOpen = (mode === "new" && Boolean(can?.create)) || Boolean(selected);
   const [drawerWasOpen, setDrawerWasOpen] = useState(drawerOpen);
   const [drawerEntering, setDrawerEntering] = useState(false);
   if (drawerWasOpen !== drawerOpen) {
@@ -504,7 +509,7 @@ export function ProjectDashboard({
 
   /** Optimistic: apply locally, persist, roll back on failure. */
   const saveSettings = async (context: ViewContext, value: ViewSettingsValue): Promise<string | null> => {
-    if (!admin || !settings) return "Not authorized.";
+    if (!layoutAdmin || !settings) return "Not authorized.";
     if (context === "dashboard" && lineLayout.columns) {
       // This line has its own column order: a reorder in the View menu changes the line layout (not the order
       // shared by every line); show/hide still saves to the dashboard view settings.
@@ -519,7 +524,7 @@ export function ProjectDashboard({
     const previous = settings[context];
     setSettings((s) => (s ? { ...s, [context]: value } : s));
     try {
-      const err = await admin.saveViewSettingsAction(context, value);
+      const err = await layoutAdmin.saveViewSettingsAction(context, value);
       if (err) setSettings((s) => (s ? { ...s, [context]: previous } : s));
       return err;
     } catch {
@@ -673,11 +678,11 @@ export function ProjectDashboard({
         onQuery={setQuery}
         focusSearchRef={focusSearchRef}
         viewPicker={
-          admin && settings
+          layoutAdmin && settings
             ? (compact) => (
                 <ViewSettingsPicker
                   settings={lineLayout.columns ? { ...settings, dashboard: LineLayout.orderedSettings("dashboard", settings.dashboard, lineLayout.columns.order) } : settings}
-                  counts={admin.pickerCounts}
+                  counts={layoutAdmin.pickerCounts}
                   onSave={saveSettings}
                   layoutReset={{ shortName: serviceLine.shortName, onResetColumns: () => saveColumns(null), onResetRows: resetRows }}
                   compact={compact}
@@ -718,7 +723,7 @@ export function ProjectDashboard({
           </p>
         )}
 
-        {emptyLine && <EmptyLineState line={line!} admin={Boolean(admin)} onNew={openNew} />}
+        {emptyLine && <EmptyLineState line={line!} can={can} onNew={openNew} />}
 
         {/* A line with no projects shows only the banner; tiles, toolbar and table appear with the first project. */}
         {/* Top row: the status tiles at full width. The Pre-meeting brief, when that feature is on, gets its own row below. */}
@@ -760,7 +765,7 @@ export function ProjectDashboard({
           {!printOrder && <SortChip text={DashboardQuery.sortChip(sort)} onManual={() => setQ({ ...q, sort: null })} />}
           {aiPlacements && <AiToolbarMenu notes={aiPlacements} selected={rows.filter((r) => multiIds.has(r.id)).map((r) => ({ id: r.id, name: r.name }))} visible={visible.map((r) => ({ id: r.id, name: r.name }))} />}
           {review && <MarkAllReviewedButton count={reviewable.length} onClick={() => setConfirmBulk(true)} />}
-          {admin && (
+          {can?.create && (
             <button
               type="button"
               onClick={openNew}
@@ -839,7 +844,7 @@ export function ProjectDashboard({
       </main>
 
       {drawerOpen && <DrawerSpotlight rowId={mode === "new" ? null : selectedId} />}
-      {mode === "new" && admin ? (
+      {mode === "new" && admin && can?.create ? (
         <ProjectDrawer
           entering={drawerEntering}
           onEntered={() => setDrawerEntering(false)}
@@ -895,7 +900,7 @@ export function ProjectDashboard({
             today={today}
             onClose={requestClose}
             headerTag={blockedCount?.id === selected.id && blockedCount.n > 0 ? <BlockedByTag n={blockedCount.n} /> : null}
-            {...(!admin && dependencyLoadAction
+            {...(!admin?.formValues[selected.id] && dependencyLoadAction
               ? { dependencies: <DependenciesSection key={`deps-ro-${selected.id}`} projectId={selected.id} actions={{ load: dependencyLoadAction }} onOpenProject={setSelectedId} flags={BlockerSignals.flags(selected, selected.blockers, today)} focus={focusDeps === selected.id} /> }
               : {})}
             {...(aiPlacements && "meeting_brief" in aiPlacements ? { headerAction: <AiBriefButton note={aiPlacements.meeting_brief ?? null} projectId={selected.id} projectName={selected.name} /> } : {})}
@@ -920,7 +925,7 @@ export function ProjectDashboard({
               ) : null
             }
             adminControls={
-              admin ? (
+              admin && can?.hide ? (
                 <ProjectAdminControls
                   heading={false}
                   projectId={selected.id}
@@ -968,6 +973,9 @@ export function ProjectDashboard({
                         onCount={(n) => setBlockedCount((prev) => (prev?.id === selected.id && prev.n === n ? prev : { id: selected.id, n }))}
                         {...(aiPlacements && "related_links" in aiPlacements ? { ai: (reload: () => void) => <AiDependencySuggestPanel projectId={selected.id} disabledNote={aiPlacements.related_links ?? null} onApplied={reload} /> } : {})}
                       />
+                    ) : dependencyLoadAction ? (
+                      // Editors without project.dependencies.edit: the same section, read-only.
+                      <DependenciesSection key={`deps-ro-${selected.id}`} projectId={selected.id} actions={{ load: dependencyLoadAction }} onOpenProject={setSelectedId} flags={BlockerSignals.flags(selected, selected.blockers, today)} focus={focusDeps === selected.id} />
                     ) : null
                   }
                   people={
@@ -990,6 +998,7 @@ export function ProjectDashboard({
                     />
                   }
                   adminDelete={
+                    can?.remove ? (
                     <ProjectAdminControls
                       part="delete"
                       projectId={selected.id}
@@ -999,6 +1008,7 @@ export function ProjectDashboard({
                       deleteAction={admin.deleteProjectAction}
                       onGone={closeDrawer}
                     />
+                    ) : null
                   }
                   onSubmit={(changes, milestones) => submitForm(selected.id, selected.name, changes, milestones)}
                   {...(admin.aiReview ? { aiReview: reviewActions(admin.aiReview, selected.id) } : {})}
@@ -1352,7 +1362,7 @@ function ReadOnlyDetails({
 }
 
 /** A new service line with no projects yet: what to set up first. */
-function EmptyLineState({ line, admin, onNew }: { line: ServiceLineScope; admin: boolean; onNew: () => void }) {
+function EmptyLineState({ line, can, onNew }: { line: ServiceLineScope; can: DashboardCapabilities | null; onNew: () => void }) {
   const link = "text-accent type-table-strong hover:underline";
   return (
     <section aria-label="Get started" className="flex flex-col gap-3 rounded-card border border-line bg-card px-5 py-4" data-testid="empty-line">
@@ -1364,23 +1374,33 @@ function EmptyLineState({ line, admin, onNew }: { line: ServiceLineScope; admin:
             : "Add projects one at a time or import a CSV."}
         </p>
       </div>
-      {admin && (
+      {can && (can.create || Object.values(can.setup).some(Boolean)) && (
         <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-          <Link href="/admin/departments" className={link}>
-            Departments
-          </Link>
-          <Link href="/admin/people" className={link}>
-            Contracts leads
-          </Link>
-          <Link href="/admin/templates" className={link}>
-            Milestone templates
-          </Link>
-          <Link href="/admin/import" className={link}>
-            Import a CSV
-          </Link>
-          <button type="button" onClick={onNew} className={link}>
-            + New project
-          </button>
+          {can.setup.departments && (
+            <Link href="/admin/departments" className={link}>
+              Departments
+            </Link>
+          )}
+          {can.setup.people && (
+            <Link href="/admin/people" className={link}>
+              Contracts leads
+            </Link>
+          )}
+          {can.setup.templates && (
+            <Link href="/admin/templates" className={link}>
+              Milestone templates
+            </Link>
+          )}
+          {can.setup.import && (
+            <Link href="/admin/import" className={link}>
+              Import a CSV
+            </Link>
+          )}
+          {can.create && (
+            <button type="button" onClick={onNew} className={link}>
+              + New project
+            </button>
+          )}
         </div>
       )}
     </section>
