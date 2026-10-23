@@ -30,9 +30,14 @@ test("the admin sees Hide Changed tag in the Dashboard card, Off by default, and
   await card.screenshot({ path: out ? `${out}/admin-dashboard-card.png` : testInfo.outputPath("admin-dashboard-card.png") });
   await sw.click();
   await expect(sw).toHaveAttribute("aria-checked", "true");
+  // The switch flips at once and stays disabled until the save returns. Reload only after that: under a busy dev
+  // server (full suite, specs in parallel) the save can still be in flight, and a reload then renders the old value.
+  await expect(sw).toBeEnabled({ timeout: 60000 });
   await expect(card.getByTestId("global-hide-changed-error")).toHaveCount(0);
   await page.reload();
   await expect(page.locator("section#dashboard").getByTestId("global-hide-changed-switch")).toHaveAttribute("aria-checked", "true", { timeout: 60000 });
   await page.locator("section#dashboard").getByTestId("global-hide-changed-switch").click();
   await expect(page.locator("section#dashboard").getByTestId("global-hide-changed-switch")).toHaveAttribute("aria-checked", "false");
+  // Leave the setting off (saved) for any spec that runs later.
+  await expect(page.locator("section#dashboard").getByTestId("global-hide-changed-switch")).toBeEnabled({ timeout: 60000 });
 });
