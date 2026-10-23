@@ -2,7 +2,7 @@ import { Permissions } from "@/lib/permissions/Permissions";
 import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { loadProjectHistory } from "@/app/actions/history";
-import { restoreCancelledProject } from "@/app/actions/closed";
+import { reopenCompletedProject, restoreCancelledProject } from "@/app/actions/closed";
 import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 import { LineGate } from "@/lib/access/LineGate";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -52,6 +52,7 @@ export class ClosedPageRoute {
     const today = DateOnly.today();
     const options = DepartmentFilter.optionsFor(scope);
     const data = await ClosedPageData.load(viewer, kind.status, today, scope);
+    const canReopen = Permissions.can(viewer, "lifecycle.reopenCompleted") && kind.status === "Complete";
     const canRestore = Permissions.can(viewer, "lifecycle.reopenCancelled") && kind.status === "Cancelled";
     return (
       <ClosedProjectsView
@@ -66,6 +67,8 @@ export class ClosedPageRoute {
         limited={DepartmentAccess.isLimited(scope)}
         restore={canRestore ? data.restore : null}
         {...(canRestore ? { restoreAction: restoreCancelledProject } : {})}
+        reopen={canReopen ? (data.reopen ?? null) : null}
+        {...(canReopen ? { reopenAction: reopenCompletedProject } : {})}
         historyAction={loadProjectHistory}
         lineSlot={<ServiceLineSlot viewer={viewer} active={scope} lines={lines} />}
         serviceLine={{ name: scope.name, shortName: scope.shortName }}

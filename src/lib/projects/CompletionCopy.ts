@@ -31,6 +31,8 @@ export class CompletionCopy {
   static readonly MANUAL_TAG = "Manual";
   static readonly MANUAL_TOOLTIP = "Edited by hand. Adding a milestone reopens the project. This date comes back if that milestone is deleted.";
   /** Edit screen: read-only Status note on a completed project (Complete is never picked by hand). */
+  /** Edit form, without "Change project status". */
+  static readonly STATUS_LOCKED_NOTE = "Your role can't change the status.";
   static readonly STATUS_NOTE = "Set when the last milestone is marked done. Adding a milestone reopens the project.";
   /** Server refusal of a hand-sent Complete status (form, actions). */
   static readonly HAND_COMPLETE_REFUSED = "Complete can't be set by hand. A project is complete when its last milestone is marked done.";

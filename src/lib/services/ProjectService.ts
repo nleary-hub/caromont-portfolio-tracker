@@ -14,6 +14,8 @@ import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { HistoryDiff, type FieldChange } from "@/lib/history/HistoryDiff";
 import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
 import { RestoreRules, type RestoreTarget } from "@/lib/closed/RestoreRules";
+import { ReopenRules, type ReopenTarget } from "@/lib/closed/ReopenRules";
+import { ClosedPagesCopy } from "@/lib/closed/ClosedPagesCopy";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { MilestoneProgress } from "@/lib/domain/MilestoneProgress";
 import { MilestoneRules, MilestoneValidationError, type MilestoneEdit } from "@/lib/domain/MilestoneRules";
@@ -68,6 +70,13 @@ export class ProjectArchivedError extends Error {
 }
 
 /** Restore to active on a project that is no longer Cancelled (restored or changed elsewhere). */
+export class ProjectNotCompleteError extends Error {
+  constructor(id: string) {
+    super(`Project ${id} is not complete`);
+    this.name = "ProjectNotCompleteError";
+  }
+}
+
 export class ProjectNotCancelledError extends Error {
   constructor(id: string) {
     super(`Project ${id} is not cancelled`);
@@ -477,6 +486,8 @@ export class ProjectService {
     return db.$transaction(async (tx) => {
       const at = new Date();
       const existing = await ProjectService.loadMutable(tx, id, scope);
+      // Changing the status needs status.change (matrix 4.1); an unchanged status in the payload does not.
+      if (patch.status !== undefined && patch.status !== existing.status) PermissionAssert.require(admin, "status.change");
       ProjectService.assertCompletionInput(existing.status, patch);
       // Start date errors come back with the other field errors (one inline message each, Save blocked).
       const startErrors = ProjectService.startDateErrors(existing, { startDate: values.startDate === null ? "" : startDate, status: patch.status, completedOn: patch.completedOn }, DateOnly.inZone(at));
@@ -568,7 +579,16 @@ export class ProjectService {
    * status moves) with the source in the comment, so every automatic change is in the append-only history and sets
    * the Changed flag like any other update.
    */
-  static async applyCompletion(tx: Tx, before: Project, current: Project, checklist: MilestoneSaveResult | null, actor: Actor, at: Date): Promise<Project> {
+  static async applyCompletion(
+    tx: Tx,
+    before: Project,
+    current: Project,
+    checklist: MilestoneSaveResult | null,
+    actor: Actor,
+    at: Date,
+    /** Reopen (matrix 4.3): the status an unchecked last milestone goes back to, instead of On track. */
+    reopenStatus?: ProjectStatus,
+  ): Promise<Project> {
     const state = (p: Project): CompletionState => ({
       status: p.status,
       manual: DateOnly.fromDbDate(p.completedOn),
@@ -606,7 +626,7 @@ export class ProjectService {
         DateOnly.inZone(at),
       );
       if (o.event) {
-        next = o.next;
+        next = o.event.code === "reopened_unchecked" && reopenStatus ? { ...o.next, status: reopenStatus } : o.next;
         event = o.event;
       }
     }
@@ -757,6 +777,56 @@ export class ProjectService {
       const data = { status: target.status };
       const project = ProjectRows.fromDb(await tx.project.update({ where: { id }, data: { ...data, updatedBy: admin.email } }));
       await ProjectService.writeHistory(tx, id, HistoryDiff.diff(existing, data), ProjectService.actorOf(admin, RestoreRules.commentFor(target)), at);
+      return { project, target };
+    });
+  }
+
+  /**
+   * Reopen a completed project (Completed page, matrix 4.3). In one transaction: unchecks the project's last milestone
+   * (the one whose check completed it), which clears the completion date through CompletionRules, sets the status to
+   * the one it had before it was completed (ReopenRules, else On track), and writes the usual milestone, status and
+   * completion history rows plus one append-only `project_reopened` audit row with the reason. Complete is still
+   * never set or unset by hand. Throws when the project is not Complete, deleted, or outside the actor's scope.
+   */
+  static async reopenCompleted(
+    id: string,
+    reason: string,
+    admin: Viewer & { roleId?: string | null },
+    db: PrismaClient = Db.client,
+    scope: ServiceLineScope = ServiceLine.defaultScope(),
+    at: Date = new Date(),
+  ): Promise<{ project: Project; target: ReopenTarget }> {
+    PermissionAssert.require(admin, "lifecycle.reopenCompleted");
+    const why = ReopenRules.reason(reason);
+    if (!why) throw new ProjectValidationError({ _form: [ClosedPagesCopy.REOPEN_REASON_REQUIRED] });
+    const actor = ProjectService.actorOf(admin);
+    return db.$transaction(async (tx) => {
+      const existing = await ProjectService.loadMutable(tx, id, scope);
+      if (existing.status !== "Complete") throw new ProjectNotCompleteError(id);
+      const steps = MilestoneProgress.ordered(await MilestoneService.stepsFor(tx, id));
+      const last = [...steps].reverse().find((s) => s.done);
+      if (!last) throw new ProjectNotCompleteError(id);
+      const history = await tx.projectHistory.findMany({ where: { projectId: id, field: "status" }, select: { field: true, oldValue: true, newValue: true, changedAt: true } });
+      const target = ReopenRules.target(history);
+      const drafts = steps.map((s) => ({ id: s.id, name: s.name, dueDate: DateOnly.fromDbDate(s.dueDate) ?? "", done: s.id === last.id ? false : s.done, sourceTemplateId: s.sourceTemplateId ?? null, owner: s.owner ?? null }));
+      const saved = await ProjectService.withMilestoneErrors(() => MilestoneService.saveInTx(tx, id, drafts, actor, at, null, scope));
+      const priorCompletedAt = DateOnly.fromDbDate(existing.completedOn) ?? DateOnly.fromDbDate(existing.completedAtAuto ?? null);
+      // Mirror first (next milestone = the unchecked step), then the status: the Project check constraint needs a
+      // next milestone on an active status, and a completed project may have none.
+      const mirrored = await ProjectService.updateInTx(tx, id, {}, actor, "form", { mirror: saved.mirror, at }, scope);
+      const project = await ProjectService.applyCompletion(tx, existing, mirrored, saved, actor, at, target.status);
+      const detail = {
+        actor: admin.email,
+        actorRole: admin.roleId ?? null,
+        projectId: id,
+        milestoneId: last.id,
+        milestoneName: last.name,
+        priorCompletedAt,
+        restoredStatus: target.status,
+        reason: why,
+        at: at.toISOString(),
+      };
+      await tx.projectHistory.create({ data: { projectId: id, field: ReopenRules.AUDIT_FIELD, oldValue: priorCompletedAt, newValue: JSON.stringify(detail), changedAt: at, changedBy: admin.email, comment: why } });
       return { project, target };
     });
   }
