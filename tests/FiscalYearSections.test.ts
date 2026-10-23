@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
 import { FiscalYearSections, type DashboardFyRow } from "@/lib/dashboard/FiscalYearSections";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
@@ -13,6 +13,11 @@ import { YearEndReportService } from "@/lib/services/YearEndReportService";
 import { AdminRequiredError } from "@/lib/auth/AdminPolicy";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
+
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
 
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
 

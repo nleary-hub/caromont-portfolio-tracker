@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { ImportPanel } from "@/components/ImportPanel";
-import { AdminGate } from "@/lib/auth/AdminGate";
+import { PermissionGate } from "@/lib/permissions/PermissionGate";
 import { AppConfig } from "@/lib/config/AppConfig";
 import { ProjectCsv } from "@/lib/import/ProjectCsv";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
@@ -12,7 +12,7 @@ export const metadata: Metadata = { title: "Import projects" };
 export default async function AdminImportPage() {
   // Enforced here (not only in the proxy): non-admins get a 404.
   // The viewer comes from the session, so a password admin (not on ALLOWED_EMAILS) gets the same page.
-  const viewer = await AdminGate.requireAdminViewer();
+  const viewer = await PermissionGate.requirePage("admin.import");
   const adminEmail = viewer.email;
   // Import and export work on the admin's active service line.
   const scope = await ServiceLineAccess.activeOrDefault(viewer);

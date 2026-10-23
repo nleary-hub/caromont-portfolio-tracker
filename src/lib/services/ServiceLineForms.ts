@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@/generated/prisma/client";
+import { Permissions } from "@/lib/permissions/Permissions";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess, ServiceLineAccessError } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
@@ -87,7 +88,7 @@ export class ServiceLineForms {
   }
 
   private static async run(viewer: Viewer | null, work: (viewer: Viewer) => Promise<ServiceLineActionResult>): Promise<ServiceLineActionResult> {
-    if (!viewer?.isAdmin) return { ok: false, message: ServiceLineForms.NOT_AUTHORIZED };
+    if (!viewer || !Permissions.can(viewer, "admin.serviceLines")) return { ok: false, message: ServiceLineForms.NOT_AUTHORIZED };
     try {
       return await work(viewer);
     } catch (e) {

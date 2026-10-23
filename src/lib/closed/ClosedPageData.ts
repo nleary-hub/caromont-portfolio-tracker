@@ -1,3 +1,4 @@
+import { Permissions } from "@/lib/permissions/Permissions";
 import type { PrismaClient } from "@/generated/prisma/client";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
@@ -53,7 +54,7 @@ export class ClosedPageData {
       ]);
       const latestUpdates = lastUpdates.flatMap((g) => (g._max.changedAt ? [{ projectId: g.projectId, changedAt: g._max.changedAt, field: "update" }] : []));
       const rows = FiscalYearRows.build({ projects: closed, closedHistory, history: [], latestUpdates, previousSnapshotGeneratedAt: latest?.generatedAt ?? null, today });
-      return { rows, restore: viewer.isAdmin && status === "Cancelled" ? ClosedPageData.restorePreviews(ids, closedHistory) : null, error: null };
+      return { rows, restore: Permissions.can(viewer, "lifecycle.reopenCancelled") && status === "Cancelled" ? ClosedPageData.restorePreviews(ids, closedHistory) : null, error: null };
     } catch (e) {
       console.error("Failed to load closed projects", e);
       return { rows: [], restore: null, error: "Could not load projects from the database." };

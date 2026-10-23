@@ -1,7 +1,7 @@
 import { readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { ReportColorScheme } from "@/lib/report/ReportColorScheme";
 import { ReportColors } from "@/lib/report/pdf/ReportDocument";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
@@ -12,6 +12,11 @@ import { ReportColorsForm } from "@/lib/services/ReportOptionsForm";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
+
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
 
 const S = ReportColorScheme;
 const ROOT = path.resolve(__dirname, "..");
@@ -106,8 +111,8 @@ describe("ReportColorsForm (Admin > Report contents > Report colors)", () => {
 
   it("is admin-only", async () => {
     const fake = new FakeDb();
-    expect(await ReportColorsForm.submit(Factory.MEMBER, form("plum"), fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
-    expect(await ReportColorsForm.submit(null, form("plum"), fake.asClient())).toEqual({ ok: false, message: "Not authorized." });
+    expect(await ReportColorsForm.submit(Factory.MEMBER, form("plum"), fake.asClient())).toEqual({ ok: false, message: "Not found." });
+    expect(await ReportColorsForm.submit(null, form("plum"), fake.asClient())).toEqual({ ok: false, message: "Not found." });
     expect(fake.state.reportOptionsHistory).toHaveLength(0);
     expect(fake.state.reportOptions).toHaveLength(0);
   });

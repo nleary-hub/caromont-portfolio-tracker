@@ -47,6 +47,11 @@ const { ServiceLine } = await import("@/lib/domain/ServiceLine");
 const { DepartmentAccessCopy } = await import("@/lib/access/DepartmentAccessCopy");
 const { DepartmentFilter } = await import("@/lib/domain/DepartmentFilter");
 
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
+
 const JANE = { email: "jane.doe@caromonthealth.org", isAdmin: false, name: "Jane Doe" };
 const ADMIN = { ...Factory.ADMIN, name: "Admin" };
 const ENV = { ALLOWED_EMAILS: "@caromonthealth.org @example.org", ADMIN_EMAILS: "admin@example.org" };
@@ -427,7 +432,7 @@ describe("routes and actions", () => {
     await expect(ProjectService.update(ids.echo, { note: "mine" } as never, janeActor, h.db as never, scope)).resolves.toMatchObject({ id: ids.echo });
   });
 
-  it("reports: a limited user lists and opens the weekly PDF, the archive and the year-end report of their line, like a user with all departments", async () => {
+  it("reports: the frozen archive and stored year-end are Owner-only, so a limited user sees and opens none of them, like a user with all departments", async () => {
     await FreezeService.run({ trigger: "cron", actor: "cron", now: FREEZE_RUN, env: { ...ENV }, fetch: vi.fn() }, h.db as never);
     const snap = fake.state.snapshots[0];
     const ye = YearEnd.add(CVPSL);
@@ -440,15 +445,15 @@ describe("routes and actions", () => {
     h.viewer = JANE;
     expect(fake.state.accessGrants.find((g) => g.email === JANE.email)?.allDepartments).toBe(false);
     const limited = Page.tree(await Page.render(ReportsPage));
-    expect(limited).toContain(`/reports/${snap.id}/pdf`);
-    expect(limited).toContain(`/reports/year-end/${ye}`);
+    // Roles & Permissions L1/L2: no archive or year-end links, and the same 404 as an unknown id.
+    expect(limited).not.toContain(`/reports/${snap.id}/pdf`);
+    expect(limited).not.toContain(`/reports/year-end/${ye}`);
     expect(limited).not.toMatch(/shared with people who can see all/);
-    // handoff.json stays admin-only for every non-admin (unchanged).
-    expect(await open()).toEqual({ pdf: 200, handoff: 404, yearEnd: 200 });
+    expect(await open()).toEqual({ pdf: 404, handoff: 404, yearEnd: 404 });
     // The same as with all departments.
     fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
     expect(Page.tree(await Page.render(ReportsPage))).toEqual(limited);
-    expect(await open()).toEqual({ pdf: 200, handoff: 404, yearEnd: 200 });
+    expect(await open()).toEqual({ pdf: 404, handoff: 404, yearEnd: 404 });
   });
 
   it("reports: a limited user opens the same full frozen report; opening never renders or saves anything, and Drive only ever gets the freeze job's full report", async () => {
@@ -486,15 +491,14 @@ describe("routes and actions", () => {
     h.viewer = JANE;
     const req = new Request("https://tracker.example.org/x");
     await Page.render(ReportsPage);
+    // The frozen archive is Owner-only (Roles & Permissions L2): a limited user gets the generic 404.
     const res = await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) });
-    expect(res.status).toBe(200);
-    // Same bytes everyone gets, not a department-filtered version.
-    expect(Buffer.from(await res.arrayBuffer()).equals(frozen)).toBe(true);
+    expect(res.status).toBe(404);
     fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = true;
     const full = await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) });
-    expect(Buffer.from(await full.arrayBuffer()).equals(frozen)).toBe(true);
+    expect(full.status).toBe(404);
     fake.state.accessGrants.find((g) => g.email === JANE.email)!.allDepartments = false;
-    expect((await yearEndGET(req, { params: Promise.resolve({ id: ye }) })).status).toBe(200);
+    expect((await yearEndGET(req, { params: Promise.resolve({ id: ye }) })).status).toBe(404);
 
     // Nothing rendered, written, uploaded or fetched by opening.
     expect(render).not.toHaveBeenCalled();
@@ -618,7 +622,8 @@ describe("on-demand PDFs (Generate PDF now): the departments the user is viewing
     expect(fake.writes.slice(writes).filter((w) => REPORT_STORAGE.includes(w.model))).toEqual([]);
     expect(JSON.stringify({ s: fake.state.snapshots.map((x) => x.id), a: fake.state.artifacts.map((x) => x.id), d: fake.state.deliveries.length, y: fake.state.yearEndReports.length })).toBe(before);
     expect(net.mock.calls.map((c) => String(c[0])).filter((u) => !u.startsWith("data:"))).toEqual([]);
-    // The frozen report is untouched and still what everyone opens.
+    // The frozen report is untouched and still what the Owner opens (the archive is Owner-only).
+    h.viewer = ADMIN;
     const res = await archiveGET(new Request("https://tracker.example.org/x"), { params: Promise.resolve({ id: fake.state.snapshots[0].id as string, file: "pdf" }) });
     expect(Buffer.from(await res.arrayBuffer()).equals(frozen)).toBe(true);
     expect(r.bytes.equals(frozen)).toBe(false);

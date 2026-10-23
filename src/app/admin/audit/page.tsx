@@ -1,5 +1,6 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AuditChangeRow } from "@/components/AuditChangeRow";
@@ -21,7 +22,7 @@ import { AdminAuditService, type AuditProject } from "@/lib/services/AdminAuditS
  */
 export default async function AuditPage({ searchParams }: { searchParams?: Promise<{ details?: string }> }) {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) notFound();
+  if (!viewer || !Permissions.can(viewer, "admin.audit")) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
   const data = await AdminAuditService.load(viewer, undefined, scope);

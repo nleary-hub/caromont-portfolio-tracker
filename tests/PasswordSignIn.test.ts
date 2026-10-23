@@ -441,7 +441,8 @@ describe("admin-only account management", () => {
 
   it("an admin listed in ADMIN_EMAILS can get a first password before they have signed in (Nick's work email)", async () => {
     const db = await Fx.db();
-    const r = await UserAccountService.resetPassword(admin, "Nicholas.Leary@CaroMontHealth.org", Fx.tx(db), env, T0);
+    // Rank rule (Roles & Permissions): the target is an admin, so the actor must rank above Admin (the Owner).
+    const r = await UserAccountService.resetPassword(admin, "Nicholas.Leary@CaroMontHealth.org", Fx.tx(db), { ...env, OWNER_EMAIL: admin.email }, T0);
     expect(r.ok).toBe(true);
     if (!r.ok) return;
     expect(db.appUser.all().map((u) => u.email)).toEqual([NICK]);

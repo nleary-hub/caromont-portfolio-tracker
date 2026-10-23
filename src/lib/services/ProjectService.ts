@@ -7,7 +7,8 @@ import { Requester } from "@/lib/domain/Requester";
 import type { Prisma, PrismaClient, Project as PrismaProject, ProjectMilestone } from "@/generated/prisma/client";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
 import type { ProjectStatus, ViewContext } from "@/generated/prisma/enums";
-import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
 import { Db } from "@/lib/db/Db";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
 import { HistoryDiff, type FieldChange } from "@/lib/history/HistoryDiff";
@@ -469,7 +470,7 @@ export class ProjectService {
     milestones?: MilestoneEdit | null,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<Project> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "project.edit");
     const patch = ProjectService.pickFormFields(values);
     const actor = ProjectService.actorOf(admin);
     const startDate = values.startDate === undefined || values.startDate === null ? undefined : String(values.startDate);
@@ -527,7 +528,7 @@ export class ProjectService {
     /** History source tag (an AI apply passes "ai:voice_chat"); null for a drawer edit. */
     comment: string | null = null,
   ): Promise<ProjectMilestone[]> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "project.edit");
     const actor = ProjectService.actorOf(admin, comment ?? undefined);
     return db.$transaction(async (tx) => {
       const at = new Date();
@@ -654,7 +655,7 @@ export class ProjectService {
     milestones?: MilestoneEdit | null,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<Project> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "project.create");
     const input: ProjectInput = { name: "", ...ProjectService.pickFormFields(values), status: values.status || "NotStarted" };
     ProjectService.assertCompletionInput(null, input);
     const drafts = milestones?.drafts ?? [];
@@ -712,7 +713,7 @@ export class ProjectService {
    * the DB still blocks hard deletes. Audited like every other change. Archived projects throw.
    */
   static async softDelete(id: string, admin: Viewer, db: PrismaClient = Db.client, comment?: string, scope: ServiceLineScope = ServiceLine.defaultScope()): Promise<Project> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "project.delete");
     return db.$transaction(async (tx) => {
       const existing = await ProjectService.loadMutable(tx, id, scope);
       const now = new Date();
@@ -725,7 +726,7 @@ export class ProjectService {
 
   /** Admin restore of a soft-deleted project. Writes audit rows. */
   static async restore(id: string, admin: Viewer, db: PrismaClient = Db.client, comment?: string, scope: ServiceLineScope = ServiceLine.defaultScope()): Promise<Project> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "project.restoreDeleted");
     return db.$transaction(async (tx) => {
       const found = await tx.project.findUnique({ where: { id } });
       if (!found || !ServiceLineAccess.inScope(found, scope)) throw new ProjectNotFoundError(id);
@@ -747,7 +748,7 @@ export class ProjectService {
    * is not Cancelled (already restored in another tab), deleted, or of another line.
    */
   static async restoreFromCancelled(id: string, admin: Viewer, db: PrismaClient = Db.client, scope: ServiceLineScope = ServiceLine.defaultScope(), at: Date = new Date()): Promise<{ project: Project; target: RestoreTarget }> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "lifecycle.reopenCancelled");
     return db.$transaction(async (tx) => {
       const existing = await ProjectService.loadMutable(tx, id, scope);
       if (existing.status !== "Cancelled") throw new ProjectNotCancelledError(id);
@@ -783,7 +784,7 @@ export class ProjectService {
     /** History source tag (an AI apply passes "ai:voice_chat"); null for a drawer edit. */
     comment: string | null = null,
   ): Promise<Project> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "project.edit");
     if (field === "owner" || field === "physicianChampion") {
       // Combobox names: trimmed, whitespace collapsed, length-checked (PeopleDirectory).
       const checked = PeopleDirectory.validateName(field === "owner" ? "owner" : "requester", value);
@@ -811,7 +812,7 @@ export class ProjectService {
   static readonly PEOPLE_RENAME_COMMENT = UpdateTimeline.PEOPLE_RENAME_COMMENT;
 
   static async renamePerson(tx: Tx, scope: Pick<ServiceLineScope, "id">, field: "owner" | "physicianChampion", from: string, to: string, admin: Viewer): Promise<number> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "people.list.manage");
     const key = PeopleDirectory.normalizeName(from).toLowerCase();
     if (!key) return 0;
     const rows = await tx.project.findMany({ where: { archivedAt: null, [field]: { not: null }, ...ServiceLineAccess.where(scope) } });
@@ -857,7 +858,7 @@ export class ProjectService {
     db: PrismaClient = Db.client,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
   ): Promise<Project> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "project.hide");
     const field = context === "dashboard" ? "hiddenFromDashboard" : "hiddenFromReport";
     return db.$transaction(async (tx) => {
       const existing = await ProjectService.loadMutable(tx, id, scope);

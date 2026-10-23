@@ -1,6 +1,6 @@
 "use server";
 
-import { AdminGate } from "@/lib/auth/AdminGate";
+import { PermissionGate } from "@/lib/permissions/PermissionGate";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
@@ -35,7 +35,7 @@ class ImportActionsSupport {
 // Server Functions can be POSTed directly, so each one re-checks the admin session (404 for non-admins).
 
 export async function previewImport(mode: ImportMode, csv: string): Promise<PreviewResult> {
-  const admin = await AdminGate.requireAdminViewer();
+  const admin = await PermissionGate.requirePage("admin.import");
   const problem = ImportActionsSupport.check(mode, csv);
   if (problem) return { ok: false, error: problem };
   try {
@@ -49,7 +49,7 @@ export async function previewImport(mode: ImportMode, csv: string): Promise<Prev
 }
 
 export async function commitImport(mode: ImportMode, csv: string): Promise<CommitResult> {
-  const admin = await AdminGate.requireAdminViewer();
+  const admin = await PermissionGate.requirePage("admin.import");
   const problem = ImportActionsSupport.check(mode, csv);
   if (problem) return { ok: false, error: problem };
   try {

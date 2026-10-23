@@ -90,7 +90,7 @@ describe("Admin > Dependencies review (read only)", () => {
 
   it("the page is admin-only (404 otherwise), imports no actions, and has an admin menu link", () => {
     const page = readFileSync("src/app/admin/dependencies/page.tsx", "utf8");
-    expect(page).toContain("if (!viewer?.isAdmin) notFound();");
+    expect(page).toContain('if (!viewer || !Permissions.can(viewer, "project.review")) notFound();');
     expect(page).not.toMatch(/@\/app\/actions|"use server"|<form|<button/);
     expect(AdminMenu.definitions().find((d) => d.id === "dependencies")).toMatchObject({ group: "admin", kind: "link", href: "/admin/dependencies", label: "Dependencies review", shipped: true });
     expect(AdminMenu.itemsFor(MEMBER)).toBeNull();

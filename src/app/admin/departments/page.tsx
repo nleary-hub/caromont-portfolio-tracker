@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { DepartmentsAdmin, type DepartmentRowDto } from "@/components/DepartmentsAdmin";
@@ -24,7 +25,7 @@ class DepartmentRows {
 /** Admin > Departments of the active line. Non-admins get a 404 so the route is not revealed. */
 export default async function DepartmentsPage({ searchParams }: { searchParams: Promise<{ new?: string; edit?: string; archive?: string; delete?: string; archived?: string }> }) {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) notFound();
+  if (!viewer || !Permissions.can(viewer, "admin.departments")) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
   const [lists, params] = await Promise.all([DepartmentService.list(scope, viewer), searchParams]);

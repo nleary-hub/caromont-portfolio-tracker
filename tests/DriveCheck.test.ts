@@ -16,6 +16,11 @@ vi.mock("next/navigation", () => ({
 const { POST } = await import("@/app/api/reports/drive-check/route");
 const { DriveCheckService } = await import("@/lib/services/DriveCheckService");
 
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
+
 const DRIVE = { GOOGLE_DRIVE_CLIENT_ID: "cid-value", GOOGLE_DRIVE_CLIENT_SECRET: "csecret-value", GOOGLE_DRIVE_REFRESH_TOKEN: "rtoken-value" };
 const BASE = { ALLOWED_EMAILS: "@example.org", ADMIN_EMAILS: "admin@example.org" };
 const T0 = new Date("2026-09-27T17:00:00Z");
@@ -62,15 +67,15 @@ afterEach(() => {
 });
 
 describe("Check Drive: admin only", () => {
-  it("no session or a non-admin gets 403 and Drive is never called", async () => {
+  it("no session, a non-admin or a non-owner admin gets the generic 404 and Drive is never called", async () => {
     for (const [k, v] of Object.entries(DRIVE)) vi.stubEnv(k, v);
     const drive = new FakeDrive();
     vi.stubGlobal("fetch", drive.fetch);
     for (const session of [null, { user: { email: "jane@example.org" } }, { user: { email: "admin@elsewhere.org" } }]) {
       h.session = session;
       const res = await POST();
-      expect(res.status).toBe(403);
-      expect(await res.json()).toEqual({ ok: false, message: "Not authorized." });
+      expect(res.status).toBe(404);
+      expect(await res.text()).not.toMatch(/drive|freez|authoriz/i);
     }
     expect(drive.fetch).not.toHaveBeenCalled();
   });
@@ -244,10 +249,10 @@ describe("Check Drive on a preview deployment (FreezeGuard)", () => {
     expect(renderToStaticMarkup(createElement(DriveCheckButton, { folder: "F", help, disabledNote: null }))).toBe(on);
   });
 
-  it("a non-admin on a preview still gets 403", async () => {
+  it("a non-admin on a preview still gets 404", async () => {
     vi.stubEnv("VERCEL_ENV", "preview");
     h.session = { user: { email: "jane@example.org" } };
-    expect((await POST()).status).toBe(403);
+    expect((await POST()).status).toBe(404);
   });
 
   for (const v of [undefined, "production", "development"]) {

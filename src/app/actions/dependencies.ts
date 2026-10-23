@@ -1,5 +1,6 @@
 "use server";
 
+import { Permissions } from "@/lib/permissions/Permissions";
 import { revalidatePath } from "next/cache";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -33,7 +34,7 @@ class DependencyAction {
   static async run(label: string, projectId: string, fn?: (s: { viewer: Viewer; scope: Scope }) => Promise<unknown>): Promise<DependencyActionResult> {
     const viewer = await CurrentViewer.get();
     if (!viewer) return { ok: false, error: "Not authorized.", kind: "access" };
-    if (fn && !viewer.isAdmin) return { ok: false, error: "Not authorized.", kind: "access" };
+    if (fn && !Permissions.can(viewer, "project.dependencies.edit")) return { ok: false, error: "Not authorized.", kind: "access" };
     try {
       const scope = await ServiceLineAccess.activeFor(viewer);
       if (fn) {
@@ -52,7 +53,7 @@ class DependencyAction {
 
   /** Admins are checked by the service (edit rule). Others: the project must be one they can open on the dashboard. */
   private static async mayOpen(viewer: Viewer, projectId: string): Promise<boolean> {
-    if (viewer.isAdmin) return false;
+    if (Permissions.can(viewer, "project.dependencies.edit")) return false;
     const p = await Db.client.project.findUnique({ where: { id: projectId } });
     if (!p) return false;
     return VisibilityPolicy.isViewable(p, await ViewSettingsService.get("dashboard", Db.client));

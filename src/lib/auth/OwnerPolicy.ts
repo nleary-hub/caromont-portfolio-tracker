@@ -25,7 +25,7 @@ export class OwnerPolicy {
     return v ? [v] : OwnerPolicy.DEFAULT_OWNER_EMAILS.map((e) => OwnerPolicy.norm(e));
   }
 
-  static isOwner(viewer: Viewer | null | undefined, env: Env = process.env): boolean {
+  static isOwner(viewer: Viewer | null | undefined, env: Env = process.env): viewer is Viewer {
     if (!viewer?.isAdmin || !viewer.email) return false;
     return OwnerPolicy.ownerEmails(env).includes(OwnerPolicy.norm(viewer.email));
   }

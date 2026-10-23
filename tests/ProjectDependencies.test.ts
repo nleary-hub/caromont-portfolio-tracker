@@ -467,7 +467,7 @@ describe("History rows are written in the same transaction", () => {
 describe("Server actions", () => {
   const src = read("src/app/actions/dependencies.ts");
   it("writes are admin-only; load is read-only for others who may open the project (History rule)", () => {
-    expect(src).toMatch(/if \(fn && !viewer\.isAdmin\) return \{ ok: false, error: "Not authorized\.", kind: "access" \}/);
+    expect(src).toMatch(/if \(fn && !Permissions\.can\(viewer, "project\.dependencies\.edit"\)\) return \{ ok: false, error: "Not authorized\.", kind: "access" \}/);
     expect(src).toContain("ServiceLineAccess.activeFor(viewer)");
     expect(src).toContain("VisibilityPolicy.isViewable(p, await ViewSettingsService.get(\"dashboard\", Db.client))");
     expect(read("src/lib/services/ProjectDependencyService.ts")).toMatch(/pg_advisory_xact_lock/);

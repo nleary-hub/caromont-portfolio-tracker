@@ -62,7 +62,7 @@ export class Permissions {
     for (const k of keys) {
       if (k === "admin.ai.keys") return "Owner only.";
       if (!isPermissionKey(k) || isOwnerOnly(k)) return "Not found.";
-      if (!Permissions.can(actor, k, env) && !(k.startsWith("ai.") && Permissions.holdsStored(actor, k))) return "You can only give keys you have.";
+      if (!Permissions.can(actor, k, env) && !(k.startsWith("ai.") && Permissions.holdsStored(actor, k))) return "You can only give permissions you have.";
     }
     return null;
   }

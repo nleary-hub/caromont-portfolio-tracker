@@ -73,7 +73,7 @@ describe("grant rules", () => {
     expect(Permissions.checkRoleKeys(ADMIN, director, ["admin.ai.keys"], ENV)).toBe("Owner only.");
     for (const k of HIDDEN_KEYS) expect(Permissions.checkRoleKeys(ADMIN, director, [k], ENV)).toBe("Not found.");
     expect(Permissions.checkRoleKeys(ADMIN, director, ["project.view"], ENV)).toBeNull();
-    expect(Permissions.checkRoleKeys({ ...ADMIN, keys: ["admin.roles"] }, director, ["project.edit"], ENV)).not.toBeNull();
+    expect(Permissions.checkRoleKeys({ ...ADMIN, keys: ["admin.roles"] }, director, ["project.edit"], ENV)).toBe("You can only give permissions you have.");
   });
 });
 

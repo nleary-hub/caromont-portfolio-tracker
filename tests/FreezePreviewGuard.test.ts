@@ -18,6 +18,11 @@ const { ProjectService } = await import("@/lib/services/ProjectService");
 const { GET: cronGET, POST: cronPOST } = await import("@/app/api/cron/freeze/route");
 const { freezeNow } = await import("@/app/actions/reports");
 
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
+
 const ENV = { SHARE_LINK_SECRET: "x".repeat(48), APP_BASE_URL: "https://tracker.example.org/", REPORT_RECIPIENT_EMAIL: "you@example.org" };
 const FREEZE_TIME = new Date("2026-09-29T21:00:00Z"); // Tue 5:00 PM EDT
 const SECRET = "c".repeat(40);
