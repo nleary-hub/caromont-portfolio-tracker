@@ -43,91 +43,91 @@ enum RecipientLine {
 }
 
 model Project {
-  id                        String        @id @default(uuid()) @db.Uuid
+  id                         String        @id @default(uuid()) @db.Uuid
   /// Service line the project belongs to (migration 0016). Every read and write is scoped through
   /// ServiceLineAccess, which always passes the line. The DB default (CVPSL) only covers writes from the previous
   /// deployment while migration 0016 is deployed.
-  serviceLineId             String        @default(dbgenerated("'00000000-0000-4000-8000-000000000001'::uuid")) @db.Uuid
-  name                      String
+  serviceLineId              String        @default(dbgenerated("'00000000-0000-4000-8000-000000000001'::uuid")) @db.Uuid
+  name                       String
   /// What the project is. Optional. Length limit is AppConfig.DESCRIPTION_MAX_LENGTH (200), enforced in app validation.
-  description               String?
+  description                String?
   /// Infor request number: optional whole number 1 to 99999 (shown as "REQ-5081"). Range enforced in app
   /// validation (AppConfig.INFOR_REQUEST_NUMBER_MIN/MAX); DB check constraint as backstop.
-  inforRequestNumber        Int?          @map("infor_request_number")
+  inforRequestNumber         Int?          @map("infor_request_number")
   /// LEGACY (kept in step with departmentId by the Project_department_sync trigger, migration 0018, so the previous
   /// deployment keeps working during the deploy window). The app reads and writes departmentId only.
-  serviceArea               ServiceArea?
+  serviceArea                ServiceArea?
   /// The project's department (null = Unassigned, grouped last). Migration 0018.
-  departmentId              String?       @db.Uuid
-  owner                     String?
-  physicianChampion         String?
-  physicianChampionEmail    String?
+  departmentId               String?       @db.Uuid
+  owner                      String?
+  physicianChampion          String?
+  physicianChampionEmail     String?
   /// Requester (physicianChampion) marked Not applicable: renders blank. A name clears it.
-  requesterNotApplicable    Boolean       @default(false)
+  requesterNotApplicable     Boolean       @default(false)
   /// "No contract lead" (0065): the contract lead line is left out of the dashboard and the report.
-  contractsLeadNotApplicable Boolean      @default(false)
+  contractsLeadNotApplicable Boolean       @default(false)
   /// Role label for the contract lead (0066): "contractLead" (default) or "projectManager" ("Assigned project manager").
-  leadRole                  String        @default("contractLead")
+  leadRole                   String        @default("contractLead")
   /// Contracts lead, one of the project's service line contractsLeads (null = "To assign").
-  contractsLead             String?
-  status                    ProjectStatus
+  contractsLead              String?
+  status                     ProjectStatus
   /// Required unless status is Complete/Cancelled (enforced in app validation).
-  nextMilestone             String?
-  dueDate                   DateTime?     @db.Date
-  targetCompletion          DateTime?     @db.Date
+  nextMilestone              String?
+  dueDate                    DateTime?     @db.Date
+  targetCompletion           DateTime?     @db.Date
   /// 0 to 100 (enforced in app validation; DB check constraint as backstop).
-  percentComplete           Int?
+  percentComplete            Int?
   /// Length limit is AppConfig.NOTE_MAX_LENGTH (2,000), enforced on save in app validation. The dashboard and PDF
   /// show at most AppConfig.NOTE_DISPLAY_MAX_LENGTH (200) characters.
-  note                      String?
+  note                       String?
   /// What the finished project accomplished (optional; shown in the report's "Completed this period" block).
   /// Length limit is AppConfig.ACCOMPLISHMENT_MAX_LENGTH (200), enforced in app validation.
-  accomplishment            String?
+  accomplishment             String?
   /// Completion date as entered (optional; display only). The "Completed this period" clock is the time the
   /// status became Complete in the app (ProjectHistory), never this date.
-  completedOn               DateTime?     @db.Date
+  completedOn                DateTime?     @db.Date
   /// Automatic completion date (migration 0030): the America/New_York day the last open milestone was checked off.
   /// Shown only while the status is Complete and no completedOn (hand-entered, always wins) is set. CompletionRules.
-  completedAtAuto           DateTime?     @db.Date
+  completedAtAuto            DateTime?     @db.Date
   /// The automatic date kept while a new or unchecked milestone has reopened the project (migration 0030), so
   /// deleting that new milestone restores it. Cleared when the project completes again or the status is set by hand.
-  previousAutoCompletedAt   DateTime?     @db.Date
+  previousAutoCompletedAt    DateTime?     @db.Date
   /// The hand-entered date (completedOn) kept while a new or unchecked milestone has reopened a manually completed
   /// project (migration 0031), so deleting that milestone brings the typed date back. Cleared like previousAutoCompletedAt.
-  previousManualCompletedOn DateTime?     @db.Date
+  previousManualCompletedOn  DateTime?     @db.Date
   /// Set when the project was listed in a frozen report's "Completed this period" block, so it is listed
   /// only once. Cleared when the status leaves Complete. Bookkeeping only (no history row).
-  completionReportedAt      DateTime?
-  includeInReport           Boolean       @default(true)
+  completionReportedAt       DateTime?
+  includeInReport            Boolean       @default(true)
   /// When work on the project began: an America/New_York calendar day (migration 0026). The New project form
   /// pre-fills today (ET); CSV-created projects get the import day. Existing projects got their createdAt as an ET
   /// day. Changing it is not a status update (ProjectService.applyStartDate): no Changed, no Stale reset, no
   /// "Updated" date, no public history row; the change is audited in an admin-only "startDate" history row.
   /// The DB default (today, ET) only covers inserts from the previous deployment while 0026 is deployed.
-  startDate                 DateTime      @default(dbgenerated("((now() AT TIME ZONE 'America/New_York'::text))::date")) @db.Date
+  startDate                  DateTime      @default(dbgenerated("((now() AT TIME ZONE 'America/New_York'::text))::date")) @db.Date
   /// True while startDate is the import default (the import day, not a date someone entered). Shown as a "Default"
   /// tag in the drawer so an admin can correct it; cleared when someone saves another start date.
-  startDateIsDefault        Boolean       @default(false)
-  createdAt                 DateTime      @default(now())
-  updatedAt                 DateTime      @updatedAt
-  updatedBy                 String
+  startDateIsDefault         Boolean       @default(false)
+  createdAt                  DateTime      @default(now())
+  updatedAt                  DateTime      @updatedAt
+  updatedBy                  String
   /// Soft delete only (admin "Delete"); projects are never hard deleted. Deleted projects are invisible to non-admins.
-  archivedAt                DateTime?
+  archivedAt                 DateTime?
   /// Who soft-deleted the project (admin email). Set together with archivedAt; cleared on restore.
-  deletedBy                 String?
+  deletedBy                  String?
   /// Admin per-project hide, per context. Hidden projects are invisible to non-admins in that context
   /// (rows, counts, flags, history). Only ProjectService admin methods write these; every change is audited.
-  hiddenFromDashboard       Boolean       @default(false)
-  hiddenFromReport          Boolean       @default(false)
+  hiddenFromDashboard        Boolean       @default(false)
+  hiddenFromReport           Boolean       @default(false)
   /// Major Facility Investment (migration 0052). Admin-set in the drawer; audited in ProjectHistory ("isMfi").
-  isMfi                     Boolean       @default(false)
+  isMfi                      Boolean       @default(false)
   /// DEPRECATED (unused since view settings replaced the "closed projects drop off after one report"
   /// rule). Kept so existing data is not destroyed; nothing reads or writes it.
-  closedReportedAt          DateTime?
+  closedReportedAt           DateTime?
   /// "Mark as reviewed" (migration 0034): when and by whom. Clears Changed until the next public update after
   /// reviewedAt. Not an update itself: never sets Changed, never resets Stale. Audited in ProjectHistory ("reviewed").
-  reviewedAt                DateTime?
-  reviewedBy                String?
+  reviewedAt                 DateTime?
+  reviewedBy                 String?
 
   history           ProjectHistory[]
   priorInforNumbers ProjectPriorInforNumber[]
@@ -272,16 +272,16 @@ model Recipient {
 
 /// Global (not per-user) show/hide settings, one row per context. Only written by ViewSettingsService.
 model ViewSettings {
-  context        ViewContext     @id
+  context         ViewContext     @id
   /// Full column order for the context (ViewColumn keys, see ViewSettings). Validated in the app.
-  columnOrder    String[]
+  columnOrder     String[]
   /// Hidden ViewColumn keys. Locked columns (project, status) are never stored here.
-  hiddenColumns  String[]
-  hiddenStatuses ProjectStatus[]
+  hiddenColumns   String[]
+  hiddenStatuses  ProjectStatus[]
   /// Show the Changed / Overdue / Stale chips (migration 0034). Default off.
-  showStatusChips Boolean        @default(false)
-  updatedAt      DateTime        @updatedAt
-  updatedBy      String
+  showStatusChips Boolean         @default(false)
+  updatedAt       DateTime        @updatedAt
+  updatedBy       String
 
   @@map("view_settings")
 }
@@ -390,8 +390,8 @@ model ProjectMilestone {
   createdAt        DateTime  @default(now())
   updatedAt        DateTime  @default(now()) @updatedAt
 
-  project        Project            @relation(fields: [projectId], references: [id], onDelete: Restrict)
-  sourceTemplate MilestoneTemplate? @relation(fields: [sourceTemplateId], references: [id], onDelete: SetNull)
+  project              Project             @relation(fields: [projectId], references: [id], onDelete: Restrict)
+  sourceTemplate       MilestoneTemplate?  @relation(fields: [sourceTemplateId], references: [id], onDelete: SetNull)
   /// Dependencies and external blockers that point at this step (migration 0055). SetNull if a step is ever deleted.
   blockingDependencies ProjectDependency[]
   blockingBlockers     ProjectBlocker[]
@@ -732,7 +732,11 @@ model AppUser {
   dashboardHeartbeat Boolean                  @default(true)
   access             ServiceLineAccessGrant[]
   password           PasswordCredential?
+  /// Roles & Permissions (migration 0069). NULL: ADMIN_EMAILS gives Admin, everyone else Viewer. Owners are fixed in code.
+  roleId             String?
+  role               Role?                    @relation(fields: [roleId], references: [id], onDelete: Restrict)
 
+  @@index([roleId])
   @@map("app_user")
 }
 
@@ -925,15 +929,15 @@ model MilestoneOwnerName {
 /// only by ProjectDependencyService, which rejects self, duplicate and cycle-making edges (the DB blocks self and
 /// duplicates too). Not read by the report, the PDF or handoff.json.
 model ProjectDependency {
-  id            String      @id @default(uuid()) @db.Uuid
-  serviceLineId String      @db.Uuid
-  serviceLine   ServiceLine @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
-  projectId     String      @db.Uuid
-  project       Project     @relation("DependencyProject", fields: [projectId], references: [id], onDelete: Restrict)
-  blockedById   String      @db.Uuid
-  blockedBy     Project     @relation("DependencyBlocker", fields: [blockedById], references: [id], onDelete: Restrict)
-  createdAt     DateTime    @default(now())
-  createdBy     String
+  id                 String            @id @default(uuid()) @db.Uuid
+  serviceLineId      String            @db.Uuid
+  serviceLine        ServiceLine       @relation(fields: [serviceLineId], references: [id], onDelete: Restrict)
+  projectId          String            @db.Uuid
+  project            Project           @relation("DependencyProject", fields: [projectId], references: [id], onDelete: Restrict)
+  blockedById        String            @db.Uuid
+  blockedBy          Project           @relation("DependencyBlocker", fields: [blockedById], references: [id], onDelete: Restrict)
+  createdAt          DateTime          @default(now())
+  createdBy          String
   /// 0055: what it's waiting on (optional, 120 characters max, DB check).
   note               String?
   /// 0055: the blocked project's milestone this blocker holds up (optional). SetNull if the step is deleted.
@@ -946,7 +950,7 @@ model ProjectDependency {
   updatedAt          DateTime?
   updatedBy          String?
 
-  dismissals         DependencyPromptDismissal[]
+  dismissals DependencyPromptDismissal[]
 
   @@unique([projectId, blockedById])
   @@index([blockedById])
@@ -1007,18 +1011,18 @@ model ProjectBlocker {
 
 /// OpenAI models admins can pick on Admin > AI settings (0039). New rows start disabled; rows are never deleted.
 model AiModel {
-  id          String   @id
+  id              String    @id
   /// "openai" | "anthropic" | "xai" | "other" (DB check constraint, 0054)
-  provider    String   @default("openai")
-  enabled     Boolean  @default(false)
+  provider        String    @default("openai")
+  enabled         Boolean   @default(false)
   /// "per_1m_tokens" | "per_minute" (DB check constraint)
-  priceUnit   String?
-  inputPrice  Decimal? @db.Decimal(12, 4)
-  outputPrice Decimal? @db.Decimal(12, 4)
-  addedAt     DateTime @default(now())
-  addedBy     String
-  updatedAt   DateTime @default(now())
-  updatedBy   String
+  priceUnit       String?
+  inputPrice      Decimal?  @db.Decimal(12, 4)
+  outputPrice     Decimal?  @db.Decimal(12, 4)
+  addedAt         DateTime  @default(now())
+  addedBy         String
+  updatedAt       DateTime  @default(now())
+  updatedBy       String
   /// When the prices were last saved, by whom, and how: "manual" | "refreshed" (DB check constraint). Step 3c.
   pricesUpdatedAt DateTime?
   pricesUpdatedBy String?
@@ -1031,21 +1035,21 @@ model AiModel {
 
 /// One on/off row per AI feature (0039). Missing row = on; the env kill switch still wins.
 model AiFeatureSetting {
-  feature   String   @id
-  enabled   Boolean  @default(true)
-  updatedAt DateTime @default(now())
-  updatedBy String
+  feature           String   @id
+  enabled           Boolean  @default(true)
+  updatedAt         DateTime @default(now())
+  updatedBy         String
   /// 0043: the feature's own model (dictation only: a transcription model). Null = not chosen yet.
-  model     String?
+  model             String?
   /// 0050: admin voice chat instructions (voice_chat only). Null = the built-in rules.
-  instructions String?
+  instructions      String?
   /// 0054: the provider a text feature runs on: "openai" | "anthropic" | "xai" | "other" (DB check). voice_chat and
   /// dictation are always "openai" (DB check). With model null the feature uses the AI settings model, as before.
-  provider  String   @default("openai")
+  provider          String   @default("openai")
   /// 0059 (AI overhaul D): the Nick-approved default model for this feature (shown as "Recommended default"). Set by the
   /// migration only; null for features without one. A feature whose model is this default and can't run (off under
   /// Models or no OpenAI key) uses the AI settings model instead.
-  defaultModel String?
+  defaultModel      String?
   /// 0060 (AI overhaul, voice and command bar): the voice chat session limit in seconds (voice_chat only; 60 to 3600,
   /// DB check). Null = the built-in 15 minutes.
   maxSessionSeconds Int?
@@ -1186,13 +1190,67 @@ model ReportDisplaySettings {
 
 /// Global dashboard settings (migration 0067). One row, id "dashboard". No row = heartbeat off.
 model DashboardSettings {
-  id        String   @id @default("dashboard")
+  id             String   @id @default("dashboard")
   /// Admin > Settings > Dashboard heartbeat. Default off. Wins over app_user.dashboardHeartbeat (kept, unused).
-  heartbeat Boolean  @default(false)
+  heartbeat      Boolean  @default(false)
   /// Admin > Settings > Hide Changed tag (migration 0068). Default off. Display only: the Changed flag itself is unchanged.
-  hideChangedTag Boolean @default(false)
-  updatedAt DateTime @default(now()) @updatedAt
-  updatedBy String
+  hideChangedTag Boolean  @default(false)
+  updatedAt      DateTime @default(now()) @updatedAt
+  updatedBy      String
 
   @@map("dashboard_settings")
+}
+
+/// Roles & Permissions (migration 0069). Seeded system roles Admin, Director, Manager, Editor, Viewer. The Owner is not
+/// a role: it is a fixed identity in OwnerPolicy and holds every key.
+model Role {
+  id          String           @id
+  name        String           @unique
+  /// Higher ranks above lower; a person may only assign roles ranked strictly below their own. Owner is 100.
+  rank        Int
+  isSystem    Boolean          @default(false)
+  /// Sees every service line without grant rows (Admin).
+  allLines    Boolean          @default(false)
+  createdAt   DateTime         @default(now())
+  permissions RolePermission[]
+  users       AppUser[]
+
+  @@map("role")
+}
+
+/// One row per (role, key). Owner-only keys are refused by a CHECK constraint.
+model RolePermission {
+  roleId     String
+  permission String
+  grantedAt  DateTime @default(now())
+  role       Role     @relation(fields: [roleId], references: [id], onDelete: Cascade)
+
+  @@id([roleId, permission])
+  @@map("role_permission")
+}
+
+/// Append-only (trigger): role create, rename, delete and key changes.
+model RoleHistory {
+  id     String   @id @db.Uuid
+  roleId String
+  action String
+  detail Json
+  actor  String
+  at     DateTime @default(now())
+
+  @@index([roleId, at])
+  @@map("role_history")
+}
+
+/// Append-only (trigger): role assignments per person.
+model UserRoleHistory {
+  id         String   @id @db.Uuid
+  email      String
+  fromRoleId String?
+  toRoleId   String?
+  actor      String
+  at         DateTime @default(now())
+
+  @@index([email, at])
+  @@map("user_role_history")
 }
