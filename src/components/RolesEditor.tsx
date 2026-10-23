@@ -330,7 +330,7 @@ function DeleteDialog({ role, targets, pending, onCancel, onDelete }: { role: Ro
                     <span className={s.dim} style={{ marginLeft: "auto", fontSize: 11.5 }}>{plural(t.users.length, "user")}</span>
                   </button>
                 ))}
-                <div className={s.menuNote}>You can assign roles below your own</div>
+                <div className={s.menuNote}>You can only assign roles below your own.</div>
               </div>
             )}
           </div>

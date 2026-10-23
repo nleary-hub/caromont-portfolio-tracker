@@ -33,6 +33,13 @@ export class ClosedPagesCopy {
   static readonly RESTORE_CONFIRM = "Restore";
   static readonly RESTORE_BACK = "Go back";
   static readonly RESTORE_ERROR = "Couldn't restore the project. Try again.";
+  /** Reopen (Completed page, roles with "Reopen completed projects"). */
+  static readonly REOPEN = "Reopen";
+  static readonly REOPEN_CONFIRM = "Reopen";
+  static readonly REOPEN_ERROR = "Couldn't reopen the project. Try again.";
+  static readonly REOPEN_REASON_LABEL = "Reason";
+  static readonly REOPEN_REASON_PLACEHOLDER = "Why is this project reopening?";
+  static readonly REOPEN_REASON_REQUIRED = "Add a reason of up to 500 characters.";
   static readonly VIEW_ON_DASHBOARD = "View on dashboard";
 
   /** Dashboard: a project set to Cancelled leaves the dashboard at once. */
@@ -105,6 +112,23 @@ export class ClosedPagesCopy {
   /** Toast: "Cardiac MRI is active again, set to On track." */
   static restoreToast(project: string, status: string): string {
     return `${project} is active again, set to ${status}.`;
+  }
+
+  /** "Reopen Cardiac MRI?" */
+  static reopenTitle(project: string): string {
+    return `Reopen ${project}?`;
+  }
+
+  /** Reopen dialog body: the last milestone is unchecked and the status it goes back to. */
+  static reopenBody(milestone: string | null, status: string, hadEarlier: boolean): string {
+    const step = milestone ? `"${milestone}" is unchecked` : "Its last milestone is unchecked";
+    const back = hadEarlier ? `it goes back to ${status}` : "it goes back to On track, since there's no earlier status";
+    return `${step}, the completion date is cleared and ${back}. Past reports don't change.`;
+  }
+
+  /** Toast: "Cardiac MRI is open again, set to On track." */
+  static reopenToast(project: string, status: string): string {
+    return `${project} is open again, set to ${status}.`;
   }
 
   /** Dashboard toast: "Cardiac MRI is cancelled and off the dashboard." */

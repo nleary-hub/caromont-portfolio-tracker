@@ -96,12 +96,12 @@ class ProjectFormAction {
  * `milestones` is omitted when the checklist was not touched.
  */
 export async function saveProjectForm(projectId: string, changes: Partial<ProjectFormValues>, milestones?: unknown): Promise<ProjectFormResult> {
-  // Changing the status field also needs status.change.
+  // Changing the status also needs status.change, checked in ProjectService.saveForm against the stored status.
   const values = ProjectFormAction.values(changes);
   return ProjectFormAction.run("saveProjectForm", "project.edit", async (admin, line) => {
     const { edit, scope } = await OwnerNamesService.prepareMilestones(line, ProjectFormAction.milestones(milestones), admin);
     return ProjectService.saveForm(String(projectId), ProjectFormModel.toInput(values), admin, undefined, edit, scope);
-  }, values.status !== undefined ? ["status.change"] : []);
+  });
 }
 
 /** Drawer Milestones autosave: one checklist change, saved immediately. Returns the stored steps. */

@@ -13,6 +13,7 @@ export class AuditCopy {
     deletedBy: "Deleted by",
     hiddenFromDashboard: "Hidden from dashboard",
     hiddenFromReport: "Hidden from report",
+    project_reopened: "Project reopened",
     // Completion date rules (task 5); the comment holds the source (completion:auto, completion:manual, ...).
     completion: "Completion date",
     // Dashboard view (view_settings_history)

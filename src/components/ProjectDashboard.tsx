@@ -107,6 +107,8 @@ export interface AdminDashboardProps {
   formValues: Record<string, ProjectFormValues>;
   /** The signed-in admin's display name, for "Checked by <name> at 1:45 AM ET. Not saved yet." */
   checkerName?: string;
+  /** False without "Change project status": the edit form shows the status read-only. Absent = allowed. */
+  canChangeStatus?: boolean;
   /** Stored checklist steps per listed project (drawer Milestones section). */
   milestoneSteps: Record<string, MilestoneStepDto[]>;
   /** Milestone templates for "Apply a template". */
@@ -942,6 +944,7 @@ export function ProjectDashboard({
                   mode="edit"
                   {...(line ? { departments: line.departments } : {})}
                   original={admin.formValues[selected.id]}
+                  canChangeStatus={admin.canChangeStatus !== false}
                   startDateIsDefault={Boolean(selected.startDateIsDefault)}
                   milestones={admin.milestoneSteps[selected.id] ?? []}
                   checkerName={admin.checkerName}

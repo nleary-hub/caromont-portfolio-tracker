@@ -1,3 +1,4 @@
+import { Permissions } from "@/lib/permissions/Permissions";
 import { PeopleDirectory } from "@/lib/people/PeopleDirectory";
 import { NameUsage } from "@/lib/people/NameUsage";
 import { OwnerNameLists } from "@/lib/people/OwnerNameLists";
@@ -226,6 +227,7 @@ class DashboardData {
               // Milestone owners: every list of the line plus the milestone-owner list (a typed new name joins that one).
               milestoneOwnerOptions: await OwnerNamesService.pickerOptions(scope, db),
               menuItems: AdminMenu.itemsFor(viewer) ?? [],
+              canChangeStatus: Permissions.can(viewer, "status.change"),
               // The form reads the stored legacy fields; the checklist comes separately.
               formValues: DashboardData.formValues(stored, listedIds),
               milestoneSteps: MilestoneService.byProject(
