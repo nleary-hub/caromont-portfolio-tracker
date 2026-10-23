@@ -227,6 +227,25 @@ describe("server enforcement: keys, rank and line limits", () => {
     expect(await PermissionAssert.canManageAccount({ email: "avery.admin@example.org", isAdmin: true }, OWNER_EMAIL, db)).toBe(false);
   });
 
+  it("a change aimed at the Owner is refused and writes one audit event; allowed or lower-rank refusals write none", async () => {
+    const events: { data: Record<string, unknown> }[] = [];
+    const db = { appUser: { findUnique: async () => ({ roleId: "director" }) }, roleHistory: { create: async (args: { data: Record<string, unknown> }) => { events.push(args); return args.data; } } };
+    const admin = { email: "avery.admin@example.org", isAdmin: true } as Viewer;
+    expect(await PermissionAssert.canManageAccount(admin, OWNER_EMAIL, db)).toBe(false);
+    expect(events).toHaveLength(1);
+    expect(events[0].data).toMatchObject({ roleId: "owner", action: PermissionAssert.OWNER_TARGET_REJECTED, actor: "avery.admin@example.org", detail: { target: OWNER_EMAIL } });
+    expect(String(events[0].data.id)).toMatch(/^[0-9a-f-]{36}$/);
+    // A refusal for an equal or higher non-owner rank and an allowed change record nothing.
+    expect(await PermissionAssert.canManageAccount(person("director") as Viewer, "director.person@example.org", db)).toBe(false);
+    expect(await PermissionAssert.canManageAccount(OWNER, "avery.admin@example.org", db)).toBe(true);
+    expect(events).toHaveLength(1);
+    // A failed audit write still refuses.
+    const broken = { roleHistory: { create: async () => { throw new Error("db down"); } } };
+    const err = vi.spyOn(console, "error").mockImplementation(() => {});
+    expect(await PermissionAssert.canManageAccount(admin, OWNER_EMAIL, broken)).toBe(false);
+    err.mockRestore();
+  });
+
   it("line limit: a Director grants only lines they hold; admins hold every line", async () => {
     const grants = new Set(["director.person@example.org|line-a"]);
     const db = { serviceLineAccessGrant: { findUnique: async ({ where }: { where: { email_serviceLineId: { email: string; serviceLineId: string } } }) => (grants.has(`${where.email_serviceLineId.email}|${where.email_serviceLineId.serviceLineId}`) ? {} : null) } };

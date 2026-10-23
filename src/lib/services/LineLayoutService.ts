@@ -1,5 +1,6 @@
 import { Prisma, type PrismaClient } from "@/generated/prisma/client";
-import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
 import { Db } from "@/lib/db/Db";
 import { ServiceAreaInfo, type AreaGroup } from "@/lib/domain/ServiceAreaInfo";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
@@ -42,7 +43,7 @@ export class LineLayoutService {
 
   /** Save column order and width shares (admin). Null resets to the default. */
   static async setColumns(raw: unknown, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<LineLayoutValue> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.layout");
     const columns = raw === null ? null : LineLayout.normalizeColumns(raw);
     if (raw !== null && !columns) throw new Error("Invalid column layout");
     return LineLayoutService.write(db, scope, admin, raw === null ? "columns.reset" : "columns", (before) => ({ ...before, columns: LineLayout.isDefaultColumns(columns) ? null : columns }));
@@ -57,7 +58,7 @@ export class LineLayoutService {
    * are dropped, so a stale or forged list cannot name another line's projects).
    */
   static async setRowOrder(area: string, ids: unknown, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<LineLayoutValue> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.layout");
     if (!(ServiceAreaInfo.groups(scope.departments ?? ServiceAreaInfo.LEGACY) as readonly string[]).includes(area)) throw new Error("Unknown department");
     const group = area as AreaGroup;
     const wanted = Array.isArray(ids) ? [...new Set(ids.filter((x): x is string => typeof x === "string"))] : [];
@@ -77,7 +78,7 @@ export class LineLayoutService {
   }
 
   static async resetRows(admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<LineLayoutValue> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.layout");
     return LineLayoutService.write(db, scope, admin, "rows.reset", (before) => ({ ...before, rows: {} }));
   }
 
