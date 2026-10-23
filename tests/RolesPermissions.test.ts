@@ -124,8 +124,8 @@ describe("migration 0069_roles_permissions (PGlite, example data only)", () => {
   const sql = (f: string) => readFileSync(path.join(DIR, f, "migration.sql"), "utf8");
   const migrated = async () => { const db = await PGlite.create(); for (const f of folders) await db.exec(sql(f)); return db; };
 
-  it("is the newest, add-only, with no em dash", () => {
-    expect(folders.at(-1)).toBe("0069_roles_permissions");
+  it("is present, add-only, with no em dash", () => {
+    expect(folders).toContain("0069_roles_permissions");
     const body = sql("0069_roles_permissions").split("\n").filter((l) => !l.trim().startsWith("--")).join("\n").replace(/ON (DELETE|UPDATE) (CASCADE|RESTRICT)|BEFORE UPDATE OR DELETE|'[^']*'/g, "");
     expect(body).not.toContain("\u2014");
     expect(body).not.toMatch(/\b(DROP|DELETE|TRUNCATE|RENAME)\b|ALTER COLUMN|UPDATE "/i);

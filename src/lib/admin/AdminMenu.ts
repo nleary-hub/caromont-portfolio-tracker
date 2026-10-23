@@ -62,6 +62,8 @@ export class AdminMenu {
     // Group 2: the active line's lists.
     { id: "departments", group: "library", kind: "link", icon: "departments", label: "Departments", href: "/admin/departments", shipped: true },
     { id: "people", group: "library", kind: "link", icon: "people", label: "People", href: "/admin/people", shipped: true },
+    // Roles & Permissions editor (PR 3 of 6); the page itself checks admin.roles on the server.
+    { id: "roles", group: "library", kind: "link", icon: "people", label: "Roles", href: "/admin/roles", shipped: true },
     // Group 3: oversight and settings.
     { id: "audit", group: "admin", kind: "link", icon: "audit", label: "Audit log", href: "/admin/audit", shipped: true },
     // Read-only list of Blocked-by dependencies for review (no edit or delete).
