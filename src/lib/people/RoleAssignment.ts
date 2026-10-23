@@ -28,7 +28,7 @@ export class RoleAssignment {
   static readonly ENV_ADMIN = "This person is an Admin through app settings, so their role can't be changed here.";
   static readonly SELF = "You can't change your own role.";
   static readonly UNKNOWN_ROLE = "Choose a role.";
-  static readonly HINT = "You can assign roles below your own";
+  static readonly HINT = "You can only assign roles below your own.";
 
   /** Short helpers shown under each role in the pickers. */
   static readonly DESCRIPTIONS: Record<string, string> = {

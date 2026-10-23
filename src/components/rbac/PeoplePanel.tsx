@@ -14,7 +14,7 @@ type Actions = {
   revoke: (email: string) => Promise<PeopleResult>;
 };
 
-const HINT = "You can assign roles below your own";
+const HINT = "You can only assign roles below your own.";
 const PAGE = 10;
 
 const Chevron = () => (
@@ -239,7 +239,7 @@ export function PeoplePanel(props: {
           <h1 className={s.h1}>People</h1>
           <div className={s.muted} style={{ marginTop: 4 }} data-testid="people-summary">
             {signedIn} {signedIn === 1 ? "user" : "users"} across {props.departmentCount} {props.departmentCount === 1 ? "department" : "departments"}
-            {pendingCount ? ` · ${pendingCount} pending ${pendingCount === 1 ? "invite" : "invites"}` : ""}. AI usage figures are examples.
+            {pendingCount ? ` · ${pendingCount} pending ${pendingCount === 1 ? "invite" : "invites"}` : ""}. AI caps are example figures.
           </div>
         </div>
         {props.canInvite && (
