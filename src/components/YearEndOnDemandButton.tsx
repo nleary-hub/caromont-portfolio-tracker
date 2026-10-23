@@ -4,7 +4,9 @@ import { useEffect, useId, useState, useTransition } from "react";
 import { YearEndOnDemandCopy } from "@/lib/report/YearEndOnDemandCopy";
 import { YearEndCategories, YearEndCopy, type YearEndCategory } from "@/lib/report/YearEndReportData";
 
-const GHOST = "h-8 rounded-control border border-line px-3.5 type-table-strong hover:text-fg";
+/** Same look as the dashboard's "Generate PDF now" link (DashboardTopBar). */
+const GHOST =
+  "tap-44 flex h-8 shrink-0 items-center rounded-control border border-line bg-transparent px-3.5 whitespace-nowrap text-fg type-table-strong hover:border-accent focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = "h-8 w-full min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent focus:outline-none";
 
 /**

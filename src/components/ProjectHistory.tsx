@@ -30,6 +30,8 @@ export function useProjectTimeline(projectId: string, version: unknown, load?: H
 
 /** Section header, same style as the drawer's other sections. */
 const HEADER = "uppercase tracking-[.04em] text-muted type-label";
+/** The History toggle reads "History (N)" in sentence case, matching the drawer's History button. */
+const TOGGLE = "text-muted type-label";
 
 /**
  * History (N): the last drawer section, open by default. Entries sit on a 16px gutter with a 1px rail and a 6px dot on
@@ -42,7 +44,7 @@ export function ProjectHistorySection({ timeline, loading, emptyText, testId = "
   const shown = timeline ? (all ? timeline.entries : timeline.entries.slice(0, UpdateTimeline.INITIAL_ENTRIES)) : [];
   return (
     <section aria-label="History" data-testid={testId}>
-      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`mb-1.5 flex items-center gap-1.5 ${HEADER} hover:text-fg`}>
+      <button type="button" aria-expanded={open} onClick={() => setOpen((v) => !v)} className={`mb-1.5 flex items-center gap-1.5 ${TOGGLE} hover:text-fg`}>
         <span aria-hidden className="inline-block w-2 text-[9px] leading-none">
           {open ? "▾" : "▸"}
         </span>

@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import s from "@/components/rbac/Rbac.module.css";
+import { ViewerDashboardModel } from "@/lib/dashboard/ViewerDashboardModel";
 
 export interface ViewerProjectRow {
   id: string;
@@ -48,7 +49,7 @@ export function ViewerDashboard(props: { rows: ViewerProjectRow[]; updatedLabel:
   const onTrack = active.filter((r) => r.status === "OnTrack").length;
   const atRisk = active.filter((r) => r.status === "AtRisk").length;
   const blocked = active.filter((r) => r.blocked || r.status === "OffTrack").length;
-  const activeDepts = new Set(active.map((r) => r.department)).size;
+  const activeDepts = ViewerDashboardModel.departmentCount(active);
   const shown = rows.filter((r) => {
     const t = q.trim().toLowerCase();
     if (t && !r.name.toLowerCase().includes(t) && !r.owner.toLowerCase().includes(t)) return false;
@@ -58,7 +59,7 @@ export function ViewerDashboard(props: { rows: ViewerProjectRow[]; updatedLabel:
     return true;
   });
   const kpis = [
-    { label: "Active projects", value: active.length, note: `Across ${activeDepts} ${activeDepts === 1 ? "department" : "departments"}` },
+    { label: "Active projects", value: active.length, note: ViewerDashboardModel.acrossLabel(activeDepts) },
     { label: "On track", value: onTrack, note: `${active.length ? Math.round((onTrack / active.length) * 100) : 0}% of active` },
     { label: "At risk", value: atRisk, note: "Watch for slipping dates" },
     { label: "Blocked", value: blocked, note: "Needs owner follow-up" },
