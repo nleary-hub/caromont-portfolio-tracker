@@ -87,7 +87,7 @@ export const EDITOR_COLUMNS: readonly (readonly PermissionGroup[])[] = [
 
 /** One-line descriptions of the seeded system roles (custom roles store their own). */
 export const SYSTEM_ROLE_DESCRIPTIONS: Record<string, string> = {
-  admin: "All keys but owner-only",
+  admin: "Everything except Owner-only permissions.",
   director: "Leads a service line",
   manager: "Runs department projects",
   editor: "Edits projects and updates",

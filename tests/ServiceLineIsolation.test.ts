@@ -414,12 +414,13 @@ describe("service line isolation", () => {
       "admin/service-lines/page.tsx",
       "admin/departments/page.tsx",
       "admin/people/page.tsx",
+      "admin/people/access/page.tsx",
       "reports/[id]/[file]/route.ts",
       "reports/year-end/[id]/route.ts",
     ].map((p) => join(root, p));
     const missing = [...actions, ...pages].filter((f) => {
       const src = readFileSync(f, "utf8");
-      return !/ServiceLineAccess|LineAccessService|LineGate|ServiceLineForms|DepartmentForms|ImportActionsSupport|AdminAction|ProjectFormAction/.test(
+      return !/ServiceLineAccess|LineAccessService|LineGate|ServiceLineForms|DepartmentForms|ImportActionsSupport|AdminAction|ProjectFormAction|PeopleRoleService/.test(
         src,
       );
     });

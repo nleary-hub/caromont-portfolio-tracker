@@ -29,6 +29,9 @@ vi.mock("@/auth", () => ({
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
 
 const { default: DashboardPage } = await import("@/app/page");
+const { ViewerDashboardModel } = await import("@/lib/dashboard/ViewerDashboardModel");
+/** Roles & Permissions 4/6: the Viewer role gets the read-only dashboard; these checks probe the full one (roles above Viewer). */
+const fullDashboard = () => vi.spyOn(ViewerDashboardModel, "isViewerRole").mockReturnValue(false);
 const { default: ReportsPage } = await import("@/app/reports/page");
 const { default: CompletedPage } = await import("@/app/completed/page");
 const { default: CancelledPage } = await import("@/app/cancelled/page");
@@ -145,6 +148,7 @@ afterEach(() => {
 
 describe("limited user: dashboard, tiles, counts, search and the filter only include their departments", () => {
   it("the dashboard reads and sends only their departments' projects plus Unassigned, and the filter lists only theirs", async () => {
+    fullDashboard();
     h.viewer = JANE;
     const reads = vi.spyOn((h.db as { project: { findMany: (a: unknown) => unknown } }).project, "findMany");
     const el = await Page.render(DashboardPage);
@@ -162,6 +166,7 @@ describe("limited user: dashboard, tiles, counts, search and the filter only inc
   });
 
   it("the filter button reads 'My departments (N)' for a limited user; admins and users with every department keep 'Departments: All'", async () => {
+    fullDashboard();
     const { renderToStaticMarkup } = await import("react-dom/server");
     const button = async () => {
       const html = renderToStaticMarkup(await Page.render(DashboardPage));
@@ -181,6 +186,7 @@ describe("limited user: dashboard, tiles, counts, search and the filter only inc
   });
 
   it("with All departments on, the same person gets the whole line", async () => {
+    fullDashboard();
     h.viewer = JANE;
     fake.state.accessGrants[0].allDepartments = true;
     const props = (await Page.render(DashboardPage)).props as DashProps;
@@ -335,8 +341,24 @@ describe("Completed and Cancelled pages follow department access", () => {
   });
 });
 
+describe("Viewer role dashboard (Roles & Permissions 4/6)", () => {
+  it("a Viewer gets the read-only dashboard with the same scoped rows and a Generate PDF now link for their departments", async () => {
+    const { renderToStaticMarkup } = await import("react-dom/server");
+    h.viewer = JANE;
+    const html = renderToStaticMarkup(await Page.render(DashboardPage));
+    expect(html).toContain('data-testid="viewer-table"');
+    expect(html).toContain("Echo visible project");
+    expect(html).toContain("Unassigned shared project");
+    expect(html).not.toMatch(/secret|Cath Lab|EP Lab|CardioNeuro/);
+    expect(/href="(\/api\/reports\/preview[^"]*)"[^>]*data-testid="generate-pdf"/.exec(html)?.[1]).toBe("/api/reports/preview?departments=Echo,IR");
+    // A project link still opens the full dashboard's detail.
+    expect((await Page.render(DashboardPage, { project: ids.echo })).type).toBe(ProjectDashboard);
+  });
+});
+
 describe("project links", () => {
   it("their own project opens; another department, a missing, deleted or malformed id all get the same card without the name", async () => {
+    fullDashboard();
     h.viewer = JANE;
     const own = await Page.render(DashboardPage, { project: ids.echo });
     expect(own.type).toBe(ProjectDashboard);
@@ -394,6 +416,7 @@ describe("routes and actions", () => {
   });
 
   it("Unassigned projects: a limited user sees them everywhere; a user without the line sees nothing", async () => {
+    fullDashboard();
     // Limited user (Echo and IR): dashboard rows, project link, drawer history and on-demand PDF.
     h.viewer = JANE;
     expect(((await Page.render(DashboardPage)).props as DashProps).rows.map((r) => r.name)).toContain("Unassigned shared project");
@@ -721,6 +744,7 @@ describe("on-demand PDFs (Generate PDF now): the departments the user is viewing
   });
 
   it("every signed-in user with the line gets the Generate PDF now button, linked to the departments they are viewing", async () => {
+    fullDashboard();
     const { renderToStaticMarkup } = await import("react-dom/server");
     const link = async () => /href="(\/api\/reports\/preview[^"]*)"[^>]*>Generate PDF now</.exec(renderToStaticMarkup(await Page.render(DashboardPage)))?.[1] ?? null;
     h.viewer = JANE;

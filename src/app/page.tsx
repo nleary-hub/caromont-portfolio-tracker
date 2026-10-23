@@ -62,6 +62,10 @@ import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 import { ProjectRows } from "@/lib/domain/ProjectRows";
 import { ProjectEditPolicy } from "@/lib/access/ProjectEditPolicy";
+import { OnDemandPdfLink } from "@/lib/report/OnDemandPdfLink";
+import { ViewerDashboard } from "@/components/rbac/ViewerDashboard";
+import { RbacShell } from "@/components/rbac/RbacShell";
+import { ViewerDashboardModel } from "@/lib/dashboard/ViewerDashboardModel";
 import { markProjectsReviewed, undoProjectsReviewed } from "@/app/actions/review";
 
 /** AI Draft/Fit/Test connection server actions run on this page; the provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
@@ -267,6 +271,16 @@ export default async function DashboardPage({ searchParams }: { searchParams: Pr
 
   const today = DateOnly.today();
   const { rows, columns, latestReport, completedFiscalYear, layout, admin, error } = await DashboardData.load(viewer, today, scope);
+  // Roles & Permissions 4/6: the Viewer role gets the read-only dashboard (dashboard-viewer-d). Same server-filtered rows.
+  // A project link (/?project=<id>) still opens the project detail on the full dashboard.
+  if (ViewerDashboardModel.isViewerRole(viewer) && !error && link.kind === "none") {
+    const model = ViewerDashboardModel.build(rows, scope.departments);
+    return (
+      <RbacShell active="dashboard" nav={["dashboard", "projects", "reports"]} crumb="Dashboard" searchPlaceholder="Search projects…" user={ViewerDashboardModel.user(viewer)} signOutAction={signOutAction}>
+        <ViewerDashboard rows={model} updatedLabel={ViewerDashboardModel.updatedLabel(new Date())} pdfHref={OnDemandPdfLink.href(scope.departments.map((d) => d.id))} projectHrefBase={`/?${ProjectLink.PARAM}=`} />
+      </RbacShell>
+    );
+  }
   // AI is Owner-only (OwnerPolicy): everyone else gets no AI buttons at all.
   // Off by default: no settings row, the switch off, an incomplete setup or no tables yet all mean no AI buttons.
   const aiOn = Boolean(admin) && OwnerPolicy.isOwner(viewer) && Db.isConfigured() ? await AiSettingsService.isOn(Db.client as unknown as AiSettingsDb) : false;

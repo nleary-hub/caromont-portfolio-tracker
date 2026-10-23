@@ -201,7 +201,7 @@ export function RolesEditor({ data, initialRoleId }: { data: RolesData; initialR
           {system.map(roleRow)}
           {custom.length > 0 && <div className={s.navh}>Custom roles</div>}
           {custom.map(roleRow)}
-          <div className={s.note}>Users have one role each. A role can&apos;t be deleted while users hold it. Move them first.</div>
+          <div className={s.note}>Deleting a role moves its users to a role you pick first.</div>
         </div>
 
         <div className={cx(s.glass, s.ed)} data-testid="role-editor">

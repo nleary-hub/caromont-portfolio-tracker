@@ -165,9 +165,9 @@ export class RoleService {
       if (holders.length > 0) {
         if (!moveToId || moveToId === roleId) return { ok: false, message: "Pick a role to move these users to." };
         target = await tx.role.findUnique({ where: { id: moveToId }, select: { id: true, rank: true } });
-        if (!target || RoleEditPolicy.assignable(actor, [target], env).length === 0) return { ok: false, message: "You can assign roles below your own." };
+        if (!target || RoleEditPolicy.assignable(actor, [target], env).length === 0) return { ok: false, message: "You can only move users to a role below your own." };
         for (const h of holders) {
-          if (!Permissions.canAssignRole(actor, { ...target, keys: [] }, h.email, env)) return { ok: false, message: "You can assign roles below your own." };
+          if (!Permissions.canAssignRole(actor, { ...target, keys: [] }, h.email, env)) return { ok: false, message: "You can only move users to a role below your own." };
         }
         await tx.appUser.updateMany({ where: { roleId }, data: { roleId: target.id } });
         await tx.userRoleHistory.createMany({ data: holders.map((h) => ({ id: randomUUID(), email: h.email, fromRoleId: roleId, toRoleId: target!.id, actor: actor.email })) });

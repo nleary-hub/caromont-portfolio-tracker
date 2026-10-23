@@ -171,7 +171,7 @@ describe("RoleService (server checks through the engine, append-only history)", 
       ],
     });
     expect(await RoleService.remove(ADMIN, "custom-rr", null, f.db, ENV)).toEqual({ ok: false, message: "Pick a role to move these users to." });
-    expect(await RoleService.remove(ADMIN, "custom-rr", "admin", f.db, ENV)).toEqual({ ok: false, message: "You can assign roles below your own." });
+    expect(await RoleService.remove(ADMIN, "custom-rr", "admin", f.db, ENV)).toEqual({ ok: false, message: "You can only move users to a role below your own." });
     expect(await RoleService.remove(ADMIN, "viewer", "editor", f.db, ENV)).toEqual({ ok: false, message: "System roles can't be deleted." });
     expect(f.roleHistory).toEqual([]);
     expect(await RoleService.remove(ADMIN, "custom-rr", "viewer", f.db, ENV)).toEqual({ ok: true, message: "Role deleted." });
