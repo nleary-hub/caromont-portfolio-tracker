@@ -1,58 +1,65 @@
 import type { Metadata } from "next";
-import Link from "next/link";
-import { Permissions } from "@/lib/permissions/Permissions";
-import { notFound } from "next/navigation";
-import { AdminMenuSlot } from "@/components/AdminMenuSlot";
-import { PeopleAdmin } from "@/components/PeopleAdmin";
-import { AccessAdmin } from "@/components/AccessAdmin";
-import { LineAccessService } from "@/lib/services/LineAccessService";
-import { ServiceLineSlot } from "@/components/ServiceLineSlot";
-import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
+import { notFound, redirect } from "next/navigation";
+import { signOut, SIGN_IN_PATH } from "@/auth";
+import { assignUserRole, inviteUser, revokeInvite } from "@/app/actions/peopleRoles";
+import { PeoplePanel } from "@/components/rbac/PeoplePanel";
+import { RbacShell, type ShellAdminLink } from "@/components/rbac/RbacShell";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { Db } from "@/lib/db/Db";
-import { ContractsLeadRules } from "@/lib/people/ContractsLeadRules";
-import { PeopleService } from "@/lib/services/PeopleService";
-import { UserAccountService } from "@/lib/services/UserAccountService";
+import { Permissions } from "@/lib/permissions/Permissions";
+import { PeopleRoleService, PrismaPeopleRoleStore } from "@/lib/services/PeopleRoleService";
 
-export const metadata: Metadata = { title: ContractsLeadRules.PAGE_TITLE };
+export const metadata: Metadata = { title: "People" };
 export const dynamic = "force-dynamic";
 
-/** Admin > People: Access (every line) at the top, then the active line's Owners, Requesters and Contracts leads. Non-admins get a 404. */
-export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string; rename?: string; role?: string; access?: string; menu?: string }> }) {
-  const viewer = await CurrentViewer.get();
-  if (!viewer || !Permissions.can(viewer, "people.view")) notFound();
-  if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
-  const scope = await ServiceLineAccess.activeOrDefault(viewer);
-  const [leads, lists, grid, params] = await Promise.all([PeopleService.contractsLeads(scope, viewer), PeopleService.lists(scope, viewer), LineAccessService.grid(viewer), searchParams]);
-  // Deep links (screenshots): ?add=1 (Contracts leads) or ?add=owner|requester; ?role=owner|requester with ?rename= or ?remove=.
-  const section = (v: string | undefined) => (v === "owner" || v === "requester" || v === "lead" ? v : undefined);
-  // Password tags and row menus for everyone in the grid. ?menu=<email> opens that row's ⋯ menu.
-  const emails = [...grid.admins, ...grid.users].map((r) => r.email);
-  const [passwords, google] = await Promise.all([UserAccountService.statuses(viewer, emails), UserAccountService.googleSignIn(viewer, emails)]);
-  const accessGrid = UserAccountService.withPasswordAdmins(grid, passwords);
+const signOutAction = async () => {
+  "use server";
+  await signOut({ redirectTo: SIGN_IN_PATH });
+};
 
+/**
+ * Admin > People (Roles & Permissions 4/6): every person with their role, pending invites and Invite user. The
+ * server checks people.view through the permission engine (PeopleRoleService); without it the page is a 404. Line
+ * access, passwords and the name lists moved to /admin/people/access (the row menu links there).
+ */
+export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ invite?: string; role?: string; picker?: string }> }) {
+  const viewer = await CurrentViewer.get();
+  if (!viewer) redirect(SIGN_IN_PATH);
+  if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
+  const store = new PrismaPeopleRoleStore();
+  const [data, params, actor, roles] = await Promise.all([PeopleRoleService.directory(viewer, store), searchParams, PeopleRoleService.actor(viewer, store), PeopleRoleService.roleOptions(store)]);
+  if (!data) notFound();
+  const me = data.people.find((p) => p.you);
+  const name = me?.name ?? viewer.name ?? viewer.email;
+  const admin: ShellAdminLink[] = [
+    ...(Permissions.can(actor, "admin.departments") ? [{ id: "departments", label: "Departments", href: "/admin/departments" }] : []),
+    ...(Permissions.can(actor, "admin.roles") ? [{ id: "roles", label: "Roles", href: "/admin/roles" }] : []),
+    ...(OwnerPolicy.isOwner(viewer) ? [{ id: "ai", label: "AI settings", href: "/admin/ai" }] : []),
+    ...(Permissions.can(actor, "admin.audit") ? [{ id: "audit", label: "Audit log", href: "/admin/audit" }] : []),
+  ];
   return (
-    <main className="mx-auto flex max-w-[1100px] flex-col gap-5 px-6 py-6">
-      <div className="flex items-center justify-between gap-4">
-        <ServiceLineSlot viewer={viewer} active={scope} />
-        <div className="flex items-center gap-3">
-          <AdminMenuSlot viewer={viewer} />
-          <Link href="/" className="text-muted type-table-strong hover:text-fg">
-            Back to dashboard
-          </Link>
-        </div>
-      </div>
-      <PeopleAdmin
-        key={scope.id}
-        lineShort={scope.shortName}
-        leads={leads}
-        owners={lists.owners}
-        requesters={lists.requesters}
-        initial={{ add: params.add === "1" ? true : section(params.add), role: section(params.role), remove: params.remove ?? null, rename: params.rename ?? null }}
-        // Access (item 8) covers every line, so it is not keyed to the active one. ?add=user opens its Add row;
-        // ?access=<email> opens that person's department panel; ?menu=<email> opens that row's ⋯ menu.
-        top={<AccessAdmin grid={accessGrid} initialAdd={params.add === "user"} initialExpanded={params.access?.trim().toLowerCase() || null} passwords={passwords} google={google} initialMenu={params.menu?.trim().toLowerCase() || null} viewerEmail={viewer.email?.trim().toLowerCase() || null} />}
+    <RbacShell
+      active="people"
+      nav={["dashboard", "projects", "reports", "people"]}
+      admin={admin}
+      crumb="People"
+      searchPlaceholder="Search…"
+      user={{ name, initials: PeopleRoleService.initials(name), sub: data.actorRoleName, role: data.actorRoleName, email: viewer.email }}
+      signOutAction={signOutAction}
+    >
+      <PeoplePanel
+        people={data.people}
+        assignable={data.assignable}
+        roles={roles.map(({ id, name: n, rank, description }) => ({ id, name: n, rank, description }))}
+        canInvite={data.canInvite}
+        departmentCount={data.departmentCount}
+        nowIso={new Date().toISOString()}
+        initialInvite={params.invite === "1"}
+        initialRoleOpen={params.role === "open"}
+        initialPicker={params.picker?.trim().toLowerCase() || null}
+        actions={{ assign: assignUserRole, invite: inviteUser, revoke: revokeInvite }}
       />
-    </main>
+    </RbacShell>
   );
 }
