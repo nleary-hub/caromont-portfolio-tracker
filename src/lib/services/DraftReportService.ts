@@ -3,6 +3,7 @@ import { ReportDisplaySettings } from "@/lib/report/ReportDisplaySettings";
 import { ReportLog } from "@/lib/report/ReportLog";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ReportDataLoader } from "@/lib/report/ReportDataLoader";
 import { ReportSchedule } from "@/lib/report/ReportSchedule";
@@ -31,6 +32,7 @@ export interface DraftPdf {
  *   someone with every department, only theirs for someone limited to some (DepartmentAccess). Anything else
  *   requested is dropped; nothing valid requested means all they can see.
  * - No access to the line (or no viewer): null, so the route answers 404.
+ * - Without report.pdf.onDemand: null (404) before any data load, render or display-settings save.
  */
 export class DraftReportService {
   static async render(
@@ -40,7 +42,7 @@ export class DraftReportService {
     scope?: ServiceLineScope,
     requested?: readonly string[],
   ): Promise<DraftPdf | null> {
-    if (!viewer) return null;
+    if (!viewer || !Permissions.can(viewer, "report.pdf.onDemand")) return null;
     let line: ServiceLineScope;
     let departments: DepartmentKey[] | undefined;
     if (viewer.isAdmin) {

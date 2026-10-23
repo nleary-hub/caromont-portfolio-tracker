@@ -32,7 +32,7 @@ export class RoleAssignment {
 
   /** Short helpers shown under each role in the pickers. */
   static readonly DESCRIPTIONS: Record<string, string> = {
-    admin: "Manages everything",
+    admin: "Everything except Owner-only permissions.",
     director: "Leads a service line",
     manager: "Runs department projects",
     editor: "Edits projects and updates",
