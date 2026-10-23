@@ -20,6 +20,8 @@ export type YearEndOnDemandUser = Viewer & Partial<PermissionUser> & { name?: st
  */
 export class YearEndOnDemand {
   static readonly KEY = "report.yearEnd.onDemand";
+  /** service_line_history action for an on-demand download (Admin > Recent changes). Existing table, no migration. */
+  static readonly AUDIT_ACTION = "year_end_on_demand";
 
   static can(user: YearEndOnDemandUser | null | undefined): boolean {
     return !!user && Permissions.can(user as PermissionUser, YearEndOnDemand.KEY);
@@ -50,7 +52,7 @@ export class YearEndOnDemand {
     db: PrismaClient,
     now: Date = new Date(),
     categories: readonly YearEndCategory[] = YearEndCategories.ALL,
-  ): Promise<{ bytes: Buffer; fileName: string } | null> {
+  ): Promise<{ bytes: Buffer; fileName: string; fiscalYear: string; toDate: boolean } | null> {
     if (!user || !YearEndOnDemand.can(user)) return null;
     const today = DateOnly.inZone(now);
     const fy = FiscalYear.fromLabel(fiscalYear);
@@ -59,6 +61,22 @@ export class YearEndOnDemand {
     const data = YearEndReportData.build({ projects, history, fiscalYear: fy.label, today, departments: scope.departments, serviceLineName: scope.name, categories });
     const by = DisplayName.of(DisplayName.nameOrNull(user.name, user.email), user.email);
     const bytes = await YearEndRenderer.render(data, now, by);
-    return { bytes, fileName: YearEndCopy.fileName(data.fiscalYear, today, scope.isDefault ? null : scope.shortName, data.toDate) };
+    return { bytes, fileName: YearEndCopy.fileName(data.fiscalYear, today, scope.isDefault ? null : scope.shortName, data.toDate), fiscalYear: data.fiscalYear, toDate: data.toDate };
+  }
+
+  /**
+   * Audit one download in the line's service_line_history (append-only): who (changedBy), when (changedAt), which
+   * fiscal year and the permission used. Written after the render, so the PDF bytes never depend on it.
+   */
+  static async record(user: Viewer, scope: Pick<ServiceLineScope, "id">, pdf: { fiscalYear: string; toDate: boolean }, db: Pick<PrismaClient, "serviceLineHistory">, now: Date = new Date()): Promise<void> {
+    await db.serviceLineHistory.create({
+      data: {
+        serviceLineId: scope.id,
+        action: YearEndOnDemand.AUDIT_ACTION,
+        newValue: { name: YearEndCopy.title(pdf.fiscalYear, pdf.toDate), fiscalYear: pdf.fiscalYear, permission: YearEndOnDemand.KEY },
+        changedAt: now,
+        changedBy: user.email,
+      },
+    });
   }
 }

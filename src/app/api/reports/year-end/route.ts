@@ -21,7 +21,8 @@ export async function GET(request: Request) {
   if (!scope) return notFound();
   const pdf = await YearEndOnDemand.render(viewer, url.searchParams.get("fy") ?? "", scope, Db.client, new Date(), categories);
   if (!pdf) return notFound();
-  console.info(JSON.stringify({ scope: "report", level: "info", event: "year_end_on_demand", serviceLineId: scope.id }));
+  // Audit (Admin > Recent changes): who, when, which fiscal year and the permission. A failed write serves no PDF.
+  await YearEndOnDemand.record(viewer, scope, pdf, Db.client);
   return new Response(new Uint8Array(pdf.bytes), {
     status: 200,
     headers: {

@@ -17,6 +17,8 @@ const { YearEndOnDemandCopy } = await import("@/lib/report/YearEndOnDemandCopy")
 const { YearEndReportService } = await import("@/lib/services/YearEndReportService");
 const reports = await import("@/app/actions/reports");
 const route = await import("@/app/api/reports/year-end/route");
+const { AdminAuditService } = await import("@/lib/services/AdminAuditService");
+const { AuditText } = await import("@/lib/admin/AuditText");
 
 const OWNER_EMAIL = "riley.owner@example.org";
 const KEY = "report.yearEnd.onDemand";
@@ -122,5 +124,45 @@ describe("Y-T4: permission", () => {
 
   it("no viewer: 404", async () => {
     expect((await get()).status).toBe(404);
+  });
+});
+
+describe("Audit: each on-demand download is a Recent changes event (no migration)", () => {
+  it("writes one service_line_history row: who, when, which FY and the permission; refusals write nothing", async () => {
+    h.viewer = person("director", true);
+    await get("?fy=FY27");
+    expect((await get("?fy=nope")).status).toBe(404);
+    h.viewer = person("viewer", false);
+    expect((await get()).status).toBe(404);
+    expect(fake.state.serviceLineHistory).toHaveLength(1);
+    const row = fake.state.serviceLineHistory[0];
+    expect(row).toMatchObject({ serviceLineId: ServiceLine.DEFAULT_ID, action: "year_end_on_demand", changedBy: "director.sample@example.org" });
+    expect(row.changedAt).toBeInstanceOf(Date);
+    expect(row.newValue).toEqual({ name: "FY27 Mid-Year Report", fiscalYear: "FY27", permission: "report.yearEnd.onDemand" });
+  });
+
+  it("the PDF bytes are the same with the audit write as the render alone", async () => {
+    vi.useFakeTimers({ toFake: ["Date"] });
+    vi.setSystemTime(AT);
+    h.viewer = person("director", true);
+    const viaRoute = Buffer.from(await (await get()).arrayBuffer());
+    const alone = await YearEndOnDemand.render(person("director", true), "FY26", ServiceLine.defaultScope(), h.db as never, AT);
+    vi.useRealTimers();
+    expect(viaRoute.equals(alone!.bytes)).toBe(true);
+  });
+
+  it.each([
+    ["the Owner", { email: OWNER_EMAIL, isAdmin: true, name: "Riley Owner" }],
+    ["an admin", person("admin", false)],
+  ])("%s sees it on the Audit page as \"Year-end report downloaded\", by the person, with the FY", async (_l, auditor) => {
+    h.viewer = person("director", true);
+    await get();
+    const data = await AdminAuditService.load(auditor as never, h.db as never, ServiceLine.defaultScope());
+    const e = data.events.find((x) => x.field === "serviceLine.year_end_on_demand")!;
+    expect(e).toBeDefined();
+    expect(e.by).toBe("director.sample@example.org");
+    expect(AuditText.change(e)).toBe("Year-end report downloaded");
+    expect(AuditText.summary(e, "new")).toBe("FY26 Year-End Report");
+    for (const r of REVEALING) expect(`${AuditText.change(e)} ${AuditText.summary(e, "new")}`).not.toMatch(r);
   });
 });

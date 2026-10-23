@@ -12,6 +12,7 @@ export class ServiceLineHistoryText {
     departments_changed: "Departments",
     contracts_leads_changed: "Contracts leads",
     migrated: "Service lines added",
+    year_end_on_demand: "Year-end report downloaded",
   };
 
   static action(action: string): string {
