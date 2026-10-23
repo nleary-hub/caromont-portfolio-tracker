@@ -6,6 +6,19 @@ import type { PermissionUser } from "@/lib/permissions/Permissions";
 
 /** Roles & Permissions 4/6: who gets the read-only Viewer dashboard, and its rows (only what the table shows). */
 export class ViewerDashboardModel {
+  /** Department label for a project with no department. */
+  static readonly UNASSIGNED = "Unassigned";
+
+  /** How many real departments the rows span (Unassigned does not count). */
+  static departmentCount(rows: readonly { department: string }[]): number {
+    return new Set(rows.map((r) => r.department).filter((d) => d !== ViewerDashboardModel.UNASSIGNED)).size;
+  }
+
+  /** "Across 1 department", "Across 3 departments", "Across 0 departments". */
+  static acrossLabel(count: number): string {
+    return `Across ${count} ${count === 1 ? "department" : "departments"}`;
+  }
+
   /** The Viewer role (stored or the default for non-admins). Never the Owner or an ADMIN_EMAILS admin. */
   static isViewerRole(user: PermissionUser & { roleId?: string | null }): boolean {
     if (user.isAdmin || OwnerLock.isOwnerViewer(user)) return false;
@@ -17,7 +30,7 @@ export class ViewerDashboardModel {
     return rows.map((r) => ({
       id: r.id,
       name: r.name,
-      department: (r.serviceArea && dept.get(r.serviceArea)) || "No department",
+      department: (r.serviceArea && dept.get(r.serviceArea)) || ViewerDashboardModel.UNASSIGNED,
       owner: r.owner || "Unassigned",
       status: r.status,
       statusLabel: r.statusLabel,

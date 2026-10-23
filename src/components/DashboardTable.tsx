@@ -1028,7 +1028,7 @@ function HeaderLabel({ column, header, sort, onSort, chips, sortLocked = false }
             onClick={(e) => e.stopPropagation()}
             className={`flex min-w-0 cursor-not-allowed items-center uppercase tracking-[.04em] focus-visible:outline-2 focus-visible:outline-(--color-accent) ${i > 0 ? "text-[11px]" : ""}`}
           >
-            <span className={column === "milestoneOwner" ? "truncate tracking-[.01em]" : "truncate"}>{HeaderSort.label(column, k, header, chips)}</span>
+            <span className={column === "milestoneOwner" ? "whitespace-normal text-left leading-tight tracking-[.01em]" : "truncate"}>{HeaderSort.label(column, k, header, chips)}</span>
           </button>
         ))}
         <span
@@ -1059,8 +1059,8 @@ function HeaderLabel({ column, header, sort, onSort, chips, sortLocked = false }
             }}
             className={`flex min-w-0 items-center gap-1 uppercase tracking-[.04em] hover:text-fg focus-visible:outline-2 focus-visible:outline-(--color-accent) ${state !== "none" ? "text-fg" : ""} ${i > 0 ? "text-[11px]" : ""}`}
           >
-            {/* Milestone owner (120 to 136px): one line, tighter tracking, ellipsis if needed; the tooltip has the full name. */}
-            <span className={column === "milestoneOwner" ? "truncate tracking-[.01em]" : "truncate"} title={column === "milestoneOwner" ? label : undefined}>
+            {/* Milestone owner (120 to 136px): tighter tracking, wraps to a second line rather than cutting the label off. */}
+            <span className={column === "milestoneOwner" ? "whitespace-normal text-left leading-tight tracking-[.01em]" : "truncate"} title={column === "milestoneOwner" ? label : undefined}>
               {label}
             </span>
             {/* The arrow takes room only while active, so narrow headers ("Milestone owner", 136px) show in full. */}
