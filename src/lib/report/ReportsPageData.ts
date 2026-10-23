@@ -6,6 +6,7 @@ import { FiscalYear } from "@/lib/domain/FiscalYear";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { Permissions, type PermissionUser } from "@/lib/permissions/Permissions";
 import { ReportDisplaySettings } from "@/lib/report/ReportDisplaySettings";
+import { YearEndOnDemand } from "@/lib/report/YearEndOnDemand";
 import { ReportArchiveService, type ArchiveEntry } from "@/lib/services/ReportArchiveService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
@@ -22,8 +23,11 @@ export type OwnerReportsData = {
   yearEnd: YearEndEntry[];
 };
 
-/** Everyone else: only on-demand controls. The object has no archive, delivery, next-display or year-end keys. */
-export type ViewerReportsData = { kind: "viewer"; canDownloadPdf: boolean };
+/**
+ * Everyone else: only on-demand controls. The object has no archive, delivery or next-display keys, and no stored
+ * year-end rows. `yearEndYears` (the on-demand year-end picker, matrix 4.8) is present only with report.yearEnd.onDemand.
+ */
+export type ViewerReportsData = { kind: "viewer"; canDownloadPdf: boolean; yearEndYears?: string[] };
 export type ReportsData = ({ kind: "owner"; canDownloadPdf: true } & OwnerReportsData) | ViewerReportsData;
 
 /**
@@ -33,7 +37,12 @@ export type ReportsData = ({ kind: "owner"; canDownloadPdf: true } & OwnerReport
 export class ReportsPageData {
   static async load(viewer: (Viewer & Partial<PermissionUser>) | null, scope: ServiceLineScope): Promise<ReportsData | null> {
     if (!viewer || !Permissions.can(viewer, "report.view")) return null;
-    if (!OwnerPolicy.isOwner(viewer)) return { kind: "viewer", canDownloadPdf: Permissions.can(viewer, "report.pdf.onDemand") };
+    if (!OwnerPolicy.isOwner(viewer)) {
+      const canDownloadPdf = Permissions.can(viewer, "report.pdf.onDemand");
+      if (!YearEndOnDemand.can(viewer)) return { kind: "viewer", canDownloadPdf };
+      const yearEndYears = await YearEndOnDemand.years(viewer, scope, Db.client).catch(() => null);
+      return { kind: "viewer", canDownloadPdf, yearEndYears: yearEndYears ?? [FiscalYear.of(DateOnly.today()).label] };
+    }
     const today = DateOnly.today();
     const entries = await ReportArchiveService.list(viewer, undefined, scope);
     const options = await ReportOptionsService.get(undefined, scope);
