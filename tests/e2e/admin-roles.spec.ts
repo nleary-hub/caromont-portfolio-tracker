@@ -100,5 +100,15 @@ test("the Owner edits the Editor role, sees the Owner lock, and deletes a custom
   await dialog.getByRole("button", { name: "Delete role" }).click();
   await expect(page.getByTestId("delete-role-dialog")).toHaveCount(0);
   await expect(page.getByTestId("role-row-custom-report-reviewer")).toHaveCount(0);
-  await expect(page.getByTestId("role-row-viewer")).toContainText("4");
+  // Riley plus the three moved people. Other specs may hold a Viewer of their own for a moment (the 5b drawer check),
+  // so the expected count is read from the database and the page reloaded until both agree.
+  await expect(async () => {
+    const db = new pg.Client({ connectionString: "postgresql://postgres:postgres@127.0.0.1:5439/postgres" });
+    await db.connect();
+    const viewers = Number((await db.query(`SELECT count(*) AS n FROM app_user WHERE ("roleId" IS NULL OR "roleId" = 'viewer') AND email NOT IN ('jordan.pike@example.org', 'casey.lund@example.org')`)).rows[0].n);
+    await db.end();
+    expect(viewers).toBeGreaterThanOrEqual(4);
+    await page.reload();
+    await expect(page.getByTestId("role-row-viewer")).toContainText(String(viewers), { timeout: 10000 });
+  }).toPass({ timeout: 60000 });
 });
