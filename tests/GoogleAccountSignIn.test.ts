@@ -328,6 +328,8 @@ describe("Turn off sign-in blocks every way in, even ALLOWED_EMAILS and ADMIN_EM
 
   it("an ADMIN_EMAILS admin (NLeary@gmail.com) who is turned off by another admin is refused; Microsoft and dev login too", async () => {
     const db = await Accounts.db();
+    // Rank rule (Roles & Permissions): only someone ranked above an admin (the Owner) may turn that admin off.
+    vi.stubEnv("OWNER_EMAIL", ADMIN.email);
     expect((await off(db, "NLeary@gmail.com")).ok).toBe(true);
     expect(await SignInGate.allowSignInWithAccounts(Google.attempt("NLeary@gmail.com"), Accounts.check(db), ENV)).toBe(false);
     for (const provider of ["microsoft-entra-id", "dev-login"]) {

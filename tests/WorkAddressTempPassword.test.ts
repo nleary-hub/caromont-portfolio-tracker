@@ -152,6 +152,8 @@ describe("temporary password for the work address", () => {
     const db = await Prod.db();
     h.db = db;
     h.viewer = GMAIL_ADMIN;
+    // The test config's fictional Owner would make the gmail account a plain admin; here it is the Owner, as in production.
+    vi.stubEnv("OWNER_EMAIL", GMAIL);
     const log = vi.spyOn(console, "log").mockImplementation(() => {});
     const err = vi.spyOn(console, "error").mockImplementation(() => {});
     const r = await resetUserPassword(WORK_TYPED);

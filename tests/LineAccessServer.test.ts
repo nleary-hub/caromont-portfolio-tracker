@@ -46,6 +46,11 @@ const { SignedLink } = await import("@/lib/report/SignedLink");
 const { ServiceLine } = await import("@/lib/domain/ServiceLine");
 const { config: proxyConfig } = await import("@/proxy");
 
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
+
 const JANE = { email: "jane.doe@caromonthealth.org", isAdmin: false, name: "Jane Doe" };
 const ADMIN = { ...Factory.ADMIN, name: "Admin" };
 const SECRET = "s".repeat(48);
@@ -155,9 +160,9 @@ describe("routes and actions answer 404 / nothing without the line", () => {
     expect((await archiveGET(req, ctx)).status).toBe(404);
     expect((await yearEndGET(req, { params: Promise.resolve({ id: "any" }) })).status).toBe(404);
     expect(await loadProjectHistory(project.id as string)).toBeNull();
-    // With CVPSL access the same requests work.
+    // With CVPSL access the project works; the frozen archive stays Owner-only (Roles & Permissions L2).
     fake.grant(JANE.email, ServiceLine.DEFAULT_ID);
-    expect((await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) })).status).toBe(200);
+    expect((await archiveGET(req, { params: Promise.resolve({ id: snap.id as string, file: "pdf" }) })).status).toBe(404);
     expect(await loadProjectHistory(project.id as string)).not.toBeNull();
     // Access to EP only: CVPSL's report and project are not found.
     fake.state.accessGrants = [];

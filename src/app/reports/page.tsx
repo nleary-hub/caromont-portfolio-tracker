@@ -1,6 +1,8 @@
 import Link from "next/link";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
-import { redirect } from "next/navigation";
+import { notFound, redirect } from "next/navigation";
+import { PermissionGate } from "@/lib/permissions/PermissionGate";
+import { ReportsPageData } from "@/lib/report/ReportsPageData";
 import { setShowKeyPageForm } from "@/app/actions/reports";
 import { DriveCheckButton } from "@/components/DriveCheckButton";
 import { DriveCheckService } from "@/lib/services/DriveCheckService";
@@ -17,9 +19,8 @@ import { Db } from "@/lib/db/Db";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import { ReportSchedule } from "@/lib/report/ReportSchedule";
 import { DateOnly } from "@/lib/domain/DateOnly";
-import { ReportArchiveService, type ArchiveEntry } from "@/lib/services/ReportArchiveService";
+import type { ArchiveEntry } from "@/lib/services/ReportArchiveService";
 import { ArchiveDeliveryText } from "@/lib/report/ArchiveDeliveryText";
-import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { YearEndReportButton } from "@/components/YearEndReportButton";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { YearEndCopy } from "@/lib/report/YearEndReportData";
@@ -42,7 +43,7 @@ class ArchiveView {
   }
 }
 
-/** Archive of frozen reports. Signed-in users download PDFs; admins also see delivery and can freeze. */
+/** Reports. The Owner sees the frozen archive, delivery and freeze controls; everyone else only on-demand PDFs. */
 export default async function ReportsPage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   const viewer = await CurrentViewer.get();
   if (!viewer) redirect("/signin");
@@ -54,14 +55,40 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   if (gate.kind === "none") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} />;
   if (gate.kind === "lacks") return <NoAccessCard email={viewer.email} signOutAction={signOutAction} line={gate.requested} goTo={{ shortName: gate.first.shortName, href: LineGate.href("/reports", gate.first.shortName) }} />;
   const { scope, lines } = gate;
-  const entries = await ReportArchiveService.list(viewer, undefined, scope);
+  // L1: Owner-only data is loaded only for the Owner (ReportsPageData); everyone else gets on-demand controls only.
+  const user = await PermissionGate.resolve(viewer);
+  const data = await ReportsPageData.load(user, scope);
+  if (!data) notFound();
+  if (data.kind === "viewer") {
+    return (
+      <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
+        <div className="flex items-center justify-between gap-4">
+          <div className="flex min-w-0 items-center gap-3">
+            <ServiceLineSlot viewer={viewer} active={scope} lines={lines} />
+            <div className="h-6 w-px bg-line" />
+            <h1 className="type-title whitespace-nowrap">Reports</h1>
+          </div>
+          <div className="flex items-center gap-3">
+            <AdminMenuSlot viewer={viewer} />
+            <Link href="/" className="text-muted type-table-strong hover:text-fg">
+              Back to dashboard
+            </Link>
+          </div>
+        </div>
+        {data.canDownloadPdf && (
+          <section className="flex flex-wrap items-center gap-4 rounded-card border border-line bg-card px-4 py-3">
+            <a href="/api/reports/preview" download className="type-table-strong text-accent">
+              Generate PDF now
+            </a>
+            <span className="text-muted type-caption">Downloads a PDF of the current projects.</span>
+          </section>
+        )}
+      </main>
+    );
+  }
+  const { entries, options, nextDisplay, yearEndYears, yearEnd } = data;
   const next = ReportSchedule.nextFreezeOnOrAfter(DateOnly.today());
-  const options = viewer.isAdmin ? await ReportOptionsService.get(undefined, scope) : null;
   const today = DateOnly.today();
-  // What the next freeze will use (0064): the latest on-demand report's display settings, read-only here.
-  const nextDisplay = viewer.isAdmin && scope.isDefault ? ReportDisplaySettings.parse((await Promise.resolve(Db.client.reportDisplaySettings?.findUnique({ where: { serviceLineId: scope.id } })).catch(() => null))?.settingsJson ?? null) : undefined;
-  const yearEndYears = viewer.isAdmin ? await YearEndReportService.years(viewer, scope).catch(() => [FiscalYear.of(today).label]) : [];
-  const yearEnd = await YearEndReportService.list(scope).catch(() => []);
   // Deep link for review and screenshots: ?yearEnd=1 opens the dialog.
   const openYearEnd = params.yearEnd === "1";
 
@@ -85,7 +112,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           ? `Frozen every other Tuesday at 5 PM ET. Next scheduled freeze: ${ReportFormat.longDate(next)}.`
           : ServiceLineCopy.onDemandNote(scope.shortName)}
       </p>
-      {viewer.isAdmin && options && (
+      {options && (
         <section id="report-admin" aria-labelledby="report-freeze-heading" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
           <h2 id="report-freeze-heading" className="type-heading">{AdminMenu.REPORT_FREEZE}</h2>
           <div className="flex flex-wrap items-center gap-4">
@@ -122,7 +149,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             </button>
           </form>
           <p className="text-muted type-caption">
-            {scope.isDefault ? "Only admins see these controls. Changes apply to the next freeze and to drafts." : "Only admins see these controls. Changes apply to drafts."}
+            {scope.isDefault ? "Only you see these controls. Changes apply to the next freeze and to drafts." : "Only you see these controls. Changes apply to drafts."}
           </p>
         </section>
       )}
@@ -131,7 +158,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
         <table className="w-full border-separate border-spacing-0 type-table">
           <thead>
             <tr className="text-left text-muted type-label uppercase">
-              {["Period", "Frozen", "PDF", ...(viewer.isAdmin ? ["Delivery", "handoff.json"] : [])].map((h) => (
+              {["Period", "Frozen", "PDF", "Delivery", "handoff.json"].map((h) => (
                 <th key={h} className="border-b border-line px-3 py-2">
                   {h}
                 </th>
@@ -141,7 +168,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
           <tbody>
             {entries.length === 0 && (
               <tr>
-                <td colSpan={viewer.isAdmin ? 5 : 3} className="px-3 py-4 text-center text-muted">
+                <td colSpan={5} className="px-3 py-4 text-center text-muted">
                   No reports frozen yet.
                 </td>
               </tr>
@@ -159,7 +186,7 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
                     <span className="text-muted">Rendering</span>
                   )}
                 </td>
-                {viewer.isAdmin && (
+                {(
                   <>
                     <td className="border-b border-line px-3 py-2" title={ArchiveDeliveryText.title(e.delivery)} data-testid="archive-delivery">
                       {ArchiveView.delivery(e)}

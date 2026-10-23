@@ -2,6 +2,7 @@ import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import type { PrismaClient, ReportArtifact } from "@/generated/prisma/client";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { Db } from "@/lib/db/Db";
 import { ReportEnv, type EnvSource } from "@/lib/config/ReportEnv";
 import { DateOnly } from "@/lib/domain/DateOnly";
@@ -21,10 +22,11 @@ export interface ArchiveEntry {
   generatedBy?: string;
 }
 
-/** Signed-in archive of frozen reports (/reports). Delivery details and handoff.json are admin-only. */
+/** Archive of frozen reports (/reports). Owner only (report.freeze.history, report.deliveryInfo); empty for anyone else. */
 export class ReportArchiveService {
   /** Frozen reports of the viewer's service line (only the default line has scheduled reports). */
   static async list(viewer: Viewer, db: PrismaClient = Db.client, scope: Pick<ServiceLineScope, "id"> = ServiceLine.defaultScope()): Promise<ArchiveEntry[]> {
+    if (!OwnerPolicy.isOwner(viewer)) return [];
     const snapshots = await db.reportSnapshot.findMany({
       where: ServiceLineAccess.where(scope),
       orderBy: { periodEnd: "desc" },
@@ -48,7 +50,7 @@ export class ReportArchiveService {
     db: PrismaClient = Db.client,
     scope: Pick<ServiceLineScope, "id"> = ServiceLine.defaultScope(),
   ): Promise<ReportArtifact | null> {
-    if (kind === "handoff" && !viewer.isAdmin) return null;
+    if (!OwnerPolicy.isOwner(viewer)) return null;
     if (!/^[0-9a-f-]{36}$/i.test(snapshotId)) return null;
     const snapshot = await db.reportSnapshot.findFirst({ where: { id: snapshotId }, select: { serviceLineId: true } });
     if (!ServiceLineAccess.inScope(snapshot, scope)) return null;

@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
+import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
 import { DepartmentCopy, DepartmentRules, DepartmentValidationError, type DepartmentRow } from "@/lib/domain/DepartmentRules";
 import { ProjectStatusInfo } from "@/lib/domain/ProjectStatusInfo";
@@ -83,7 +84,7 @@ export class DepartmentService {
   } as const;
 
   static async list(scope: Scope, admin: Viewer, db: PrismaClient = Db.client): Promise<DepartmentLists> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.departments");
     const rows = await DepartmentService.rows(db, scope.id);
     const counts = await DepartmentService.activeCounts(db, rows.map((r) => r.id));
     const toAdmin = (r: DepartmentRow): DepartmentAdminRow => ({
@@ -102,7 +103,7 @@ export class DepartmentService {
 
   /** Create (no id) or edit name and short name. Unique per line among departments not deleted, ignoring case. */
   static async save(scope: Scope, input: { id?: unknown; name?: unknown; shortName?: unknown; managerName?: unknown }, admin: Viewer, db: PrismaClient = Db.client): Promise<DepartmentRow> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.departments");
     const id = typeof input.id === "string" && input.id ? input.id : null;
     return db.$transaction(async (tx) => {
       const rows = await DepartmentService.rows(tx, scope.id);
@@ -142,7 +143,7 @@ export class DepartmentService {
    * the listed ones). Archived departments follow. One history row with the old and new order (names).
    */
   static async reorder(scope: Scope, ids: readonly unknown[], admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.departments");
     await db.$transaction(async (tx) => {
       const rows = await DepartmentService.rows(tx, scope.id);
       const active = rows.filter((r) => !r.archivedAt);
@@ -186,7 +187,7 @@ export class DepartmentService {
     admin: Viewer,
     db: PrismaClient = Db.client,
   ): Promise<{ name: string; moved: number; to: string | null }> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.departments");
     return db.$transaction(async (tx) => {
       const rows = await DepartmentService.rows(tx, scope.id);
       const row = rows.find((r) => r.id === id);
@@ -224,7 +225,7 @@ export class DepartmentService {
 
   /** Audit restore. Blocked (DepartmentRestoreConflictError) when another department of the line now uses its name or short name. */
   static async restore(id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<string> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.departments");
     return db.$transaction(async (tx) => {
       const row = (await tx.department.findUnique({ where: { id } })) as DepartmentRow | null;
       if (!row || !row.deletedAt) throw new DepartmentNotFoundError();
@@ -239,20 +240,20 @@ export class DepartmentService {
 
   /** Deleted departments of a line, newest first (Audit). */
   static async deleted(scope: Pick<ServiceLineScope, "id">, admin: Viewer, db: Pick<PrismaClient, "department"> = Db.client): Promise<DeletedDepartment[]> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.departments");
     const rows = (await db.department.findMany({ where: { serviceLineId: scope.id, deletedAt: { not: null } }, orderBy: { deletedAt: "desc" } })) as DepartmentRow[];
     return rows.map((r) => ({ id: r.id, serviceLineId: r.serviceLineId, name: r.name, shortName: r.shortName, deletedAt: r.deletedAt!, deletedBy: r.deletedBy ?? null }));
   }
 
   /** Recent department changes of a line, newest first. */
   static async history(scope: Pick<ServiceLineScope, "id">, admin: Viewer, limit = 20, db: Pick<PrismaClient, "departmentHistory"> = Db.client): Promise<DepartmentChange[]> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.departments");
     const rows = await db.departmentHistory.findMany({ where: { serviceLineId: scope.id }, orderBy: { changedAt: "desc" }, take: limit });
     return rows.map((r) => ({ departmentId: r.departmentId, action: r.action, oldValue: r.oldValue, newValue: r.newValue, changedAt: r.changedAt, changedBy: r.changedBy }));
   }
 
   private static async setArchived(scope: Scope, id: string, archived: boolean, admin: Viewer, db: PrismaClient): Promise<string> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.departments");
     return db.$transaction(async (tx) => {
       const rows = await DepartmentService.rows(tx, scope.id);
       const row = rows.find((r) => r.id === id);

@@ -1,5 +1,6 @@
 "use server";
 
+import { Permissions } from "@/lib/permissions/Permissions";
 import { revalidatePath } from "next/cache";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -14,7 +15,7 @@ export type ReviewActionResult = { ok: true; count: number; skipped: number; at:
  */
 async function run(label: string, fn: (viewer: NonNullable<Awaited<ReturnType<typeof CurrentViewer.get>>>) => Promise<{ ids: string[]; skipped: number; at: string }>): Promise<ReviewActionResult> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
+  if (!viewer || !Permissions.can(viewer, "project.review")) return { ok: false, error: "Not authorized." };
   try {
     const r = await fn(viewer);
     if (r.ids.length === 0) return { ok: false, error: "Nothing was marked. You can only mark projects you can edit." };

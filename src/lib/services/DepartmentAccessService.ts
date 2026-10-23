@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
 import { DepartmentAccessCopy } from "@/lib/access/DepartmentAccessCopy";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
@@ -29,9 +30,10 @@ export class DepartmentAccessService {
    * the person until an admin unchecks one). On: the department rows are dropped and new departments are included.
    */
   static async setAll(viewer: Viewer | null, emailIn: unknown, serviceLineId: unknown, on: boolean, db: PrismaClient = Db.client, env: Env = process.env): Promise<AccessResult> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.access.grant");
     const email = LineAccessService.normalize(emailIn);
     if (!email || typeof serviceLineId !== "string" || AdminPolicy.isAdmin(email, env)) return DepartmentAccessService.failed();
+    if (!(await PermissionAssert.canManageAccount(viewer, email, db, env)) || !(await PermissionAssert.holdsLine(viewer, serviceLineId, db))) return DepartmentAccessService.failed();
     return db.$transaction(async (tx: Tx) => {
       const ctx = await DepartmentAccessService.context(tx, email, serviceLineId);
       if (!ctx) return DepartmentAccessService.failed();
@@ -67,9 +69,10 @@ export class DepartmentAccessService {
     db: PrismaClient = Db.client,
     env: Env = process.env,
   ): Promise<AccessResult> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.access.grant");
     const email = LineAccessService.normalize(emailIn);
     if (!email || typeof serviceLineId !== "string" || typeof departmentId !== "string" || AdminPolicy.isAdmin(email, env)) return DepartmentAccessService.failed();
+    if (!(await PermissionAssert.canManageAccount(viewer, email, db, env)) || !(await PermissionAssert.holdsLine(viewer, serviceLineId, db))) return DepartmentAccessService.failed();
     return db.$transaction(async (tx: Tx) => {
       const ctx = await DepartmentAccessService.context(tx, email, serviceLineId);
       if (!ctx || ctx.grant.allDepartments !== false) return DepartmentAccessService.failed();

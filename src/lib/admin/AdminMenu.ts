@@ -1,4 +1,5 @@
-import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { Permissions, type PermissionUser } from "@/lib/permissions/Permissions";
+import type { PermissionKey } from "@/lib/permissions/PermissionKeys";
 import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 
 /**
@@ -76,20 +77,47 @@ export class AdminMenu {
     { id: "ai-settings", group: "admin", kind: "link", icon: "sparkle", label: AdminMenu.AI_SETTINGS, href: "/admin/ai", shipped: true },
   ];
 
-  /** Menu items only the Owner sees (OwnerPolicy). */
-  static readonly OWNER_ONLY: readonly string[] = ["ai-tools", "ai-settings"];
+  /** Menu items only the Owner sees (OwnerPolicy): AI, and the report freeze (Owner-only, invisible to others). */
+  static readonly OWNER_ONLY: readonly string[] = ["ai-tools", "ai-settings", "freeze"];
 
   /** Every defined item, shipped or not (for tests and docs). */
   static definitions(): readonly (AdminMenuItem & { shipped: boolean })[] {
     return AdminMenu.DEFINITIONS;
   }
 
-  /** Shipped items for an admin; null for non-admins (render nothing). */
-  static itemsFor(viewer: Viewer | null | undefined): AdminMenuItem[] | null {
-    if (!viewer?.isAdmin) return null;
-    // AI tools and AI settings are Owner-only.
+  /** The permission key behind each non-Owner item (Roles & Permissions). */
+  static readonly KEYS: Readonly<Record<string, PermissionKey>> = {
+    import: "admin.import",
+    "csv-template": "admin.import",
+    "csv-export": "admin.export",
+    "generate-pdf": "report.pdf.onDemand",
+    reports: "report.view",
+    "service-line": "admin.settings",
+    departments: "admin.departments",
+    people: "people.view",
+    audit: "admin.audit",
+    dependencies: "project.review",
+    settings: "admin.layout",
+    "service-lines": "admin.serviceLines",
+    templates: "admin.templates",
+  };
+
+  /** Items everyone with Reports access has; the menu shows only when the viewer has something beyond these. */
+  private static readonly BASIC: readonly string[] = ["generate-pdf", "reports"];
+
+  /** Shipped items the viewer's keys allow; null when there is no admin work for them (render nothing). */
+  static itemsFor(viewer: PermissionUser | null | undefined): AdminMenuItem[] | null {
+    if (!viewer) return null;
+    // Owner-only items (AI, report freeze) are invisible to everyone else.
     const owner = OwnerPolicy.isOwner(viewer);
-    return AdminMenu.DEFINITIONS.filter((d) => d.shipped && (owner || !AdminMenu.OWNER_ONLY.includes(d.id))).map((d) => AdminMenu.toItem(d));
+    const items = AdminMenu.DEFINITIONS.filter((d) => {
+      if (!d.shipped) return false;
+      if (AdminMenu.OWNER_ONLY.includes(d.id)) return owner;
+      const key = AdminMenu.KEYS[d.id];
+      return key !== undefined && Permissions.can(viewer, key);
+    });
+    if (!items.some((d) => !AdminMenu.BASIC.includes(d.id))) return null;
+    return items.map((d) => AdminMenu.toItem(d));
   }
 
   private static toItem(d: AdminMenuDefinition): AdminMenuItem {

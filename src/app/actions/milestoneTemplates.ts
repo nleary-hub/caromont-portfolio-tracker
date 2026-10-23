@@ -1,5 +1,6 @@
 "use server";
 
+import { Permissions } from "@/lib/permissions/Permissions";
 import { revalidatePath } from "next/cache";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -17,7 +18,7 @@ export type TemplateActionResult = { ok: true; templates: TemplateDto[]; created
 class TemplateAction {
   static async run(label: string, fn: (admin: Viewer, scope: ServiceLineScope) => Promise<{ id: string } | void>): Promise<TemplateActionResult> {
     const viewer = await CurrentViewer.get();
-    if (!viewer?.isAdmin) return { ok: false, error: "Not authorized." };
+    if (!viewer || !Permissions.can(viewer, "admin.templates")) return { ok: false, error: "Not authorized." };
     try {
       // Templates belong to the admin's active service line.
       const scope = await ServiceLineAccess.activeFor(viewer);

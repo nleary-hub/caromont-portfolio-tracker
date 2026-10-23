@@ -9,6 +9,9 @@ import { ServiceLineSlot } from "@/components/ServiceLineSlot";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ServiceLineHistoryText } from "@/lib/admin/ServiceLineHistoryText";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
+import { PermissionGate } from "@/lib/permissions/PermissionGate";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { Db } from "@/lib/db/Db";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { AdminMenu } from "@/lib/admin/AdminMenu";
@@ -37,13 +40,16 @@ class SettingsFormat {
 /** Admin-only settings of the active service line. Non-admins get a 404 so the route is not revealed. */
 export default async function AdminSettingsPage() {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) notFound();
+  const user = await PermissionGate.resolve(viewer);
+  if (!viewer || !Permissions.can(user, "admin.settings")) notFound();
+  // Report display settings (report.options) are Owner-only: not loaded or rendered for anyone else (L1, L5).
+  const owner = OwnerPolicy.isOwner(viewer);
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
   const options = DepartmentFilter.optionsFor(scope);
   const history = Db.isConfigured()
     ? await ServiceLineService.history(scope, viewer).catch(() => [])
     : [];
-  const reportOptions = Db.isConfigured()
+  const reportOptions = !owner ? null : Db.isConfigured()
     ? await ReportOptionsService.get(undefined, scope).catch(() =>
         ReportOptionsService.defaults(options),
       )
@@ -91,7 +97,7 @@ export default async function AdminSettingsPage() {
         </p>
       )}
 
-      <section
+      {reportOptions && (<section
         id="report"
         className={section}
         aria-labelledby="report-settings"
@@ -107,7 +113,7 @@ export default async function AdminSettingsPage() {
           list={scope.departments}
           scheduled={scope.isDefault}
         />
-      </section>
+      </section>)}
 
       <section
         id="dashboard"
@@ -127,7 +133,7 @@ export default async function AdminSettingsPage() {
         />
       </section>
 
-      <section
+      {reportOptions && (<section
         id="report-colors"
         className={section}
         aria-labelledby="report-colors-heading"
@@ -136,7 +142,7 @@ export default async function AdminSettingsPage() {
           {ReportColorScheme.COPY.heading}
         </h2>
         <ReportColorsForm colors={reportOptions.colors} />
-      </section>
+      </section>)}
 
       {/* Contracts leads moved to Admin > People (temporary pointer, for a release or two). */}
       <p className="type-caption text-muted" data-testid="people-pointer">

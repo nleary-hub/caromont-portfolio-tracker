@@ -38,6 +38,11 @@ import { ReportArtifactService } from "@/lib/services/ReportArtifactService";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
 
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
+
 vi.mock("next/dynamic", () => ({ default: () => () => null }));
 
 const TODAY = DateOnly.today();

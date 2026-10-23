@@ -1,8 +1,13 @@
 import { createHash } from "node:crypto";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ReportDisplaySettings } from "@/lib/report/ReportDisplaySettings";
 import { SampleReportData } from "@/lib/report/SampleReportData";
+
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
 
 // Fictional snapshot through the freeze's render path (inputFromSnapshot + render), clock pinned.
 function snapshot(displaySettingsJson?: unknown) {
@@ -65,6 +70,9 @@ describe("Reports page: Next freeze will use", () => {
     expect(src).toContain('data-testid="next-freeze-display"');
     expect(src).toContain("ReportDisplaySettings.summary(nextDisplay)");
     expect(src).toMatch(/backdrop-blur/);
-    expect(src).toContain("viewer.isAdmin && scope.isDefault");
+    // Owner only (L1): the loader reads the next display only for the Owner, and only on the scheduled line.
+    const loader = readFileSync("src/lib/report/ReportsPageData.ts", "utf8");
+    expect(loader).toMatch(/if \(!OwnerPolicy\.isOwner\(viewer\)\) return \{ kind: "viewer"/);
+    expect(loader).toContain("const nextDisplay = scope.isDefault");
   });
 });

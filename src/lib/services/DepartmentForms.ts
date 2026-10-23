@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@/generated/prisma/client";
+import { Permissions } from "@/lib/permissions/Permissions";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
@@ -102,7 +103,7 @@ export class DepartmentForms {
     db: PrismaClient,
     work: (viewer: Viewer, scope: Awaited<ReturnType<typeof ServiceLineAccess.activeFor>>) => Promise<AdminListResult>,
   ): Promise<AdminListResult> {
-    if (!viewer?.isAdmin) return { ok: false, message: DepartmentForms.NOT_AUTHORIZED };
+    if (!viewer || !(Permissions.can(viewer, "admin.departments") || Permissions.can(viewer, "people.list.manage"))) return { ok: false, message: DepartmentForms.NOT_AUTHORIZED };
     try {
       return await work(viewer, await ServiceLineAccess.activeFor(viewer, db));
     } catch (e) {

@@ -95,8 +95,8 @@ describe("import pages: a password admin (ADMIN_EMAILS, not on ALLOWED_EMAILS) i
     expect(el.type).toBe(ImportPanel);
     expect(el.props.adminEmail).toBe(NICK);
     expect(el.props.serviceLine.shortName).toBe("CVPSL");
-    expect(el.props.switcher.props.viewer).toEqual({ email: NICK, isAdmin: true });
-    expect(el.props.adminMenu.props.viewer).toEqual({ email: NICK, isAdmin: true });
+    expect(el.props.switcher.props.viewer).toMatchObject({ email: NICK, isAdmin: true, roleId: "admin" });
+    expect(el.props.adminMenu.props.viewer).toMatchObject({ email: NICK, isAdmin: true, roleId: "admin" });
   });
 
   it("the template and export downloads work, and the export follows the admin's active line", async () => {

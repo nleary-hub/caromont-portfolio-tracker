@@ -1,5 +1,5 @@
 import { readFileSync } from "node:fs";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { HistoryEntryRecord, ProjectRecord } from "@/lib/domain/types";
 import { ServiceAreaInfo } from "@/lib/domain/ServiceAreaInfo";
 import { CompletedBlockStyle, ReportGeometry } from "@/lib/report/pdf/ReportLayout";
@@ -12,6 +12,11 @@ import { ClosedProjects } from "@/lib/report/ClosedProjects";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
+
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
 
 // Year-end export: wider Final update column that wraps in full, completed rows tinted like the weekly report, and
 // the summary grid and header totals (Carried in from FY N-1, Completed FY N, Carried into FY N+1 or Still in

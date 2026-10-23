@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient, ServiceLine as ServiceLineRow } from "@/generated/prisma/client";
-import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
+import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
 import type { PeopleRole } from "@/lib/people/PeopleDirectory";
@@ -49,7 +50,7 @@ export class ServiceLineService {
 
   /** Admin list: open lines (default first, then A to Z) and archived ones. Deleted lines are left out. */
   static async list(admin: Viewer, db: PrismaClient = Db.client): Promise<ServiceLineLists> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     const rows = await db.serviceLine.findMany({ where: { deletedAt: null } });
     const summaries = await ServiceLineService.summaries(rows, db);
     return {
@@ -60,14 +61,14 @@ export class ServiceLineService {
 
   /** Soft-deleted lines, newest first (for restore on /admin/audit). */
   static async deleted(admin: Viewer, db: PrismaClient = Db.client): Promise<ServiceLineSummary[]> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     const rows = await db.serviceLine.findMany({ where: { deletedAt: { not: null } } });
     const out = await ServiceLineService.summaries(rows, db);
     return out.sort((a, b) => (b.deletedAt?.getTime() ?? 0) - (a.deletedAt?.getTime() ?? 0));
   }
 
   static async get(id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<ServiceLineSummary> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     const row = await db.serviceLine.findUnique({ where: { id } });
     if (!row) throw new ServiceLineNotFoundError();
     return (await ServiceLineService.summaries([row], db))[0];
@@ -75,7 +76,7 @@ export class ServiceLineService {
 
   /** New line: names only; departments, people and templates start empty. */
   static async create(input: { name?: unknown; shortName?: unknown }, admin: Viewer, db: PrismaClient = Db.client): Promise<ServiceLineScope> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     const value = ServiceLine.parse(input);
     return db.$transaction(async (tx) => {
       await ServiceLineService.assertUnique(tx, value, null);
@@ -89,7 +90,7 @@ export class ServiceLineService {
 
   /** Edit name and short name (any line, including the default). */
   static async update(id: string, input: { name?: unknown; shortName?: unknown }, admin: Viewer, db: PrismaClient = Db.client): Promise<ServiceLineScope> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     const value = ServiceLine.parse(input);
     return db.$transaction(async (tx) => {
       const before = await ServiceLineService.load(tx, id);
@@ -116,7 +117,7 @@ export class ServiceLineService {
    * people lists and templates stay in the database and are hidden everywhere until it is restored.
    */
   static async softDelete(id: string, confirmName: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     await db.$transaction(async (tx) => {
       const row = await ServiceLineService.load(tx, id);
       if (row.isDefault) throw new ServiceLineValidationError({ _form: ServiceLineCopy.LOCK_TOOLTIP });
@@ -131,7 +132,7 @@ export class ServiceLineService {
 
   /** Restore a deleted line (from /admin/audit). Fails if an open line took its name or short name meanwhile. */
   static async restore(id: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     await db.$transaction(async (tx) => {
       const row = await ServiceLineService.load(tx, id);
       if (!row.deletedAt) return;
@@ -143,7 +144,7 @@ export class ServiceLineService {
 
   /** A line's contracts lead pick-list. Projects keep a stored lead that is later removed from the list. */
   static async setContractsLeads(id: string, leads: readonly unknown[], admin: Viewer, db: PrismaClient = Db.client): Promise<ServiceLineScope> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     const next = ServiceLine.parseContractsLeads(leads);
     return db.$transaction(async (tx) => {
       const row = await ServiceLineService.load(tx, id);
@@ -157,13 +158,13 @@ export class ServiceLineService {
 
   /** A line's owner or requester pick-list (Admin > People). Projects keep a stored name that is later removed. */
   static async setPeopleList(id: string, role: PeopleRole, names: readonly unknown[], admin: Viewer, db: PrismaClient = Db.client): Promise<ServiceLineScope> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     return db.$transaction(async (tx) => ServiceLineService.writePeopleList(tx, id, role, names, admin));
   }
 
   /** setPeopleList inside the caller's transaction (a rename also updates projects in the same transaction). */
   static async writePeopleList(tx: Tx, id: string, role: PeopleRole, names: readonly unknown[], admin: Viewer): Promise<ServiceLineScope> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     const next = ServiceLine.parseContractsLeads(names);
     const column = role === "owner" ? "owners" : "requesters";
     const row = await ServiceLineService.load(tx, id);
@@ -176,13 +177,13 @@ export class ServiceLineService {
 
   /** Recent changes to one line, newest first (admin only). */
   static async history(scope: Pick<ServiceLineScope, "id">, admin: Viewer, limit = 20, db: Pick<PrismaClient, "serviceLineHistory"> = Db.client): Promise<ServiceLineChange[]> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     const rows = await db.serviceLineHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: limit });
     return rows.map((r) => ({ serviceLineId: r.serviceLineId, action: r.action, oldValue: r.oldValue, newValue: r.newValue, changedAt: r.changedAt, changedBy: r.changedBy }));
   }
 
   private static async setArchived(id: string, archived: boolean, admin: Viewer, db: PrismaClient): Promise<void> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "admin.serviceLines");
     await db.$transaction(async (tx) => {
       const row = await ServiceLineService.load(tx, id);
       if (row.deletedAt) throw new ServiceLineNotFoundError();

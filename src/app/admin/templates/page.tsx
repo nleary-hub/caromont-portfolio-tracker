@@ -1,6 +1,7 @@
 import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { TemplatesEditor } from "@/components/TemplatesEditor";
@@ -66,7 +67,7 @@ async function templateAiNote(): Promise<string | null | undefined> {
 /** Admin-only milestone templates. Non-admins get a 404 so the route is not revealed. */
 export default async function AdminTemplatesPage() {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) notFound();
+  if (!viewer || !Permissions.can(viewer, "admin.templates")) notFound();
   const configured = Db.isConfigured();
   // Templates of the admin's active service line.
   const scope = await ServiceLineAccess.activeOrDefault(viewer);

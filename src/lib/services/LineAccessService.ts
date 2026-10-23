@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
@@ -105,7 +106,7 @@ export class LineAccessService {
 
   /** Every open line (default first, then A to Z) and every person, admins first then A to Z. */
   static async grid(viewer: Viewer | null, db: Pick<PrismaClient, "appUser" | "serviceLine"> = Db.client, env: Env = process.env): Promise<AccessGrid> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.view");
     const [lineRows, users] = await Promise.all([
       db.serviceLine.findMany({ where: { archivedAt: null, deletedAt: null }, include: ServiceLineAccess.INCLUDE }),
       db.appUser.findMany({ include: { access: { include: { departments: true } } } }),
@@ -153,9 +154,12 @@ export class LineAccessService {
 
   /** Check or uncheck one cell. Idempotent. The last-line confirm is the page's job; the server allows it. */
   static async setAccess(viewer: Viewer | null, emailIn: unknown, serviceLineId: unknown, on: boolean, db: PrismaClient = Db.client, env: Env = process.env): Promise<AccessResult> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.access.grant");
     const email = LineAccessService.normalize(emailIn);
     if (!email || typeof serviceLineId !== "string" || AdminPolicy.isAdmin(email, env)) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
+    if (!(await PermissionAssert.canManageAccount(viewer, email, db, env)) || !(await PermissionAssert.holdsLine(viewer, serviceLineId, db))) {
+      return { ok: false, message: LineAccessCopy.SAVE_ERROR };
+    }
     return db.$transaction(async (tx: Tx) => {
       const user = await tx.appUser.findUnique({ where: { email } });
       const line = await tx.serviceLine.findUnique({ where: { id: serviceLineId } });
@@ -176,7 +180,7 @@ export class LineAccessService {
 
   /** "Add user": an email that can sign in (ALLOWED_EMAILS), not listed yet; starts with no lines. */
   static async addUser(viewer: Viewer | null, emailIn: unknown, db: PrismaClient = Db.client, env: Env = process.env): Promise<AccessResult> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.user.add");
     const email = LineAccessService.normalize(emailIn);
     if (!LineAccessService.isValidEmail(email)) return { ok: false, message: LineAccessCopy.INVALID_EMAIL };
     const listedAdmin = AdminPolicy.fromEnv(env).exactEmails().includes(email) && AdminPolicy.isAdmin(email, env);

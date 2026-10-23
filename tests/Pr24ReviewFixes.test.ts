@@ -1,6 +1,6 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi, beforeEach } from "vitest";
 import { DisplayName } from "@/lib/auth/DisplayName";
 import { FiscalYearRows } from "@/lib/dashboard/FiscalYearRows";
 import { FiscalYearSections } from "@/lib/dashboard/FiscalYearSections";
@@ -17,6 +17,11 @@ import { ReportArchiveService } from "@/lib/services/ReportArchiveService";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
+
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
 
 type P = ProjectRecord & { createdAt: Date };
 const TODAY = "2026-09-27";

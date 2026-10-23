@@ -1,3 +1,4 @@
+import { Permissions } from "@/lib/permissions/Permissions";
 import { redirect } from "next/navigation";
 import { signOut, SIGN_IN_PATH } from "@/auth";
 import { loadProjectHistory } from "@/app/actions/history";
@@ -51,7 +52,7 @@ export class ClosedPageRoute {
     const today = DateOnly.today();
     const options = DepartmentFilter.optionsFor(scope);
     const data = await ClosedPageData.load(viewer, kind.status, today, scope);
-    const canRestore = viewer.isAdmin && kind.status === "Cancelled";
+    const canRestore = Permissions.can(viewer, "lifecycle.reopenCancelled") && kind.status === "Cancelled";
     return (
       <ClosedProjectsView
         // A line switch remounts the page (filters reset to the line's own).

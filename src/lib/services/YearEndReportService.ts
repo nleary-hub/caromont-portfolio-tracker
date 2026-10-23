@@ -2,7 +2,8 @@ import { createHash } from "node:crypto";
 import { DisplayName } from "@/lib/auth/DisplayName";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
-import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
+import { AdminPolicy, AdminRequiredError, type Viewer } from "@/lib/auth/AdminPolicy";
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
@@ -77,7 +78,7 @@ export class YearEndReportService {
   ): Promise<YearEndEntry> {
     FreezeGuard.assertAllowed();
     const name = DisplayName.nameOrNull(viewer.name, viewer.email);
-    AdminPolicy.assertAdmin(viewer);
+    if (!OwnerPolicy.isOwner(viewer)) throw new AdminRequiredError(); // Storing is the year-end archive: Owner only.
     const data = await YearEndReportService.data(scope, fiscalYear, db, now, categories);
     const by = DisplayName.of(name, viewer.email);
     const bytes = await YearEndRenderer.render(data, now, by);

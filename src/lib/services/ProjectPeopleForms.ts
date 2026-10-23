@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@/generated/prisma/client";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { Db } from "@/lib/db/Db";
@@ -32,7 +33,7 @@ export class ProjectPeopleForms {
    */
   static async setField(viewer: Viewer | null, projectId: string, field: string, value: string, db: PrismaClient = Db.client, scope?: ServiceLineScope, opts: { once?: boolean } = {}): Promise<PeopleFieldResult> {
     if (!ProjectService.isPeopleField(field)) return { ok: false, error: ProjectPeopleForms.UNKNOWN_FIELD };
-    if (!viewer?.isAdmin) return { ok: false, error: ProjectPeopleForms.NOT_AUTHORIZED };
+    if (!viewer || !Permissions.can(viewer, "project.edit")) return { ok: false, error: ProjectPeopleForms.NOT_AUTHORIZED };
     let text = String(value ?? "");
     try {
       const line = scope ?? (await ServiceLineAccess.activeFor(viewer, db));

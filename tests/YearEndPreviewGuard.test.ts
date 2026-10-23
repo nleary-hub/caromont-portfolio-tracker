@@ -20,6 +20,11 @@ const YEAR_END_NOTE = "Year-end reports are turned off on preview deployments.";
 const { ServiceLine } = await import("@/lib/domain/ServiceLine");
 const { generateYearEndReport } = await import("@/app/actions/reports");
 
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
+
 const NOW = new Date("2026-09-27T16:00:00Z");
 const ADMIN = { ...Factory.ADMIN, name: "Fictional Admin" };
 let fake: FakeDb;
@@ -86,7 +91,7 @@ describe("YearEndReportService.generate under VERCEL_ENV=preview", () => {
 
   it("the action keeps its earlier refusals (not admin, no categories) ahead of the guard", async () => {
     h.viewer = Factory.MEMBER as unknown as Viewer;
-    expect(await generateYearEndReport("FY27")).toEqual({ ok: false, message: "Not authorized." });
+    expect(await generateYearEndReport("FY27")).toEqual({ ok: false, message: "Not found." });
     h.viewer = Factory.ADMIN as unknown as Viewer;
     expect((await generateYearEndReport("FY27", [])).ok).toBe(false);
     expect(fake.state.yearEndReports).toHaveLength(0);
