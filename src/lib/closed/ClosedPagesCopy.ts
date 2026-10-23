@@ -38,7 +38,7 @@ export class ClosedPagesCopy {
   static readonly REOPEN_CONFIRM = "Reopen";
   static readonly REOPEN_ERROR = "Couldn't reopen the project. Try again.";
   static readonly REOPEN_REASON_LABEL = "Reason";
-  static readonly REOPEN_REASON_PLACEHOLDER = "Why is this project reopening?";
+  static readonly REOPEN_REASON_PLACEHOLDER = "Why are you reopening it?";
   static readonly REOPEN_REASON_REQUIRED = "Add a reason of up to 500 characters.";
   static readonly VIEW_ON_DASHBOARD = "View on dashboard";
 

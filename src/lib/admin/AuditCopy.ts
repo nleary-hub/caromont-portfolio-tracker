@@ -30,6 +30,7 @@ export class AuditCopy {
     "serviceLine.contracts_leads_changed": "Contracts leads changed",
     "serviceLine.owners_changed": "Service line owners changed",
     "serviceLine.requesters_changed": "Service line requesters changed",
+    "serviceLine.year_end_on_demand": "Year-end report downloaded",
     // Milestone templates (milestone_template_history)
     "template.template_created": "Milestone template added",
     "template.template_renamed": "Milestone template renamed",

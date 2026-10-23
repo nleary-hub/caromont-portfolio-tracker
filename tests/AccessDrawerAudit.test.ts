@@ -253,8 +253,9 @@ describe("Recent changes: labels and plain summaries", () => {
       expect(AuditText.change(ev(c)), c.field).toBe(c.change);
       expect(AuditText.change(ev(c))).not.toContain(".");
     }
-    // Every label in the map is used by the list (plus report colors from #42 and the project "completion" and "project_reopened" history rows).
-    expect(Object.keys(AuditCopy.LABELS).filter((k) => !codes.includes(k))).toEqual(["project_reopened", "completion", "reportColors.bar", "reportColors.band"]);
+    // Every label in the map is used by the list (plus report colors from #42, the project "completion" and "project_reopened"
+    // history rows, and on-demand year-end downloads, covered in YearEndOnDemand.test.ts).
+    expect(Object.keys(AuditCopy.LABELS).filter((k) => !codes.includes(k))).toEqual(["project_reopened", "completion", "serviceLine.year_end_on_demand", "reportColors.bar", "reportColors.band"]);
   });
 
   it("OLD / NEW use the same template, read plainly, and never show raw JSON or positions", () => {

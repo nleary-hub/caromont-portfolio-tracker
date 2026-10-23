@@ -22,6 +22,7 @@ import { DateOnly } from "@/lib/domain/DateOnly";
 import type { ArchiveEntry } from "@/lib/services/ReportArchiveService";
 import { ArchiveDeliveryText } from "@/lib/report/ArchiveDeliveryText";
 import { YearEndReportButton } from "@/components/YearEndReportButton";
+import { YearEndOnDemandButton } from "@/components/YearEndOnDemandButton";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
 import { YearEndCopy } from "@/lib/report/YearEndReportData";
 import { YearEndReportService } from "@/lib/services/YearEndReportService";
@@ -81,6 +82,11 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
               Generate PDF now
             </a>
             <span className="text-muted type-caption">Downloads a PDF of the current projects.</span>
+          </section>
+        )}
+        {data.yearEndYears && (
+          <section className="flex flex-wrap items-center gap-4 rounded-card border border-line bg-card px-4 py-3" data-testid="year-end-on-demand">
+            <YearEndOnDemandButton years={data.yearEndYears} current={FiscalYear.of(DateOnly.today()).label} />
           </section>
         )}
       </main>
