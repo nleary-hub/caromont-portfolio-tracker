@@ -13,6 +13,12 @@ import type { ClosedStatus } from "@/lib/report/ClosedProjects";
 import { MilestoneService } from "@/lib/services/MilestoneService";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 import { RestoreRules } from "@/lib/closed/RestoreRules";
+import { ReopenRules } from "@/lib/closed/ReopenRules";
+
+/** Reopen preview per completed project: the status it goes back to and the milestone that gets unchecked. */
+export interface ReopenPreview extends RestorePreview {
+  milestone: string | null;
+}
 
 /** Restore to active preview per cancelled project (admins only): the status it goes back to. */
 export interface RestorePreview {
@@ -25,6 +31,8 @@ export interface ClosedPageLoad {
   rows: DashboardFyRow[];
   /** Admins on the Cancelled page only: the Restore to active target per project. */
   restore: Record<string, RestorePreview> | null;
+  /** Completed page, with "Reopen completed projects" only: the Reopen preview per project. */
+  reopen?: Record<string, ReopenPreview> | null;
   error: string | null;
 }
 
@@ -42,7 +50,8 @@ export class ClosedPageData {
         db.project.findMany({ where: { archivedAt: null, status, ...ServiceLineAccess.projectWhere(scope) } }).then((r) => ProjectRows.fromDbAll(r)),
         db.reportSnapshot.findFirst({ where: ServiceLineAccess.where(scope), orderBy: { generatedAt: "desc" }, select: { generatedAt: true } }),
       ]);
-      const projects = MilestoneProgress.applyAll(stored, await MilestoneService.loadSteps(db, stored.map((p) => p.id)));
+      const steps = await MilestoneService.loadSteps(db, stored.map((p) => p.id));
+      const projects = MilestoneProgress.applyAll(stored, steps);
       const closed = VisibilityPolicy.candidates(projects, "dashboard");
       const ids = closed.map((p) => p.id);
       const [closedHistory, lastUpdates] = await Promise.all([
@@ -54,11 +63,26 @@ export class ClosedPageData {
       ]);
       const latestUpdates = lastUpdates.flatMap((g) => (g._max.changedAt ? [{ projectId: g.projectId, changedAt: g._max.changedAt, field: "update" }] : []));
       const rows = FiscalYearRows.build({ projects: closed, closedHistory, history: [], latestUpdates, previousSnapshotGeneratedAt: latest?.generatedAt ?? null, today });
-      return { rows, restore: Permissions.can(viewer, "lifecycle.reopenCancelled") && status === "Cancelled" ? ClosedPageData.restorePreviews(ids, closedHistory) : null, error: null };
+      const reopen = Permissions.can(viewer, "lifecycle.reopenCompleted") && status === "Complete" ? ClosedPageData.reopenPreviews(ids, closedHistory, steps) : null;
+      return { rows, restore: Permissions.can(viewer, "lifecycle.reopenCancelled") && status === "Cancelled" ? ClosedPageData.restorePreviews(ids, closedHistory) : null, reopen, error: null };
     } catch (e) {
       console.error("Failed to load closed projects", e);
       return { rows: [], restore: null, error: "Could not load projects from the database." };
     }
+  }
+
+  static reopenPreviews(
+    ids: readonly string[],
+    history: readonly { projectId: string; field: string; oldValue: string | null; newValue: string | null; changedAt: Date }[],
+    steps: readonly { projectId: string; name: string; done: boolean; position: number }[],
+  ): Record<string, ReopenPreview> {
+    const out: Record<string, ReopenPreview> = {};
+    for (const id of ids) {
+      const t = ReopenRules.target(history.filter((h) => h.projectId === id));
+      const last = steps.filter((s) => s.projectId === id && s.done).sort((a, b) => a.position - b.position).pop();
+      out[id] = { statusLabel: ProjectStatusInfo.label(t.status), fromHistory: t.fromHistory, milestone: last?.name ?? null };
+    }
+    return out;
   }
 
   static restorePreviews(ids: readonly string[], history: readonly { projectId: string; field: string; oldValue: string | null; newValue: string | null; changedAt: Date }[]): Record<string, RestorePreview> {

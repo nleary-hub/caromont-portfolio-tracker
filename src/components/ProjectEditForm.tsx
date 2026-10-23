@@ -85,6 +85,8 @@ export interface ProjectEditFormProps {
   onDiscard: () => void;
   /** Edit mode: lets the drawer flush the pending auto-save (close, Escape, outside click, another row). */
   handleRef?: Ref<ProjectEditFormHandle>;
+  /** Edit mode without "Change project status": the status shows read-only (the server refuses a change too). */
+  canChangeStatus?: boolean;
   /** Writing assistant for the update note: passed only when AI is on and configured and the viewer can edit. */
   ai?: AiNoteActions;
   /** With ai: the model is turned off under Models, so Draft and Fit show paused with the model-off note. */
@@ -141,6 +143,7 @@ export function ProjectEditForm({
   aiPaused = false,
   aiReview,
   handleRef,
+  canChangeStatus = true,
 }: ProjectEditFormProps) {
   const isNew = mode === "new";
   // Snapshot at open: a People autosave refreshes the page data but must not reset the form.
@@ -384,7 +387,16 @@ export function ProjectEditForm({
             />
           </Field>
           <Field field="status" label="Status" errors={shown("status")}>
-            {storedComplete ? (
+            {!isNew && !canChangeStatus && !storedComplete ? (
+              <>
+                <div id="pf-status" className={`${INPUT} flex items-center text-muted`} aria-readonly="true" data-testid="status-readonly">
+                  {ProjectStatusInfo.label(original.status as Parameters<typeof ProjectStatusInfo.label>[0])}
+                </div>
+                <p className="text-muted type-caption" data-testid="status-note">
+                  {CompletionCopy.STATUS_LOCKED_NOTE}
+                </p>
+              </>
+            ) : storedComplete ? (
               <>
                 <div id="pf-status" className={`${INPUT} flex items-center text-muted`} aria-readonly="true" data-testid="status-readonly">
                   {ProjectStatusInfo.label("Complete")}

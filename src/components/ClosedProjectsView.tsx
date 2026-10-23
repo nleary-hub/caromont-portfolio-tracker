@@ -12,8 +12,8 @@ import type { ServiceLineValue } from "@/lib/domain/ServiceLine";
 import { TopBarFit } from "@/lib/layout/TopBarFit";
 import { ClosedPageModel, type ClosedPageKind, type ClosedView } from "@/lib/closed/ClosedPageModel";
 import { ClosedPagesCopy as C } from "@/lib/closed/ClosedPagesCopy";
-import type { RestorePreview } from "@/lib/closed/ClosedPageData";
-import type { RestoreActionResult } from "@/app/actions/closed";
+import type { ReopenPreview, RestorePreview } from "@/lib/closed/ClosedPageData";
+import type { ReopenActionResult, RestoreActionResult } from "@/app/actions/closed";
 import { ReportFormat } from "@/lib/report/pdf/ReportFormat";
 import { ActionToast, RowFade, type ActionToastValue } from "./ActionToast";
 import { DepartmentsSelect, usePopover } from "./DashboardFilterControls";
@@ -57,6 +57,8 @@ export function ClosedProjectsView({
   limited = false,
   restore,
   restoreAction,
+  reopen = null,
+  reopenAction,
   historyAction,
   lineSlot,
   serviceLine,
@@ -76,6 +78,9 @@ export function ClosedProjectsView({
   /** Admins on the Cancelled page only (null otherwise: no menu column, no drawer button). */
   restore: Record<string, RestorePreview> | null;
   restoreAction?: (projectId: string) => Promise<RestoreActionResult>;
+  /** Completed page, with "Reopen completed projects" only (null otherwise: no menu column, no drawer button). */
+  reopen?: Record<string, ReopenPreview> | null;
+  reopenAction?: (projectId: string, reason: string) => Promise<ReopenActionResult>;
   historyAction?: HistoryLoader;
   lineSlot: ReactNode;
   /** The line's names: whether the top bar can step down to the short name (TopBarFit). */
@@ -105,6 +110,9 @@ export function ClosedProjectsView({
   const clearFilters = () => setView({ ...view, departments: [...options] });
   const selected = rows.find((r) => r.id === selectedId) ?? null;
   const canRestore = Boolean(restore && restoreAction && kind.status === "Cancelled");
+  const canReopen = Boolean(reopen && reopenAction && kind.status === "Complete");
+  const hasMenu = canRestore || canReopen;
+  const menuLabel = canReopen ? C.REOPEN : C.RESTORE;
   const confirmRow = rows.find((r) => r.id === confirmId) ?? null;
 
   const onRestored = (row: DashboardFyRow, r: Extract<RestoreActionResult, { ok: true }>) => {
@@ -113,6 +121,13 @@ export function ClosedProjectsView({
     RowFade.out(row.id);
     window.setTimeout(() => setRows((rs) => rs.filter((x) => x.id !== row.id)), RowFade.MS);
     setToast({ text: C.restoreToast(r.name, r.statusLabel), link: { href: "/", label: C.VIEW_ON_DASHBOARD } });
+  };
+  const onReopened = (row: DashboardFyRow, r: Extract<ReopenActionResult, { ok: true }>) => {
+    setConfirmId(null);
+    if (selectedId === row.id) setSelectedId(null);
+    RowFade.out(row.id);
+    window.setTimeout(() => setRows((rs) => rs.filter((x) => x.id !== row.id)), RowFade.MS);
+    setToast({ text: C.reopenToast(r.name, r.statusLabel), link: { href: "/", label: C.VIEW_ON_DASHBOARD } });
   };
 
   // A click on the page outside the read-only drawer closes it (same rules as the dashboard drawer).
@@ -143,7 +158,7 @@ export function ClosedProjectsView({
   const navActive = kind.status === "Complete" ? "completed" : "cancelled";
 
   const dateHeader = C.dateHeader(kind.status);
-  const span = canRestore ? 6 : 5;
+  const span = hasMenu ? 6 : 5;
 
   return (
     <div className="relative min-h-screen">
@@ -184,7 +199,7 @@ export function ClosedProjectsView({
               <col style={{ width: ClosedTableStyle.REQUESTER_W }} />
               <col style={{ width: ClosedTableStyle.DATE_W }} />
               <col style={{ width: ClosedTableStyle.FINAL_W }} />
-              {canRestore && <col style={{ width: ClosedTableStyle.MENU_W }} />}
+              {hasMenu && <col style={{ width: ClosedTableStyle.MENU_W }} />}
             </colgroup>
             <thead>
               <tr>
@@ -193,7 +208,7 @@ export function ClosedProjectsView({
                 <th scope="col" className={HEAD}>{C.REQUESTER}</th>
                 <th scope="col" className={HEAD}>{dateHeader}</th>
                 <th scope="col" className={HEAD}>{C.FINAL_UPDATE}</th>
-                {canRestore && (
+                {hasMenu && (
                   <th scope="col" className={HEAD}>
                     <span className="sr-only">{C.ROW_MENU_LABEL}</span>
                   </th>
@@ -231,7 +246,7 @@ export function ClosedProjectsView({
                       today={today}
                       selected={r.id === selectedId}
                       onSelect={() => setSelectedId(r.id)}
-                      menu={canRestore ? <RestoreMenu name={r.name} initialOpen={demo?.menuOpenFor === r.id} onRestore={() => setConfirmId(r.id)} /> : null}
+                      menu={hasMenu ? <RestoreMenu label={menuLabel} name={r.name} initialOpen={demo?.menuOpenFor === r.id} onRestore={() => setConfirmId(r.id)} /> : null}
                     />
                   ))}
                 </tbody>
@@ -251,9 +266,9 @@ export function ClosedProjectsView({
           peopleEditor={null}
           adminControls={null}
           headerAction={
-            canRestore ? (
-              <button type="button" onClick={() => setConfirmId(selected.id)} className={GHOST} data-testid="drawer-restore">
-                {C.RESTORE}
+            hasMenu ? (
+              <button type="button" onClick={() => setConfirmId(selected.id)} className={GHOST} data-testid={canReopen ? "drawer-reopen" : "drawer-restore"}>
+                {menuLabel}
               </button>
             ) : null
           }
@@ -261,6 +276,9 @@ export function ClosedProjectsView({
       )}
       {canRestore && confirmRow && restore?.[confirmRow.id] && (
         <RestoreDialog row={confirmRow} preview={restore[confirmRow.id]} action={restoreAction!} onCancel={() => setConfirmId(null)} onDone={(r) => onRestored(confirmRow, r)} />
+      )}
+      {canReopen && confirmRow && reopen?.[confirmRow.id] && (
+        <ReopenDialog row={confirmRow} preview={reopen[confirmRow.id]} action={reopenAction!} onCancel={() => setConfirmId(null)} onDone={(r) => onReopened(confirmRow, r)} />
       )}
       {toast && <ActionToast value={toast} onDone={() => setToast(null)} />}
     </div>
@@ -320,7 +338,7 @@ function ClosedRow({ row, today, selected, onSelect, menu }: { row: DashboardFyR
 }
 
 /** The row's ⋯ menu (Admin > People style) with its one item. */
-function RestoreMenu({ name, onRestore, initialOpen }: { name: string; onRestore: () => void; initialOpen?: boolean }) {
+function RestoreMenu({ label, name, onRestore, initialOpen }: { label: string; name: string; onRestore: () => void; initialOpen?: boolean }) {
   const { open, setOpen, rootRef } = usePopover();
   useEffect(() => {
     if (initialOpen) setOpen(true);
@@ -341,7 +359,7 @@ function RestoreMenu({ name, onRestore, initialOpen }: { name: string; onRestore
       {open && (
         <ul role="menu" className="vp-pop vp-list w-[160px] p-1 text-left">
           <li role="menuitem" tabIndex={0} className="cursor-pointer" onClick={run} onKeyDown={(e) => (e.key === "Enter" || e.key === " ") && run()}>
-            {C.RESTORE}
+            {label}
           </li>
         </ul>
       )}
@@ -408,6 +426,88 @@ function RestoreDialog({
             }
           >
             {C.RESTORE_CONFIRM}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+/** Reopen confirmation: the Restore dialog plus a required reason (1 to 500 characters, kept in the audit log). */
+function ReopenDialog({
+  row,
+  preview,
+  action,
+  onCancel,
+  onDone,
+}: {
+  row: DashboardFyRow;
+  preview: ReopenPreview;
+  action: (projectId: string, reason: string) => Promise<ReopenActionResult>;
+  onCancel: () => void;
+  onDone: (r: Extract<ReopenActionResult, { ok: true }>) => void;
+}) {
+  const [error, setError] = useState<string | null>(null);
+  const [reason, setReason] = useState("");
+  const [pending, start] = useTransition();
+  const cancel = useCallback(() => !pending && onCancel(), [pending, onCancel]);
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => e.key === "Escape" && cancel();
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [cancel]);
+  const trimmed = reason.trim();
+  const valid = trimmed.length >= 1 && trimmed.length <= 500;
+  return (
+    <div className="sl-scrim" onMouseDown={(e) => e.target === e.currentTarget && cancel()}>
+      <div role="alertdialog" aria-modal="true" aria-labelledby="reopen-title" aria-describedby="reopen-body" data-testid="reopen-dialog" className="flex w-[440px] flex-col gap-3 rounded-card border border-line bg-card px-5 py-4 shadow-[0_12px_32px_rgba(0,0,0,.45)]">
+        <h2 id="reopen-title" className="type-heading">
+          {C.reopenTitle(row.name)}
+        </h2>
+        <p id="reopen-body" className="type-table text-muted">
+          {C.reopenBody(preview.milestone, preview.statusLabel, preview.fromHistory)}
+        </p>
+        <label className="flex flex-col gap-1 type-table">
+          <span className="type-table-strong">{C.REOPEN_REASON_LABEL}</span>
+          <textarea
+            autoFocus
+            rows={3}
+            maxLength={500}
+            value={reason}
+            onChange={(e) => setReason(e.target.value)}
+            placeholder={C.REOPEN_REASON_PLACEHOLDER}
+            data-testid="reopen-reason"
+            className="rounded-control border border-line bg-input px-2 py-1.5 type-table"
+          />
+        </label>
+        {error && (
+          <p role="alert" className="text-danger type-caption">
+            {error}
+          </p>
+        )}
+        <div className="flex justify-end gap-2">
+          <button type="button" onClick={cancel} className={GHOST}>
+            {C.RESTORE_BACK}
+          </button>
+          <button
+            type="button"
+            disabled={pending || !valid}
+            className={PRIMARY}
+            data-testid="reopen-confirm"
+            onClick={() =>
+              start(async () => {
+                setError(null);
+                try {
+                  const r = await action(row.id, trimmed);
+                  if (r.ok) onDone(r);
+                  else setError(r.error);
+                } catch {
+                  setError(C.REOPEN_ERROR);
+                }
+              })
+            }
+          >
+            {C.REOPEN_CONFIRM}
           </button>
         </div>
       </div>

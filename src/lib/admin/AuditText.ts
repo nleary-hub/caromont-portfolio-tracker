@@ -124,7 +124,20 @@ export class AuditText {
     if (field === StartDate.HISTORY_FIELD) return StartDate.auditValue(stored);
     if (field === "hiddenFromDashboard" || field === "hiddenFromReport") return AuditText.generic(AuditText.parse(stored));
     if (field === "reviewed") return AuditText.reviewed(stored);
+    if (field === "project_reopened") return AuditText.reopened(stored);
     return AuditText.generic(AuditText.parse(stored));
+  }
+
+  /** A reopen audit row: "Back to On track. Unchecked Project complete. Reason: ..." (old side: the prior completion date). */
+  static reopened(stored: string | null): string | null {
+    const v = AuditText.parse(stored);
+    if (!AuditText.isObj(v)) return typeof v === "string" ? `Completed ${v}` : AuditText.generic(v);
+    const status = ProjectStatusInfo.isValid(v.restoredStatus) ? ProjectStatusInfo.label(v.restoredStatus as ProjectStatus) : "open";
+    const parts = [`Back to ${status}.`];
+    if (typeof v.milestoneName === "string") parts.push(`Unchecked ${v.milestoneName}.`);
+    if (typeof v.actorRole === "string" && v.actorRole) parts.push(`Role: ${v.actorRole}.`);
+    if (typeof v.reason === "string") parts.push(`Reason: ${v.reason}`);
+    return parts.join(" ");
   }
 
   /** A "reviewed" history value: {"at": ISO, "by": email} as "Sep 12, 2026, 11:00 AM ET by nick@...". */
