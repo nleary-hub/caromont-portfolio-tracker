@@ -1,5 +1,6 @@
 import type { PrismaClient } from "@/generated/prisma/client";
 import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { DisplayName } from "@/lib/auth/DisplayName";
@@ -94,11 +95,14 @@ export class UserAccountService {
     // No password is fine: the account itself lets them sign in with Google (SignInGate), allow list or not.
     const name = typeof input.name === "string" && input.name.trim() ? input.name.trim().slice(0, 80) : null;
     const lineIds = Array.isArray(input.lineIds) ? [...new Set(input.lineIds.filter((x): x is string => typeof x === "string"))] : [];
+    // Each capability the request uses is its own key (matrix 3.2). Checked again inside the transaction below.
+    if (lineIds.length && !Permissions.can(viewer, "people.access.grant", env)) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
+    if (createPassword && !Permissions.can(viewer, "people.user.password", env)) return { ok: false, message: PasswordCopy.SAVE_ERROR };
     const temporaryPassword = createPassword ? TemporaryPassword.generate() : undefined;
     const passwordHash = temporaryPassword ? await PasswordHasher.hash(temporaryPassword) : null;
 
     try {
-      return await UserAccountService.addUserTx(viewer, db, { email, name, lineIds, passwordHash, temporaryPassword }, hook, now);
+      return await UserAccountService.addUserTx(viewer, db, { email, name, lineIds, passwordHash, temporaryPassword }, hook, now, env);
     } catch (e) {
       if (e instanceof AddUserRejected) return { ok: false, message: e.message };
       throw e;
@@ -111,14 +115,24 @@ export class UserAccountService {
     input: { email: string; name: string | null; lineIds: string[]; passwordHash: string | null; temporaryPassword?: string },
     hook: AddUserGrantHook | undefined,
     now: Date,
+    env: Env,
   ): Promise<AccountResult> {
     const { email, name, lineIds, passwordHash, temporaryPassword } = input;
     return db.$transaction(async (tx) => {
+      // Every check runs before the first write, so a refused request leaves no account, grant or credential.
       if (await tx.appUser.findUnique({ where: { email } })) return { ok: false as const, message: LineAccessCopy.DUPLICATE_EMAIL };
+      // Strict rank: the new account (no role yet, so Viewer, or Admin when listed) must rank below the actor; the Owner may add anyone.
+      if (!(await PermissionAssert.canManageAccount(viewer, email, tx, env))) return { ok: false as const, message: LineAccessCopy.SAVE_ERROR };
       if (lineIds.length) {
+        if (!Permissions.can(viewer, "people.access.grant", env)) return { ok: false as const, message: LineAccessCopy.SAVE_ERROR };
         const open = await tx.serviceLine.findMany({ where: { id: { in: lineIds }, archivedAt: null, deletedAt: null } });
         if (open.length !== lineIds.length) return { ok: false as const, message: PasswordCopy.UNKNOWN_LINE };
+        // Directors and below may give access only on lines they have (admins and the Owner hold every line).
+        for (const serviceLineId of lineIds) {
+          if (!(await PermissionAssert.holdsLine(viewer, serviceLineId, tx))) return { ok: false as const, message: LineAccessCopy.SAVE_ERROR };
+        }
       }
+      if (passwordHash && !Permissions.can(viewer, "people.user.password", env)) return { ok: false as const, message: PasswordCopy.SAVE_ERROR };
       await tx.appUser.create({ data: { email, name, addedBy: viewer.email } });
       await tx.serviceLineAccessHistory.create({ data: { email, action: "user_added", changedBy: viewer.email } });
       for (const serviceLineId of lineIds) {
