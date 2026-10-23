@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { ServiceLineSlot } from "@/components/ServiceLineSlot";
@@ -32,7 +33,7 @@ class ServiceLineRows {
 /** Admin > Service lines. Non-admins get a 404 so the route is not revealed. */
 export default async function ServiceLinesPage({ searchParams }: { searchParams: Promise<{ new?: string; delete?: string }> }) {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) notFound();
+  if (!viewer || !Permissions.can(viewer, "admin.serviceLines")) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
   const [scope, lists, params] = await Promise.all([ServiceLineAccess.activeOrDefault(viewer), ServiceLineService.list(viewer), searchParams]);
 

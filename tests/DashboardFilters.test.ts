@@ -154,8 +154,8 @@ describe("admin Report contents form", () => {
     expect(ReportOptionsForm.parse({ departments: [], totalsGrid: "nope" })).toEqual({ departments: DepartmentFilter.all(), totalsGrid: "top" });
   });
 
-  it("is admin-only", async () => {
-    expect(await ReportOptionsForm.submit(Factory.MEMBER, { departments: ["EP"], totalsGrid: "top" }, {} as never)).toEqual({ ok: false, message: "Not authorized." });
-    expect(await ReportOptionsForm.submit(null, { departments: ["EP"], totalsGrid: "top" }, {} as never)).toEqual({ ok: false, message: "Not authorized." });
+  it("is Owner-only (\"Not found.\" for anyone else)", async () => {
+    expect(await ReportOptionsForm.submit(Factory.MEMBER, { departments: ["EP"], totalsGrid: "top" }, {} as never)).toEqual({ ok: false, message: "Not found." });
+    expect(await ReportOptionsForm.submit(null, { departments: ["EP"], totalsGrid: "top" }, {} as never)).toEqual({ ok: false, message: "Not found." });
   });
 });

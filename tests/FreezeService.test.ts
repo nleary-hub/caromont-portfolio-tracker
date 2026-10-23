@@ -10,6 +10,9 @@ import type { DeliveryRecord } from "@/lib/services/ReportDeliveryService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
 
+// Report options are Owner-only (Roles & Permissions): the fixture admin is the Owner here.
+beforeEach(() => { vi.stubEnv("OWNER_EMAIL", "admin@example.org"); });
+
 const actor = { changedBy: "nick.leary@example.org" };
 const base = { serviceArea: "Cath", owner: "Owner A", status: "OnTrack", nextMilestone: "M1" };
 const SECRET = "x".repeat(48);

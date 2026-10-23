@@ -13,6 +13,9 @@ import { ServiceLine, type ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
 import { ReportColorScheme } from "@/lib/report/ReportColorScheme";
 import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
+import { Permissions } from "@/lib/permissions/Permissions";
+import { OwnerLock } from "@/lib/permissions/OwnerLock";
+import { OwnerOnlyAudit } from "@/lib/permissions/OwnerOnlyAudit";
 
 export interface AuditProject {
   id: string;
@@ -110,7 +113,9 @@ export class AdminAuditService {
    * whatever the active line, so they can be restored.
    */
   static async load(viewer: Viewer | null, db: PrismaClient = Db.client, scope: Pick<ServiceLineScope, "id" | "name"> = ServiceLine.defaultScope()): Promise<AuditData> {
-    if (!viewer?.isAdmin) notFound();
+    if (!Permissions.can(viewer, "admin.audit")) notFound();
+    // L3: report display settings (and any other Owner-only event) are read only for the Owner.
+    const owner = OwnerLock.isOwnerViewer(viewer);
 
     // Small table; filtering in memory keeps one code path with VisibilityPolicy.
     const projects = await db.project.findMany({ where: ServiceLineAccess.where(scope) });
@@ -141,7 +146,7 @@ export class AdminAuditService {
       db.lineLayoutHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
       db.departmentHistory.findMany({ where: { serviceLineId: scope.id }, orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
       db.department.findMany({ where: { serviceLineId: scope.id, deletedAt: { not: null } }, orderBy: { deletedAt: "desc" } }),
-      db.reportOptionsHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }),
+      owner ? db.reportOptionsHistory.findMany({ where: ServiceLineAccess.where(scope), orderBy: { changedAt: "desc" }, take: AdminAuditService.EVENT_LIMIT }) : Promise.resolve([]),
     ]);
     // Department access that moved when a department was deleted (migration 0024), with people's display names.
     const accessMoves = await db.departmentAccessHistory.findMany({
@@ -162,7 +167,7 @@ export class AdminAuditService {
     const departmentNames = new Map(
       (await db.department.findMany({ where: { serviceLineId: scope.id }, select: { id: true, name: true } })).map((d) => [d.id, d.name]),
     );
-    const events: AuditEvent[] = [
+    const events: AuditEvent[] = OwnerOnlyAudit.visible([
       ...projectEvents.map((h) => ({
         kind: "project" as const,
         at: h.changedAt,
@@ -243,7 +248,7 @@ export class AdminAuditService {
         };
       }),
       ...optionsEvents.flatMap((h) => AdminAuditService.colorEvents(h)),
-    ]
+    ], owner)
       .sort((a, b) => b.at.getTime() - a.at.getTime())
       .slice(0, AdminAuditService.EVENT_LIMIT);
 

@@ -1,5 +1,7 @@
+import { Permissions } from "@/lib/permissions/Permissions";
 import type { PrismaClient } from "@/generated/prisma/client";
-import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
+import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { Db } from "@/lib/db/Db";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
@@ -37,7 +39,7 @@ export interface ContractsLeadRow {
  */
 export class PeopleService {
   static async contractsLeads(scope: Pick<ServiceLineScope, "id" | "contractsLeads">, admin: Viewer, db: Pick<PrismaClient, "project"> = Db.client): Promise<ContractsLeadRow[]> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "people.view");
     const rows = await db.project.findMany({ where: { archivedAt: null, contractsLead: { not: null }, ...ServiceLineAccess.where(scope) }, select: { contractsLead: true } });
     const count = (name: string) => rows.filter((r) => (r.contractsLead ?? "").toLowerCase() === name.toLowerCase()).length;
     // Shown A to Z like Owners and Requesters. The stored order is unchanged (display only).
@@ -46,14 +48,14 @@ export class PeopleService {
 
   /** Adds a name at the end of the list. Throws ContractsLeadValidationError with the field message. */
   static async addContractsLead(scope: Pick<ServiceLineScope, "id" | "contractsLeads">, raw: unknown, admin: Viewer, db: PrismaClient = Db.client): Promise<string> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "people.list.manage");
     const name = ContractsLeadRules.parse(raw, scope.contractsLeads);
     await ServiceLineService.setContractsLeads(scope.id, [...scope.contractsLeads, name], admin, db);
     return name;
   }
 
   static async removeContractsLead(scope: Pick<ServiceLineScope, "id" | "contractsLeads">, name: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "people.list.manage");
     const next = scope.contractsLeads.filter((n) => n !== name);
     if (next.length === scope.contractsLeads.length) throw new ContractsLeadValidationError(`${name} is not a contracts lead.`);
     await ServiceLineService.setContractsLeads(scope.id, next, admin, db);
@@ -64,7 +66,7 @@ export class PeopleService {
    * list A to Z. Counts ignore case and spacing and skip deleted projects.
    */
   static async lists(scope: PeopleScope, admin: Viewer, db: Pick<PrismaClient, "project"> = Db.client): Promise<PeopleLists> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "people.view");
     const rows = await db.project.findMany({
       where: { archivedAt: null, ...ServiceLineAccess.where(scope) },
       select: { owner: true, physicianChampion: true, requesterNotApplicable: true },
@@ -91,7 +93,7 @@ export class PeopleService {
 
   /** Adds a name to the owner or requester list (stored A to Z). Throws PeopleListValidationError with the field message. */
   static async addPerson(scope: PeopleScope, role: PeopleRole, raw: unknown, admin: Viewer, db: PrismaClient = Db.client): Promise<string> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "people.list.manage");
     const list = PeopleService.listOf(scope, role);
     const name = PeopleListRules.parse(role, raw, list);
     await ServiceLineService.setPeopleList(scope.id, role, PeopleService.sorted([...list, name]), admin, db);
@@ -103,7 +105,7 @@ export class PeopleService {
    * new name may differ only in case. Returns the new name and how many projects changed.
    */
   static async renamePerson(scope: PeopleScope, role: PeopleRole, name: string, raw: unknown, admin: Viewer, db: PrismaClient = Db.client): Promise<{ name: string; projects: number }> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "people.list.manage");
     const list = PeopleService.listOf(scope, role);
     if (!list.includes(name)) throw new PeopleListValidationError(PeopleListRules.notListed(role, name));
     const next = PeopleListRules.parse(role, raw, list, name);
@@ -118,7 +120,7 @@ export class PeopleService {
 
   /** Removes a name from the list. Projects keep it; the combobox shows it with "Not on list". */
   static async removePerson(scope: PeopleScope, role: PeopleRole, name: string, admin: Viewer, db: PrismaClient = Db.client): Promise<void> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "people.list.manage");
     const list = PeopleService.listOf(scope, role);
     const next = list.filter((n) => n !== name);
     if (next.length === list.length) throw new PeopleListValidationError(PeopleListRules.notListed(role, name));
@@ -131,7 +133,7 @@ export class PeopleService {
    * which shows "Not on list"). Blank, built-in and blocked names are skipped. Returns whether the list changed.
    */
   static async rememberPerson(scope: PeopleScope, role: PeopleRole, raw: string, viewer: Viewer, db: PrismaClient = Db.client): Promise<boolean> {
-    if (!viewer?.isAdmin) return false;
+    if (!Permissions.can(viewer, "people.list.add")) return false;
     const admin = viewer;
     const name = PeopleDirectory.normalizeName(raw);
     const list = PeopleService.listOf(scope, role);

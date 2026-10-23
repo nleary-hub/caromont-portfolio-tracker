@@ -26,6 +26,11 @@ const { default: ReportsPage } = await import("@/app/reports/page");
 const { ReportDeliveryService } = await import("@/lib/services/ReportDeliveryService");
 const { ArchiveDeliveryText } = await import("@/lib/report/ArchiveDeliveryText");
 
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
+
 const FIXTURE = readFileSync(path.resolve(__dirname, "fixtures/prod-shape-0015.sql"), "utf8");
 
 class Fx {

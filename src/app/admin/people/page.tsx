@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import Link from "next/link";
+import { Permissions } from "@/lib/permissions/Permissions";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { PeopleAdmin } from "@/components/PeopleAdmin";
@@ -19,7 +20,7 @@ export const dynamic = "force-dynamic";
 /** Admin > People: Access (every line) at the top, then the active line's Owners, Requesters and Contracts leads. Non-admins get a 404. */
 export default async function PeoplePage({ searchParams }: { searchParams: Promise<{ add?: string; remove?: string; rename?: string; role?: string; access?: string; menu?: string }> }) {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) notFound();
+  if (!viewer || !Permissions.can(viewer, "people.view")) notFound();
   if (!Db.isConfigured()) return <main className="p-6 text-danger">DATABASE_URL is not configured.</main>;
   const scope = await ServiceLineAccess.activeOrDefault(viewer);
   const [leads, lists, grid, params] = await Promise.all([PeopleService.contractsLeads(scope, viewer), PeopleService.lists(scope, viewer), LineAccessService.grid(viewer), searchParams]);

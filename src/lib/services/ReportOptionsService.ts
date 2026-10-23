@@ -1,6 +1,7 @@
 import type { DepartmentKey, DepartmentList } from "@/lib/domain/ServiceAreaInfo";
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
-import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
 import { Db } from "@/lib/db/Db";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
 import { TotalsGridPlacement, type TotalsGridMode } from "@/lib/domain/TotalsGridPlacement";
@@ -135,7 +136,7 @@ export class ReportOptionsService {
   }
 
   static async update(patch: Partial<ReportOptionsValue>, admin: Viewer, db: PrismaClient = Db.client, scope: Scope = ServiceLine.defaultScope()): Promise<ReportOptionsValue> {
-    AdminPolicy.assertAdmin(admin);
+    PermissionAssert.require(admin, "report.options");
     const options = DepartmentFilter.optionsFor(scope);
     return db.$transaction(async (tx) => {
       const before = await ReportOptionsService.get(tx, scope);

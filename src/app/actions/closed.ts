@@ -1,5 +1,6 @@
 "use server";
 
+import { Permissions } from "@/lib/permissions/Permissions";
 import { revalidatePath } from "next/cache";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
@@ -15,7 +16,7 @@ export type RestoreActionResult = { ok: true; name: string; statusLabel: string 
  */
 export async function restoreCancelledProject(projectId: string): Promise<RestoreActionResult> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, error: ClosedPagesCopy.RESTORE_ERROR };
+  if (!viewer || !Permissions.can(viewer, "lifecycle.reopenCancelled")) return { ok: false, error: ClosedPagesCopy.RESTORE_ERROR };
   if (typeof projectId !== "string" || !projectId) return { ok: false, error: ClosedPagesCopy.RESTORE_ERROR };
   try {
     const scope = await ServiceLineAccess.activeFor(viewer);

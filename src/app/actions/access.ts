@@ -1,5 +1,6 @@
 "use server";
 
+import { Permissions } from "@/lib/permissions/Permissions";
 import { revalidatePath } from "next/cache";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -28,24 +29,24 @@ class AccessAction {
 
 export async function setLineAccess(email: string, serviceLineId: string, on: boolean): Promise<AccessResult> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
+  if (!viewer || !Permissions.can(viewer, "people.access.grant")) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
   return AccessAction.run(() => LineAccessService.setAccess(viewer, email, serviceLineId, on === true), LineAccessCopy.SAVE_ERROR);
 }
 
 export async function addAccessUser(email: string): Promise<AccessResult> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
+  if (!viewer || !Permissions.can(viewer, "people.user.add")) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
   return AccessAction.run(() => LineAccessService.addUser(viewer, email), LineAccessCopy.SAVE_ERROR);
 }
 
 export async function setAllDepartments(email: string, serviceLineId: string, on: boolean): Promise<AccessResult> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
+  if (!viewer || !Permissions.can(viewer, "people.access.grant")) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
   return AccessAction.run(() => DepartmentAccessService.setAll(viewer, email, serviceLineId, on === true), LineAccessCopy.SAVE_ERROR);
 }
 
 export async function setDepartmentAccess(email: string, serviceLineId: string, departmentId: string, on: boolean): Promise<AccessResult> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
+  if (!viewer || !Permissions.can(viewer, "people.access.grant")) return { ok: false, message: LineAccessCopy.SAVE_ERROR };
   return AccessAction.run(() => DepartmentAccessService.setDepartment(viewer, email, serviceLineId, departmentId, on === true), LineAccessCopy.SAVE_ERROR);
 }

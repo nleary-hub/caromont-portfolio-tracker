@@ -1,6 +1,6 @@
 import { createElement } from "react";
 import { renderToStaticMarkup } from "react-dom/server";
-import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi, beforeEach } from "vitest";
 import type { PrismaClient } from "@/generated/prisma/client";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AdminButtonStyles } from "@/lib/admin/AdminButtonStyles";
@@ -13,6 +13,11 @@ import { ProjectService } from "@/lib/services/ProjectService";
 import { ReportArchiveService } from "@/lib/services/ReportArchiveService";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
+
+// Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
+beforeEach(() => {
+  vi.stubEnv("OWNER_EMAIL", "admin@example.org");
+});
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }), usePathname: () => "/" }));
 vi.mock("@/app/actions/departments", () => ({

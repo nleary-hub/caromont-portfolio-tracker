@@ -1,5 +1,6 @@
 "use server";
 
+import { Permissions } from "@/lib/permissions/Permissions";
 import { revalidatePath } from "next/cache";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { DashboardSettingsService } from "@/lib/services/DashboardSettingsService";
@@ -13,7 +14,7 @@ export async function setGlobalDashboardHeartbeat(
   on: boolean,
 ): Promise<boolean | null> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin || typeof on !== "boolean") return null;
+  if (!viewer || !Permissions.can(viewer, "admin.settings") || typeof on !== "boolean") return null;
   try {
     const saved = await DashboardSettingsService.setHeartbeat(viewer, on);
     revalidatePath("/");
@@ -33,7 +34,7 @@ export async function setGlobalHideChangedTag(
   on: boolean,
 ): Promise<boolean | null> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin || typeof on !== "boolean") return null;
+  if (!viewer || !Permissions.can(viewer, "admin.settings") || typeof on !== "boolean") return null;
   try {
     const saved = await DashboardSettingsService.setHideChangedTag(viewer, on);
     revalidatePath("/");

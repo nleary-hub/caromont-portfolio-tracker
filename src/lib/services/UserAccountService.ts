@@ -1,4 +1,5 @@
 import type { PrismaClient } from "@/generated/prisma/client";
+import { PermissionAssert } from "@/lib/permissions/PermissionAssert";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { DisplayName } from "@/lib/auth/DisplayName";
@@ -42,7 +43,7 @@ export type AccountResult = { ok: true; message: string; temporaryPassword?: str
  */
 export class UserAccountService {
   static async statuses(viewer: Viewer | null, emails: string[], db: Pick<PrismaClient, "passwordCredential" | "passwordSignInAttempt" | "signInBlock"> = Db.client, now: Date = new Date()): Promise<Record<string, PasswordStatus>> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.view");
     const [creds, attempts, blocks] = await Promise.all([
       db.passwordCredential.findMany({ where: { email: { in: emails } } }),
       db.passwordSignInAttempt.findMany({ where: { email: { in: emails } } }),
@@ -61,7 +62,7 @@ export class UserAccountService {
    * with addedBy). Turned off is a separate tag, so it isn't applied here. Used for the Access grid's method tags.
    */
   static async googleSignIn(viewer: Viewer | null, emails: string[], db: Pick<PrismaClient, "appUser"> = Db.client, env: Env = process.env): Promise<Record<string, boolean>> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.view");
     const users = emails.length ? await db.appUser.findMany({ where: { email: { in: emails } }, select: { email: true, addedBy: true } }) : [];
     const added = new Set(users.filter((u) => Boolean(u.addedBy)).map((u) => u.email));
     return Object.fromEntries(emails.map((e) => [e, EmailAllowlist.isAllowed(e, env) || added.has(e)]));
@@ -85,7 +86,7 @@ export class UserAccountService {
   }
 
   static async addUser(viewer: Viewer | null, input: AddUserInput, db: AccountDb = Db.client as unknown as AccountDb, env: Env = process.env, hook?: AddUserGrantHook, now: Date = new Date()): Promise<AccountResult> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.user.add");
     const email = PasswordSignInService.normalize(input.email);
     if (!PasswordSignInService.isValidEmail(email)) return { ok: false, message: LineAccessCopy.INVALID_EMAIL };
     if (AdminPolicy.fromEnv(env).exactEmails().includes(email)) return { ok: false, message: LineAccessCopy.DUPLICATE_EMAIL };
@@ -139,8 +140,9 @@ export class UserAccountService {
    * an app_user row if they have none yet.
    */
   static async resetPassword(viewer: Viewer | null, emailIn: unknown, db: AccountDb = Db.client as unknown as AccountDb, env: Env = process.env, now: Date = new Date()): Promise<AccountResult> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.user.password");
     const email = PasswordSignInService.normalize(emailIn);
+    if (!(await PermissionAssert.canManageAccount(viewer, email, db, env))) return { ok: false, message: PasswordCopy.SAVE_ERROR };
     if (!PasswordSignInService.isValidEmail(email)) return { ok: false, message: LineAccessCopy.INVALID_EMAIL };
     const listedAdmin = AdminPolicy.fromEnv(env).exactEmails().includes(email);
     const temporaryPassword = TemporaryPassword.generate();
@@ -162,8 +164,9 @@ export class UserAccountService {
   }
 
   static async unlock(viewer: Viewer | null, emailIn: unknown, db: AccountDb = Db.client as unknown as AccountDb, now: Date = new Date()): Promise<AccountResult> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.user.password");
     const email = PasswordSignInService.normalize(emailIn);
+    if (!(await PermissionAssert.canManageAccount(viewer, email, db))) return { ok: false, message: PasswordCopy.SAVE_ERROR };
     return db.$transaction(async (tx) => {
       await tx.passwordSignInAttempt.deleteMany({ where: { email } });
       await tx.passwordCredentialHistory.create({ data: { email, action: "unlocked", changedAt: now, changedBy: viewer.email } });
@@ -177,10 +180,11 @@ export class UserAccountService {
    * line access are kept. Works for anyone in the grid, with or without a password. You can't turn yourself off.
    */
   static async setEnabled(viewer: Viewer | null, emailIn: unknown, on: boolean, db: AccountDb = Db.client as unknown as AccountDb, now: Date = new Date()): Promise<AccountResult> {
-    AdminPolicy.assertAdmin(viewer);
+    PermissionAssert.require(viewer, "people.user.signIn");
     const email = PasswordSignInService.normalize(emailIn);
     if (!PasswordSignInService.isValidEmail(email)) return { ok: false, message: LineAccessCopy.INVALID_EMAIL };
     if (!on && email === PasswordSignInService.normalize(viewer.email)) return { ok: false, message: PasswordCopy.NOT_SELF };
+    if (!(await PermissionAssert.canManageAccount(viewer, email, db))) return { ok: false, message: PasswordCopy.SAVE_ERROR };
     return db.$transaction(async (tx) => {
       if (on) await tx.signInBlock.deleteMany({ where: { email } });
       else await tx.signInBlock.upsert({ where: { email }, create: { email, blockedAt: now, blockedBy: viewer.email }, update: {} });

@@ -4,6 +4,8 @@ import { revalidatePath } from "next/cache";
 import { StoredPdfCopy, StoredPdfMissingError } from "@/lib/report/StoredPdf";
 import { AdminPolicy } from "@/lib/auth/AdminPolicy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
+import { PermissionGate } from "@/lib/permissions/PermissionGate";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { FreezeDisabledError } from "@/lib/report/FreezeGuard";
 import { YearEndPreviewCopy } from "@/lib/report/YearEndPreviewCopy";
@@ -17,10 +19,10 @@ import { YearEndCategories, YearEndCopy } from "@/lib/report/YearEndReportData";
 
 export type FreezeNowState = { ok: boolean; message: string } | null;
 
-/** Admin "Freeze now" (manual backstop for the biweekly cron). Re-checks ADMIN_EMAILS itself. */
+/** Owner "Freeze now" (manual backstop for the biweekly cron). Anyone else gets the generic "Not found." (L4). */
 export async function freezeNow(): Promise<FreezeNowState> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, message: "Not authorized." };
+  if (!OwnerPolicy.isOwner(viewer)) return { ok: false, message: PermissionGate.NOT_FOUND };
   try {
     AdminPolicy.assertAdmin(viewer);
     // Freeze is the scheduled report: always the default line (CVPSL), whatever line the admin has open.
@@ -36,10 +38,10 @@ export async function freezeNow(): Promise<FreezeNowState> {
   }
 }
 
-/** Admin report freeze options (applies to the next freeze and to drafts). */
+/** Owner report freeze options (applies to the next freeze and to drafts). */
 export async function setShowKeyPageForm(form: FormData): Promise<void> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return;
+  if (!OwnerPolicy.isOwner(viewer)) return;
   try {
     const scope = await ServiceLineAccess.activeFor(viewer);
     const totalsGrid = form.get("totalsGrid");
@@ -59,10 +61,10 @@ export async function setShowKeyPageForm(form: FormData): Promise<void> {
   }
 }
 
-/** Admin "Report" settings: departments in report and totals grid placement (applies to the next freeze and to drafts). */
+/** Owner "Report" settings: departments in report and totals grid placement (applies to the next freeze and to drafts). */
 export async function saveReportOptions(_prev: ReportOptionsFormState, form: FormData): Promise<ReportOptionsFormState> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, message: ReportOptionsForm.NOT_AUTHORIZED };
+  if (!OwnerPolicy.isOwner(viewer)) return { ok: false, message: PermissionGate.NOT_FOUND };
   const scope = await ServiceLineAccess.activeFor(viewer);
   const state = await ReportOptionsForm.submit(viewer, { departments: form.getAll("departments"), totalsGrid: form.get("totalsGrid"), waitingOnField: form.get("waitingOnField"), showWaitingOn: form.get("showWaitingOn") }, undefined, scope);
   if (state?.ok) {
@@ -72,10 +74,10 @@ export async function saveReportOptions(_prev: ReportOptionsFormState, form: For
   return state;
 }
 
-/** Admin Report colors (department bars and the page 1 title band) of the active line. */
+/** Owner Report colors (department bars and the page 1 title band) of the active line. */
 export async function saveReportColors(_prev: ReportColorsFormState, form: FormData): Promise<ReportColorsFormState> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, message: ReportOptionsForm.NOT_AUTHORIZED };
+  if (!OwnerPolicy.isOwner(viewer)) return { ok: false, message: PermissionGate.NOT_FOUND };
   const scope = await ServiceLineAccess.activeFor(viewer);
   const state = await ReportColorsForm.submit(viewer, { bar: form.get("bar"), barHex: form.get("barHex"), band: form.get("band"), bandHex: form.get("bandHex") }, undefined, scope);
   if (state?.ok) {
@@ -88,12 +90,13 @@ export async function saveReportColors(_prev: ReportColorsFormState, form: FormD
 export type YearEndActionResult = { ok: true; id: string; fileName: string } | { ok: false; message: string };
 
 /**
- * Admin "Year-end report": render and store the PDF for the active line (never emailed or scheduled).
+ * Owner "Year-end report": render and store the PDF for the active line (never emailed or scheduled).
  * `categories`: the categories to include, each as a section, header total and grid column (any fiscal year); missing = all three; invalid or empty is refused.
  */
 export async function generateYearEndReport(fiscalYear: string, categories?: unknown): Promise<YearEndActionResult> {
   const viewer = await CurrentViewer.get();
-  if (!viewer?.isAdmin) return { ok: false, message: "Not authorized." };
+  // The storing path is the year-end archive (report.yearEnd.view): Owner only, "Not found." for anyone else.
+  if (!OwnerPolicy.isOwner(viewer)) return { ok: false, message: PermissionGate.NOT_FOUND };
   const selected = YearEndCategories.parse(categories);
   if (!selected) return { ok: false, message: YearEndCopy.CATEGORIES_NONE };
   try {

@@ -1,5 +1,6 @@
 "use server";
 
+import { Permissions } from "@/lib/permissions/Permissions";
 import { revalidatePath } from "next/cache";
 import { LineAccessCopy } from "@/lib/access/LineAccessCopy";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
@@ -14,7 +15,7 @@ import { UserAccountService, type AccountResult } from "@/lib/services/UserAccou
 class AdminAction {
   static async run(work: (viewer: NonNullable<Awaited<ReturnType<typeof CurrentViewer.get>>>) => Promise<AccountResult>, failure: string): Promise<AccountResult> {
     const viewer = await CurrentViewer.get();
-    if (!viewer?.isAdmin) return { ok: false, message: failure };
+    if (!viewer || !Permissions.can(viewer, "people.view")) return { ok: false, message: failure };
     try {
       const result = await work(viewer);
       if (result.ok) {

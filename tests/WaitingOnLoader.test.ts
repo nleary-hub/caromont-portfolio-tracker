@@ -1,12 +1,15 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { ReportDataLoader } from "@/lib/report/ReportDataLoader";
 import { WaitingOnLoader } from "@/lib/report/WaitingOnLoader";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
+
+// Report options are Owner-only (Roles & Permissions): the fixture admin is the Owner here.
+beforeEach(() => { vi.stubEnv("OWNER_EMAIL", "admin@example.org"); });
 
 // 1c loader (CTO, Oct 17, 2026): every open Blocked-by dependency (name, plus note) and every open external blocker. Example data only.
 const actor = { changedBy: "admin@example.org" };

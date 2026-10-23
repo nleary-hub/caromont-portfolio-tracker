@@ -1,3 +1,4 @@
+import { Permissions } from "@/lib/permissions/Permissions";
 import { MilestoneService } from "@/lib/services/MilestoneService";
 import type { PrismaClient, ProjectHistory } from "@/generated/prisma/client";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
@@ -17,7 +18,7 @@ export class ProjectHistoryService {
   static async forProject(projectId: string, viewer: Viewer, db: PrismaClient = Db.client): Promise<ProjectHistory[]> {
     const project = await db.project.findUnique({ where: { id: projectId } });
     if (!project) return [];
-    if (viewer.isAdmin) {
+    if (Permissions.can(viewer, "project.history.full")) {
       const all = await db.projectHistory.findMany({ where: { projectId } });
       return ProjectHistoryService.newestFirst(all);
     }
@@ -49,7 +50,7 @@ export class ProjectHistoryService {
     if (scope && (project.serviceLineId ?? ServiceLine.DEFAULT_ID) !== scope.id) return empty;
     // Department-level access: a project outside the viewer's departments is treated as not found.
     if (scope && !DepartmentAccess.allows(scope, project.departmentId)) return empty;
-    if (!viewer.isAdmin) {
+    if (!Permissions.can(viewer, "project.history.full")) {
       const settings = await ViewSettingsService.get("dashboard", db);
       if (!VisibilityPolicy.isViewable(project, settings)) return empty;
     }
