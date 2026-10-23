@@ -554,9 +554,16 @@ export class ProjectService {
       );
       if (saved.changed) {
         try {
-          // Completion rules first: reopening puts the status back to On track before the next-milestone check runs.
-          await ProjectService.applyCompletion(tx, existing, existing, saved, actor, at);
-          await ProjectService.updateInTx(tx, id, {}, actor, "form", { mirror: saved.mirror, at }, scope);
+          if (existing.status === "Complete") {
+            // Unchecking a Complete project's step reopens it: write the next milestone first, then the status. The
+            // Project CHECK constraint needs a next milestone on an active status, and a Complete project may have none.
+            const mirrored = await ProjectService.updateInTx(tx, id, {}, actor, "form", { mirror: saved.mirror, at }, scope);
+            await ProjectService.applyCompletion(tx, existing, mirrored, saved, actor, at);
+          } else {
+            // Completion rules first: checking the last step sets Complete before the next-milestone check runs.
+            await ProjectService.applyCompletion(tx, existing, existing, saved, actor, at);
+            await ProjectService.updateInTx(tx, id, {}, actor, "form", { mirror: saved.mirror, at }, scope);
+          }
         } catch (e) {
           // The status needs a next milestone (e.g. deleting the last step of an On track project).
           if (e instanceof ProjectValidationError && e.errors.nextMilestone) {
