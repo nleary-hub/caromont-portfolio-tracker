@@ -32,7 +32,7 @@ const KEY_FIXTURES = [
   j("xai", "-", "A1b2C3d4E5f6G7h8"), j("sk", "-or-v1-", "0123456789abcdef0123456789abcdef0123456789abcdef"), "A".repeat(32), j("model ", "sk", "-TEST", "0001abcd", " tail"),
 ];
 
-/** Characters JS \s matches and the Postgres [[:space:]] class does not (measured by the full sweep on PGlite, C.UTF-8): the app is stricter there. */
+/** Characters the app class [\s\u0085] matches and the Postgres [[:space:]] class does not, as measured by the full sweep on PGlite 17.5 (C.UTF-8): the app is stricter there. This set depends on the engine and locale (Postgres 17.10 C.UTF-8 gives U+0085, U+00A0, U+2007, U+202F, U+FEFF instead), and is pinned here for the engine this test runs on. */
 const KNOWN_APP_STRICTER = ["\u00a0", "\u1680", "\u2007", "\u202f", "\ufeff"];
 
 /** Seeded generator: the same synthetic keys every run, none of them real. */
@@ -192,7 +192,7 @@ describe("parity with the Postgres CHECK constraints on a shared corpus (FG32): 
       if (!app && err === null) appStricter.push(JSON.stringify(row.text));
     }
     // The only texts the app refuses and Postgres accepts: "Bearer", one of the five spaces that JS \s matches and the Postgres
-    // class does not, then a token. Safe direction. (U+0085 is NOT here: both sides refuse it, which is the C1 fix.)
+    // class does not, then a token. Safe direction. (On PGlite 17.5 U+0085 is not in this list because both sides refuse it; on Postgres 17.10 it would be, since that engine does not treat it as a space. The set depends on the engine and locale.)
     console.info(`app stricter than Postgres on ${appStricter.length} history rows: ${appStricter.map((t) => t.replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)).join(" ")}`);
     expect(appStricter.sort()).toEqual(KNOWN_APP_STRICTER.map((cp) => JSON.stringify(bearerWith(cp))).sort());
   }, 120_000);
@@ -229,7 +229,7 @@ describe("parity with the Postgres CHECK constraints on a shared corpus (FG32): 
     expect(stricter.sort()).toEqual(KNOWN_APP_STRICTER.flatMap((cp) => ["rule3", "urlclass"].map((l) => `${l} U+${cp.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`)).sort());
   }, 300_000);
 
-  it("the Bearer rule on the named whitespace rows, against real Postgres: U+0085 is refused by both sides; the five JS-only spaces are accepted by Postgres and refused by the app", async () => {
+  it("the Bearer rule on the named whitespace rows, on the engine this test runs on (PGlite 17.5, C.UTF-8): the app class covers both engines on purpose, and which rows the app is stricter on depends on the engine and locale", async () => {
     const bearerWith = (cp: string) => j("Bear", "er", cp, "abcdefgh12");
     const rows: Record<string, { app: boolean; postgres: boolean }> = {};
     for (const [name, cp] of [["U+0085", "\u0085"], ["U+00A0", "\u00a0"], ["U+1680", "\u1680"], ["U+2007", "\u2007"], ["U+202F", "\u202f"], ["U+FEFF", "\ufeff"], ["space", " "], ["tab", "\t"], ["newline", "\n"]] as const) {

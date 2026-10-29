@@ -15,15 +15,18 @@
  *
  * The regular expressions use NO u, g or y flag (a g or y flag makes .test() remember a position between calls, and a u
  * flag changes how a pattern is read). The only difference from the SQL text is the space class: the SQL has [[:space:]],
- * the app has the explicit class [\s\u0085] (rule 3, and the same class in the source link check). Why explicit: on PGlite
- * (Postgres 17.5, locale C.UTF-8) [[:space:]] matches U+0085 (next line) but JS \s does not, so a bare \s would ACCEPT
- * "Bearer", U+0085, "abcdefgh12" while the database refuses it. That is the one direction that is never allowed
- * (the app must never accept what the database refuses). The reverse is allowed and listed by the parity test: JS \s also
- * matches U+00A0, U+1680, U+2007, U+202F and U+FEFF, which the Postgres class does not, so the app is stricter there.
- * A sweep of every code point found no other difference. LOCALE CAVEAT: this was measured on PGlite only. The Neon
- * database may use another locale and may treat other characters as space, so this is a dry-run item: run the same sweep
- * on a Neon branch before the merge. The app may refuse what the database accepts. It must never accept what the
- * database refuses.
+ * the app has the explicit class [\s\u0085] (rule 3, and the same class in the source link check). Why explicit: what the
+ * Postgres [[:space:]] class matches depends on the engine build and the locale, and JS \s does not match the same set. So
+ * the app class is a deliberate superset (JS \s plus U+0085), which covers both engines measured so far on purpose:
+ *   - PGlite 17.5 (C.UTF-8): [[:space:]] matches U+0085 and not U+1680. A bare \s would have ACCEPTED "Bearer", U+0085,
+ *     "abcdefgh12" there while the database refuses it.
+ *   - Postgres 17.10 (libc, C.UTF-8, the QA scratch cluster): the reverse. U+0085 is NOT a space and U+1680 IS.
+ * The direction that is never allowed is the app accepting what the database refuses. The reverse is allowed: where JS \s
+ * (or U+0085) matches and the database class does not, the app is stricter. That app-stricter set depends on the engine:
+ * PGlite 17.5 gives U+00A0, U+1680, U+2007, U+202F, U+FEFF; Postgres 17.10 C.UTF-8 gives U+0085, U+00A0, U+2007, U+202F,
+ * U+FEFF. LOCALE CAVEAT: the Neon database may use another locale and may treat other characters as space (for example
+ * U+180E or the U+200B family, which neither measured engine does), so the sweep must still be run on a Neon branch
+ * before the merge. The app may refuse what the database accepts. It must never accept what the database refuses.
  *
  * It is a backstop, not a guarantee (a short or oddly shaped key passes). It never returns or logs the text it was given,
  * only the name of the rule that fired.
