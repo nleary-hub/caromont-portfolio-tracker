@@ -156,13 +156,18 @@ describe("routing at call time", () => {
     expect(db.featureRows.find((r) => r.feature === "meeting_brief")?.model).toBe("gpt-6.1-sol");
   });
 
-  it("voice chat's Live backend uses the command bar model when it is on, else the AI settings model", async () => {
+  it("voice chat's Live backend follows Quick capture (its own model, else the model Quick capture runs on), and stops when that is not an enabled OpenAI chat model", async () => {
     const db = await setup();
-    expect(await AiVoiceChatService.backendModel(db as never, "gpt-6-luna")).toBe("gpt-6.1-sol");
+    const settings = { provider: "openai", model: "gpt-6-luna" };
+    expect(await AiVoiceChatService.backendModel(db as never, settings)).toBe("gpt-6.1-sol");
     db.models = db.models.map((m) => (m.id === "gpt-6.1-sol" ? { ...m, enabled: false } : m));
-    expect(await AiVoiceChatService.backendModel(db as never, "gpt-6-luna")).toBe("gpt-6-luna");
+    expect(await AiVoiceChatService.backendModel(db as never, settings)).toBe("gpt-6-luna");
     db.featureRows = [];
-    expect(await AiVoiceChatService.backendModel(db as never, "gpt-6-luna")).toBe("gpt-6-luna");
+    expect(await AiVoiceChatService.backendModel(db as never, settings)).toBe("gpt-6-luna");
+    // Stopped state (MK1): Quick capture runs on a model that is off, or not on OpenAI.
+    expect(await AiVoiceChatService.backendModel(db as never, { provider: "openai", model: "gpt-6.1-sol" })).toBeNull();
+    expect(await AiVoiceChatService.backendModel(db as never, { provider: "azure_openai", model: "gpt-6-luna" })).toBeNull();
+    expect(await AiVoiceChatService.backendModel(db as never, null)).toBeNull();
   });
 });
 

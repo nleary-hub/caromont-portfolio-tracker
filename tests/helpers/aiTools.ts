@@ -3,6 +3,7 @@ import { expect } from "vitest";
 import type { FetchLike } from "@/lib/ai/AiProviderClient";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { AiSettingsService } from "@/lib/services/AiSettingsService";
+import { AiProviderKeyService, type AiProviderKeyDb } from "@/lib/services/AiProviderKeyService";
 import { FakeToolsDb } from "./FakeToolsDb";
 import { Factory } from "./factories";
 
@@ -31,6 +32,8 @@ export async function toolsSetup() {
   db.toolProjects.push({ id: B, serviceLineId: SCOPE.id, name: "Sample Lab move", status: "AtRisk", nextMilestone: null, dueDate: null, targetCompletion: null, note: null });
   db.toolProjects.push({ id: "20000000-0000-4000-8000-000000000001", serviceLineId: "20000000-0000-4000-8000-0000000000ff", name: "Other line project", status: "OnTrack", nextMilestone: null, dueDate: null, targetCompletion: null, note: null });
   expect(await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: FIELDS, newKey: "sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" }, ENV)).toEqual({ ok: true });
+  // Item 2: the key registry already holds the OpenAI key (the one-time copy of the legacy key), as after migration.
+  await AiProviderKeyService.ensureOpenAiCopied(db as unknown as AiProviderKeyDb, ENV);
   db.writes = [];
   return db;
 }

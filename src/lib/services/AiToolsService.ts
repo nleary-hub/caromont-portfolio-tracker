@@ -16,6 +16,7 @@ import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
+import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 import { AiWritingService, type AiUsageRow } from "./AiWritingService";
 import { PortfolioContextService } from "./PortfolioContextService";
@@ -354,8 +355,9 @@ export class AiToolsService {
     if (!(await AiModelService.featureOn(db, "dictation", env))) return { ok: false, message: AiToolsCopy.FEATURE_OFF };
     const audio = args.audio as Blob | null;
     if (!audio || typeof audio !== "object" || typeof audio.size !== "number" || typeof audio.type !== "string" || !AiTranscriptionClient.acceptable(audio.type, audio.size)) return { ok: false, message: AiToolsCopy.DICTATION_FAILED };
-    const row = await AiSettingsService.row(db, env).catch(() => null);
-    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    const row = await AiSettingsService.storedRow(db).catch(() => null);
+    // Item 2: dictation runs on the OpenAI key from the key registry, never the legacy ai_settings copy. No key = AI off.
+    const saved = row?.enabled ? await AiProviderKeyService.openAiRuntime(db, "", env) : null;
     if (!saved) return { ok: false, message: AiToolsCopy.aiOff(env) };
     const model = await AiModelService.featureModel(db, "dictation");
     if (!model) return { ok: false, message: AiToolsCopy.DICTATION_NO_MODEL };
