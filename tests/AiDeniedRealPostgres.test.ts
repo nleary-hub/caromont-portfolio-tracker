@@ -62,19 +62,42 @@ describe.skipIf(!on)("denied counter on a real Postgres (opt-in, writes permanen
     expect(await accounted(who, "price_refresh")).toEqual({ live: 99, firstRows: 2, folded: 99, total: 200 });
   });
 
-  it("fold first (deterministic): 20 concurrent denials after a window with 5 extras ended fold it exactly once", async () => {
+  it("fold first (deterministic): one call after a window with 5 extras ended folds it, then 19 concurrent denials all count in the new window", async () => {
     const who = `probe.${Date.now()}.c@example.test`;
     const caller = { kind: "person", viewer: { email: who, isAdmin: false } } as const;
     const t0 = new Date();
     for (let i = 0; i < 6; i++) await AiDeniedService.record(db, caller, "price_refresh", t0); // one first row, counter 5
-    const t1 = new Date(t0.getTime() + AiDenied.WINDOW_MS + 1000); // the window is over for every one of the 20
-    const results = await Promise.all(Array.from({ length: 20 }, () => AiDeniedService.record(db, caller, "price_refresh", t1)));
-    expect(results.every((r) => r.ok)).toBe(true);
-    const folds = results.filter((r) => r.ok && r.outcome === "folded_and_new_window");
-    expect(folds).toHaveLength(1);
-    expect(folds[0]).toEqual({ ok: true, outcome: "folded_and_new_window", folded: 5 });
+    const t1 = new Date(t0.getTime() + AiDenied.WINDOW_MS + 1000); // the window is over for every call below
+    // Seed the new window first: this one call folds the 5 and opens the t1 window before the burst starts, so the 19 below
+    // all race on the same step 2 increment. A non-atomic increment loses counts here (it does not depend on fold timing).
+    const seed = await AiDeniedService.record(db, caller, "price_refresh", t1);
+    expect(seed).toEqual({ ok: true, outcome: "folded_and_new_window", folded: 5 });
+    const results = await Promise.all(Array.from({ length: 19 }, () => AiDeniedService.record(db, caller, "price_refresh", t1)));
+    expect(results.map((r) => (r.ok ? r.outcome : "failed"))).toEqual(Array(19).fill("counted"));
     const a = await accounted(who, "price_refresh");
     expect(a).toEqual({ live: 19, firstRows: 2, folded: 5, total: 26 });
+  });
+
+  it("overlap (repeated, probabilistic): old-window and new-window calls in flight at once never lose or double a count", async () => {
+    // Real traffic has no barrier: clock skew lets t0 and t1 calls arrive together. The split between the windows depends on
+    // scheduling, so only split-independent invariants are asserted, over several iterations. This is a check, not a proof.
+    for (let iter = 0; iter < 5; iter++) {
+      const who = `probe.${Date.now()}.e${iter}@example.test`;
+      const caller = { kind: "person", viewer: { email: who, isAdmin: false } } as const;
+      const t0 = new Date();
+      const t1 = new Date(t0.getTime() + AiDenied.WINDOW_MS + 1000);
+      await AiDeniedService.record(db, caller, "price_refresh", t0); // seed the old window
+      const results = await Promise.all(Array.from({ length: 200 }, (_, i) => AiDeniedService.record(db, caller, "price_refresh", i % 2 ? t1 : t0)));
+      expect(results.every((r) => r.ok)).toBe(true);
+      const folds = results.filter((r) => r.ok && r.outcome === "folded_and_new_window");
+      expect(folds.length).toBeLessThanOrEqual(1); // only the t0 window can end here
+      const foldRows = await prisma.aiSettingsHistory.findMany({ where: { field: "aiDenied", changedBy: who, action: "denied_folded" } });
+      expect(foldRows.length).toBeLessThanOrEqual(1);
+      const a = await accounted(who, "price_refresh");
+      expect(a.live).toBeGreaterThanOrEqual(0);
+      expect(a.folded).toBe(folds.reduce((n, r) => n + (r.ok ? r.folded : 0), 0)); // the fold row says what the fold result said
+      expect(a.total).toBe(201); // the seed + 200: none lost, none counted twice
+    }
   });
 
   it("the Owner's list is one snapshot: a fold that commits on another connection between the counter read and the history read cannot double a count", async () => {
