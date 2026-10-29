@@ -630,14 +630,20 @@ describe("CG3: the first denial, a flood, bounded keys", () => {
 
   it("static guard: when the base commit is in the checkout, git itself reports no change under src/app/api/cron, to AiRetentionService.ts, or to the cron schedule", () => {
     let out: string | null = null;
+    let baseVercel: string | null = null;
     try {
       execFileSync("git", ["cat-file", "-e", `${BASE}^{commit}`], { cwd: root, stdio: "ignore" });
-      out = execFileSync("git", ["diff", "--name-only", BASE, "--", "src/app/api/cron", "src/lib/services/AiRetentionService.ts", "vercel.json"], { cwd: root, encoding: "utf8" });
+      out = execFileSync("git", ["diff", "--name-only", BASE, "--", "src/app/api/cron", "src/lib/services/AiRetentionService.ts"], { cwd: root, encoding: "utf8" });
+      baseVercel = execFileSync("git", ["show", `${BASE}:vercel.json`], { cwd: root, encoding: "utf8" });
     } catch {
       out = null; // a source archive or a shallow clone: the content pins above are the guard there
     }
-    if (out === null) return;
+    if (out === null || baseVercel === null) return;
     expect(out.trim()).toBe("");
+    // Only the crons array of vercel.json is compared, so other top-level keys such as "git" may change.
+    const headCrons = (JSON.parse(readFileSync(path.join(root, "vercel.json"), "utf8")) as { crons: unknown }).crons;
+    const baseCrons = (JSON.parse(baseVercel) as { crons: unknown }).crons;
+    expect(headCrons).toEqual(baseCrons);
   });
 
   it("static guard: the cron schedule lists the same three jobs as at 0c9edc6, and nothing for the counter", () => {
