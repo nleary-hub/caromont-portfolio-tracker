@@ -7,6 +7,7 @@ import { AiProviders } from "@/lib/ai/AiProviders";
 import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiModelService } from "@/lib/services/AiModelService";
+import { AiProviderKeyService, type AiProviderKeyDb } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import { AiWritingService, type AiOutcome, type AiSuggestResult, type AiWritingDb } from "@/lib/services/AiWritingService";
 
@@ -73,11 +74,18 @@ export async function saveAiSettings(_prev: AiSettingsFormState, form: FormData)
   }
 }
 
+/**
+ * The settings form's Clear key. Item 19: the legacy key is cleared only through the Owner-gated provider key remove,
+ * which clears the registry OpenAI key and the legacy copy in one transaction. A legacy setup on another provider
+ * (Azure or a compatible endpoint) is not touched here.
+ */
 export async function clearAiKey(): Promise<{ ok: boolean; message: string }> {
   const viewer = await AiActions.admin();
   if (!viewer) return { ok: false, message: "Not authorized." };
+  if (!Db.isConfigured()) return { ok: false, message: AiCopy.SAVE_FAILED };
   try {
-    await AiSettingsService.clearKey(Db.client as unknown as AiSettingsDb, viewer);
+    const r = await AiProviderKeyService.remove(Db.client as unknown as AiProviderKeyDb, viewer, "openai");
+    if (!r.ok) return { ok: false, message: r.error };
     revalidatePath("/admin/ai");
     revalidatePath("/");
     return { ok: true, message: AiCopy.KEY_CLEARED };
@@ -98,8 +106,9 @@ export async function testAiConnection(model?: string): Promise<AiTestResult> {
   const picked = typeof model === "string" ? model.trim() : "";
   if (!picked) return { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${AiCopy.TEST_PICK_MODEL}` };
   try {
-    const row = await AiSettingsService.row(Db.client as unknown as AiSettingsDb);
-    const saved = AiSettingsService.runtimeFor(row, picked);
+    // Item 2: the OpenAI key comes from the key registry, never from the legacy ai_settings copy. No key = refused.
+    const row = await AiSettingsService.storedRow(Db.client as unknown as AiSettingsDb);
+    const saved = AiProviders.parse(row?.provider) === "openai" ? await AiProviderKeyService.openAiRuntime(Db.client, picked) : null;
     if (!saved) return { ok: false, message: AiCopy.TEST_NEEDS_SETTINGS };
     const config = { ...saved, allowedModels: await AiModelService.enabledIds(Db.client, "chat") };
     if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${AiCopy.MODEL_NOT_ALLOWED}` };

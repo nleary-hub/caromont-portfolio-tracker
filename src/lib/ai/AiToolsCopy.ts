@@ -352,7 +352,7 @@ export class AiToolsCopy {
   }
   static readonly VOICE_SESSION_GONE = "This voice chat has ended. Start a new one.";
   static readonly VOICE_MODEL_LABEL = "Voice chat model";
-  static readonly VOICE_BACKEND_MODEL_OFF = "Live voice models use the writing assistant model to answer. An admin needs to choose that model and turn it on in AI settings.";
+  static readonly VOICE_BACKEND_MODEL_OFF = "Voice backend not configured: Quick capture is not on an enabled OpenAI chat model.";
   static readonly VOICE_MODEL_HELP = "Voice chat needs a gpt-realtime or gpt-live model. Click Show OpenAI models to see the ones your saved API key can use. Only models turned on under Models can be saved.";
 
   /** Own-model features (step 6, step 10): the model picker's label and help on Admin > AI settings. */

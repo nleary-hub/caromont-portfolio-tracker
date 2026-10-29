@@ -148,8 +148,9 @@ describe("0053 copy of the legacy OpenAI key (lazy, idempotent, race-safe)", () 
     expect(await keysRow("openai")).toEqual({ ciphertext: null, last4: null });
     const row = await AiSettingsService.row(db as never, ENV);
     expect(AiSettingsService.runtime(row, ENV)).toBeNull();
-    // The legacy column itself is never changed (add-only).
-    expect((await pg.query<{ c: string }>(`SELECT "apiKeyCiphertext" AS c FROM "ai_settings"`)).rows[0].c).toBe(legacyBefore);
+    // Item 19: removing the OpenAI key also clears the legacy copy (it was set before the remove).
+    expect(legacyBefore).toBeTruthy();
+    expect((await pg.query<{ c: string | null }>(`SELECT "apiKeyCiphertext" AS c FROM "ai_settings"`)).rows[0].c).toBeNull();
     await expect(pg.query(`DELETE FROM "ai_provider_keys"`)).rejects.toThrow();
   });
 });

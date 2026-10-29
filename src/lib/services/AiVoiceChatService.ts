@@ -12,7 +12,8 @@ import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService, type AiModelRow } from "@/lib/services/AiModelService";
 import { AiFeatureRuntime, AiProviderKeyAccess } from "@/lib/services/AiFeatureProviderService";
-import { AiSettingsService } from "@/lib/services/AiSettingsService";
+import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
+import { AiSettingsService, type AiSettingsRow } from "@/lib/services/AiSettingsService";
 import { AiToolsService, type AiToolsDb, type AiToolUsageRow } from "@/lib/services/AiToolsService";
 import { AiWritingService } from "@/lib/services/AiWritingService";
 import { PortfolioContextService } from "@/lib/services/PortfolioContextService";
@@ -54,15 +55,17 @@ export class AiVoiceChatService {
   }
 
   /**
-   * Item D: the Live backend model, the step that turns spoken requests into tool calls. It is the command bar's
-   * (Quick capture) model when that routes to an OpenAI chat model that is on under Models; otherwise the AI settings
-   * model, as before. The backend always runs on the AI settings OpenAI key (voice runs on OpenAI only).
+   * Item 2: the Live backend model, the step that turns spoken requests into tool calls. It follows Quick capture and
+   * has no setting of its own: the model Quick capture runs on (its own model, or the AI settings model when it has
+   * none), but only when that is an OpenAI chat model that is on under Models. Otherwise null, and voice stops with
+   * "Voice backend not configured". The backend runs on the registry OpenAI key (voice is OpenAI only).
    */
-  static async backendModel(db: AiToolsDb, savedModel: string): Promise<string> {
+  static async backendModel(db: AiToolsDb, settings: Pick<AiSettingsRow, "provider" | "model"> | null): Promise<string | null> {
     const enabled = await AiModelService.enabledIds(db, "chat");
     const keys = await AiProviderKeyAccess.savedProviders(db);
     const c = AiFeatureRuntime.choiceOf("quick_capture", AiFeatureRuntime.routed(await AiFeatureRuntime.rows(db), enabled, keys.has("openai")));
-    return c.model && c.provider === "openai" && enabled.includes(c.model) ? c.model : savedModel;
+    const pick = c.model ? { provider: c.provider, model: c.model } : { provider: settings?.provider ?? "", model: (settings?.model ?? "").trim() };
+    return pick.provider === "openai" && pick.model && enabled.includes(pick.model) ? pick.model : null;
   }
 
   private static async model(db: AiToolsDb): Promise<string> {
@@ -74,8 +77,9 @@ export class AiVoiceChatService {
    */
   static async readiness(db: AiToolsDb, env: Env = process.env): Promise<{ code: "feature_off" | "ai_off" | "model_off"; message: string; note: string } | null> {
     if (!(await AiModelService.featureOn(db, FEATURE, env))) return { code: "feature_off", message: AiToolsCopy.FEATURE_OFF, note: AiToolsCopy.FEATURE_OFF_NOTE };
-    const row = await AiSettingsService.row(db, env).catch(() => null);
-    if (!row?.enabled || !AiSettingsService.runtime(row, env)) return { code: "ai_off", message: AiToolsCopy.aiOff(env), note: AiToolsCopy.aiOffNote(env) };
+    const row = await AiSettingsService.storedRow(db).catch(() => null);
+    // Item 2: ready only with a readable OpenAI key in the key registry (the legacy ai_settings copy is not read).
+    if (!row?.enabled || !(await AiProviderKeyService.openAiRuntime(db, "", env))) return { code: "ai_off", message: AiToolsCopy.aiOff(env), note: AiToolsCopy.aiOffNote(env) };
     const model = await AiVoiceChatService.model(db);
     if (!model || !(await AiModelService.enabledIds(db, "realtime")).includes(model)) return { code: "model_off", message: AiToolsCopy.MODEL_OFF_NOTE, note: AiToolsCopy.MODEL_OFF_NOTE };
     return null;
@@ -90,8 +94,8 @@ export class AiVoiceChatService {
     // Same check as the page's note: model off means the greyed state, never a connect attempt.
     const blocked = await AiVoiceChatService.readiness(db, env);
     if (blocked) return { ok: false, code: blocked.code, message: blocked.message };
-    const row = await AiSettingsService.row(db, env);
-    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    const row = await AiSettingsService.storedRow(db);
+    const saved = row?.enabled ? await AiProviderKeyService.openAiRuntime(db, "", env) : null;
     if (!saved) return { ok: false, code: "ai_off", message: AiToolsCopy.aiOff(env) };
     // The admin-chosen voice chat model. Never picked or switched here; it must be one an admin turned on.
     const model = await AiVoiceChatService.model(db);
@@ -103,8 +107,8 @@ export class AiVoiceChatService {
     const sessionId = randomUUID();
     // Routed by the model's kind (AiModelKinds.voiceApi): gpt-live-* on the Live API, everything else on Realtime.
     const api = AiModelKinds.voiceApi(model);
-    if (api === "live" && !(await AiModelService.enabledIds(db, "chat")).includes(await AiVoiceChatService.backendModel(db, saved.model))) {
-      // Live delegates to a Responses backend: the saved writing-assistant model, which must be a chat model that is on.
+    if (api === "live" && !(await AiVoiceChatService.backendModel(db, row))) {
+      // Live delegates to a Responses backend that follows Quick capture; stopped when that is not an enabled OpenAI chat model.
       console.error("AI tools: voice session failed", { code: "model_off", api, model, reason: "no backend chat model" });
       return { ok: false, code: "model_off", message: AiToolsCopy.VOICE_BACKEND_MODEL_OFF };
     }
@@ -174,8 +178,8 @@ export class AiVoiceChatService {
       return deny(400, AiToolsCopy.VOICE_CONNECT_FAILED);
     }
     const env = args.env ?? process.env;
-    const row = await AiSettingsService.row(db, env).catch(() => null);
-    const saved = row?.enabled ? AiSettingsService.runtime(row, env) : null;
+    const row = await AiSettingsService.storedRow(db).catch(() => null);
+    const saved = row?.enabled ? await AiProviderKeyService.openAiRuntime(db, "", env) : null;
     if (!saved || !args.scope) {
       await AiVoiceChatService.logFailure(db, viewer, session, "connect_failed", { status: 503, type: saved ? "no_scope" : "ai_off", api: "live" }, args.now);
       return deny(503, AiToolsCopy.VOICE_CONNECT_FAILED);
@@ -184,7 +188,11 @@ export class AiVoiceChatService {
     const model = session.model ?? "";
     // The same instructions as the Realtime adapter (admin rules or built-in, plus tool contract, patient line, projects).
     const base = AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db));
-    const backendModel = await AiVoiceChatService.backendModel(db, saved.model);
+    const backendModel = await AiVoiceChatService.backendModel(db, row);
+    if (!backendModel) {
+      await AiVoiceChatService.logFailure(db, viewer, session, "model_off", { status: 503, type: "no_backend_model", api: "live" }, args.now);
+      return deny(503, AiToolsCopy.VOICE_BACKEND_MODEL_OFF);
+    }
     const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel, backendInstructions: base, tools: [...AiVoiceChat.TOOLS] }, sdp, args.fetchImpl);
     if (r.ok) {
       console.info("AI tools: voice live session started", { sessionId: session.suggestionId, model, backendModel, liveSessionId: r.liveSessionId });

@@ -17,6 +17,9 @@ type Q = PGlite | Transaction;
 export class PgProviderKeyDb implements AiProviderKeyDb {
   /** Calls to aiProviderKey.createMany (to show that racing reads really both tried to insert). */
   static inserts = 0;
+  /** Calls to aiSettings.upsert, and a switch that makes the next ones throw (item 19 rollback tests). */
+  static settingsUpserts = 0;
+  static failSettingsUpsert = false;
 
   constructor(private readonly q: Q, private readonly root: PGlite) {}
 
@@ -54,10 +57,17 @@ export class PgProviderKeyDb implements AiProviderKeyDb {
     upsert(args: { where: { id: string }; create: AiSettingsRow; update: Partial<AiSettingsRow> }): Promise<AiSettingsRow>;
   } = {
     findUnique: async ({ where }) => (await this.q.query<AiSettingsRow>(`SELECT * FROM "ai_settings" WHERE "id" = $1`, [where.id])).rows[0] ?? null,
-    upsert: async ({ create }) => {
+    upsert: async ({ create, update }) => {
+      PgProviderKeyDb.settingsUpserts += 1;
+      if (PgProviderKeyDb.failSettingsUpsert) throw new Error("injected ai_settings write failure");
       const cols = Object.keys(create) as (keyof AiSettingsRow)[];
-      await this.q.query(`INSERT INTO "ai_settings" (${cols.map((c) => `"${c}"`).join(", ")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})`, cols.map((c) => create[c]));
-      return create;
+      const upd = Object.keys(update) as (keyof AiSettingsRow)[];
+      const onConflict = upd.length ? ` ON CONFLICT ("id") DO UPDATE SET ${upd.map((c, i) => `"${c}" = $${cols.length + i + 1}`).join(", ")}` : "";
+      const r = await this.q.query<AiSettingsRow>(
+        `INSERT INTO "ai_settings" (${cols.map((c) => `"${c}"`).join(", ")}) VALUES (${cols.map((_, i) => `$${i + 1}`).join(", ")})${onConflict} RETURNING *`,
+        [...cols.map((c) => create[c]), ...upd.map((c) => update[c])],
+      );
+      return r.rows[0] ?? create;
     },
   };
 

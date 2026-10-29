@@ -1,4 +1,5 @@
 import type { AiRelatedLinkRow, AiToolUsageRow, ProjectRowForTools } from "@/lib/services/AiToolsService";
+import type { AiProviderKeyRow } from "@/lib/services/AiProviderKeyService";
 import { FakeAiDb } from "./FakeAiDb";
 
 /** FakeAiDb plus what the AI tools read: example projects (never real rows) and usage rows by line. */
@@ -9,6 +10,50 @@ export class FakeToolsDb extends FakeAiDb {
   lastProjectQuery: unknown = null;
 
   aiFeatureSetting = { findMany: async () => this.featureRows };
+
+  /**
+   * Item 2: the key registry (ai_provider_keys). Voice and dictation read their OpenAI key here only; a legacy key in
+   * `settings` is copied in on first read, as in the app. Set `providerKeys` to null to model a database without it.
+   */
+  keyRows: AiProviderKeyRow[] = [];
+  providerKeys: boolean = true;
+  get aiProviderKey() {
+    if (!this.providerKeys) return undefined as never;
+    return {
+      findMany: async () => this.keyRows.map((r) => ({ ...r })),
+      findUnique: async (args: { where: { provider: string } }) => {
+        const r = this.keyRows.find((x) => x.provider === args.where.provider);
+        return r ? { ...r } : null;
+      },
+      createMany: async (args: { data: AiProviderKeyRow[]; skipDuplicates: true }) => {
+        this.writes.push("aiProviderKey.createMany");
+        let count = 0;
+        for (const r of args.data) {
+          if (this.keyRows.some((x) => x.provider === r.provider)) continue;
+          this.keyRows.push({ ...r });
+          count += 1;
+        }
+        return { count };
+      },
+      update: async (args: { where: { provider: string }; data: Partial<AiProviderKeyRow> }) => {
+        this.writes.push("aiProviderKey.update");
+        const r = this.keyRows.find((x) => x.provider === args.where.provider);
+        if (!r) throw new Error("Record to update not found.");
+        Object.assign(r, args.data);
+        return { ...r };
+      },
+    };
+  }
+
+  override async $transaction<T>(fn: (tx: FakeAiDb) => Promise<T>): Promise<T> {
+    const keys = this.keyRows.map((r) => ({ ...r }));
+    try {
+      return await super.$transaction(fn);
+    } catch (e) {
+      this.keyRows = keys;
+      throw e;
+    }
+  }
   aiModel = { findMany: async () => this.models as never[] };
 
   override aiUsageLog = {
