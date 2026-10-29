@@ -32,6 +32,9 @@ const KEY_FIXTURES = [
   j("xai", "-", "A1b2C3d4E5f6G7h8"), j("sk", "-or-v1-", "0123456789abcdef0123456789abcdef0123456789abcdef"), "A".repeat(32), j("model ", "sk", "-TEST", "0001abcd", " tail"),
 ];
 
+/** Characters JS \s matches and the Postgres [[:space:]] class does not (measured by the full sweep on PGlite, C.UTF-8): the app is stricter there. */
+const KNOWN_APP_STRICTER = ["\u00a0", "\u1680", "\u2007", "\u202f", "\ufeff"];
+
 /** Seeded generator: the same synthetic keys every run, none of them real. */
 function synthetic(): { label: string; text: string }[] {
   let seed = 20261028;
@@ -63,14 +66,33 @@ describe("the shared detector is one source with no u, g or y flag (FG32)", () =
     expect([AiKeyShape.looksLikeKey(k), AiKeyShape.looksLikeKey(k), AiKeyShape.looksLikeKey(k)]).toEqual([true, true, true]);
   });
 
-  it("the JS patterns are the SQL patterns: same text, with \\s standing in for [[:space:]]", () => {
-    // Pull the first CHECK that carries the five rules (the registry model CHECK) out of the migration and compare each rule's text.
-    const start = SQL.indexOf('ADD CONSTRAINT "ai_model_registry_model_not_key"');
-    const block = SQL.slice(start, SQL.indexOf(";", start));
-    const found = [...block.matchAll(/!~\*? '([^']+)'/g)].map((m) => m[1]);
-    expect(found).toHaveLength(5);
-    const jsSources = AiKeyShape.RULES.map((r) => r.pattern.source.replace(/\\\//g, "/").replace(/\\s/g, "[[:space:]]"));
-    expect(jsSources).toEqual(found);
+  it("the JS patterns are the SQL patterns in ALL NINE copies in the migration (explicit, documented mapping)", () => {
+    // Mapping, the only two differences between the JS source text and the SQL text:
+    //   1. the space class: JS [\s\u0085]  <->  SQL [[:space:]]   (see the header of AiKeyShape.ts for why it is explicit)
+    //   2. an escaped slash: JS source \/   <->  SQL /
+    const toSql = (src: string) => src.replace(/\\\//g, "/").split("[\\s\\u0085]").join("[[:space:]]");
+    const jsAsSql = AiKeyShape.RULES.map((r) => toSql(r.pattern.source));
+    expect(jsAsSql).toHaveLength(5);
+    // The mapping must not hide a bare \s or a POSIX class left in the JS text.
+    for (const r of AiKeyShape.RULES) {
+      expect(r.pattern.source.replace("[\\s\\u0085]", "")).not.toMatch(/\\s|\[:space:\]/);
+    }
+    // The nine copies: 2 price source link CHECKs (sourceUrl, on the price and its history), 2 settings history value CHECKS
+    // (oldValue and newValue of the one history CHECK, S3) and 5 model id CHECKs (S6: registry, event primary, event fallback,
+    // price history, fault counter). Each is five consecutive "column !~ 'pattern'" terms.
+    const ops = [...SQL.matchAll(/"(\w+)"\s+(!~\*?) '([^']+)'/g)].map((m) => ({ column: m[1], op: m[2], text: m[3] }));
+    const starts = ops.map((o, i) => (o.text === jsAsSql[0] ? i : -1)).filter((i) => i >= 0);
+    expect(starts).toHaveLength(9);
+    const copies = starts.map((i) => ops.slice(i, i + 5));
+    expect(copies.map((c) => c[0].column)).toEqual(["sourceUrl", "sourceUrl", "oldValue", "newValue", "model", "primaryModel", "fallbackModel", "model", "primaryModel"]);
+    for (const c of copies) {
+      expect(new Set(c.map((t) => t.column)).size, c[0].column).toBe(1);
+      expect(c.map((t) => t.text), c[0].column).toEqual(jsAsSql);
+      expect(c.map((t) => t.op), c[0].column).toEqual(["!~*", "!~*", "!~*", "!~*", "!~"]);
+    }
+    // No tenth copy hides anywhere: each distinctive rule text appears exactly nine times in the whole file.
+    for (const text of jsAsSql.slice(1)) expect(SQL.split(`'${text}'`).length - 1, text).toBe(9);
+    expect(SQL.split(`'${jsAsSql[0]}'`).length - 1).toBe(9);
   });
 
   it("no module outside the detector re-declares its patterns (one copy in code)", () => {
@@ -159,8 +181,9 @@ describe("parity with the Postgres CHECK constraints on a shared corpus (FG32): 
     expect(counts.both_refuse).toBeGreaterThan(280);
   }, 120_000);
 
-  it("history values (the 8 new fields): the app never accepts what the history CHECK refuses; one documented case is stricter in the app", async () => {
-    const extras = [j("Bear", "er\u00a0abcdefgh12"), j("Bear", "er\tabcdefgh12"), j("Bear", "er   abcdefgh12"), "openai:xai-grok-4-fast", `openai:${"a".repeat(190)}>anthropic:${"b".repeat(190)}`, "x".repeat(450), "x".repeat(451), "12", "", "one two"];
+  it("history values (the 8 new fields): the app never accepts what the history CHECK refuses; the app-stricter rows are listed and are only the known ones", async () => {
+    const bearerWith = (cp: string) => j("Bear", "er", cp, "abcdefgh12");
+    const extras = [bearerWith("\u00a0"), bearerWith("\u2007"), bearerWith("\u202f"), bearerWith("\ufeff"), bearerWith("\u1680"), bearerWith("\u0085"), bearerWith(" "), bearerWith("\t"), j("Bear", "er   abcdefgh12"), "openai:xai-grok-4-fast", `openai:${"a".repeat(190)}>anthropic:${"b".repeat(190)}`, "x".repeat(450), "x".repeat(451), "12", "", "one two"];
     const appStricter: string[] = [];
     for (const row of [...corpus(), ...extras.map((text) => ({ cat: "extra", text }))]) {
       const app = AiKeyShape.historyValueProblem(row.text) === null;
@@ -168,9 +191,65 @@ describe("parity with the Postgres CHECK constraints on a shared corpus (FG32): 
       if (app && err !== null) throw new Error(`PARITY BREAK (app accepts, Postgres refuses) in category ${row.cat}`);
       if (!app && err === null) appStricter.push(JSON.stringify(row.text));
     }
-    // The only text the app refuses and Postgres accepts: "Bearer" then a no-break space (JS \s matches it, [[:space:]] does not). Safe direction.
-    expect(appStricter).toEqual([JSON.stringify(j("Bear", "er\u00a0abcdefgh12"))]);
+    // The only texts the app refuses and Postgres accepts: "Bearer", one of the five spaces that JS \s matches and the Postgres
+    // class does not, then a token. Safe direction. (U+0085 is NOT here: both sides refuse it, which is the C1 fix.)
+    console.info(`app stricter than Postgres on ${appStricter.length} history rows: ${appStricter.map((t) => t.replace(/[^\x20-\x7e]/g, (c) => `\\u${c.charCodeAt(0).toString(16).padStart(4, "0")}`)).join(" ")}`);
+    expect(appStricter.sort()).toEqual(KNOWN_APP_STRICTER.map((cp) => JSON.stringify(bearerWith(cp))).sort());
   }, 120_000);
+
+  it("every code point, through rule 3 (Bearer, one character, a token) and the source link space class: the app is never looser than Postgres (full sweep)", async () => {
+    // Use the real pattern text of the migration, not a copy of it: take it from the first of the nine CHECK copies.
+    const ruleBearer = /'(bearer\[\[:space:\]\]\+[^']+)'/.exec(SQL)![1];
+    const classUrl = /!~ '(\[\?#@\[:space:\]\])'/.exec(SQL)![1];
+    expect(ruleBearer).toBe("bearer[[:space:]]+[a-z0-9._~+/=-]{8,}");
+    expect(classUrl).toBe("[?#@[:space:]]");
+    const sweep = async (expr: string, pattern: string, op: "~*" | "~") => {
+      const r = await pg.query<{ i: number }>(`SELECT i FROM generate_series(1, 1114111) AS i WHERE i NOT BETWEEN 55296 AND 57343 AND (${expr}) ${op} $1`, [pattern]);
+      return new Set(r.rows.map((x) => x.i));
+    };
+    const pgBearer = await sweep(`'Bearer' || chr(i) || 'abcdefgh12'`, ruleBearer, "~*");
+    const pgUrlClass = await sweep(`'https://x.test/a' || chr(i) || 'b'`, classUrl, "~");
+    const looser: string[] = [];
+    const stricter: string[] = [];
+    const hex = (c: number) => `U+${c.toString(16).toUpperCase().padStart(4, "0")}`;
+    for (let c = 1; c <= 0x10ffff; c++) {
+      if (c >= 0xd800 && c <= 0xdfff) continue; // lone surrogates cannot be stored in UTF8 text
+      const ch = String.fromCodePoint(c);
+      const appBearer = AiKeyShape.firedRule(j("Bear", "er", ch, "abcdefgh12")) !== null;
+      const appUrl = AiKeyShape.sourceUrlProblem(`https://x.test/a${ch}b`) === "bad_character";
+      for (const [label, app, pgSet] of [["rule3", appBearer, pgBearer], ["urlclass", appUrl, pgUrlClass]] as const) {
+        const db = pgSet.has(c);
+        if (app && !db) stricter.push(`${label} ${hex(c)}`);
+        if (!app && db) looser.push(`${label} ${hex(c)}`);
+      }
+    }
+    console.info(`full sweep, app looser than Postgres (must be none): ${looser.join(", ") || "none"}`);
+    console.info(`full sweep, app stricter than Postgres (allowed): ${stricter.join(", ")}`);
+    expect(looser).toEqual([]);
+    expect(stricter.sort()).toEqual(KNOWN_APP_STRICTER.flatMap((cp) => ["rule3", "urlclass"].map((l) => `${l} U+${cp.codePointAt(0)!.toString(16).toUpperCase().padStart(4, "0")}`)).sort());
+  }, 300_000);
+
+  it("the Bearer rule on the named whitespace rows, against real Postgres: U+0085 is refused by both sides; the five JS-only spaces are accepted by Postgres and refused by the app", async () => {
+    const bearerWith = (cp: string) => j("Bear", "er", cp, "abcdefgh12");
+    const rows: Record<string, { app: boolean; postgres: boolean }> = {};
+    for (const [name, cp] of [["U+0085", "\u0085"], ["U+00A0", "\u00a0"], ["U+1680", "\u1680"], ["U+2007", "\u2007"], ["U+202F", "\u202f"], ["U+FEFF", "\ufeff"], ["space", " "], ["tab", "\t"], ["newline", "\n"]] as const) {
+      const text = bearerWith(cp);
+      const err = await refusal(pg, `INSERT INTO ai_settings_history (id, field, action, "oldValue", "newValue", "changedBy") VALUES (gen_random_uuid(), 'aiFallback', 'fallback_set', NULL, $1, 'fiction@example.test')`, [text]);
+      rows[name] = { app: AiKeyShape.looksLikeKey(text), postgres: err !== null };
+    }
+    // app: refuses (true) or not; postgres: refuses (true) or not.
+    expect(rows).toEqual({
+      "U+0085": { app: true, postgres: true },
+      "U+00A0": { app: true, postgres: false },
+      "U+1680": { app: true, postgres: false },
+      "U+2007": { app: true, postgres: false },
+      "U+202F": { app: true, postgres: false },
+      "U+FEFF": { app: true, postgres: false },
+      space: { app: true, postgres: true },
+      tab: { app: true, postgres: true },
+      newline: { app: true, postgres: true },
+    });
+  }, 60_000);
 
   it("price source links, on the price history CHECK: the app never accepts what Postgres refuses", async () => {
     const urls = corpus().map((r) => ({ cat: r.cat, text: `https://example.test/docs/${r.text}` }));
