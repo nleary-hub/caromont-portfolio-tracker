@@ -56,7 +56,7 @@ export interface AiRegistryModelView {
   enabled: boolean;
   archivedAt: Date | null;
   listedState: string;
-  /** NO WRITER EXISTS in this pull request. Any future writer must run AiKeyShape.looksLikeKey on EVERY element before any write (the database has no CHECK on this column); tests/AiRegistryService.test.ts holds a test that fails if a writer is added without that. */
+  /** NO WRITER EXISTS in this pull request. Any future writer must run AiKeyShape.looksLikeKey on EVERY element before any write (the database has no CHECK on the element content, only a length CHECK of 12 elements, ai_model_registry_efforts_len). tests/AiRegistryService.test.ts holds a test that fails if a writer is added without that, but it is a text tripwire only: it misses computed keys, spreads and writers outside src/. */
   allowedEfforts: string[];
   maxOutputTokens: number | null;
   updatedAt: Date;
