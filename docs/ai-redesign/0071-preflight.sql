@@ -1,18 +1,29 @@
--- 0071 PRE-FLIGHT QUERIES, REVISION e  *** DRAFT, READ-ONLY, NOT RUN ON ANY REAL DATABASE, NOT IN THE REPO ***
+-- 0071 PRE-FLIGHT QUERIES, REVISION f  *** DRAFT, READ-ONLY, NOT RUN ON ANY REAL DATABASE, NOT IN THE REPO ***
 -- Spec draft e (sha256 9649e9b0c3d2b9bef41ee351f838911ec7ff8333cbb5460d3a4e9632de55fa34), section 3.7a. For Nick to run (or watch
--- run) BEFORE he applies 0071. Companion to 2026-10-28-0071-draft-e.sql (its sha256 is in 2026-10-28-0071-draft-e.sql.sha256).
--- Supersedes 2026-10-28-0071-preflight-d.sql (sha256 268385727e7957024f27c93a07314e33f4946100d1b0a1a1b5c722d4e39ec9d4; kept unchanged, marked SUPERSEDED), before it
+-- run) BEFORE he applies 0071. Companion to 2026-10-28-0071-draft-e.sql (sha256 5cb96e4f689c69c65b288e64cb1796376ff3f26d7c34114e46710c248c9934ef; the migration SQL did NOT change in revision f).
+-- Supersedes 2026-10-28-0071-preflight-e.sql (sha256 43abaef956e103c376be87bfaeb78e575443c040846e8d996655bea2dbac8e38; kept unchanged, marked SUPERSEDED), before it
+-- 2026-10-28-0071-preflight-d.sql (sha256 268385727e7957024f27c93a07314e33f4946100d1b0a1a1b5c722d4e39ec9d4), before it
 -- 2026-10-28-0071-preflight-c.sql (sha256 675785964870a326057ab66eb0d4e2bbebf49b051c41aac609c8412b52e80698), before it
 -- 2026-10-28-0071-preflight-b.sql (sha256 a846a99b86bb152a48b05e2eee61a130e49f3d63b395815b77dd11ad24b18f5a) and, before
 -- it, 2026-10-28-0071-preflight-draft.sql (sha256 49ae18845831da2cda0b722ff58edd1dd14e7f3701625654fb74d7c6b0001a3b). Both are kept
--- unchanged and marked SUPERSEDED. This file's own sha256 is in 2026-10-28-0071-preflight-e.sql.sha256.
+-- unchanged and marked SUPERSEDED. This file's own sha256 is in 2026-10-28-0071-preflight-f.sql.sha256.
 --
--- HOW TO READ THE RESULT (revision e, QA F6): THE DATABASE IS CLEAN FOR 0071 ONLY WHEN BOTH ARE TRUE: (1) P11 RETURNS 0 ROWS, AND
---   (2) P12 SAYS would_stop = false. Read P11 first. P12 does NOT see the id CHECKs (a key-shaped or badly shaped id still aborts the
---   migration at the registry CHECK while P12 says would_stop = false), and P11 does not see the foreign-key stop. Draft e of 0071
---   now hides the id when it stops at a registry CHECK (its guard E-1, constraint name only), but it still stops: P11 must be 0 rows
---   BEFORE the merge. A row in P11 shows a locator, not the id: look the row up yourself with
+-- HOW TO READ THE RESULT (revision f; the definition of "clean" is corrected from e, QA report g F2): THE DATABASE IS CLEAN FOR
+--   0071 ONLY WHEN BOTH ARE TRUE: (1) P11 HAS NO ROW WHERE fails_registry_shape OR fails_key_shape IS true, AND (2) P12 SAYS
+--   would_stop = false. A P11 row where ONLY fails_app_rule is true is INFORMATION, not a stop: it is the app's own id rule
+--   (for example an id with a "/"), the registry accepts it and 0071 applies. (The comment on P11 further down still says "Zero rows
+--   expected"; that text is older and unchanged on purpose. This header is the definition.) Read P11 first. P12 does NOT see the id
+--   CHECKs (a key-shaped or badly shaped id still aborts the migration at the registry CHECK while P12 says would_stop = false),
+--   and P11 does not see the foreign-key stop. Draft e of 0071 hides the id when it stops at a registry CHECK (its guard E-1,
+--   constraint name only), but it still stops: no fails_registry_shape or fails_key_shape row may remain BEFORE the merge. A row in
+--   P11 shows a locator, not the id: look the row up yourself with
 --   SELECT provider, char_length(id) FROM ai_models WHERE left(md5(provider || ':' || id), 8) = '<locator>';  (that prints no id).
+--   Units: P12 counts CATEGORIES (and voice models, and override pairs); the apply's stop message counts distinct provider+model
+--   PAIRS. The two numbers can differ for the same fault (one missing pair used by two categories is 2 in P12 and 1 in the message).
+--   would_stop is the thing that matches the apply, not the counts.
+--
+-- REVISION f, WHAT CHANGED FROM e: only this header (the definition of "clean", the units note, this block). P1 to P12 are
+--   byte-identical to revisions e and d (the test script checks that the output is the same on every fixture).
 --
 -- REVISION e, WHAT CHANGED FROM d: only this header. P1 to P12 are byte-identical to revision d (the test script checks that the
 --   output of d and e is the same on every fixture).
