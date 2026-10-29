@@ -131,15 +131,48 @@ describe("append-only tables refuse UPDATE, DELETE and TRUNCATE (FG9, FG26)", ()
       void (await full.query(`INSERT INTO ai_model_price_history (id, "priceId", provider, model, unit, action, "newPrice", "editedBy") VALUES (gen_random_uuid(), gen_random_uuid(), 'openai', 'gpt-6-luna', 'input_per_1m', 'created', 1, $1)`, [WHO]));
   });
 
+  // portfolio_block_mutation() (0001) raises exactly: '<TG_OP> on table "<TG_TABLE_NAME>" is not allowed'. The row trigger
+  // <table>_append_only covers UPDATE and DELETE; the statement trigger <table>_no_truncate covers TRUNCATE (S1).
   for (const [table, set] of [["ai_fallback_event", `"httpStatus" = 500`], ["ai_fallback_ack", `"by" = 'someone.else@example.test'`], ["ai_model_price_history", `"newPrice" = 2`]] as const) {
-    it(`${table}: UPDATE, DELETE and TRUNCATE are all refused, and the row is still there`, async () => {
+    const refusedText = (op: string) => `${op} on table "${table}" is not allowed`;
+    /** Run the statement inside a transaction that is always rolled back, with one named trigger switched off. Null means it went through. */
+    const withTriggerOff = async (trigger: string, sql: string): Promise<string | null> => {
+      await full.exec("BEGIN");
+      try {
+        await full.exec(`ALTER TABLE ${table} DISABLE TRIGGER "${trigger}"`);
+        return await refusal(full, sql);
+      } finally {
+        await full.exec("ROLLBACK");
+      }
+    };
+
+    it(`${table}: UPDATE, DELETE and TRUNCATE are refused with the exact trigger message, by the named triggers, and the row is still there`, async () => {
       await seed[table]();
       const before = (await full.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n;
       expect(before).toBeGreaterThan(0);
-      expect(await refusal(full, `UPDATE ${table} SET ${set}`)).toMatch(/append-only|not allowed|blocked|cannot/i);
-      expect(await refusal(full, `DELETE FROM ${table}`)).toMatch(/append-only|not allowed|blocked|cannot/i);
-      expect(await refusal(full, `TRUNCATE ${table}`)).toMatch(/append-only|not allowed|blocked|cannot/i);
+      // The two triggers exist, call the shared function, and cover the right events (tgtype bit 1 row, 2 before, 4 insert, 8 delete, 16 update, 32 truncate).
+      const triggers = (await full.query<{ name: string; fn: string; type: number }>(`SELECT t.tgname AS name, p.proname AS fn, t.tgtype::int AS type FROM pg_trigger t JOIN pg_proc p ON p.oid = t.tgfoid WHERE t.tgrelid = '${table}'::regclass AND NOT t.tgisinternal ORDER BY t.tgname`)).rows;
+      expect(triggers).toEqual([
+        { name: `${table}_append_only`, fn: "portfolio_block_mutation", type: 1 | 2 | 8 | 16 },
+        { name: `${table}_no_truncate`, fn: "portfolio_block_mutation", type: 2 | 32 },
+      ]);
+      expect(await refusal(full, `UPDATE ${table} SET ${set}`)).toBe(refusedText("UPDATE"));
+      expect(await refusal(full, `DELETE FROM ${table}`)).toBe(refusedText("DELETE"));
+      expect(await refusal(full, `TRUNCATE ${table}`)).toBe(refusedText("TRUNCATE"));
       expect((await full.query<{ n: number }>(`SELECT count(*)::int AS n FROM ${table}`)).rows[0].n).toBe(before);
+    });
+
+    it(`${table}: each refusal comes from its own trigger (switch the named trigger off and only that statement goes through; the other trigger does not stand in)`, async () => {
+      await seed[table]();
+      const upd = `UPDATE ${table} SET ${set}`;
+      const del = `DELETE FROM ${table}`;
+      const trunc = `TRUNCATE ${table}`;
+      expect(await withTriggerOff(`${table}_append_only`, upd)).toBeNull();
+      expect(await withTriggerOff(`${table}_append_only`, del)).toBeNull();
+      expect(await withTriggerOff(`${table}_append_only`, trunc)).toBe(refusedText("TRUNCATE"));
+      expect(await withTriggerOff(`${table}_no_truncate`, trunc)).toBeNull();
+      expect(await withTriggerOff(`${table}_no_truncate`, upd)).toBe(refusedText("UPDATE"));
+      expect(await withTriggerOff(`${table}_no_truncate`, del)).toBe(refusedText("DELETE"));
     });
   }
 
