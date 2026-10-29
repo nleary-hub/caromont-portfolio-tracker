@@ -90,9 +90,9 @@ describe.skipIf(!on)("denied counter on a real Postgres (opt-in, writes permanen
       const results = await Promise.all(Array.from({ length: 200 }, (_, i) => AiDeniedService.record(db, caller, "price_refresh", i % 2 ? t1 : t0)));
       expect(results.every((r) => r.ok)).toBe(true);
       const folds = results.filter((r) => r.ok && r.outcome === "folded_and_new_window");
-      expect(folds.length).toBeLessThanOrEqual(1); // only the t0 window can end here
+      expect(folds).toHaveLength(1); // the seeded t0 window must end, and only it can: exactly one fold
       const foldRows = await prisma.aiSettingsHistory.findMany({ where: { field: "aiDenied", changedBy: who, action: "denied_folded" } });
-      expect(foldRows.length).toBeLessThanOrEqual(1);
+      expect(foldRows).toHaveLength(1);
       const a = await accounted(who, "price_refresh");
       expect(a.live).toBeGreaterThanOrEqual(0);
       expect(a.folded).toBe(folds.reduce((n, r) => n + (r.ok ? r.folded : 0), 0)); // the fold row says what the fold result said
