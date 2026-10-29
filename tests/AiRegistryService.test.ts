@@ -104,12 +104,24 @@ describe("G-APP: a key-shaped value is refused before any write, and never echoe
     expect(errors.join("\n")).not.toContain(KEY);
   });
 
-  it("a key-shaped effort is refused before any write (the effort shape rule is stricter than the detector)", async () => {
+  it("an uppercase key-shaped effort is refused by the effort shape rule (lowercase only) before any write", async () => {
     const { db, touched } = untouchable();
     const r = await AiRegistryService.setCategory(db, OWNER, { category: "drafting", provider: "openai", model: "gpt-6-luna", effort: KEY });
     expect(r).toEqual({ ok: false, error: AiRegistryCopy.BAD_EFFORT });
     expect(touched).toEqual([]);
     expect(JSON.stringify(r)).not.toContain(KEY);
+  });
+
+  it("a lowercase key-shaped effort passes the effort shape rule, so the shared detector refuses it, before any write and without echo", async () => {
+    // Built from fragments. Lowercase, so the effort pattern /^[a-z0-9_.-]{1,40}$/ accepts it; only the detector catches it.
+    const lowerKey = j("sk", "-abcdefgh", "12");
+    expect(/^[a-z0-9_.-]{1,40}$/.test(lowerKey)).toBe(true);
+    const { db, touched } = untouchable();
+    const r = await AiRegistryService.setCategory(db, OWNER, { category: "drafting", provider: "openai", model: "gpt-6-luna", effort: lowerKey });
+    expect(r).toEqual({ ok: false, error: AiRegistryCopy.KEY_SHAPED });
+    expect(touched).toEqual([]);
+    expect(JSON.stringify(r)).not.toContain(lowerKey);
+    expect(errors.join("\n")).not.toContain(lowerKey);
   });
 
   it("a badly shaped id and an unknown provider are refused before any write", async () => {
@@ -260,6 +272,15 @@ describe("the registry services on a real database", () => {
       expect(await set("extraction", "openai", "missing-model")).toEqual({ ok: false, error: AiRegistryCopy.NOT_FOUND });
       expect(await set("poetry", "openai", "cat-chat")).toEqual({ ok: false, error: AiRegistryCopy.BAD_CATEGORY });
       expect(await set("analysis", "openai", "cat-chat", "Very High!")).toEqual({ ok: false, error: AiRegistryCopy.BAD_EFFORT });
+    });
+
+    it("a key-shaped effort never reaches the database: no category row, no history row, no row count change", async () => {
+      const lowerKey = j("sk", "-abcdefgh", "12");
+      const countsBefore = [await hx.prisma.aiCategorySetting.count(), await hx.prisma.aiSettingsHistory.count()];
+      const rowBefore = (await AiRegistryService.listCategories(hx.db)).find((c) => c.category === "extraction");
+      expect(await set("extraction", "openai", "cat-chat", lowerKey)).toEqual({ ok: false, error: AiRegistryCopy.KEY_SHAPED });
+      expect([await hx.prisma.aiCategorySetting.count(), await hx.prisma.aiSettingsHistory.count()]).toEqual(countsBefore);
+      expect((await AiRegistryService.listCategories(hx.db)).find((c) => c.category === "extraction")).toEqual(rowBefore);
     });
 
     it("Dictation and Voice chat take OpenAI models of their own kind and refuse any other provider", async () => {

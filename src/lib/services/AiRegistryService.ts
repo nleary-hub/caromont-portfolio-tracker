@@ -283,6 +283,9 @@ export class AiRegistryService {
     if (idErr) return { ok: false, error: idErr };
     const effort = input.effort ?? null;
     if (effort !== null && !/^[a-z0-9_.-]{1,40}$/.test(effort)) return { ok: false, error: AiRegistryCopy.BAD_EFFORT };
+    // The shape rule is lowercase only, so a lowercase key-shaped value (prefix, dash, a word with a digit) passes it and the
+    // database has no CHECK on this column. The shared detector runs here too, before any write (G-APP).
+    if (effort !== null && AiKeyShape.looksLikeKey(effort)) return { ok: false, error: AiRegistryCopy.KEY_SHAPED };
     const isAudio = (AiRegistry.AUDIO_CATEGORIES as readonly string[]).includes(category);
     if (isAudio && input.provider !== "openai") return { ok: false, error: AiRegistryCopy.AUDIO_OPENAI_ONLY };
     const next = `${category}=${AiRegistryService.pair(input.provider, input.model)}`;
