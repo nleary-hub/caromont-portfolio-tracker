@@ -1257,3 +1257,198 @@ model UserRoleHistory {
   @@index([email, at])
   @@map("user_role_history")
 }
+
+// ---------------------------------------------------------------------------------------------------------------
+// 0071 (AI model registry and fallback records). Add-only. Every list of allowed values below is a DB check
+// constraint written in the migration, not a Prisma enum, the same style as the AI tables above. Nothing here is
+// read by a running feature yet: the app reads the older ai_models table until the later pull requests land.
+// The foreign keys name no ON DELETE action in the SQL, so each relation says NoAction to match it exactly.
+// ---------------------------------------------------------------------------------------------------------------
+
+/// One row per provider and model (0071). The key is the pair. Rows are never deleted (trigger); Archive sets archivedAt.
+model AiModelRegistry {
+  /// "openai" | "anthropic" | "xai" | "other" (DB check)
+  provider        String
+  /// 1 to 200 characters of letters, digits and . _ : / - (DB check); a key-shaped id is refused (DB check)
+  model           String
+  /// "chat" | "transcription" | "realtime" (DB check). Null = not a kind this app uses.
+  kind            String?
+  enabled         Boolean   @default(false)
+  archivedAt      DateTime?
+  archivedBy      String?
+  /// "unknown" | "listed" | "no_longer_listed" (DB check)
+  listedState     String    @default("unknown")
+  allowedEfforts  String[]  @default([])
+  /// Reply-length cap. Null = the built-in budget. A whole number 1 to 1,000,000 (DB check), chat models only (DB check).
+  /// The per-provider ceiling (OpenAI 8,000, others 4,096) is app code only.
+  maxOutputTokens Int?
+  addedAt         DateTime  @default(now())
+  addedBy         String
+  updatedAt       DateTime  @default(now())
+  updatedBy       String
+
+  prices          AiModelPrice[]
+  categories      AiCategorySetting[]         @relation("AiCategoryModel")
+  fallbackFor     AiCategorySetting[]         @relation("AiCategoryFallback")
+  overrides       AiFeatureOverride[]
+  fallbackDefault AiFallbackSetting[]
+
+  @@id([provider, model])
+  @@map("ai_model_registry")
+}
+
+/// One price per provider, model, unit and tier (0071). Archived, never deleted (trigger).
+model AiModelPrice {
+  id                      String          @id @db.Uuid
+  provider                String
+  model                   String
+  /// "input_per_1m" | "cached_input_per_1m" | "output_per_1m" | "audio_minute" | "realtime_minute" (DB check)
+  unit                    String
+  /// Always "standard" for now (DB check)
+  tier                    String          @default("standard")
+  price                   Decimal         @db.Decimal(18, 8)
+  billingIncrementSeconds Int?
+  /// Always "USD" for now (DB check)
+  currency                String          @default("USD")
+  /// An https page without a query string, fragment, user info or space (DB check)
+  sourceUrl               String?
+  priceReadOn             DateTime?       @db.Date
+  /// "verified" | "checked_page" | "unverified_migrated" (DB check). Only unverified_migrated may have no source.
+  status                  String
+  archivedAt              DateTime?
+  archivedBy              String?
+  updatedAt               DateTime        @default(now())
+  updatedBy               String
+
+  registry                AiModelRegistry @relation(fields: [provider, model], references: [provider, model], map: "ai_model_price_model_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@unique([provider, model, unit, tier], map: "ai_model_price_unique_row")
+  @@map("ai_model_price")
+}
+
+/// Append-only price history (trigger refuses UPDATE, DELETE and TRUNCATE). No foreign key on purpose.
+model AiModelPriceHistory {
+  id          String   @id @db.Uuid
+  priceId     String   @db.Uuid
+  provider    String
+  model       String
+  unit        String
+  /// "migrated" | "created" | "price_changed" | "typo_fixed" | "refreshed" | "corrected" | "archived" | "restored" (DB check)
+  action      String
+  oldPrice    Decimal? @db.Decimal(18, 8)
+  newPrice    Decimal? @db.Decimal(18, 8)
+  sourceUrl   String?
+  priceReadOn DateTime? @db.Date
+  editedAt    DateTime @default(now())
+  editedBy    String
+
+  @@index([priceId, editedAt], map: "ai_model_price_history_priceId_idx")
+  @@map("ai_model_price_history")
+}
+
+/// The five categories (0071): drafting, extraction, analysis, dictation, voice_chat. Dictation and Voice chat can never
+/// hold a fallback (DB check).
+model AiCategorySetting {
+  category         String          @id
+  provider         String?
+  model            String?
+  effort           String?
+  fallbackProvider String?
+  fallbackModel    String?
+  updatedAt        DateTime        @default(now())
+  updatedBy        String
+
+  registry         AiModelRegistry? @relation("AiCategoryModel", fields: [provider, model], references: [provider, model], map: "ai_category_settings_model_fk", onDelete: NoAction, onUpdate: NoAction)
+  fallback         AiModelRegistry? @relation("AiCategoryFallback", fields: [fallbackProvider, fallbackModel], references: [provider, model], map: "ai_category_settings_fallback_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("ai_category_settings")
+}
+
+/// A text feature that differs from its category keeps its own model here (0071). migrated = written by the migration.
+model AiFeatureOverride {
+  feature   String          @id
+  provider  String
+  model     String
+  effort    String?
+  migrated  Boolean         @default(false)
+  updatedAt DateTime        @default(now())
+  updatedBy String
+
+  registry  AiModelRegistry @relation(fields: [provider, model], references: [provider, model], map: "ai_feature_override_model_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("ai_feature_override")
+}
+
+/// The one global fallback pick (0071). Single row (id is always "default"). No row = no fallback. Never seeded.
+model AiFallbackSetting {
+  id               String           @id @default("default")
+  fallbackProvider String?
+  fallbackModel    String?
+  updatedAt        DateTime         @default(now())
+  updatedBy        String
+
+  registry         AiModelRegistry? @relation(fields: [fallbackProvider, fallbackModel], references: [provider, model], map: "ai_fallback_settings_fk", onDelete: NoAction, onUpdate: NoAction)
+
+  @@map("ai_fallback_settings")
+}
+
+/// Append-only fallback event log (trigger). Ids, classes and numbers only, never prompt text or a provider error body.
+model AiFallbackEvent {
+  id                 String   @id @db.Uuid
+  at                 DateTime @default(now())
+  category           String
+  primaryProvider    String
+  primaryModel       String
+  fallbackProvider   String?
+  fallbackModel      String?
+  /// "network" | "timeout" | "http_5xx" | "http_429" | "key_rejected" | "model_gone" | "billing_quota" | "config_fault" (DB check)
+  triggerClass       String
+  /// "key_missing" | "model_disabled" | "model_archived" | "price_missing" | "effort_not_allowed" (DB check)
+  faultReason        String?
+  /// "none_set" | "not_usable" | "after_tool_ran" | "too_little_time" | "no_fallback_for_category" | "config_fault" (DB check)
+  noFallbackReason   String?
+  httpStatus         Int?
+  /// "succeeded" | "failed" | "no_fallback" (DB check)
+  outcome            String
+  effortSent         String?
+  costUsd            Decimal? @db.Decimal(18, 8)
+  priorWindowRepeats Int      @default(0)
+
+  @@index([at])
+  @@map("ai_fallback_event")
+}
+
+/// Append-only acknowledgements of fallback events (trigger). upToAt may be at most 5 minutes after "at" (DB check).
+model AiFallbackAck {
+  id     String   @id @db.Uuid
+  at     DateTime @default(now())
+  by     String
+  upToAt DateTime
+
+  @@index([at])
+  @@map("ai_fallback_ack")
+}
+
+/// Throttle counter for configuration faults (0071): one mutable row per category, primary model and reason. Never deleted.
+model AiFaultCounter {
+  category        String
+  primaryProvider String
+  primaryModel    String
+  faultReason     String
+  windowStartedAt DateTime
+  count           Int      @default(0)
+
+  @@id([category, primaryProvider, primaryModel, faultReason])
+  @@map("ai_fault_counter")
+}
+
+/// Counter of refused AI attempts (0071): one mutable row per who and action. Never deleted. Not read by anything yet.
+model AiDeniedCounter {
+  who             String
+  action          String
+  windowStartedAt DateTime
+  count           Int      @default(0)
+
+  @@id([who, action])
+  @@map("ai_denied_counter")
+}
