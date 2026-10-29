@@ -23,6 +23,8 @@ import { AiKeyShape } from "@/lib/ai/AiKeyShape";
  *     address that is passed as a person is stored as given (lowercased), and every distinct one is a new permanent row.
  *   - Wiring requirement (R28, hard, before A3): the wiring pull request must use a branded Viewer type that only the session
  *     reader can create, or a cap on distinct "who" rows; and (R29) it must filter denied rows out of the main audit list.
+ *   - Wiring requirement (R32): the deny path must never await the count without a limit. The wiring pull request must use a
+ *     lock_timeout or a bounded race around the count, and must add a test with a held row lock. The caller denies either way.
  *   - The other three callers are fixed labels. A person whose address looks like a pasted key is counted as signed out.
  */
 export type AiDeniedCaller =
