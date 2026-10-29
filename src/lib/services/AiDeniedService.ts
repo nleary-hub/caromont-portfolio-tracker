@@ -31,7 +31,7 @@ export type AiHistoryListResult = { ok: true; entries: AiHistoryEntry[] } | { ok
  *
  * The books balance at all times: history rows summed (a first-denial row counts 1, a folded row counts its N) plus the live
  * counters equals the attempts RECORDED. A recorded count is never lost or doubled; a count can be skipped under overload
- * (record returns ok:false, ruling R27, and the call can wait before it gives up, see R32 below). That holds because
+ * (record returns ok:false, ruling R27, and the call waits for as long as a competing step holds the row lock before it gives up, see R32 below). That holds because
  *   - the first denial of a window is a conditional insert, so exactly one caller wins it;
  *   - a further denial in the window is one UPDATE that adds one, so concurrent ones add up;
  *   - a fold is a conditional UPDATE that matches only the exact row state that was read (same window start, same count), in
@@ -48,7 +48,7 @@ export type AiHistoryListResult = { ok: true; entries: AiHistoryEntry[] } | { ok
  * people who can sign in times the actions; without it every distinct address is a new permanent row. A key-shaped address is
  * stored as "signed out".
  *
- * Requirements for the wiring pull request (CTO rulings R27 to R29, Oct 28 2026; labelled CTO rulings, not Nick's approval):
+ * Requirements for the wiring pull request (CTO rulings R27 to R32, Oct 28 2026; labelled CTO rulings, not Nick's approval):
  *  - R28, hard, before A3: the wiring must use a branded Viewer type that only the session reader can create, or a cap on the
  *    number of distinct "who" rows. No wiring pull request passes review without one.
  *  - R29: the wiring must filter denied rows (field "aiDenied") out of the main audit list, not just limit it by page size.

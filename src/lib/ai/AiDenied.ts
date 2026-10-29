@@ -48,8 +48,8 @@ export class AiDenied {
   /**
    * The Owner-only actions of section 3.6 that can be denied. Each matches the database shape rule
    * (lowercase letters, digits and . _ : - only, at most 80 characters). A later pull request adds its own action here when
-   * it adds an entry point. An action outside this list is counted under UNKNOWN_ACTION, never dropped, so the number of
-   * keys cannot grow with a caller's input.
+   * it adds an entry point. An action outside this list is counted under UNKNOWN_ACTION, so the number of keys cannot grow
+   * with a caller's input. A recorded count is never lost or doubled; a count can be skipped under overload (R27).
    */
   static readonly ACTIONS: readonly string[] = [
     "key_add", "key_test", "key_rotate", "key_remove", "legacy_key_clear", "key_note_edit", "provider_add",
