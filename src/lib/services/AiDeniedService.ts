@@ -45,7 +45,15 @@ export type AiHistoryListResult = { ok: true; entries: AiHistoryEntry[] } | { ok
  * signed-in session user, and that is a PRECONDITION of the caller, not something this service can check: it must never be
  * given an address read from request input (pass signed_out instead). Under that precondition the rows are bounded by the
  * people who can sign in times the actions; without it every distinct address is a new permanent row. A key-shaped address is
- * stored as "signed out". Server only.
+ * stored as "signed out".
+ *
+ * Requirements for the wiring pull request (CTO rulings R27 to R29, Oct 28 2026; labelled CTO rulings, not Nick's approval):
+ *  - R28, hard, before A3: the wiring must use a branded Viewer type that only the session reader can create, or a cap on the
+ *    number of distinct "who" rows. No wiring pull request passes review without one.
+ *  - R29: the wiring must filter denied rows (field "aiDenied") out of the main audit list, not just limit it by page size.
+ *  - R27: counting is best effort. Under heavy lock contention record may return { ok: false } and skip the count. The caller must
+ *    still deny the action and must never show ok:false to the user as an error.
+ * Server only.
  */
 export class AiDeniedService {
   static readonly FIELD = "aiDenied";

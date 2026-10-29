@@ -21,6 +21,8 @@ import { AiKeyShape } from "@/lib/ai/AiKeyShape";
  *     in times the actions listed here, but ONLY under that precondition. This file cannot prove it: an address taken from
  *     request input (a form field, a header, a query) must never be passed as a person; pass it as signed_out. A plausible
  *     address that is passed as a person is stored as given (lowercased), and every distinct one is a new permanent row.
+ *   - Wiring requirement (R28, hard, before A3): the wiring pull request must use a branded Viewer type that only the session
+ *     reader can create, or a cap on distinct "who" rows; and (R29) it must filter denied rows out of the main audit list.
  *   - The other three callers are fixed labels. A person whose address looks like a pasted key is counted as signed out.
  */
 export type AiDeniedCaller =
