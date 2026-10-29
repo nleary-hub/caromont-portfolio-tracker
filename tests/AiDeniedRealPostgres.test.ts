@@ -42,15 +42,24 @@ describe.skipIf(!on)("denied counter on a real Postgres (opt-in, writes permanen
     expect(a.total).toBe(200);
   });
 
-  it("100 + 100 concurrent denials either side of a window edge: every denial is accounted for", async () => {
+  it("100 + 100 concurrent denials either side of a window edge: the t1 batch folds the t0 window exactly once and every denial is accounted for", async () => {
     const who = `probe.${Date.now()}.b@example.test`;
     const caller = { kind: "person", viewer: { email: who, isAdmin: false } } as const;
     const t0 = new Date();
     const t1 = new Date(t0.getTime() + AiDenied.WINDOW_MS + 1000);
-    const calls = Array.from({ length: 200 }, (_, i) => AiDeniedService.record(db, caller, "price_refresh", i % 2 ? t0 : t1));
-    const results = await Promise.all(calls);
-    expect(results.every((r) => r.ok)).toBe(true);
-    expect((await accounted(who, "price_refresh")).total).toBe(200);
+    // Barrier: the t0 batch runs (100 at once) and commits before any t1 call starts, so the t0 window is open when the t1
+    // batch (100 at once) arrives after its end, and the t1 calls race to fold it.
+    const before = await Promise.all(Array.from({ length: 100 }, () => AiDeniedService.record(db, caller, "price_refresh", t0)));
+    const after = await Promise.all(Array.from({ length: 100 }, () => AiDeniedService.record(db, caller, "price_refresh", t1)));
+    expect([...before, ...after].every((r) => r.ok)).toBe(true);
+    const outcomes = (rs: typeof before) => rs.map((r) => (r.ok ? r.outcome : "failed")).sort();
+    expect(outcomes(before)).toEqual([...Array(99).fill("counted"), "first_in_window"]);
+    const folds = after.filter((r) => r.ok && r.outcome === "folded_and_new_window");
+    expect(folds).toEqual([{ ok: true, outcome: "folded_and_new_window", folded: 99 }]);
+    expect(after.filter((r) => r.ok && r.outcome === "counted")).toHaveLength(99);
+    const foldRows = (await prisma.aiSettingsHistory.findMany({ where: { field: "aiDenied", changedBy: who, action: "denied_folded" } })).length;
+    expect(foldRows).toBe(1);
+    expect(await accounted(who, "price_refresh")).toEqual({ live: 99, firstRows: 2, folded: 99, total: 200 });
   });
 
   it("fold first (deterministic): 20 concurrent denials after a window with 5 extras ended fold it exactly once", async () => {
