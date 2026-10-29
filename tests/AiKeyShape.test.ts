@@ -36,7 +36,7 @@ const KEY_FIXTURES = [
 function synthetic(): { label: string; text: string }[] {
   let seed = 20261028;
   const rnd = () => (seed = (seed * 1664525 + 1013904223) >>> 0) / 4294967296;
-  const AN = "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789";
+  const AN = "abcdefghijklmnopqrstuvwxyz" + "ABCDEFGHIJKLMNOPQRSTUVWXYZ" + "0123456789";
   const pick = (a: string, n: number) => Array.from({ length: n }, () => a[Math.floor(rnd() * a.length)]).join("");
   const shapes: Record<string, () => string> = {
     prefix_sk: () => j("sk", "-", pick(AN, 40 + Math.floor(rnd() * 20))),
