@@ -30,7 +30,8 @@ export type AiHistoryListResult = { ok: true; entries: AiHistoryEntry[] } | { ok
  * AiRetentionService change is involved, and no file under src/app/api/cron imports this one (a test pins that).
  *
  * The books balance at all times: history rows summed (a first-denial row counts 1, a folded row counts its N) plus the live
- * counters equals the attempts made. Nothing is lost and nothing is counted twice, because
+ * counters equals the attempts RECORDED. A recorded count is never lost or doubled; a count can be skipped under overload
+ * (record returns ok:false, ruling R27, and the call can wait before it gives up, see R32 below). That holds because
  *   - the first denial of a window is a conditional insert, so exactly one caller wins it;
  *   - a further denial in the window is one UPDATE that adds one, so concurrent ones add up;
  *   - a fold is a conditional UPDATE that matches only the exact row state that was read (same window start, same count), in
@@ -51,6 +52,11 @@ export type AiHistoryListResult = { ok: true; entries: AiHistoryEntry[] } | { ok
  *  - R28, hard, before A3: the wiring must use a branded Viewer type that only the session reader can create, or a cap on the
  *    number of distinct "who" rows. No wiring pull request passes review without one.
  *  - R29: the wiring must filter denied rows (field "aiDenied") out of the main audit list, not just limit it by page size.
+ *  - R32: the deny path must never await record() unbounded. With a held row lock, record() waited 7 s and 15 s before it returned
+ *    ok:false (QA, Oct 28). The wiring pull request must use a lock_timeout or a bounded race, and must add a held-lock test.
+ *    A2 as written does neither; it is a library and nothing calls it.
+ *  - Only the opt-in real-Postgres test file (tests/AiDeniedRealPostgres.test.ts) catches the list read losing its RepeatableRead
+ *    snapshot (mutant M13); the always-on tests run on PGlite and cannot show it.
  *  - R27: counting is best effort. Under heavy lock contention record may return { ok: false } and skip the count. The caller must
  *    still deny the action and must never show ok:false to the user as an error.
  * Server only.
