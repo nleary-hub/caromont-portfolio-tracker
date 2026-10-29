@@ -262,7 +262,7 @@ export class AiCopy {
   static readonly TEST = "Test connection";
   static readonly TESTING = "Testing…";
   static readonly TEST_HELP = "Sends a short test prompt with the saved provider and API key, using the model picked here.";
-  static readonly TEST_NEEDS_SETTINGS = "Save a provider and API key first.";
+  static readonly TEST_NEEDS_SETTINGS = "Add an API key for this provider in AI settings first.";
   static readonly TEST_FAILED_PREFIX = "Connection failed.";
   static readonly HISTORY_TITLE = "Change log";
   static readonly HISTORY_EMPTY = "No changes yet.";
