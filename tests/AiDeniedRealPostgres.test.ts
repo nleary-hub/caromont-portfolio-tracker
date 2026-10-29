@@ -2,12 +2,14 @@ import { PrismaPg } from "@prisma/adapter-pg";
 import { afterAll, describe, expect, it } from "vitest";
 import { PrismaClient } from "@/generated/prisma/client";
 import { AiDenied } from "@/lib/ai/AiDenied";
-import { AiDeniedService, type AiDeniedDb } from "@/lib/services/AiDeniedService";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { AiDeniedService, type AiDeniedDb, type AiDeniedTx } from "@/lib/services/AiDeniedService";
 
 /**
  * Real-Postgres probe for the denied-attempt counter. SKIPPED unless BOTH are set in the environment:
  *   AI_DENIED_PROBE_DATABASE_URL     a Postgres URL (read from the environment only; this file holds no URL or secret)
  *   AI_DENIED_PROBE_THROWAWAY=yes    you confirm the database is a scratch or throwaway branch
+ * Besides the race checks it holds two deterministic ones: a fold that starts from an expired window, and a list read that a fold interrupts.
  * It WRITES: both tables are append-only (the database refuses deletes), so the rows it adds stay in that database for good.
  * Never point it at a database that matters. It runs 200 denials at once over 20 connections and checks that none is lost.
  */
@@ -49,5 +51,61 @@ describe.skipIf(!on)("denied counter on a real Postgres (opt-in, writes permanen
     const results = await Promise.all(calls);
     expect(results.every((r) => r.ok)).toBe(true);
     expect((await accounted(who, "price_refresh")).total).toBe(200);
+  });
+
+  it("fold first (deterministic): 20 concurrent denials after a window with 5 extras ended fold it exactly once", async () => {
+    const who = `probe.${Date.now()}.c@example.test`;
+    const caller = { kind: "person", viewer: { email: who, isAdmin: false } } as const;
+    const t0 = new Date();
+    for (let i = 0; i < 6; i++) await AiDeniedService.record(db, caller, "price_refresh", t0); // one first row, counter 5
+    const t1 = new Date(t0.getTime() + AiDenied.WINDOW_MS + 1000); // the window is over for every one of the 20
+    const results = await Promise.all(Array.from({ length: 20 }, () => AiDeniedService.record(db, caller, "price_refresh", t1)));
+    expect(results.every((r) => r.ok)).toBe(true);
+    const folds = results.filter((r) => r.ok && r.outcome === "folded_and_new_window");
+    expect(folds).toHaveLength(1);
+    expect(folds[0]).toEqual({ ok: true, outcome: "folded_and_new_window", folded: 5 });
+    const a = await accounted(who, "price_refresh");
+    expect(a).toEqual({ live: 19, firstRows: 2, folded: 5, total: 26 });
+  });
+
+  it("the Owner's list is one snapshot: a fold that commits on another connection between the counter read and the history read cannot double a count", async () => {
+    const owner: Viewer = { email: "jordan.pike@example.org", isAdmin: true };
+    const who = `probe.${Date.now()}.d@example.test`;
+    const caller = { kind: "person", viewer: { email: who, isAdmin: false } } as const;
+    const t0 = new Date();
+    for (let i = 0; i < 6; i++) await AiDeniedService.record(db, caller, "price_refresh", t0); // counter 5, one first row
+    const t1 = new Date(t0.getTime() + AiDenied.WINDOW_MS + 1000);
+    let folded = false;
+    const hooked = {
+      $transaction: (fn: (tx: AiDeniedTx) => Promise<unknown>, options?: unknown) =>
+        (db as unknown as { $transaction: (f: (tx: AiDeniedTx) => Promise<unknown>, o?: unknown) => Promise<unknown> }).$transaction(
+          (tx) =>
+            fn({
+              aiSettingsHistory: tx.aiSettingsHistory,
+              aiDeniedCounter: new Proxy(tx.aiDeniedCounter, {
+                get: (t, k) =>
+                  k === "findMany"
+                    ? async (args: unknown) => {
+                        const r = await (t as unknown as { findMany: (a: unknown) => Promise<unknown> }).findMany(args);
+                        if (!folded) { folded = true; await AiDeniedService.record(db, caller, "price_refresh", t1); } // commits on another connection
+                        return r;
+                      }
+                    : Reflect.get(t, k),
+              }),
+            } as AiDeniedTx),
+          options,
+        ),
+    } as unknown as AiDeniedDb;
+    const r = await AiDeniedService.historyWithLive(hooked, owner, { limit: 1000 });
+    expect(folded).toBe(true);
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    const mine = r.entries.filter((e) => (e.kind === "live" ? e.who : e.changedBy) === who);
+    const live = mine.reduce((n, e) => n + (e.kind === "live" ? e.count : 0), 0);
+    const first = mine.filter((e) => e.kind === "history" && e.action === "denied").length;
+    const foldedSum = mine.reduce((n, e) => n + (e.kind === "history" && e.action === "denied_folded" ? Number(/: (\d+) more denied/.exec(String(e.newValue))?.[1] ?? 0) : 0), 0);
+    // The snapshot is from before the fold: 5 live + 1 first row. A list that read the history after the fold would show 5 twice.
+    expect({ live, first, foldedSum }).toEqual({ live: 5, first: 1, foldedSum: 0 });
+    expect((await accounted(who, "price_refresh")).total).toBe(7); // the world after the fold: 6 + the one that folded
   });
 });

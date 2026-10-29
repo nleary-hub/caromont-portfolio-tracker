@@ -50,6 +50,10 @@ function wrappedDb(wrap: (tx: AiDeniedTx) => AiDeniedTx): AiDeniedDb {
 }
 
 describe("AiDenied: actions are a closed list; a person is the verified session user (no action text from a caller becomes a key)", () => {
+  it("the window is exactly 10 minutes (the spec's number, pinned as a literal, not through the constant)", () => {
+    expect(AiDenied.WINDOW_MS).toBe(600000);
+  });
+
   it("who is a fixed label, or the lowercased email of the signed-in session user", () => {
     expect(AiDenied.who({ kind: "signed_out" })).toBe("signed out");
     expect(AiDenied.who({ kind: "agent" })).toBe("agent");
@@ -475,6 +479,30 @@ describe("CG2: the fold is atomic", () => {
     expect(after.counters).toEqual(before.counters); // the reset was undone: same window, same count
     expect(after.rows.map((x) => x.id)).toEqual(before.rows.map((x) => x.id)); // the folded row was undone too
     expect(after.accounted).toBe(before.accounted);
+  });
+
+  it("a folded line that looks like a key is refused by the shared detector in the app, and the whole fold rolls back", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const who = "keyed.fold@example.org";
+    for (let i = 0; i < 6; i++) await AiDeniedService.record(db, person(who), "key_rotate", at(i));
+    const before = await books(who);
+    const spy = vi.spyOn(AiDenied, "foldedValue").mockReturnValue(j("sk", "-FICTION", "77ab12cd", "EFGH0123"));
+    // The database has its own CHECK on this text, so the outcome alone would not show the app check. Count the writes that reach it.
+    let writes = 0;
+    const counting = wrappedDb((tx) => ({
+      aiDeniedCounter: tx.aiDeniedCounter,
+      aiSettingsHistory: new Proxy(tx.aiSettingsHistory, { get: (t, k) => (k === "create" ? async (a: unknown) => { writes++; return (t as unknown as { create: (x: unknown) => Promise<unknown> }).create(a); } : Reflect.get(t, k)) }),
+    }));
+    try {
+      expect(await AiDeniedService.record(counting, person(who), "key_rotate", at(W + 5))).toEqual({ ok: false });
+    } finally {
+      spy.mockRestore();
+    }
+    expect(writes).toBe(0); // refused in the app, before any write is tried
+    const after = await books(who);
+    expect(after.counters).toEqual(before.counters);
+    expect(after.rows.map((x) => x.id)).toEqual(before.rows.map((x) => x.id));
+    expect(JSON.stringify(after.rows)).not.toMatch(/FICTION/);
   });
 
   it("the database keeps its own guard: a counter row cannot be deleted, and its count cannot go below zero", async () => {
