@@ -19,7 +19,8 @@ const OTHER_ADMIN: Viewer = { email: "casey.lund@example.org", isAdmin: true };
 const T0 = new Date("2026-10-28T14:00:00.000Z");
 const at = (ms: number) => new Date(T0.getTime() + ms);
 const W = AiDenied.WINDOW_MS;
-const person = (email: string): AiDeniedCaller => ({ kind: "person", email });
+// A "person" is the verified signed-in session user (a Viewer). These tests pass fictional viewers the way the session helper would.
+const person = (email: string): AiDeniedCaller => ({ kind: "person", viewer: { email, isAdmin: false } });
 
 let h: RegistryHarness;
 let db: AiDeniedDb;
@@ -48,8 +49,8 @@ function wrappedDb(wrap: (tx: AiDeniedTx) => AiDeniedTx): AiDeniedDb {
   } as unknown as AiDeniedDb;
 }
 
-describe("AiDenied: the bounded vocabulary (no text from a caller becomes a key)", () => {
-  it("who is one of four fixed labels or a lowercased email", () => {
+describe("AiDenied: actions are a closed list; a person is the verified session user (no action text from a caller becomes a key)", () => {
+  it("who is a fixed label, or the lowercased email of the signed-in session user", () => {
     expect(AiDenied.who({ kind: "signed_out" })).toBe("signed out");
     expect(AiDenied.who({ kind: "agent" })).toBe("agent");
     expect(AiDenied.who({ kind: "voice_ticket" })).toBe("voice ticket");
@@ -61,7 +62,28 @@ describe("AiDenied: the bounded vocabulary (no text from a caller becomes a key)
     expect(AiDenied.who(person("two words@example.org"))).toBe("signed out");
     expect(AiDenied.who(person("no-at-sign"))).toBe("signed out");
     expect(AiDenied.who(person(`${"a".repeat(250)}@example.org`))).toBe("signed out");
-    expect(AiDenied.who({ kind: "person", email: undefined as unknown as string })).toBe("signed out");
+    expect(AiDenied.who({ kind: "person", viewer: undefined as unknown as Viewer })).toBe("signed out");
+    expect(AiDenied.who({ kind: "person", viewer: { email: undefined as unknown as string, isAdmin: false } })).toBe("signed out");
+  });
+
+  it("a person whose address holds a key-shaped run is counted as signed out, and neither table ever holds the text", async () => {
+    const fresh = await registryHarness();
+    try {
+      const d = fresh.prisma as unknown as AiDeniedDb;
+      const keyed = [`${j("sk", "-FICTION", "99ab12cd", "EFGH0123")}@example.org`, `${"A".repeat(40)}@example.org`, `${j("AIza", "FICTIONab12cd34ef56gh")}@example.org`];
+      for (const k of keyed) expect(AiDenied.who(person(k))).toBe("signed out");
+      expect(AiDenied.who(person("riley.moss@example.org"))).toBe("riley.moss@example.org"); // an ordinary address is untouched
+      for (let i = 0; i < keyed.length; i++) await AiDeniedService.record(d, person(keyed[i]), "key_add", at(i));
+      const counters = await fresh.prisma.aiDeniedCounter.findMany();
+      expect(counters.map((c) => `${c.who}|${c.action}|${c.count}`)).toEqual(["signed out|key_add|2"]);
+      const history = await fresh.prisma.aiSettingsHistory.findMany({ where: { field: "aiDenied" } });
+      expect(history.map((r) => r.changedBy)).toEqual(["signed out"]);
+      const everything = JSON.stringify([counters, history]);
+      for (const k of keyed) expect(everything).not.toContain(k.split("@")[0]);
+      expect(everything).not.toMatch(/FICTION|AAAAAAAA/);
+    } finally {
+      await fresh.stop();
+    }
   });
 
   it("an action is on the list or counts under one shared unknown label; every label passes the database shape rule", () => {
@@ -378,6 +400,83 @@ describe("CG2: the fold is atomic", () => {
     }
   });
 
+  /**
+   * Run `other` (a full second denial) just before the first plain-increment write of the first denial: after it decided the
+   * window is open, before its UPDATE. Catches any increment that is a read then a write, because the second denial's add is
+   * then overwritten. It fires on the first write to the counter that sets a count without opening a window (update or updateMany).
+   */
+  function interleavedIncrement(other: (tx: AiDeniedTx) => Promise<unknown>): AiDeniedDb {
+    let fired = false;
+    return wrappedDb((tx) => ({
+      aiSettingsHistory: tx.aiSettingsHistory,
+      aiDeniedCounter: new Proxy(tx.aiDeniedCounter, {
+        get: (t, k) => {
+          if (k !== "updateMany" && k !== "update") return Reflect.get(t, k);
+          return async (args: { data: { count?: unknown; windowStartedAt?: Date } }) => {
+            if (!fired && args.data && "count" in args.data && !args.data.windowStartedAt) { fired = true; await other(tx); }
+            return (t as unknown as Record<string, (a: unknown) => Promise<unknown>>)[k as string](args);
+          };
+        },
+      }),
+    }));
+  }
+
+  it("interleaving 4 (the plain increment is one atomic UPDATE): a second denial lands between the first one's window check and its add. Both are counted, none lost", async () => {
+    const who = "race.increment@example.org";
+    await AiDeniedService.record(db, person(who), "model_test", at(0)); // opens the window: its own row, counter 0
+    const d1 = interleavedIncrement(async (tx) => { await AiDeniedService.recordIn(tx, who, "model_test", at(2000)); });
+    const r1 = await AiDeniedService.record(d1, person(who), "model_test", at(1000));
+    expect(r1).toEqual({ ok: true, outcome: "counted", folded: 0 });
+    const b = await books(who);
+    expect(b.live).toBe(2); // a read-then-write increment would leave 1 here (the second denial's add overwritten)
+    expect(b.firstRows).toBe(1);
+    expect(b.accounted).toBe(3);
+  });
+
+  it("a fold that loses its guarded reset eight times in a row gives up with ok false and changes nothing", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const who = "race.exhausted@example.org";
+    for (let i = 0; i < 6; i++) await AiDeniedService.record(db, person(who), "key_remove", at(i));
+    const before = await books(who);
+    let fired = 0;
+    const d = wrappedDb((tx) => ({
+      aiSettingsHistory: tx.aiSettingsHistory,
+      aiDeniedCounter: new Proxy(tx.aiDeniedCounter, {
+        get: (t, k) => {
+          if (k !== "updateMany") return Reflect.get(t, k);
+          return async (args: { data: { windowStartedAt?: Date } }) => {
+            // Before every guarded reset another denial adds to the old window, so the row is never as read.
+            if (args.data.windowStartedAt) { fired++; await AiDeniedService.recordIn(tx, who, "key_remove", at(W - 1000)); }
+            return (t as unknown as { updateMany: (a: unknown) => Promise<unknown> }).updateMany(args);
+          };
+        },
+      }),
+    }));
+    expect(await AiDeniedService.record(d, person(who), "key_remove", at(W + 1000))).toEqual({ ok: false });
+    expect(fired).toBe(AiDeniedService.MAX_RACES);
+    const after = await books(who);
+    expect(after.counters).toEqual(before.counters);
+    expect(after.rows.map((x) => x.id)).toEqual(before.rows.map((x) => x.id));
+  });
+
+  it("a failure of the SECOND history write (the new first row, after the folded row and the reset ran) rolls everything back, including the reset and the folded row", async () => {
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    const who = "failing.second@example.org";
+    for (let i = 0; i < 6; i++) await AiDeniedService.record(db, person(who), "key_note_edit", at(i));
+    const before = await books(who);
+    let calls = 0;
+    const failing = wrappedDb((tx) => ({
+      aiDeniedCounter: tx.aiDeniedCounter,
+      aiSettingsHistory: new Proxy(tx.aiSettingsHistory, { get: (t, k) => (k === "create" ? async (a: unknown) => { calls++; if (calls === 2) throw new Error("injected failure"); return (t as unknown as { create: (x: unknown) => Promise<unknown> }).create(a); } : Reflect.get(t, k)) }),
+    }));
+    expect(await AiDeniedService.record(failing, person(who), "key_note_edit", at(W + 5))).toEqual({ ok: false });
+    expect(calls).toBe(2); // the folded row was written, then the new first row failed
+    const after = await books(who);
+    expect(after.counters).toEqual(before.counters); // the reset was undone: same window, same count
+    expect(after.rows.map((x) => x.id)).toEqual(before.rows.map((x) => x.id)); // the folded row was undone too
+    expect(after.accounted).toBe(before.accounted);
+  });
+
   it("the database keeps its own guard: a counter row cannot be deleted, and its count cannot go below zero", async () => {
     const who = "db.guard@example.org";
     await AiDeniedService.record(db, person(who), "key_add", T0);
@@ -422,12 +521,12 @@ describe("CG3: the first denial, a flood, bounded keys", () => {
     expect(b.live).toBe(39);
   });
 
-  it("keys are bounded to (person, action): 300 invented actions and 300 invented emails make no new key", async () => {
+  it("actions are a closed list, and text that is not an address counts as signed out: 300 invented actions and 300 non-address strings make no new key", async () => {
     const fresh = await registryHarness();
     try {
       const d = fresh.prisma as unknown as AiDeniedDb;
       for (let i = 0; i < 300; i++) {
-        await AiDeniedService.record(d, { kind: "person", email: `not an address ${i}` }, `invented action ${i} ${"x".repeat(i % 7)}`, at(i));
+        await AiDeniedService.record(d, { kind: "person", viewer: { email: `not an address ${i}`, isAdmin: false } }, `invented action ${i} ${"x".repeat(i % 7)}`, at(i));
       }
       await AiDeniedService.record(d, { kind: "agent" }, j("sk", "-FICTION", "88ab12cd", "EFGH0123"), at(400)); // a key-shaped "action" from a caller
       const counters = await fresh.prisma.aiDeniedCounter.findMany({ orderBy: { who: "asc" } });
@@ -442,7 +541,31 @@ describe("CG3: the first denial, a flood, bounded keys", () => {
     }
   });
 
-  it("the number of keys can never pass people x actions: every action on the list, for two people, is exactly 2 x the list", async () => {
+  it("people are NOT a closed list: 300 plausible forged addresses passed as persons make 300 new permanent counter rows and 300 history rows (so the caller must pass only the verified session user)", async () => {
+    // This states the real behavior so nobody believes the table is closed for people. The bound on person rows is the
+    // precondition on the caller (only the signed-in, allow-listed session user is ever passed as a person), not this code.
+    const fresh = await registryHarness();
+    try {
+      const d = fresh.prisma as unknown as AiDeniedDb;
+      for (let i = 0; i < 300; i++) await AiDeniedService.record(d, person(`forged.${i}@example.org`), "key_add", at(i));
+      expect(await fresh.prisma.aiDeniedCounter.count()).toBe(300);
+      expect(await fresh.prisma.aiSettingsHistory.count({ where: { field: "aiDenied" } })).toBe(300);
+      // The same addresses passed as signed_out (what a caller must do with request input) make one row.
+      const fresh2 = await registryHarness();
+      try {
+        const d2 = fresh2.prisma as unknown as AiDeniedDb;
+        for (let i = 0; i < 300; i++) await AiDeniedService.record(d2, { kind: "signed_out" }, "key_add", at(i));
+        expect(await fresh2.prisma.aiDeniedCounter.count()).toBe(1);
+        expect(await fresh2.prisma.aiSettingsHistory.count({ where: { field: "aiDenied" } })).toBe(1);
+      } finally {
+        await fresh2.stop();
+      }
+    } finally {
+      await fresh.stop();
+    }
+  });
+
+  it("the number of keys never passes people x actions when only the verified users are passed: every action on the list, for two people, is exactly 2 x the list", async () => {
     const fresh = await registryHarness();
     try {
       const d = fresh.prisma as unknown as AiDeniedDb;
