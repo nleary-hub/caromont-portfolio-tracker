@@ -68,6 +68,15 @@ export interface AiSettingsDb {
   $transaction<T>(fn: (tx: AiSettingsDb) => Promise<T>): Promise<T>;
 }
 
+/** The transaction slice clearKey writes through (the provider key action's open transaction). */
+export interface AiSettingsKeyTx {
+  aiSettings: {
+    findUnique(args: { where: { id: string } }): Promise<AiSettingsRow | null>;
+    upsert(args: { where: { id: string }; create: AiSettingsRow; update: Partial<AiSettingsRow> }): Promise<AiSettingsRow>;
+  };
+  aiSettingsHistory: { createMany(args: { data: AiSettingsHistoryRow[] }): Promise<unknown> };
+}
+
 export interface AiSettingsInput {
   fields: AiSettingsFields;
   /** A new key to store (replaces any saved key). Empty or absent = keep the saved key. */
@@ -281,19 +290,24 @@ export class AiSettingsService {
     });
   }
 
-  /** Clears the saved key (one "key_cleared" log row). The switch stays as it is, but AI is off without a key. */
-  static async clearKey(db: AiSettingsDb, admin: Viewer, now: Date = new Date()): Promise<void> {
+  /**
+   * Item 19: clears the legacy copy of the OpenAI key (ai_settings.apiKeyCiphertext) and writes one "key_cleared" log row.
+   * It takes the open transaction of the Owner-gated provider key rotate or remove action and never opens its own, so it
+   * has no entry point of its own: AiProviderKeyService.rotate and .remove are its only callers, and a failure there
+   * rolls this write back with theirs. Only an OpenAI copy is cleared (legacy provider unset or "openai"); a legacy
+   * Azure or compatible setup is left as it is. Nothing is decrypted and no key value is logged.
+   */
+  static async clearKey(tx: AiSettingsKeyTx, admin: Viewer, now: Date = new Date()): Promise<boolean> {
     AdminPolicy.assertAdmin(admin);
-    await db.$transaction(async (tx) => {
-      const current = await AiSettingsService.storedRow(tx);
-      if (!current?.apiKeyCiphertext) return;
-      await tx.aiSettings.upsert({
-        where: { id: AiSettingsService.ID },
-        create: current,
-        update: { apiKeyCiphertext: null, apiKeyLast4: null, apiKeySetAt: null, apiKeySetBy: null, updatedAt: now, updatedBy: admin.email },
-      });
-      await tx.aiSettingsHistory.createMany({ data: [{ id: randomUUID(), field: "apiKey", action: "key_cleared", oldValue: null, newValue: null, changedAt: now, changedBy: admin.email }] });
+    const current = await tx.aiSettings.findUnique({ where: { id: AiSettingsService.ID } });
+    if (!current?.apiKeyCiphertext || (current.provider !== null && current.provider !== "openai")) return false;
+    await tx.aiSettings.upsert({
+      where: { id: AiSettingsService.ID },
+      create: current,
+      update: { apiKeyCiphertext: null, apiKeyLast4: null, apiKeySetAt: null, apiKeySetBy: null, updatedAt: now, updatedBy: admin.email },
     });
+    await tx.aiSettingsHistory.createMany({ data: [{ id: randomUUID(), field: "apiKey", action: "key_cleared", oldValue: null, newValue: null, changedAt: now, changedBy: admin.email }] });
+    return true;
   }
 
   static async history(db: AiSettingsDb): Promise<AiSettingsHistoryRow[]> {

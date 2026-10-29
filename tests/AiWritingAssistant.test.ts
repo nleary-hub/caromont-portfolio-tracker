@@ -129,7 +129,8 @@ describe("the key is never serialized to the client, logged or returned", () => 
   it("the change log records which field and the key action, never a key value (the check constraint refuses one)", async () => {
     const db = await configured();
     await AiSettingsService.save(db, ADMIN, { allowedModels: ["gpt-6-luna"], fields: FIELDS, newKey: "sk-another-key-1234567890" }, ENV);
-    await AiSettingsService.clearKey(db, ADMIN);
+    // Item 19: clearKey runs only inside the provider key action's transaction.
+    await db.$transaction((tx) => AiSettingsService.clearKey(tx, ADMIN));
     const keyRows = db.settingsHistory.filter((h) => h.field === "apiKey");
     expect(keyRows.map((h) => h.action)).toEqual(["key_set", "key_replaced", "key_cleared"]);
     for (const h of keyRows) expect([h.oldValue, h.newValue]).toEqual([null, null]);

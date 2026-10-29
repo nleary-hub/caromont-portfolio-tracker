@@ -4,7 +4,8 @@ import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
 import { DisplayName } from "@/lib/auth/DisplayName";
 import { AiKeyCopy, AiKeyProviders, type AiKeyActionResult, type AiKeyActionView, type AiKeyProvider, type AiKeyRowView, type AiKeyState } from "@/lib/ai/AiKeyProviders";
 import { AiKeyTester, type AiKeyTestOutcome } from "@/lib/ai/AiKeyTester";
-import type { AiSettingsHistoryRow, AiSettingsRow } from "@/lib/services/AiSettingsService";
+import type { AiRuntimeConfig } from "@/lib/ai/AiProviderClient";
+import { AiSettingsService, type AiSettingsHistoryRow, type AiSettingsRow } from "@/lib/services/AiSettingsService";
 
 type Env = Record<string, string | undefined>;
 type FetchImpl = (url: string, init: RequestInit) => Promise<Response>;
@@ -33,7 +34,11 @@ export interface AiProviderKeyTx {
     createMany(args: { data: AiProviderKeyRow[]; skipDuplicates: true }): Promise<{ count: number }>;
     update(args: { where: { provider: string }; data: Partial<AiProviderKeyRow> }): Promise<AiProviderKeyRow>;
   };
-  aiSettings: { findUnique(args: { where: { id: string } }): Promise<AiSettingsRow | null> };
+  aiSettings: {
+    findUnique(args: { where: { id: string } }): Promise<AiSettingsRow | null>;
+    /** Item 19: used only to clear the legacy OpenAI copy inside the rotate or remove transaction. */
+    upsert(args: { where: { id: string }; create: AiSettingsRow; update: Partial<AiSettingsRow> }): Promise<AiSettingsRow>;
+  };
   aiSettingsHistory: { createMany(args: { data: AiSettingsHistoryRow[] }): Promise<unknown> };
 }
 
@@ -68,7 +73,8 @@ export interface AiProviderKeySecret {
  * The legacy single key (ai_settings.apiKeyCiphertext, OpenAI) is copied into the "openai" row on first read: decrypted
  * with the legacy binding and re-encrypted with the row's, inside a transaction that inserts with ON CONFLICT DO NOTHING
  * and writes the one "migrated" history row only when that insert created the row (two racing first reads give one row
- * and one history entry). The legacy columns are never changed. On a Vercel preview nothing here decrypts, copies or
+ * and one history entry). The copy leaves the legacy columns as they are; only an OpenAI rotate or remove clears
+ * them (item 19, AiSettingsService.clearKey, in the same transaction). On a Vercel preview nothing here decrypts, copies or
  * writes. No method returns the key or its ciphertext to a caller outside the server.
  */
 export class AiProviderKeyService {
@@ -175,6 +181,21 @@ export class AiProviderKeyService {
     if (AiKeyCipher.isPreview(env)) return null;
     const row = provider === "openai" ? await AiProviderKeyService.ensureOpenAiCopied(db, env) : await db.aiProviderKey.findUnique({ where: { provider } });
     return AiProviderKeyService.decryptRow(row, env);
+  }
+
+  /**
+   * Item 2: the OpenAI key for dictation, the voice session and the connection test, read from the key registry
+   * (ai_provider_keys) only. The legacy ai_settings ciphertext is never decrypted for a call here: it is read at most once,
+   * by ensureOpenAiCopied, to copy it into the registry. Fails closed: a preview, a database without the registry table,
+   * no saved key, an unreadable key or any read error gives null, and the caller shows its "AI off" state.
+   */
+  static async openAiRuntime(db: unknown, model: string, env: Env = process.env): Promise<AiRuntimeConfig | null> {
+    if (AiKeyCipher.isPreview(env)) return null;
+    const kdb = db as Partial<AiProviderKeyDb> | null;
+    if (typeof kdb?.aiProviderKey?.findUnique !== "function" || typeof kdb.$transaction !== "function") return null;
+    const s = await AiProviderKeyService.secret(kdb as AiProviderKeyDb, "openai", env).catch(() => null);
+    if (!s?.apiKey) return null;
+    return { provider: "openai", model: model.trim(), baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: s.apiKey };
   }
 
   /** Decrypts a stored row with its own binding. Null on a preview, with no key, or when GCM auth fails. Server only. */
@@ -336,6 +357,8 @@ export class AiProviderKeyService {
         data: { ciphertext: AiKeyCipher.encrypt(apiKey, cipher.key, AiKeyCipher.providerBinding(provider)), last4, setAt: now, setBy: admin.email, lastTestedAt: now, lastTestStatus: "ok", updatedAt: now, updatedBy: admin.email },
       });
       await tx.aiSettingsHistory.createMany({ data: [AiProviderKeyService.history(admin.email, "rotated", now, oldValue, newValue)] });
+      // Item 19: rotating the OpenAI key also clears the legacy copy, in this same transaction (both or neither).
+      if (provider === "openai") await AiSettingsService.clearKey(tx, admin, now);
       return updated;
     });
     return { ok: true, ...AiProviderKeyService.actionView(provider, saved) };
@@ -343,7 +366,8 @@ export class AiProviderKeyService {
 
   /**
    * Delete (after the confirm dialog): clears the key and its test result. The row stays (never deleted), so the legacy
-   * OpenAI key is not copied back on the next read. One "key_cleared" history row.
+   * OpenAI key is not copied back on the next read. One "key_cleared" history row. Item 19: removing the OpenAI key also
+   * clears the legacy ai_settings copy in the same transaction, so a failure in either write leaves both as they were.
    */
   static async remove(db: AiProviderKeyDb, admin: Viewer, providerRaw: unknown, env: Env = process.env, now: Date = new Date()): Promise<AiKeyActionResult> {
     AdminPolicy.assertAdmin(admin);
@@ -352,6 +376,7 @@ export class AiProviderKeyService {
     if (AiKeyCipher.isPreview(env)) return { ok: false, error: AiKeyCopy.PREVIEW_OFF };
     if (provider === "openai") await AiProviderKeyService.ensureOpenAiCopied(db, env, now);
     const row = await db.$transaction(async (tx) => {
+      if (provider === "openai") await AiSettingsService.clearKey(tx, admin, now);
       const current = await tx.aiProviderKey.findUnique({ where: { provider } });
       if (!current?.ciphertext) return current;
       const updated = await tx.aiProviderKey.update({ where: { provider }, data: { ciphertext: null, last4: null, setAt: null, setBy: null, lastTestedAt: null, lastTestStatus: null, updatedAt: now, updatedBy: admin.email } });
