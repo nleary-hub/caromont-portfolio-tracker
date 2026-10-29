@@ -1,3 +1,6 @@
+import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { AiKeyShape } from "@/lib/ai/AiKeyShape";
+
 /**
  * Denied AI attempts: the fixed vocabulary and the pure rules (migration 0071, table ai_denied_counter; item 10a, cron
  * option (b)). Client-safe: names, lists and text only. Nothing here reads or writes the database.
@@ -10,11 +13,19 @@
  *   - the Owner's history list reads the counter table live, so a count that has not folded yet is always visible.
  * No daily job is involved and nothing under the cron routes is used.
  *
- * The counter has one row per (who, action). Both parts come from this file's closed vocabulary, never from text the
- * caller supplies, so the number of rows stays bounded by the people who can sign in times the actions listed here.
+ * The counter has one row per (who, action).
+ *   - ACTIONS are a closed list: an action that is not on it is counted under one shared label, so a caller cannot make new
+ *     action keys.
+ *   - WHO is NOT a closed list for people. A person is the verified, signed-in session user (a Viewer from the session
+ *     helper, whose address is on the allow list). The number of "person" rows is therefore bounded by the people who can sign
+ *     in times the actions listed here, but ONLY under that precondition. This file cannot prove it: an address taken from
+ *     request input (a form field, a header, a query) must never be passed as a person; pass it as signed_out. A plausible
+ *     address that is passed as a person is stored as given (lowercased), and every distinct one is a new permanent row.
+ *   - The other three callers are fixed labels. A person whose address looks like a pasted key is counted as signed out.
  */
 export type AiDeniedCaller =
-  | { kind: "person"; email: string }
+  /** `viewer` must be the verified signed-in session user, never an address read from request input (see the header). */
+  | { kind: "person"; viewer: Viewer }
   | { kind: "signed_out" }
   | { kind: "agent" }
   | { kind: "voice_ticket" };
@@ -48,7 +59,11 @@ export class AiDenied {
   /** The longest email the counter table accepts (its who_length CHECK allows 1 to 254 characters). */
   static readonly WHO_MAX = 254;
 
-  /** Turn a caller into one of the bounded "who" labels. A person's email is trimmed and lowercased; one that is not a plausible address counts as signed out. */
+  /**
+   * Turn a caller into the "who" label. Precondition: a "person" is the verified session user (see the header); this does not
+   * and cannot check that. A person's email is trimmed and lowercased. One that is not a plausible address, or that looks like a
+   * pasted key (the shared detector), counts as signed out, so key-shaped text never reaches a table.
+   */
   static who(caller: AiDeniedCaller): string {
     switch (caller.kind) {
       case "agent":
@@ -56,7 +71,9 @@ export class AiDenied {
       case "voice_ticket":
         return AiDenied.WHO_VOICE_TICKET;
       case "person": {
-        const email = typeof caller.email === "string" ? caller.email.trim().toLowerCase() : "";
+        const raw = typeof caller.viewer?.email === "string" ? caller.viewer.email.trim() : "";
+        const email = raw.toLowerCase();
+        if (AiKeyShape.looksLikeKey(raw) || AiKeyShape.looksLikeKey(email)) return AiDenied.WHO_SIGNED_OUT;
         return AiDenied.plausibleEmail(email) ? email : AiDenied.WHO_SIGNED_OUT;
       }
       default:

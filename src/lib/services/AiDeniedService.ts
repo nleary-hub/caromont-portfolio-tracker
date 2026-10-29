@@ -38,8 +38,14 @@ export type AiHistoryListResult = { ok: true; entries: AiHistoryEntry[] } | { ok
  * A failure of any step rolls the whole transaction back: counter and history change together or not at all. A failed
  * recording is not retried (only a lost race is repeated, a few times, because it did not fail).
  *
- * This service never reads or stores the text a caller typed: "who" and "action" come from AiDenied's closed vocabulary.
- * Server only.
+ * Not wired yet: nothing calls record or historyWithLive, and the Admin AI page does not read the live list. Item 10a, G10 and
+ * A14 are met only for this library. The wiring goes in the later pull request that rewires the Admin AI page and the entry points.
+ *
+ * Keys: "action" comes from AiDenied's closed list (anything else is one shared label). "who" for a person is the verified
+ * signed-in session user, and that is a PRECONDITION of the caller, not something this service can check: it must never be
+ * given an address read from request input (pass signed_out instead). Under that precondition the rows are bounded by the
+ * people who can sign in times the actions; without it every distinct address is a new permanent row. A key-shaped address is
+ * stored as "signed out". Server only.
  */
 export class AiDeniedService {
   static readonly FIELD = "aiDenied";
