@@ -35,6 +35,7 @@ export class AiRegistryCopy {
   static readonly BAD_STATUS = "Choose one of the listed price statuses.";
   static readonly BAD_CATEGORY = "Choose one of the listed categories.";
   static readonly BAD_CATEGORY_MODEL = "That model cannot serve this category.";
+  static readonly MODEL_NOT_ACTIVE = "That model is turned off or archived. Turn it on first.";
   static readonly AUDIO_OPENAI_ONLY = "Dictation and Voice chat run on OpenAI only.";
   static readonly CAP_WHOLE = "Enter a whole number of tokens, or leave it empty for the built-in budget.";
   static readonly CAP_LOW = "The cap must be at least 1.";
@@ -55,6 +56,7 @@ export interface AiRegistryModelView {
   enabled: boolean;
   archivedAt: Date | null;
   listedState: string;
+  /** NO WRITER EXISTS in this pull request. Any future writer must run AiKeyShape.looksLikeKey on EVERY element before any write (the database has no CHECK on this column); tests/AiRegistryService.test.ts holds a test that fails if a writer is added without that. */
   allowedEfforts: string[];
   maxOutputTokens: number | null;
   updatedAt: Date;
@@ -258,7 +260,7 @@ export class AiRegistryService {
           await tx.aiModelPrice.create({ data: { id: priceId, provider: input.provider, model: input.model, unit, tier: "standard", price: input.price, status, sourceUrl: url, priceReadOn: readOn, updatedAt: now, updatedBy: who.email } });
         }
         await tx.aiModelPriceHistory.create({
-          data: { id: randomUUID(), priceId, provider: input.provider, model: input.model, unit, action: there ? "price_changed" : "created", oldPrice: there ? there.price : null, newPrice: input.price, sourceUrl: url, priceReadOn: readOn, editedAt: now, editedBy: who.email },
+          data: { id: randomUUID(), priceId, provider: input.provider, model: input.model, unit, action: there ? (there.archivedAt !== null ? "restored" : "price_changed") : "created", oldPrice: there ? there.price : null, newPrice: input.price, sourceUrl: url, priceReadOn: readOn, editedAt: now, editedBy: who.email },
         });
         return { ok: true as const };
       });
@@ -295,6 +297,8 @@ export class AiRegistryService {
       return await db.$transaction(async (tx) => {
         const reg = await tx.aiModelRegistry.findUnique({ where: { provider_model: { provider: input.provider, model: input.model } } });
         if (!reg) return { ok: false as const, error: AiRegistryCopy.NOT_FOUND };
+        // A category may only point at a model that is turned on and not archived (the registry's own rule; the history written below is permanent).
+        if (!reg.enabled || reg.archivedAt !== null) return { ok: false as const, error: AiRegistryCopy.MODEL_NOT_ACTIVE };
         const need: AiModelKind = isAudio ? AiRegistry.AUDIO_KIND[category as "dictation" | "voice_chat"] : "chat";
         if (!AiModelKinds.fits({ id: reg.model, kind: reg.kind }, need)) return { ok: false as const, error: AiRegistryCopy.BAD_CATEGORY_MODEL };
         const before = await tx.aiCategorySetting.findUnique({ where: { category } });

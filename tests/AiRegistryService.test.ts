@@ -227,6 +227,21 @@ describe("the registry services on a real database", () => {
       expect(hist.map((r) => [r.action, r.oldPrice === null ? null : Number(r.oldPrice), Number(r.newPrice)])).toEqual([["created", null, 1.25], ["price_changed", 1.25, 2.5]]);
     });
 
+    it("re-saving an archived price records restored (not price_changed), un-archives it, and keeps the old price in the history line", async () => {
+      await AiRegistryService.addModel(hx.db, OWNER, { provider: "openai", model: "restore-model", kind: "chat" });
+      const save = (price: number) => AiRegistryService.setPrice(hx.db, OWNER, { provider: "openai", model: "restore-model", unit: "input_per_1m", price, status: "verified", sourceUrl: "https://example.test/pricing", priceReadOn: new Date("2026-10-27") });
+      expect(await save(1.5)).toEqual({ ok: true });
+      // No writer archives a price in this pull request, so archive the row directly, the way a later one will.
+      await hx.prisma.aiModelPrice.updateMany({ where: { model: "restore-model" }, data: { archivedAt: new Date(), archivedBy: OWNER.email } });
+      expect(await save(1.75)).toEqual({ ok: true });
+      const [row] = await AiRegistryService.listPrices(hx.db, "openai", "restore-model");
+      expect(row.archivedAt).toBeNull();
+      expect(Number(row.price)).toBe(1.75);
+      expect(await save(2)).toEqual({ ok: true }); // live again, so this one is an ordinary change
+      const hist = await hx.prisma.aiModelPriceHistory.findMany({ where: { model: "restore-model" }, orderBy: { editedAt: "asc" } });
+      expect(hist.map((r) => [r.action, r.oldPrice === null ? null : Number(r.oldPrice), Number(r.newPrice)])).toEqual([["created", null, 1.5], ["restored", 1.5, 1.75], ["price_changed", 1.75, 2]]);
+    });
+
     it("applies the source rule in the app before the database does", async () => {
       expect(await put({ unit: "output_per_1m", sourceUrl: null })).toEqual({ ok: false, error: AiRegistryCopy.SOURCE_NEEDED });
       expect(await put({ unit: "output_per_1m", priceReadOn: null })).toEqual({ ok: false, error: AiRegistryCopy.SOURCE_NEEDED });
@@ -251,6 +266,10 @@ describe("the registry services on a real database", () => {
       await AiRegistryService.addModel(hx.db, OWNER, { provider: "openai", model: "cat-stt", kind: "transcription" });
       await AiRegistryService.addModel(hx.db, OWNER, { provider: "openai", model: "cat-live", kind: "realtime" });
       await AiRegistryService.addModel(hx.db, OWNER, { provider: "anthropic", model: "cat-stt-b", kind: "transcription" });
+      // A model starts OFF and a category refuses an OFF model, so turn the fixtures on.
+      for (const [provider, model] of [["openai", "cat-chat"], ["anthropic", "cat-chat-b"], ["openai", "cat-stt"], ["openai", "cat-live"], ["anthropic", "cat-stt-b"]]) {
+        expect(await AiRegistryService.setEnabled(hx.db, OWNER, { provider, model, enabled: true })).toEqual({ ok: true });
+      }
     });
     const set = (category: string, provider: string, model: string, effort?: string | null) => AiRegistryService.setCategory(hx.db, OWNER, { category, provider, model, effort });
 
@@ -272,6 +291,33 @@ describe("the registry services on a real database", () => {
       expect(await set("extraction", "openai", "missing-model")).toEqual({ ok: false, error: AiRegistryCopy.NOT_FOUND });
       expect(await set("poetry", "openai", "cat-chat")).toEqual({ ok: false, error: AiRegistryCopy.BAD_CATEGORY });
       expect(await set("analysis", "openai", "cat-chat", "Very High!")).toEqual({ ok: false, error: AiRegistryCopy.BAD_EFFORT });
+    });
+
+    it("refuses a model that is turned off or archived, with the fixed copy, and writes no category row and no history row", async () => {
+      await AiRegistryService.addModel(hx.db, OWNER, { provider: "openai", model: "cat-off", kind: "chat" }); // starts OFF
+      await AiRegistryService.addModel(hx.db, OWNER, { provider: "openai", model: "cat-archived", kind: "chat" });
+      await AiRegistryService.setEnabled(hx.db, OWNER, { provider: "openai", model: "cat-archived", enabled: true });
+      await hx.prisma.aiModelRegistry.update({ where: { provider_model: { provider: "openai", model: "cat-archived" } }, data: { archivedAt: new Date(), archivedBy: OWNER.email } });
+      const counts = async () => [await hx.prisma.aiCategorySetting.count(), await hx.prisma.aiSettingsHistory.count()];
+      const before = await counts();
+      const rowBefore = (await AiRegistryService.listCategories(hx.db)).find((c) => c.category === "analysis");
+      for (const model of ["cat-off", "cat-archived"]) {
+        const r = await set("analysis", "openai", model);
+        expect(r).toEqual({ ok: false, error: AiRegistryCopy.MODEL_NOT_ACTIVE });
+        expect(JSON.stringify(r)).not.toContain(model);
+      }
+      expect(await counts()).toEqual(before);
+      expect((await AiRegistryService.listCategories(hx.db)).find((c) => c.category === "analysis")).toEqual(rowBefore);
+    });
+
+    it("a model that was ON when picked and is turned OFF later is refused on the next pick, and turning it back ON allows it", async () => {
+      await AiRegistryService.addModel(hx.db, OWNER, { provider: "openai", model: "cat-toggle", kind: "chat" });
+      await AiRegistryService.setEnabled(hx.db, OWNER, { provider: "openai", model: "cat-toggle", enabled: true });
+      expect(await set("analysis", "openai", "cat-toggle")).toEqual({ ok: true });
+      await AiRegistryService.setEnabled(hx.db, OWNER, { provider: "openai", model: "cat-toggle", enabled: false });
+      expect(await set("analysis", "openai", "cat-toggle")).toEqual({ ok: false, error: AiRegistryCopy.MODEL_NOT_ACTIVE });
+      await AiRegistryService.setEnabled(hx.db, OWNER, { provider: "openai", model: "cat-toggle", enabled: true });
+      expect(await set("analysis", "openai", "cat-toggle")).toEqual({ ok: true });
     });
 
     it("a key-shaped effort never reaches the database: no category row, no history row, no row count change", async () => {
@@ -324,6 +370,19 @@ describe("static inventory", () => {
       const code = text(path.join(root, f)).replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, ""); // comments may name what the code does not do
       expect(code).not.toMatch(/\baiModel\.|ai_models\b|aiProviderKey|apiKey|ciphertext/);
     }
+  });
+
+  it("allowedEfforts has NO writer in this pull request (read only). A future writer must run AiKeyShape.looksLikeKey on every element before any write, and this test fails until that is done and this test is replaced by a behavioral one", () => {
+    // The database has no CHECK on ai_model_registry.allowedEfforts, so the shared detector is the only guard. Code (comments stripped)
+    // may mention the field only in the view type and the read mapping of listModels. Any other mention, such as a data: { allowedEfforts }
+    // or a raw SQL write, fails here. When a writer is added: run the detector on EVERY element first (G-APP, before any write),
+    // add a test that a key-shaped element is refused with no row and no history change (like the effort test above), then update this list.
+    const mentions = src.flatMap((p) => text(p).replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((l) => !/^\s*\/\//.test(l) && /allowedEfforts/.test(l)).map((l) => `${path.relative(root, p)}: ${l.trim()}`));
+    expect(mentions.length).toBe(2);
+    expect(mentions.every((m) => m.startsWith("src/lib/services/AiRegistryService.ts: "))).toBe(true);
+    expect(mentions.some((m) => /^[^:]+: allowedEfforts: string\[\];$/.test(m))).toBe(true);
+    expect(mentions.some((m) => m.includes("allowedEfforts: r.allowedEfforts"))).toBe(true);
+    expect(mentions.join("\n")).not.toMatch(/data:|upsert|INSERT INTO|SET "?allowedEfforts/);
   });
 
   it("the registry tables carry no key, URL (other than the price source), adapter or header column", () => {
