@@ -11,6 +11,8 @@ const nextConfig: NextConfig = {
     "/api/reports/preview": REPORT_FONTS,
     "/reports": REPORT_FONTS,
   },
+  // Security mitigation: serve images as-is so the /_next/image optimizer (outside auth in src/proxy.ts) does nothing.
+  images: { unoptimized: true },
 };
 
 export default nextConfig;
