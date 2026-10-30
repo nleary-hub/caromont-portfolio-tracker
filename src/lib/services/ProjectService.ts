@@ -478,10 +478,12 @@ export class ProjectService {
     db: PrismaClient = Db.client,
     milestones?: MilestoneEdit | null,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
+    /** History source tag (the Claude connector passes "ai:claude_connector"); null for a drawer edit. */
+    comment: string | null = null,
   ): Promise<Project> {
     PermissionAssert.require(admin, "project.edit");
     const patch = ProjectService.pickFormFields(values);
-    const actor = ProjectService.actorOf(admin);
+    const actor = ProjectService.actorOf(admin, comment ?? undefined);
     const startDate = values.startDate === undefined || values.startDate === null ? undefined : String(values.startDate);
     return db.$transaction(async (tx) => {
       const at = new Date();
@@ -681,6 +683,8 @@ export class ProjectService {
     db: PrismaClient = Db.client,
     milestones?: MilestoneEdit | null,
     scope: ServiceLineScope = ServiceLine.defaultScope(),
+    /** History source tag (the Claude connector passes "ai:claude_connector"); null for the New project drawer. */
+    comment: string | null = null,
   ): Promise<Project> {
     PermissionAssert.require(admin, "project.create");
     const input: ProjectInput = { name: "", ...ProjectService.pickFormFields(values), status: values.status || "NotStarted" };
@@ -700,7 +704,7 @@ export class ProjectService {
       input.startDate === undefined ? [] : StartDate.errors(input.startDate, { status: String(input.status), completedOn: input.completedOn ?? null, today: DateOnly.today() });
     if (!checked.ok || startErrors.length) throw new ProjectValidationError({ ...(checked.ok ? {} : checked.errors), ...(startErrors.length ? { startDate: startErrors } : {}) });
     const data = checked.data;
-    const actor = ProjectService.actorOf(admin);
+    const actor = ProjectService.actorOf(admin, comment ?? undefined);
     return db.$transaction(async (tx) => {
       const at = new Date();
       const project = await ProjectService.createInTx(tx, input, actor, data, at, scope, { defaultMilestone: drafts.length === 0 });
