@@ -106,6 +106,18 @@ OAuth redirect URI: `https://<domain>/api/auth/callback/google`.
   fresh replay (CI, a new Neon branch, a rebuild) after a Prisma upgrade whose parser reads 0071: it would then run without
   atomicity or lock_timeout. 0071's file stays as is (checksum); this note is its correction. Re-check on every Prisma upgrade.
 
+#### Approved exception: 0016_service_lines
+
+- This is the one approved exception to the add-only rule above ("Never edit an applied migration file"). The owner
+  directed it on Oct 29, 2026, and QA cleared it in PR #108 (merge b08867c; QA final clearance ab8268f7, checksum proof
+  1cd0bebd). It replaced real names in the public repo with fictional ones in one line of
+  `0016_service_lines/migration.sql`. The live data and the old git history were left alone.
+- `prisma migrate deploy` matches applied migrations by name, and the production `_prisma_migrations` row for 0016 is
+  unchanged, so deploys are not affected. The stored checksum in production stays the original file's.
+- Checksum warnings on 0016 from `migrate dev` or fresh-replay checks are expected. Never "fix" them by editing
+  `_prisma_migrations` or by restoring the old line.
+- Follow-up FU-0016-CHECKSUM (open): check `migrate diff` and fresh-replay behaviour later.
+
 ## Google OAuth setup
 
 The Auth.js route is `src/app/api/auth/[...nextauth]/route.ts` with the default base path `/api/auth`,
