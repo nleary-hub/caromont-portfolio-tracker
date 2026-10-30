@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 // Next's own matcher compiler, so the anchoring is proved against what Next runs, not assumed.
-import { getMiddlewareMatchers } from "next/dist/build/analysis/get-page-static-info";
+import * as pageStaticInfo from "next/dist/build/analysis/get-page-static-info";
 
 // Only the matcher is under test; the proxy itself is Auth.js.
 vi.mock("@/auth", () => ({ auth: () => undefined }));
@@ -8,7 +8,9 @@ vi.mock("@/auth", () => ({ auth: () => undefined }));
 const { config } = await import("@/proxy");
 /** Next's matcher is a path regex: true = the auth proxy runs (signed-out visitors are sent to /signin). */
 const proxied = (path: string) => new RegExp(`^${config.matcher[0]}$`).test(path);
-const nextRegex = new RegExp(getMiddlewareMatchers(config.matcher, {} as never)[0].regexp);
+// Exported at runtime but missing from the published types.
+const { getMiddlewareMatchers } = pageStaticInfo as unknown as { getMiddlewareMatchers: (m: string[], c: object) => { regexp: string }[] };
+const nextRegex = new RegExp(getMiddlewareMatchers(config.matcher, {})[0].regexp);
 /** The same question, answered by the regex Next compiles from the matcher. */
 const proxiedByNext = (path: string) => nextRegex.test(path);
 
