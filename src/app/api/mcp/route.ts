@@ -1,4 +1,5 @@
 import { WebStandardStreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/webStandardStreamableHttp.js";
+import { ActingViewer } from "@/lib/auth/ActingViewer";
 import { Db } from "@/lib/db/Db";
 import { McpHttp } from "@/lib/mcp/McpHttp";
 import { McpOAuth } from "@/lib/mcp/McpOAuth";
@@ -30,11 +31,12 @@ class McpRoute {
     const viewer = await McpViewer.forEmail(grant.e).catch(() => null);
     if (!viewer) return McpRoute.unauthorized(origin, "invalid_token");
 
-    const server = McpServerFactory.create(viewer);
+    const server = McpServerFactory.create(viewer, McpOAuth.scopesOf(grant));
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     try {
       await server.connect(transport);
-      const res = await transport.handleRequest(request);
+      // The app's own Server Functions read the person from ActingViewer for this request only (see run_app_action).
+      const res = await ActingViewer.run({ ...viewer, name: viewer.name ?? null }, () => transport.handleRequest(request));
       const headers = new Headers(res.headers);
       for (const [k, v] of Object.entries(McpHttp.CORS)) headers.set(k, v);
       return new Response(res.body, { status: res.status, headers });

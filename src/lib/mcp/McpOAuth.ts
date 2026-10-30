@@ -22,6 +22,8 @@ export interface McpAuthorizeRequest {
   redirectUri: string;
   codeChallenge: string;
   state: string | null;
+  /** Scopes this connection will get once approved. */
+  scopes: string[];
 }
 
 export interface McpTokenResponse {
@@ -44,7 +46,11 @@ export type McpStillAllowed = (email: string) => Promise<boolean>;
  * so a stranger can't register a client that sends codes to their own site.
  */
 export class McpOAuth {
-  static readonly SCOPE = "projects";
+  /** projects: read and edit projects. admin: everything else the app's screens do (McpAppActions). */
+  static readonly SCOPES = ["projects", "admin"] as const;
+  static readonly SCOPE = McpOAuth.SCOPES.join(" ");
+  /** Tokens issued before scopes existed were approved for projects only. */
+  static readonly LEGACY_SCOPES: readonly string[] = ["projects"];
   static readonly MCP_PATH = "/api/mcp";
   static readonly AUTHORIZE_PATH = "/oauth/authorize";
   static readonly TOKEN_PATH = "/oauth/token";
@@ -80,7 +86,7 @@ export class McpOAuth {
       resource: McpOAuth.resource(origin),
       authorization_servers: [origin],
       bearer_methods_supported: ["header"],
-      scopes_supported: [McpOAuth.SCOPE],
+      scopes_supported: [...McpOAuth.SCOPES],
       resource_name: "Service Line Portfolio",
     };
   }
@@ -96,8 +102,25 @@ export class McpOAuth {
       grant_types_supported: ["authorization_code", "refresh_token"],
       code_challenge_methods_supported: ["S256"],
       token_endpoint_auth_methods_supported: ["none", "client_secret_post", "client_secret_basic"],
-      scopes_supported: [McpOAuth.SCOPE],
+      scopes_supported: [...McpOAuth.SCOPES],
     };
+  }
+
+  /**
+   * The scopes a request asks for: the known ones it names (admin always brings projects with it), or both when it
+   * names none. Null when it names only unknown scopes.
+   */
+  static parseScopes(raw: string | undefined | null): string[] | null {
+    const asked = (raw ?? "").split(/\s+/).filter(Boolean);
+    if (!asked.length) return [...McpOAuth.SCOPES];
+    const known = McpOAuth.SCOPES.filter((x) => asked.includes(x));
+    if (!known.length) return null;
+    return known.includes("admin") ? [...McpOAuth.SCOPES] : ["projects"];
+  }
+
+  /** A grant's approved scopes (legacy tokens: projects only). */
+  static scopesOf(grant: Pick<McpGrantClaims, "s">): string[] {
+    return Array.isArray(grant.s) && grant.s.length ? grant.s.filter((x) => (McpOAuth.SCOPES as readonly string[]).includes(x)) : [...McpOAuth.LEGACY_SCOPES];
   }
 
   /** WWW-Authenticate for a 401 from /api/mcp, pointing clients at the resource metadata (RFC 9728 section 5.1). */
@@ -183,6 +206,8 @@ export class McpOAuth {
     if (params.response_type !== "code") return fail("unsupported_response_type", "Only response_type=code is supported.");
     if (!params.code_challenge || !/^[A-Za-z0-9\-_]{43}$/.test(params.code_challenge)) return fail("invalid_request", "PKCE code_challenge (S256) is required.");
     if ((params.code_challenge_method ?? "") !== "S256") return fail("invalid_request", "code_challenge_method must be S256.");
+    const scopes = McpOAuth.parseScopes(params.scope);
+    if (!scopes) return fail("invalid_scope", "Unknown scope. Use projects and/or admin.");
     if (params.resource) {
       let ok = false;
       try {
@@ -192,14 +217,14 @@ export class McpOAuth {
       }
       if (!ok) return fail("invalid_target", "Unknown resource.");
     }
-    return { ok: true, request: { clientId: params.client_id!, clientName: client.n, redirectUri, codeChallenge: params.code_challenge, state } };
+    return { ok: true, request: { clientId: params.client_id!, clientName: client.n, redirectUri, codeChallenge: params.code_challenge, state, scopes } };
   }
 
   /** After the person approves: the redirect carrying a fresh code. */
   static approve(req: McpAuthorizeRequest, email: string, key: Buffer, origin: string, now: Date = new Date()): string {
     const code = McpTokens.sign(
       "code",
-      { e: email, c: McpTokens.clientHash(req.clientId), r: req.redirectUri, cc: req.codeChallenge, exp: McpTokens.nowS(now) + McpTokens.CODE_TTL_S, jti: McpTokens.jti() },
+      { e: email, c: McpTokens.clientHash(req.clientId), r: req.redirectUri, cc: req.codeChallenge, s: req.scopes, exp: McpTokens.nowS(now) + McpTokens.CODE_TTL_S, jti: McpTokens.jti() },
       key,
     );
     const u = new URL(req.redirectUri);
@@ -238,15 +263,15 @@ export class McpOAuth {
     return clientId;
   }
 
-  private static issue(email: string, clientHash: string, key: Buffer, now: Date): McpTokenResponse {
+  private static issue(email: string, clientHash: string, scopes: string[], key: Buffer, now: Date): McpTokenResponse {
     const t = McpTokens.nowS(now);
-    const grant = (ttl: number): McpGrantClaims => ({ e: email, c: clientHash, exp: t + ttl, jti: McpTokens.jti() });
+    const grant = (ttl: number): McpGrantClaims => ({ e: email, c: clientHash, s: scopes, exp: t + ttl, jti: McpTokens.jti() });
     return {
       access_token: McpTokens.sign("access", grant(McpTokens.ACCESS_TTL_S), key),
       token_type: "Bearer",
       expires_in: McpTokens.ACCESS_TTL_S,
       refresh_token: McpTokens.sign("refresh", grant(McpTokens.REFRESH_TTL_S), key),
-      scope: McpOAuth.SCOPE,
+      scope: scopes.join(" "),
     };
   }
 
@@ -267,13 +292,13 @@ export class McpOAuth {
       if (form.redirect_uri && form.redirect_uri !== code.r) throw new McpOAuthError("invalid_grant", "redirect_uri does not match.");
       if (!McpTokens.pkceMatches(form.code_verifier, code.cc)) throw new McpOAuthError("invalid_grant", "PKCE verification failed.");
       if (!(await stillAllowed(code.e))) throw new McpOAuthError("invalid_grant", "This account can no longer use the app.");
-      return McpOAuth.issue(code.e, clientHash, key, now);
+      return McpOAuth.issue(code.e, clientHash, McpOAuth.scopesOf({ s: code.s }), key, now);
     }
     if (form.grant_type === "refresh_token") {
       const refresh = McpTokens.verify("refresh", form.refresh_token, key, now);
       if (!refresh || refresh.c !== clientHash) throw new McpOAuthError("invalid_grant", "The refresh token is invalid or expired.");
       if (!(await stillAllowed(refresh.e))) throw new McpOAuthError("invalid_grant", "This account can no longer use the app.");
-      return McpOAuth.issue(refresh.e, clientHash, key, now);
+      return McpOAuth.issue(refresh.e, clientHash, McpOAuth.scopesOf(refresh), key, now);
     }
     throw new McpOAuthError("unsupported_grant_type", "Only authorization_code and refresh_token are supported.");
   }

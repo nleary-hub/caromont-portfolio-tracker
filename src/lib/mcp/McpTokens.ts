@@ -27,6 +27,8 @@ export interface McpCodeClaims {
   r: string;
   /** PKCE S256 code_challenge. */
   cc: string;
+  /** Scopes the person approved (McpOAuth.SCOPES). */
+  s: string[];
   exp: number;
   jti: string;
 }
@@ -35,6 +37,8 @@ export interface McpCodeClaims {
 export interface McpGrantClaims {
   e: string;
   c: string;
+  /** Approved scopes. Absent on tokens issued before scopes existed: those carry "projects" only. */
+  s?: string[];
   exp: number;
   jti: string;
 }

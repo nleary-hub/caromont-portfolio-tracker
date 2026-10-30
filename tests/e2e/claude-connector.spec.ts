@@ -28,7 +28,7 @@ const call = async (request: APIRequestContext, token: string, name: string, arg
   return { isError: Boolean(r.result?.isError), text, json: () => JSON.parse(text) };
 };
 
-async function connect(page: import("@playwright/test").Page, request: APIRequestContext, email: string): Promise<string> {
+async function connect(page: import("@playwright/test").Page, request: APIRequestContext, email: string, scope = "projects"): Promise<string> {
   const reg = await request.post("/oauth/register", { data: { client_name: "Claude", redirect_uris: [CALLBACK] } });
   expect(reg.status()).toBe(201);
   const client = await reg.json();
@@ -39,9 +39,10 @@ async function connect(page: import("@playwright/test").Page, request: APIReques
     callback = new URL(route.request().url());
     await route.fulfill({ status: 200, body: "ok" });
   });
-  const q = new URLSearchParams({ response_type: "code", client_id: client.client_id, redirect_uri: CALLBACK, code_challenge: challenge, code_challenge_method: "S256", state: "xyz", scope: "projects" });
+  const q = new URLSearchParams({ response_type: "code", client_id: client.client_id, redirect_uri: CALLBACK, code_challenge: challenge, code_challenge_method: "S256", state: "xyz", scope });
   await page.goto(`/oauth/authorize?${q}`);
   await expect(page.getByTestId("connector-consent")).toContainText(email);
+  await expect(page.getByTestId("connector-admin-scope")).toHaveCount(scope.includes("admin") ? 1 : 0);
   await page.getByTestId("connector-approve").click();
   await expect.poll(() => callback?.searchParams.get("code") ?? null, { timeout: 60000 }).not.toBeNull();
   expect(callback!.searchParams.get("state")).toBe("xyz");
@@ -70,6 +71,11 @@ test("Claude connector: sign in, consent, and edit projects through the app's ow
   expect((init.result as { serverInfo: { name: string } }).serverInfo.name).toBe("service-line-portfolio");
   const tools = (await rpc(request, token, "tools/list")).result!.tools!.map((t) => t.name);
   expect(tools).toEqual(expect.arrayContaining(["whoami", "list_projects", "get_project", "update_project", "update_milestones", "add_blocker", "resolve_blocker", "create_project"]));
+
+  // A projects-only connection can't reach admin actions; it is told to reconnect and approve admin tasks.
+  const noAdmin = await call(request, token, "run_app_action", { action: "read_departments" });
+  expect(noAdmin.isError).toBe(true);
+  expect(noAdmin.text).toContain("approved for projects only");
 
   const me = (await call(request, token, "whoami")).json();
   expect(me.email).toBe(ADMIN);
@@ -155,4 +161,72 @@ test("Claude connector: sign in, consent, and edit projects through the app's ow
   });
   expect(blockedRes.status()).toBe(401);
   await query(`DELETE FROM sign_in_block WHERE email = $1`, [ADMIN]);
+});
+
+test("Claude connector: app actions run the app's own Server Functions as the person", async ({ page, request, browser }) => {
+  const token = await connect(page, request, ADMIN, "projects admin");
+  const run = (action: string, input: Record<string, unknown> = {}, confirmed?: boolean) =>
+    call(request, token, "run_app_action", { action, input, ...(confirmed === undefined ? {} : { confirmed }) });
+
+  const listed = (await call(request, token, "list_app_actions")).json();
+  expect(listed.actions.map((a: { name: string }) => a.name)).toEqual(expect.arrayContaining(["read_departments", "save_department", "delete_project", "read_audit_log", "invite_user"]));
+  expect(listed.notAvailable.length).toBeGreaterThan(0);
+  expect(listed.actions.find((a: { name: string }) => a.name === "delete_project").needsConfirmation).toBe(true);
+
+  // Department rename through the Admin > Departments Server Function: same validation and department_history row.
+  const before = (await run("read_departments")).json();
+  const dept = before.active[0];
+  const renamed = await run("save_department", { id: dept.id, name: `${dept.name} Connector`, shortName: dept.shortName });
+  expect(renamed.isError, renamed.text).toBe(false);
+  const hist = await query(`SELECT action, "changedBy", "newValue"->>'name' AS name FROM department_history WHERE "departmentId" = $1 ORDER BY "changedAt" DESC LIMIT 1`, [dept.id]);
+  expect(hist[0]).toMatchObject({ action: "edited", changedBy: ADMIN, name: `${dept.name} Connector` });
+  await run("save_department", { id: dept.id, name: dept.name, shortName: dept.shortName });
+
+  // Unknown input is refused before anything runs.
+  expect((await run("save_department", { name: "" })).isError).toBe(true);
+
+  // A confirmable action is refused until confirmed, then runs; restore brings it back. Both land in the audit log.
+  const p = (await call(request, token, "create_project", { name: "Connector Delete Check", department: dept.name })).json();
+  const unconfirmed = await run("delete_project", { projectId: p.id });
+  expect(unconfirmed.isError).toBe(true);
+  expect(unconfirmed.text).toContain("confirmation");
+  expect((await query(`SELECT "archivedAt" FROM "Project" WHERE id = $1`, [p.id]))[0].archivedAt).toBeNull();
+  const deleted = await run("delete_project", { projectId: p.id }, true);
+  expect(deleted.isError, deleted.text).toBe(false);
+  expect((await query(`SELECT "archivedAt" FROM "Project" WHERE id = $1`, [p.id]))[0].archivedAt).not.toBeNull();
+  expect((await run("restore_project", { projectId: p.id })).isError).toBe(false);
+  expect((await query(`SELECT "archivedAt", "deletedBy" FROM "Project" WHERE id = $1`, [p.id]))[0].archivedAt).toBeNull();
+  const audit = await run("read_audit_log");
+  expect(audit.isError, audit.text).toBe(false);
+  expect(audit.text).toContain("Connector Delete Check");
+
+  // Settings reads come back for an admin.
+  const settings = (await run("read_settings")).json();
+  expect(settings).toHaveProperty("viewSettings");
+
+  // Report options (Owner): showWaitingOn false is really saved, and the key page change returns what was stored.
+  const opts = settings.reportOptions;
+  const off = await run("save_report_options", { departments: opts.departments, totalsGrid: opts.totalsGrid, showWaitingOn: false });
+  expect(off.isError, off.text).toBe(false);
+  expect((await run("read_settings")).json().reportOptions.showWaitingOn).toBe(false);
+  const on = await run("save_report_options", { departments: opts.departments, totalsGrid: opts.totalsGrid, showWaitingOn: true });
+  expect(on.isError, on.text).toBe(false);
+  expect((await run("read_settings")).json().reportOptions.showWaitingOn).toBe(true);
+  const key = await run("set_report_key_page", { showKeyPage: !opts.showKeyPage, totalsGrid: opts.totalsGrid });
+  expect(key.isError, key.text).toBe(false);
+  expect(key.json().showKeyPage).toBe(!opts.showKeyPage);
+  expect((await run("read_settings")).json().reportOptions.showKeyPage).toBe(!opts.showKeyPage);
+  await run("set_report_key_page", { showKeyPage: opts.showKeyPage, totalsGrid: opts.totalsGrid });
+
+  // A Viewer is refused admin reads and writes by the app's own checks.
+  await query(`INSERT INTO app_user (email, "createdAt") VALUES ($1, now()) ON CONFLICT DO NOTHING`, [VIEWER]);
+  await query(`INSERT INTO service_line_access (email, "serviceLineId", "grantedBy") VALUES ($1, $2, 'e2e') ON CONFLICT DO NOTHING`, [VIEWER, LINE]);
+  const vc = await browser.newContext();
+  const vt = await connect(await vc.newPage(), vc.request, VIEWER, "projects admin");
+  const vRead = await call(vc.request, vt, "run_app_action", { action: "read_departments" });
+  expect(vRead.isError).toBe(true);
+  const vWrite = await call(vc.request, vt, "run_app_action", { action: "save_department", input: { id: dept.id, name: "Viewer Rename", shortName: dept.shortName } });
+  expect(vWrite.isError).toBe(true);
+  expect((await query(`SELECT name FROM department WHERE id = $1`, [dept.id]))[0].name).toBe(dept.name);
+  await vc.close();
 });
