@@ -94,7 +94,7 @@ SELECT
     COALESCE((SELECT "service_line_short" FROM "service_line_settings" WHERE "id" = 'service_line'), 'CVPSL'),
     true,
     ARRAY['Cath', 'EP', 'Echo', 'CVSS', 'INU', 'CardioNeuro', 'IR']::"ServiceArea"[],
-    ARRAY['Shea Waldron', 'Jeff Krause', 'Mellisa Gonzales', 'Dave Dermady', 'Amber Hatley']::TEXT[],
+    ARRAY['Avery Holt', 'Jordan Pike', 'Casey Lund', 'Riley Moss', 'Morgan Vale']::TEXT[],
     CURRENT_TIMESTAMP,
     CURRENT_TIMESTAMP,
     'migration:0016'
