@@ -45,7 +45,7 @@ export class ViewSettings {
   /**
    * Inline columns render inside another cell instead of taking a table column of their own:
    * the Infor request number sits in a fixed slot on the small meta line under the project name ("REQ-5081  Updated Sep 24").
-   * the Contracts lead is a small line under owner and requester ("Contracts Shea Waldron").
+   * the Contracts lead is a small line under owner and requester ("Contracts Avery Holt").
    * Hiding one removes only that piece; its position in the order has no effect.
    */
   static readonly INLINE_COLUMNS: ReadonlySet<ViewColumn> = new Set<ViewColumn>(["inforNumber", "contractsLead"]);

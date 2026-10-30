@@ -14,6 +14,9 @@ import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
+import { useFictionalLeads } from "./helpers/FictionalLeads";
+
+useFictionalLeads();
 
 const m = new TextMeasure();
 const actor = { changedBy: "owner@example.org" };
@@ -22,18 +25,18 @@ type OwnerCell = Extract<RowCell, { kind: "owner" }>;
 
 describe("ContractsLead", () => {
   it("fixed pick-list; resolve is case and space tolerant and returns the canonical name", () => {
-    expect(ContractsLead.options()).toEqual(["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"]);
+    expect(ContractsLead.options()).toEqual(["Avery Holt", "Jordan Pike", "Casey Lund", "Riley Moss", "Morgan Vale"]);
     // CVPSL keeps the current list (now per-line data, seeded by migration 0016).
     expect(ContractsLead.options()).toBe(ServiceLine.CVPSL_CONTRACTS_LEADS);
     expect(ContractsLead.options(["Pat Lee"])).toEqual(["Pat Lee"]);
     expect(ContractsLead.resolve("pat lee", ["Pat Lee"])).toBe("Pat Lee");
-    expect(ContractsLead.resolve("Shea Waldron", ["Pat Lee"])).toBeUndefined();
-    expect(ContractsLead.resolve("  shea   WALDRON ")).toBe("Shea Waldron");
+    expect(ContractsLead.resolve("Avery Holt", ["Pat Lee"])).toBeUndefined();
+    expect(ContractsLead.resolve("  Avery   Holt ")).toBe("Avery Holt");
     expect(ContractsLead.resolve("")).toBeNull();
     expect(ContractsLead.resolve(null)).toBeNull();
-    expect(ContractsLead.resolve("Melissa Gonzales")).toBeUndefined();
+    expect(ContractsLead.resolve("Kasey Lund")).toBeUndefined();
     expect(ContractsLead.invalidMessage(" Bob ")).toBe(
-      '"Bob" is not a contracts lead. Use one of: Shea Waldron, Jeff Krause, Mellisa Gonzales, Dave Dermady, Amber Hatley (or leave blank)',
+      '"Bob" is not a contracts lead. Use one of: Avery Holt, Jordan Pike, Casey Lund, Riley Moss, Morgan Vale (or leave blank)',
     );
   });
 
@@ -42,29 +45,29 @@ describe("ContractsLead", () => {
     const db = fake.asClient();
     const file = csv(
       "name,department,status,next_milestone,contracts_lead,contracts_lead_suggested",
-      "A,Cath,,Kickoff,jeff  krause,Dave Dermady",
-      "B,EP,,Kickoff,,Shea Waldron",
+      "A,Cath,,Kickoff,jordan  pike,Riley Moss",
+      "B,EP,,Kickoff,,Avery Holt",
       "C,IR,,Kickoff,Bob Smith,",
     );
     const preview = await ImportService.previewCreate(file, db);
     expect(preview.fileWarnings.join(" ")).toMatch(/contracts_lead_suggested.*not imported/);
     expect(preview.rows.map((r) => r.status)).toEqual(["ready", "ready", "error"]);
-    expect(preview.rows[0].input?.contractsLead).toBe("Jeff Krause");
+    expect(preview.rows[0].input?.contractsLead).toBe("Jordan Pike");
     expect(preview.rows[1].input?.contractsLead ?? null).toBeNull();
     expect(JSON.stringify(preview.rows[2].errors)).toContain("is not a contracts lead");
     await ImportService.commitCreate(file.split("\n").slice(0, 3).join("\n") + "\n", Factory.ADMIN.email, db);
-    expect(fake.state.projects.map((p) => p.contractsLead ?? null)).toEqual(["Jeff Krause", null]);
+    expect(fake.state.projects.map((p) => p.contractsLead ?? null)).toEqual(["Jordan Pike", null]);
     const { csv: out } = await ExportService.exportCsv(db);
     expect(out.split("\n")[0].split(",")).toContain("contracts_lead");
-    expect(out).toContain("Jeff Krause");
+    expect(out).toContain("Jordan Pike");
   });
 
   it("wording mode cannot change contracts_lead", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
-    await ImportService.commitCreate(csv("name,department,status,next_milestone,contracts_lead", "A,Cath,,Kickoff,Shea Waldron"), Factory.ADMIN.email, db);
+    await ImportService.commitCreate(csv("name,department,status,next_milestone,contracts_lead", "A,Cath,,Kickoff,Avery Holt"), Factory.ADMIN.email, db);
     const { csv: out } = await ExportService.exportCsv(db);
-    const edited = out.replace("Shea Waldron", "Dave Dermady");
+    const edited = out.replace("Avery Holt", "Riley Moss");
     const preview = await ImportService.previewWording(edited, db);
     expect(preview.rows[0].status).toBe("error");
     expect(preview.canCommit).toBe(false);
@@ -79,7 +82,7 @@ describe("ContractsLead", () => {
         physicianChampion: null,
         requesterNotApplicable: false,
         requesterSuggestions: [],
-        contractsLead: "Jeff Krause",
+        contractsLead: "Jordan Pike",
         serviceArea: "Cath",
         ownerSuggestions: [],
         saveAction: async () => null,
@@ -92,18 +95,18 @@ describe("ContractsLead", () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const p = await ProjectService.create({ name: "P", serviceArea: "Cath", status: "OnTrack", nextMilestone: "M1" }, actor, db);
-    await ProjectService.setPeopleField(p.id, "contractsLead", "mellisa gonzales", Factory.ADMIN, db);
-    expect(fake.state.projects[0].contractsLead).toBe("Mellisa Gonzales");
+    await ProjectService.setPeopleField(p.id, "contractsLead", "casey lund", Factory.ADMIN, db);
+    expect(fake.state.projects[0].contractsLead).toBe("Casey Lund");
     await expect(ProjectService.setPeopleField(p.id, "contractsLead", "Somebody", Factory.ADMIN, db)).rejects.toThrow();
     await expect(
-      ProjectService.setPeopleField(p.id, "contractsLead", "Jeff Krause", { email: "x@example.org", isAdmin: false } as never, db),
+      ProjectService.setPeopleField(p.id, "contractsLead", "Jordan Pike", { email: "x@example.org", isAdmin: false } as never, db),
     ).rejects.toThrow();
     await ProjectService.setPeopleField(p.id, "contractsLead", "", Factory.ADMIN, db);
     expect(fake.state.projects[0].contractsLead).toBeNull();
     const h = fake.state.history.filter((x) => x.field === "contractsLead").map((x) => [x.oldValue, x.newValue]);
     expect(h).toEqual([
-      [null, "Mellisa Gonzales"],
-      ["Mellisa Gonzales", null],
+      [null, "Casey Lund"],
+      ["Casey Lund", null],
     ]);
   });
 

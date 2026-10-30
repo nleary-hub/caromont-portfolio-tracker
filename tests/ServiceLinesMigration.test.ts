@@ -170,13 +170,14 @@ describe("0016_service_lines on production-shaped data (PGlite)", () => {
         shortName: "CVPSL",
         isDefault: true,
         departments: ["Cath", "EP", "Echo", "CVSS", "INU", "CardioNeuro", "IR"],
-        contractsLeads: ["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"],
+        contractsLeads: ["Avery Holt", "Jordan Pike", "Casey Lund", "Riley Moss", "Morgan Vale"],
         archivedAt: null,
         deletedAt: null,
       },
     ]);
     expect(r.rows[0].departments).toEqual(ServiceLine.defaultScope().departments.map((d) => d.id));
-    expect(r.rows[0].contractsLeads).toEqual(ServiceLine.CVPSL_CONTRACTS_LEADS);
+    // 0016 now seeds fictional names; the live list stays in ServiceLine (same length, different names).
+    expect(r.rows[0].contractsLeads).toHaveLength(ServiceLine.CVPSL_CONTRACTS_LEADS.length);
     const h = await db.query<{ action: string; changedBy: string }>(`select action, "changedBy" from service_line_history order by "changedAt", action`);
     expect(h.rows.map((x) => x.action)).toEqual(["renamed", "renamed", "migrated"]);
   });

@@ -32,6 +32,9 @@ import {
 import { ReportDeliveryService } from "@/lib/services/ReportDeliveryService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
+import { useFictionalLeads } from "./helpers/FictionalLeads";
+
+useFictionalLeads();
 
 const ADMIN = Factory.ADMIN;
 const actor = { changedBy: ADMIN.email };
@@ -202,7 +205,7 @@ describe("service line isolation", () => {
     expect(ContractsLead.invalidMessage("Sam Delacroix", [])).toContain(
       "no contracts leads yet",
     );
-    expect(ContractsLead.resolve("Shea Waldron")).toBe("Shea Waldron");
+    expect(ContractsLead.resolve("Avery Holt")).toBe("Avery Holt");
   });
 
   it("PDF: the report data and layout for a line include only its projects and departments", async () => {

@@ -150,8 +150,8 @@ describe("PeopleService: Owners and Requesters per line", () => {
   it("adds (A to Z, audited), rejects duplicates and built-ins, and never touches another line", async () => {
     const fake = new FakeDb();
     const db = fake.asClient();
-    expect(await DepartmentForms.addPerson(ADMIN, "owner", "Jeff Krause", db)).toEqual({ ok: true, message: "Jeff Krause added." });
-    expect((await T.scope(db)).owners).toEqual(["Jeff Krause", "Nick Leary", "Nicole Smith"]);
+    expect(await DepartmentForms.addPerson(ADMIN, "owner", "Jordan Pike", db)).toEqual({ ok: true, message: "Jordan Pike added." });
+    expect((await T.scope(db)).owners).toEqual(["Jordan Pike", "Nick Leary", "Nicole Smith"]);
     expect(await DepartmentForms.addPerson(ADMIN, "owner", "nicole smith", db)).toMatchObject({ ok: false, message: "Nicole Smith is already an owner." });
     expect(await DepartmentForms.addPerson(ADMIN, "requester", "To assign", db)).toMatchObject({ ok: false, message: '"To assign" is always offered, so it doesn\'t need adding.' });
     expect(await DepartmentForms.addPerson(ADMIN, "requester", "Dr. Adams", db)).toEqual({ ok: true, message: "Dr. Adams added." });
@@ -217,10 +217,10 @@ describe("PeopleService: Owners and Requesters per line", () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const scope = await T.scope(db);
-    expect(await PeopleService.rememberPerson(scope, "owner", " Jeff  Krause ", ADMIN, db)).toBe(true);
+    expect(await PeopleService.rememberPerson(scope, "owner", " Jordan  Pike ", ADMIN, db)).toBe(true);
     const after = await T.scope(db);
-    expect(after.owners).toEqual(["Jeff Krause", "Nick Leary", "Nicole Smith"]);
-    for (const n of ["jeff krause", "Mark Wingard", "MARK GARLAND", "To assign", "n/a", ""]) expect(await PeopleService.rememberPerson(after, "owner", n, ADMIN, db)).toBe(false);
+    expect(after.owners).toEqual(["Jordan Pike", "Nick Leary", "Nicole Smith"]);
+    for (const n of ["jordan pike", "Mark Wingard", "MARK GARLAND", "To assign", "n/a", ""]) expect(await PeopleService.rememberPerson(after, "owner", n, ADMIN, db)).toBe(false);
     expect(await PeopleService.rememberPerson(after, "requester", "Dr. Adams", ADMIN, db)).toBe(true);
     expect((await T.scope(db)).requesters).toEqual(["Dr. Adams"]);
   });

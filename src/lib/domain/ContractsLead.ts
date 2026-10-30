@@ -8,7 +8,7 @@ import { ServiceLine } from "@/lib/domain/ServiceLine";
 export type LeadRole = "contractLead" | "projectManager";
 
 export class ContractsLead {
-  /** Prefix of the display line under owner and requester: "Contracts Shea Waldron". */
+  /** Prefix of the display line under owner and requester: "Contracts Avery Holt". */
   static readonly PREFIX = "Contracts";
 
   static options(list: readonly string[] = ServiceLine.CVPSL_CONTRACTS_LEADS): readonly string[] {

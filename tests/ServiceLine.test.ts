@@ -20,6 +20,9 @@ import { DashboardViewModel } from "@/lib/dashboard/DashboardViewModel";
 import { SnapshotService } from "@/lib/services/SnapshotService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
+import { useFictionalLeads } from "./helpers/FictionalLeads";
+
+useFictionalLeads();
 
 const ADMIN = Factory.ADMIN;
 const MEMBER = { email: "member@example.org", isAdmin: false };
@@ -44,7 +47,7 @@ describe("ServiceLine (pure rules)", () => {
       ["CardioNeuro", "CardioNeuro"],
       ["IR", "IR"],
     ]);
-    expect(s.contractsLeads).toEqual(["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"]);
+    expect(s.contractsLeads).toEqual(["Avery Holt", "Jordan Pike", "Casey Lund", "Riley Moss", "Morgan Vale"]);
   });
 
   it("requires both names, trims and collapses spaces; name up to 80, short name 2 to 12 of A-Z and 0-9", () => {
