@@ -1,0 +1,49 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img">
+  <title>Portfolio Tracker app icon</title>
+  <desc>Portfolio Tracker logo, Today Line. Selected 2026-10-29.</desc>
+  <defs>
+    <linearGradient id="k2bg" x1=".2" y1="0" x2=".8" y2="1"><stop offset="0" stop-color="#341F36"/><stop offset="1" stop-color="#120A14"/></linearGradient>
+    <radialGradient id="k2amb" cx=".3" cy=".18" r=".85"><stop offset="0" stop-color="#864EE6" stop-opacity=".34"/><stop offset=".55" stop-color="#341F36" stop-opacity=".10"/><stop offset="1" stop-color="#341F36" stop-opacity="0"/></radialGradient>
+    <linearGradient id="k2gloss" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".16"/><stop offset="1" stop-color="#fff" stop-opacity="0"/></linearGradient>
+    <linearGradient id="k2rim" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".42"/><stop offset=".3" stop-color="#fff" stop-opacity=".06"/><stop offset=".8" stop-color="#fff" stop-opacity=".02"/><stop offset="1" stop-color="#fff" stop-opacity=".14"/></linearGradient>
+    <clipPath id="k2clip"><rect width="1024" height="1024" rx="230"/></clipPath>
+    <filter id="k2sh" x="-20%" y="-20%" width="140%" height="150%"><feGaussianBlur stdDeviation="9"/></filter>
+    <linearGradient id="k2mlane" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FFFFFF" stop-opacity="0.07"/><stop offset="1" stop-color="#FFFFFF" stop-opacity="0.07"/></linearGradient>
+    <linearGradient id="k2mmain" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#A47AF5" stop-opacity="1"/><stop offset="1" stop-color="#7A45DD" stop-opacity="1"/></linearGradient>
+    <linearGradient id="k2msoft" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#E7DBFF" stop-opacity="0.34"/><stop offset="1" stop-color="#CDB6FF" stop-opacity="0.34"/></linearGradient>
+    <linearGradient id="k2mcursor" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#F6F0FF" stop-opacity="1"/><stop offset="1" stop-color="#E2D2FF" stop-opacity="1"/></linearGradient>
+    <clipPath id="k2mc3"><path d="M42 34H120A22 22 0 0 1 142 56V64A22 22 0 0 1 120 86H42A22 22 0 0 1 20 64V56A22 22 0 0 1 42 34Z" clip-rule="nonzero"/></clipPath>
+    <clipPath id="k2mc4"><path d="M86 102H141A6 6 0 0 1 147 108V148A6 6 0 0 1 141 154H86A22 22 0 0 1 64 132V124A22 22 0 0 1 86 102Z" clip-rule="nonzero"/></clipPath>
+    <clipPath id="k2mc6"><path d="M130 170H141A6 6 0 0 1 147 176V216A6 6 0 0 1 141 222H130A22 22 0 0 1 108 200V192A22 22 0 0 1 130 170Z" clip-rule="nonzero"/></clipPath>
+    <clipPath id="k2mc9"><path d="M157.17 3.83Q160 1 162.83 3.83L172.17 13.17Q175 16 172.17 18.83L162.83 28.17Q160 31 157.17 28.17L147.83 18.83Q145 16 147.83 13.17Z" clip-rule="nonzero"/></clipPath>
+    <linearGradient id="k2mspec" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#fff" stop-opacity=".55"/><stop offset=".35" stop-color="#fff" stop-opacity="0"/></linearGradient>
+  </defs>
+  <rect width="1024" height="1024" rx="230" fill="url(#k2bg)"/>
+  <rect width="1024" height="1024" rx="230" fill="url(#k2amb)"/>
+  
+  <g transform="translate(102.4 128.4) scale(3.2)" opacity=".5" filter="url(#k2sh)">
+      <path d="M42 34H120A22 22 0 0 1 142 56V64A22 22 0 0 1 120 86H42A22 22 0 0 1 20 64V56A22 22 0 0 1 42 34Z" fill="#000" fill-rule="nonzero"/>
+      <path d="M86 102H141A6 6 0 0 1 147 108V148A6 6 0 0 1 141 154H86A22 22 0 0 1 64 132V124A22 22 0 0 1 86 102Z" fill="#000" fill-rule="nonzero"/>
+      <path d="M130 170H141A6 6 0 0 1 147 176V216A6 6 0 0 1 141 222H130A22 22 0 0 1 108 200V192A22 22 0 0 1 130 170Z" fill="#000" fill-rule="nonzero"/>
+      <path d="M160 30V238" fill="none" stroke="#000" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+      <path d="M157.17 3.83Q160 1 162.83 3.83L172.17 13.17Q175 16 172.17 18.83L162.83 28.17Q160 31 157.17 28.17L147.83 18.83Q145 16 147.83 13.17Z" fill="#000" fill-rule="nonzero"/>
+  </g>
+  <g transform="translate(102.4 102.4) scale(3.2)">
+    <path d="M40 34H216A22 22 0 0 1 238 56V64A22 22 0 0 1 216 86H40A22 22 0 0 1 18 64V56A22 22 0 0 1 40 34Z" fill="url(#k2mlane)" fill-rule="nonzero"/>
+    <path d="M40 102H216A22 22 0 0 1 238 124V132A22 22 0 0 1 216 154H40A22 22 0 0 1 18 132V124A22 22 0 0 1 40 102Z" fill="url(#k2mlane)" fill-rule="nonzero"/>
+    <path d="M40 170H216A22 22 0 0 1 238 192V200A22 22 0 0 1 216 222H40A22 22 0 0 1 18 200V192A22 22 0 0 1 40 170Z" fill="url(#k2mlane)" fill-rule="nonzero"/>
+    <path d="M42 34H120A22 22 0 0 1 142 56V64A22 22 0 0 1 120 86H42A22 22 0 0 1 20 64V56A22 22 0 0 1 42 34Z" fill="url(#k2mmain)" fill-rule="nonzero"/>
+    <path d="M86 102H141A6 6 0 0 1 147 108V148A6 6 0 0 1 141 154H86A22 22 0 0 1 64 132V124A22 22 0 0 1 86 102Z" fill="url(#k2mmain)" fill-rule="nonzero"/>
+    <path d="M179 102H196A22 22 0 0 1 218 124V132A22 22 0 0 1 196 154H179A6 6 0 0 1 173 148V108A6 6 0 0 1 179 102Z" fill="url(#k2msoft)" fill-rule="nonzero"/>
+    <path d="M130 170H141A6 6 0 0 1 147 176V216A6 6 0 0 1 141 222H130A22 22 0 0 1 108 200V192A22 22 0 0 1 130 170Z" fill="url(#k2mmain)" fill-rule="nonzero"/>
+    <path d="M179 170H216A22 22 0 0 1 238 192V200A22 22 0 0 1 216 222H179A6 6 0 0 1 173 216V176A6 6 0 0 1 179 170Z" fill="url(#k2msoft)" fill-rule="nonzero"/>
+    <path d="M160 30V238" fill="none" stroke="#F6F0FF" stroke-width="8" stroke-linecap="round" stroke-linejoin="round"/>
+    <path d="M157.17 3.83Q160 1 162.83 3.83L172.17 13.17Q175 16 172.17 18.83L162.83 28.17Q160 31 157.17 28.17L147.83 18.83Q145 16 147.83 13.17Z" fill="url(#k2mcursor)" fill-rule="nonzero"/>
+    <path d="M42 34H120A22 22 0 0 1 142 56V64A22 22 0 0 1 120 86H42A22 22 0 0 1 20 64V56A22 22 0 0 1 42 34Z" fill="none" stroke="url(#k2mspec)" stroke-width="5" fill-rule="nonzero" clip-path="url(#k2mc3)"/>
+    <path d="M86 102H141A6 6 0 0 1 147 108V148A6 6 0 0 1 141 154H86A22 22 0 0 1 64 132V124A22 22 0 0 1 86 102Z" fill="none" stroke="url(#k2mspec)" stroke-width="5" fill-rule="nonzero" clip-path="url(#k2mc4)"/>
+    <path d="M130 170H141A6 6 0 0 1 147 176V216A6 6 0 0 1 141 222H130A22 22 0 0 1 108 200V192A22 22 0 0 1 130 170Z" fill="none" stroke="url(#k2mspec)" stroke-width="5" fill-rule="nonzero" clip-path="url(#k2mc6)"/>
+    <path d="M157.17 3.83Q160 1 162.83 3.83L172.17 13.17Q175 16 172.17 18.83L162.83 28.17Q160 31 157.17 28.17L147.83 18.83Q145 16 147.83 13.17Z" fill="none" stroke="url(#k2mspec)" stroke-width="5" fill-rule="nonzero" clip-path="url(#k2mc9)"/>
+  </g>
+  <g clip-path="url(#k2clip)"><path d="M-10 -10H1034V360C760 300 300 330 -10 450Z" fill="url(#k2gloss)"/></g>
+  <rect x="2" y="2" width="1020" height="1020" rx="228" fill="none" stroke="url(#k2rim)" stroke-width="4"/>
+</svg>

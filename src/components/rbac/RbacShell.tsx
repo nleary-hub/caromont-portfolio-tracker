@@ -1,3 +1,4 @@
+import { BrandLogo } from "@/components/brand/BrandLogo";
 import Link from "next/link";
 import type { ReactNode } from "react";
 import s from "@/components/rbac/Rbac.module.css";
@@ -58,13 +59,7 @@ export function RbacShell(props: {
     <div className={s.root} data-testid="rbac-shell">
       <aside className={s.side}>
         <div className={s.brand}>
-          <div className={s.logo}>
-            <svg className={s.ic} viewBox="0 0 24 24" style={{ stroke: "#fff" }} aria-hidden>
-              <path d="M3 3v18h18" />
-              <path d="M7 14l4-4 3 3 5-6" />
-            </svg>
-          </div>
-          Portfolio Tracker
+          <BrandLogo kind="lockup" height={24} />
         </div>
         {props.nav.map((n) => (
           <Link key={n} href={HREFS[n]} className={`${s.nav} ${props.active === n ? s.navOn : ""}`} aria-current={props.active === n ? "page" : undefined}>

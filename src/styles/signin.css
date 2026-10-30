@@ -93,6 +93,7 @@
 
 /* Headline above the card, card centered on the line. */
 .si-center { position: relative; z-index: 1; width: 100%; max-width: 384px; }
+.si-brand { display: flex; justify-content: center; margin-bottom: 16px; }
 .si-headline {
   position: absolute; left: 50%; bottom: 100%; width: min(900px, calc(100vw - 32px)); margin-bottom: 32px; transform: translateX(-50%);
   font: 700 60px/1.04 var(--font-family); letter-spacing: -0.02em; text-align: center; color: var(--dark-text-primary);

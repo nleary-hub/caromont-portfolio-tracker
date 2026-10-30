@@ -2,10 +2,12 @@
 
 import type { ReactNode, RefObject } from "react";
 import { TopBarFit } from "@/lib/layout/TopBarFit";
+import { BrandLogo } from "./brand/BrandLogo";
 import { TopBarFitContext, type TopBarFitValue } from "./TopBarFitContext";
 
 /**
- * The sticky dark-glass top bar shared by the dashboard and the Completed and Cancelled pages. Row 1: the SL logo and
+ * The sticky dark-glass top bar shared by the dashboard and the Completed and Cancelled pages. Row 1: the logo (Today Line lockup, or the mark once the bar
+ * has stepped down to the short name) and
  * the service line name (or switcher), a divider, then the page's controls. Row 2 appears only at TopBarFit step 5 and
  * holds the nav, directly under row 1 and left-aligned with the logo. The fit level comes from useTopBarFit on
  * `rowRef` and reaches the name through TopBarFitContext. Positions and order never change between levels.
@@ -33,7 +35,13 @@ export function TopBarFrame({
             the row clips its own overflow, never the page. */}
         <div ref={rowRef} className={`relative flex h-[55px] items-center ${gap} px-6 ${fit.measured ? "" : "overflow-x-clip"}`} data-testid="top-bar-row">
           <div className="flex shrink-0 items-center gap-2.5">
-            <div className="grid size-[26px] shrink-0 place-items-center rounded-[6px] bg-accent type-label font-bold">SL</div>
+            {TopBarFit.has(fit.level, "shortName") ? (
+              <span className="shrink-0 p-1" data-testid="top-bar-logo-collapsed">
+                <BrandLogo kind="mark" height={24} />
+              </span>
+            ) : (
+              <BrandLogo kind="lockup" height={24} />
+            )}
             {lockup}
           </div>
           <div className="h-6 w-px shrink-0 bg-line" />
