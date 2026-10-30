@@ -27,6 +27,7 @@ const OWNER = { email: "jordan.pike@example.org", isAdmin: true, name: "Jordan P
 const OTHER_ADMIN = { email: "casey.lund@example.org", isAdmin: true, name: "Casey Lund" };
 const VIEWER = { email: "riley.moss@example.org", isAdmin: false, name: "Riley Moss" };
 const DENIED = /Not authorized/;
+const PERSONAL = "owner@example.test";
 
 const args = () => {
   const form = new FormData();
@@ -39,20 +40,31 @@ describe("OwnerPolicy", () => {
 
   it("uses the fixed two-owner set when OWNER_EMAIL is unset or blank, trimmed and case-insensitive, and needs admin", () => {
     vi.stubEnv("OWNER_EMAIL", "");
-    expect(OwnerPolicy.ownerEmails()).toEqual([OwnerPolicy.DEFAULT_OWNER_EMAIL, "nicholas.leary@caromonthealth.org"]);
-    expect(OwnerPolicy.DEFAULT_OWNER_EMAIL).toMatch(/^[a-z0-9.]+@gmail\.com$/);
+    vi.stubEnv("OWNER_PERSONAL_EMAIL", " Owner@Example.test ");
+    expect(OwnerPolicy.ownerEmails()).toEqual([PERSONAL, "nicholas.leary@caromonthealth.org"]);
     expect(OwnerPolicy.WORK_OWNER_EMAIL).toBe("Nicholas.Leary@CaroMontHealth.org");
-    expect(OwnerPolicy.isOwner({ email: OwnerPolicy.DEFAULT_OWNER_EMAIL.toUpperCase(), isAdmin: true })).toBe(true);
+    expect(OwnerPolicy.isOwner({ email: PERSONAL.toUpperCase(), isAdmin: true })).toBe(true);
     expect(OwnerPolicy.isOwner({ email: "  NICHOLAS.leary@caromonthealth.ORG ", isAdmin: true })).toBe(true);
-    expect(OwnerPolicy.isOwner({ email: OwnerPolicy.DEFAULT_OWNER_EMAIL, isAdmin: false })).toBe(false);
+    expect(OwnerPolicy.isOwner({ email: PERSONAL, isAdmin: false })).toBe(false);
     expect(OwnerPolicy.isOwner({ email: OwnerPolicy.WORK_OWNER_EMAIL, isAdmin: false })).toBe(false);
     expect(OwnerPolicy.isOwner({ email: OWNER.email, isAdmin: true })).toBe(false);
     expect(OwnerPolicy.isOwner(null)).toBe(false);
   });
 
+  it("fails closed when OWNER_PERSONAL_EMAIL is unset or blank: only the work address remains", () => {
+    vi.stubEnv("OWNER_EMAIL", "");
+    for (const v of [undefined, "", "   "]) {
+      vi.stubEnv("OWNER_PERSONAL_EMAIL", v as string);
+      expect(OwnerPolicy.ownerEmails()).toEqual(["nicholas.leary@caromonthealth.org"]);
+      expect(OwnerPolicy.isOwner({ email: PERSONAL, isAdmin: true })).toBe(false);
+      expect(OwnerPolicy.isOwner({ email: "", isAdmin: true })).toBe(false);
+    }
+  });
+
   it("OWNER_EMAIL, when set, replaces the whole set", () => {
+    vi.stubEnv("OWNER_PERSONAL_EMAIL", PERSONAL);
     expect(OwnerPolicy.ownerEmails()).toEqual([OWNER.email]);
-    expect(OwnerPolicy.isOwner({ email: OwnerPolicy.DEFAULT_OWNER_EMAIL, isAdmin: true })).toBe(false);
+    expect(OwnerPolicy.isOwner({ email: PERSONAL, isAdmin: true })).toBe(false);
     expect(OwnerPolicy.isOwner({ email: OwnerPolicy.WORK_OWNER_EMAIL, isAdmin: true })).toBe(false);
   });
 
@@ -162,11 +174,12 @@ describe("the built-in two-owner set (OWNER_EMAIL unset): AI and provider keys",
   const NICK_WORK = { email: "Nicholas.Leary@CaroMontHealth.org", isAdmin: true, name: "Nick" };
 
   it.each([
-    ["the existing admin account", () => ({ email: OwnerPolicy.DEFAULT_OWNER_EMAIL, isAdmin: true, name: "Nick" })],
+    ["the existing admin account", () => ({ email: PERSONAL, isAdmin: true, name: "Nick" })],
     ["the CaroMont work address", () => NICK_WORK],
     ["the work address in mixed case", () => ({ ...NICK_WORK, email: " nICHOLAS.LEARY@caromonthealth.Org " })],
   ])("%s gets AI (gate and menu) and reaches the provider-key actions", async (_l, who) => {
     vi.stubEnv("OWNER_EMAIL", "");
+    vi.stubEnv("OWNER_PERSONAL_EMAIL", PERSONAL);
     h.viewer = who();
     expect(await OwnerGate.ownerViewer()).not.toBeNull();
     expect(AdminMenu.itemsFor(h.viewer)?.map((i) => i.id)).toEqual(expect.arrayContaining(["ai-tools", "ai-settings"]));

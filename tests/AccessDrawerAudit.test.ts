@@ -37,7 +37,7 @@ const { ReportColorScheme } = await import("@/lib/report/ReportColorScheme");
 
 const ROOT = path.resolve(__dirname, "..");
 const src = (p: string) => readFileSync(path.join(ROOT, p), "utf8");
-const GMAIL = "nleary@gmail.com";
+const GMAIL = "owner@example.test";
 const WORK = "nicholas.leary@caromonthealth.org";
 const ENV = { ALLOWED_EMAILS: `${GMAIL} ${WORK}`, ADMIN_EMAILS: `${GMAIL} ${WORK}` };
 const S = (state: "none" | "active" | "mustChange", extra: { off?: boolean; locked?: boolean } = {}) => ({ state, off: false, locked: false, ...extra });
@@ -299,7 +299,7 @@ describe("Recent changes: labels and plain summaries", () => {
   it("WHO: a migration actor reads 'system (migration NNNN)', display only", () => {
     expect(AuditText.who("migration:0016")).toBe("system (migration 0016)");
     expect(AuditText.who("system (migration 0018)")).toBe("system (migration 0018)");
-    expect(AuditText.who("nleary@gmail.com")).toBe("nleary@gmail.com");
+    expect(AuditText.who("owner@example.test")).toBe("owner@example.test");
     expect(src("src/app/admin/audit/page.tsx")).toContain("by={AuditText.who(e.by)}");
   });
 

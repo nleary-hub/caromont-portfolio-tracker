@@ -79,10 +79,11 @@ describe("grant rules", () => {
 
 describe("Owner lock", () => {
   it("locks both built-in Owner accounts when OWNER_EMAIL is unset", () => {
-    for (const e of OwnerPolicy.DEFAULT_OWNER_EMAILS) {
-      expect(OwnerLock.isLocked(e, {})).toBe(true);
-      expect(OwnerLock.isLocked(` ${e.toUpperCase()} `, {})).toBe(true);
-      expect(() => OwnerLock.assertEditable(e, {})).toThrow(OwnerLock.MESSAGE);
+    const env = { OWNER_PERSONAL_EMAIL: "owner@example.test" };
+    for (const e of OwnerPolicy.defaultOwnerEmails(env)) {
+      expect(OwnerLock.isLocked(e, env)).toBe(true);
+      expect(OwnerLock.isLocked(` ${e.toUpperCase()} `, env)).toBe(true);
+      expect(() => OwnerLock.assertEditable(e, env)).toThrow(OwnerLock.MESSAGE);
     }
     expect(OwnerLock.isLocked("avery.admin@example.org", {})).toBe(false);
     expect(() => OwnerLock.assertEditable("avery.admin@example.org", {})).not.toThrow();

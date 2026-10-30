@@ -40,7 +40,7 @@ const { PasswordHasher } = await import("@/lib/auth/PasswordHasher");
 
 const CVPSL = "00000000-0000-4000-8000-000000000001";
 const ADMIN = { ...Factory.ADMIN, name: "Admin" };
-const ENV = { ALLOWED_EMAILS: "@caromonthealth.org nleary@gmail.com", ADMIN_EMAILS: "admin@example.org NLeary@gmail.com casey.admin@elsewhere.org" };
+const ENV = { ALLOWED_EMAILS: "@caromonthealth.org owner@example.test", ADMIN_EMAILS: "admin@example.org Owner@Example.test casey.admin@elsewhere.org" };
 const T0 = new Date("2026-09-28T13:00:00Z");
 const MIN = 60 * 1000;
 
@@ -178,20 +178,20 @@ describe("regressions: everyone on today's ALLOWED_EMAILS signs in exactly as be
     expect((await DepartmentAccess.limitFor(viewer, CVPSL, h.db as never))?.sort()).toEqual(["Echo", "IR"]);
   });
 
-  it("(b) an ADMIN_EMAILS admin on ALLOWED_EMAILS (NLeary@gmail.com, mixed case) signs in with Google and is an admin", async () => {
+  it("(b) an ADMIN_EMAILS admin on ALLOWED_EMAILS (Owner@Example.test, mixed case) signs in with Google and is an admin", async () => {
     const lookup = Accounts.fixed(false);
-    for (const email of ["NLeary@gmail.com", "nleary@GMAIL.com", "nleary@gmail.com"]) {
+    for (const email of ["Owner@Example.test", "Owner@Example.test", "owner@example.test"]) {
       expect(await SignInGate.allowSignInWithAccounts(Google.attempt(email), lookup, ENV)).toBe(true);
     }
     expect(lookup.accountActive).not.toHaveBeenCalled();
-    const session = { user: { email: "NLeary@gmail.com" } };
+    const session = { user: { email: "Owner@Example.test" } };
     expect(SessionAccess.allowed(session, ENV)).toBe(true);
-    expect(SessionAccess.viewer(session, ENV)).toEqual({ email: "nleary@gmail.com", isAdmin: true });
+    expect(SessionAccess.viewer(session, ENV)).toEqual({ email: "owner@example.test", isAdmin: true });
   });
 
   it("the rule is never account only: removing someone from ALLOWED_EMAILS without an account still refuses them", async () => {
     const env = { ...ENV, ALLOWED_EMAILS: "" };
-    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("nleary@gmail.com"), Accounts.fixed(false), env)).toBe(false);
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("owner@example.test"), Accounts.fixed(false), env)).toBe(false);
     expect(await SignInGate.allowSignInWithAccounts(Google.attempt("jane.doe@caromonthealth.org"), Accounts.fixed(false), env)).toBe(false);
   });
 });
@@ -326,14 +326,14 @@ describe("Turn off sign-in blocks every way in, even ALLOWED_EMAILS and ADMIN_EM
     expect(await SignInGate.allowSignInWithAccounts(pwd(JANE), Accounts.check(db), ENV)).toBe(false);
   });
 
-  it("an ADMIN_EMAILS admin (NLeary@gmail.com) who is turned off by another admin is refused; Microsoft and dev login too", async () => {
+  it("an ADMIN_EMAILS admin (Owner@Example.test) who is turned off by another admin is refused; Microsoft and dev login too", async () => {
     const db = await Accounts.db();
     // Rank rule (Roles & Permissions): only someone ranked above an admin (the Owner) may turn that admin off.
     vi.stubEnv("OWNER_EMAIL", ADMIN.email);
-    expect((await off(db, "NLeary@gmail.com")).ok).toBe(true);
-    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("NLeary@gmail.com"), Accounts.check(db), ENV)).toBe(false);
+    expect((await off(db, "Owner@Example.test")).ok).toBe(true);
+    expect(await SignInGate.allowSignInWithAccounts(Google.attempt("Owner@Example.test"), Accounts.check(db), ENV)).toBe(false);
     for (const provider of ["microsoft-entra-id", "dev-login"]) {
-      expect(await SignInGate.allowSignInWithAccounts({ user: { email: "nleary@gmail.com" }, account: { provider }, profile: {} }, Accounts.check(db), ENV)).toBe(false);
+      expect(await SignInGate.allowSignInWithAccounts({ user: { email: "owner@example.test" }, account: { provider }, profile: {} }, Accounts.check(db), ENV)).toBe(false);
     }
   });
 

@@ -6,7 +6,7 @@ import { FakeDb } from "./helpers/FakeDb";
 import { PasswordFakeDb } from "./helpers/PasswordFakeDb";
 
 // Nick's second address (Sep 27 report): his work address Nicholas.Leary@CaroMontHealth.org next to his admin account
-// nleary@gmail.com. The fixture mirrors production as read on Sep 27: both addresses (lowercase) on ALLOWED_EMAILS and
+// owner@example.test. The fixture mirrors production as read on Sep 27: both addresses (lowercase) on ALLOWED_EMAILS and
 // ADMIN_EMAILS; one app_user row, the gmail one, recorded at first sign-in (addedBy null); no row, password, block
 // or lockout for the work address. The app has no linked-email or alias table: each address is its own person, keyed
 // by its lowercased email. Session viewer and Db.client are fakes.
@@ -41,8 +41,8 @@ const { resetUserPassword } = await import("@/app/actions/accounts");
 
 const WORK = "nicholas.leary@caromonthealth.org";
 const WORK_TYPED = "Nicholas.Leary@CaroMontHealth.org";
-const GMAIL = "nleary@gmail.com";
-const PROD_ENV = { ALLOWED_EMAILS: `${GMAIL},${WORK}`, ADMIN_EMAILS: `${GMAIL},${WORK}` };
+const GMAIL = "owner@example.test";
+const PROD_ENV = { ALLOWED_EMAILS: `${GMAIL},${WORK}`, ADMIN_EMAILS: `${GMAIL},${WORK}`, OWNER_PERSONAL_EMAIL: GMAIL };
 const GMAIL_ADMIN: Viewer & { name: string } = { email: GMAIL, isAdmin: true, name: "Nicholas Leary" };
 const T0 = new Date("2026-09-28T13:00:00Z");
 const MIN = 60 * 1000;
@@ -203,7 +203,7 @@ describe("signing in with the work address", () => {
 describe("Google sign-in keeps working for both addresses", () => {
   it("before and after the work password, Google resolves each address (any case) to its own admin viewer", async () => {
     const db = await Prod.db();
-    const before = [await Prod.googleViewer(db, "NLeary@Gmail.com"), await Prod.googleViewer(db, WORK_TYPED)];
+    const before = [await Prod.googleViewer(db, "Owner@Example.test"), await Prod.googleViewer(db, WORK_TYPED)];
     expect(before).toEqual([
       { email: GMAIL, isAdmin: true },
       { email: WORK, isAdmin: true },
