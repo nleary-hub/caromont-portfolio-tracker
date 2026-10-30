@@ -10,8 +10,8 @@ import type { AiToolsDb } from "@/lib/services/AiToolsService";
 // (gpt-live-*): the server starts the session on OpenAI's Live API with the saved key, which never reaches the browser.
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
-// CTO, Oct 29, 2026: Fluid Compute is on (Hobby, up to 300 s). Every AI route sets 85 s explicitly. Pages stay at 90 s.
-export const maxDuration = 85;
+// CTO, Oct 29, 2026: 30 s per spec. This route only mints or starts a voice session and never waits on a model reply.
+export const maxDuration = 30;
 
 export async function POST(request: Request) {
   const viewer = await OwnerGate.ownerViewer();

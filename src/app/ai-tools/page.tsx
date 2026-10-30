@@ -16,7 +16,9 @@ import type { AiSettingsDb } from "@/lib/services/AiSettingsService";
 import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
 
 /** The provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
-export const maxDuration = 90;
+// CTO, Oct 29, 2026: 85 s on anything that waits on a model reply. This page hosts AI generation server actions, which
+// inherit its limit. The gateway budget (45 s main + 35 s fallback = 80 s) fits inside it.
+export const maxDuration = 85;
 
 export const metadata: Metadata = { title: C.PAGE_TITLE };
 

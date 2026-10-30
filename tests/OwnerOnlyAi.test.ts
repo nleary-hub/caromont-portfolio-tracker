@@ -154,6 +154,13 @@ describe("the Owner", () => {
     const res = await POST(new Request("http://127.0.0.1/x", { method: "POST", body: "{}" })).catch(() => null);
     expect(res?.status === 403 && h.touched.length === 0).toBe(false);
   });
+  it("gets past the gate on the model picker route", async () => {
+    h.viewer = OWNER;
+    h.touched = [];
+    const { POST } = await import("@/app/api/ai/models/pick/route");
+    const res = await POST(new Request("http://127.0.0.1/x", { method: "POST", body: "{}" })).catch(() => null);
+    expect(res?.status === 403 && h.touched.length === 0).toBe(false);
+  });
 });
 
 describe("the built-in two-owner set (OWNER_EMAIL unset): AI and provider keys", () => {

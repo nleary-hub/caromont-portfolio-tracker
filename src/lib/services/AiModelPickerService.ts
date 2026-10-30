@@ -41,7 +41,6 @@ export class AiModelPickerService {
     input: { provider: string; model: string; category: string },
     liveList: AiLiveList,
     env?: Env,
-    now: () => Date = () => new Date(),
   ): Promise<AiRegistryResult<{ added: boolean; enabled: boolean; needsPrice: boolean }>> {
     if (!OwnerPolicy.isOwner(actor, env) || !actor) return { ok: false, error: AiRegistryCopy.NOT_AUTHORIZED };
     const category: AiCategory | null = AiRegistry.parseCategory(input.category);

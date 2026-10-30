@@ -33,29 +33,37 @@ describe("time limits (CTO, Oct 29, 2026)", () => {
     expect(AiGateway.budget(false)).toEqual({ primaryMs: 60_000, fallbackMs: null });
   });
 
-  it("primary plus fallback leaves at least 10 s of the 90 s page limit for guards, database and logging", () => {
+  it("primary plus fallback (80 s) fits inside the 85 s generation limit with 5 s for guards, database and logging", () => {
     const b = AiGateway.budget(true);
-    expect(b.primaryMs + (b.fallbackMs ?? 0)).toBeLessThanOrEqual((AiGateway.PAGE_LIMIT_S - 10) * 1000);
+    expect(AiGateway.PAGE_LIMIT_S).toBe(85);
+    expect(b.primaryMs + (b.fallbackMs ?? 0)).toBeLessThanOrEqual((AiGateway.PAGE_LIMIT_S - 5) * 1000);
   });
 
-  it("the pages that run text features stay at maxDuration 90", () => {
-    for (const p of ["src/app/admin/ai/page.tsx", "src/app/ai-tools/page.tsx", "src/app/page.tsx", "src/app/playbook/page.tsx"]) {
-      expect(read(p)).toMatch(/export const maxDuration = 90;/);
+  // Generation runs in server actions, which inherit the limit of the page that hosts them.
+  const GENERATION_PAGES = ["src/app/page.tsx", "src/app/ai-tools/page.tsx", "src/app/playbook/page.tsx", "src/app/admin/ai/page.tsx", "src/app/admin/dependencies/page.tsx", "src/app/admin/templates/page.tsx"];
+
+  it("every page that hosts AI generation sets maxDuration 85", () => {
+    for (const p of GENERATION_PAGES) expect(read(p), p).toMatch(/^export const maxDuration = 85;$/m);
+  });
+
+  const walk = (dir: string, out: string[] = []) => {
+    for (const f of readdirSync(dir)) {
+      const full = path.join(dir, f);
+      if (statSync(full).isDirectory()) walk(full, out);
+      else if (/\.(ts|tsx)$/.test(f)) out.push(full);
     }
+    return out;
+  };
+
+  it("no route handler waits on a model reply: none reaches the gateway or a generation service", () => {
+    const routes = walk(path.join(ROOT, "src/app/api")).filter((f) => f.endsWith("route.ts"));
+    for (const r of routes) expect(readFileSync(r, "utf8").replace(/^import type .*$/gm, ""), r).not.toMatch(/AiGateway|AiProviderClient|AiWritingService|AiToolsService|AiReviewApplyService/);
   });
 
-  it("every AI route under src/app/api/ai sets maxDuration 85 explicitly", () => {
-    const routes: string[] = [];
-    const walk = (dir: string) => {
-      for (const f of readdirSync(dir)) {
-        const full = path.join(dir, f);
-        if (statSync(full).isDirectory()) walk(full);
-        else if (f === "route.ts") routes.push(full);
-      }
-    };
-    walk(path.join(ROOT, "src/app/api/ai"));
-    expect(routes.length).toBeGreaterThan(0);
-    for (const r of routes) expect(readFileSync(r, "utf8")).toMatch(/^export const maxDuration = 85;$/m);
+  it("the voice connect route and the picker route set maxDuration 30 (session mint and model list only)", () => {
+    const routes = walk(path.join(ROOT, "src/app/api/ai")).filter((f) => f.endsWith("route.ts"));
+    expect(routes.map((r) => path.relative(ROOT, r)).sort()).toEqual(["src/app/api/ai/models/pick/route.ts", "src/app/api/ai/voice/connect/route.ts"]);
+    for (const r of routes) expect(readFileSync(r, "utf8"), r).toMatch(/^export const maxDuration = 30;$/m);
   });
 
   it("the gateway passes the primary budget to the provider call as its abort timeout", async () => {

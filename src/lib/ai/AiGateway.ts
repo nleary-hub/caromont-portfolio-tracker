@@ -40,7 +40,7 @@ export class AiGateway {
    * The page limit the text features run under (maxDuration on admin/ai, ai-tools, home, playbook). The budgets above
    * must leave room inside it for guards, database reads and the usage line. Checked by a test, not at run time.
    */
-  static readonly PAGE_LIMIT_S = 90;
+  static readonly PAGE_LIMIT_S = 85;
 
   static budget(hasUsableFallback: boolean): AiTimeBudget {
     return hasUsableFallback ? { primaryMs: AiGateway.PRIMARY_MS, fallbackMs: AiGateway.FALLBACK_MS } : { primaryMs: AiGateway.SOLO_MS, fallbackMs: null };

@@ -71,7 +71,9 @@ import { ViewerDashboardModel } from "@/lib/dashboard/ViewerDashboardModel";
 import { markProjectsReviewed, undoProjectsReviewed } from "@/app/actions/review";
 
 /** AI Draft/Fit/Test connection server actions run on this page; the provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
-export const maxDuration = 90;
+// CTO, Oct 29, 2026: 85 s on anything that waits on a model reply. This page hosts AI generation server actions, which
+// inherit its limit. The gateway budget (45 s main + 35 s fallback = 80 s) fits inside it.
+export const maxDuration = 85;
 
 interface DashboardLoad {
   rows: DashboardRow[];

@@ -17,6 +17,10 @@ import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { AiPlacementData } from "@/lib/services/AiToolsReadiness";
 import { DependencyReviewService } from "@/lib/services/ProjectDependencyService";
 
+// CTO, Oct 29, 2026: 85 s on anything that waits on a model reply. This page hosts AI generation server actions, which
+// inherit its limit. The gateway budget (45 s main + 35 s fallback = 80 s) fits inside it.
+export const maxDuration = 85;
+
 export const metadata: Metadata = { title: DependencyReviewCopy.PAGE_TITLE };
 export const dynamic = "force-dynamic";
 

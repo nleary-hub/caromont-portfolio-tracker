@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
+import { AiModelPickRoute } from "@/lib/ai/AiModelPickRoute";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AiModelPickerCopy, AiModelPickerService, type AiLiveList } from "@/lib/services/AiModelPickerService";
 import { AiRegistryCopy, AiRegistryService } from "@/lib/services/AiRegistryService";
@@ -33,7 +34,7 @@ const cat = (category: string) => hx.prisma.aiCategorySetting.findUnique({ where
 
 describe("AiModelPickerService.pick", () => {
   it("one Owner action adds the listed model switched on and points the category at it, with audit rows", async () => {
-    const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV, NOW);
+    const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV);
     expect(r).toEqual({ ok: true, added: true, enabled: true, needsPrice: true });
     expect(await reg("gpt-6-luna")).toMatchObject({ enabled: true, kind: "chat", addedBy: OWNER.email });
     expect(await cat("drafting")).toMatchObject({ provider: "openai", model: "gpt-6-luna", effort: null, updatedBy: OWNER.email });
@@ -42,27 +43,27 @@ describe("AiModelPickerService.pick", () => {
   });
 
   it("a model missing from the live list is refused and nothing is written (no typed ids)", async () => {
-    const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-typed-by-hand", category: "drafting" }, LIVE, ENV, NOW);
+    const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-typed-by-hand", category: "drafting" }, LIVE, ENV);
     expect(r).toEqual({ ok: false, error: AiModelPickerCopy.NOT_IN_LIST });
     expect(await reg("gpt-typed-by-hand")).toBeNull();
     expect(await cat("drafting")).toBeNull();
   });
 
   it("a non-Owner admin is refused before the list is read", async () => {
-    expect(await AiModelPickerService.pick(hx.db, OTHER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiRegistryCopy.NOT_AUTHORIZED });
+    expect(await AiModelPickerService.pick(hx.db, OTHER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV)).toEqual({ ok: false, error: AiRegistryCopy.NOT_AUTHORIZED });
     expect(calls).toEqual([]);
   });
 
   it("the kind must fit the category: a transcription model cannot serve drafting", async () => {
-    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "whisper-fiction", category: "drafting" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiModelPickerCopy.WRONG_KIND });
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "whisper-fiction", category: "drafting" }, LIVE, ENV)).toEqual({ ok: false, error: AiModelPickerCopy.WRONG_KIND });
     expect(await reg("whisper-fiction")).toBeNull();
   });
 
   it("an existing switched-off row is switched on; an archived one is refused and stays archived", async () => {
     await hx.prisma.aiModelRegistry.create({ data: { provider: "openai", model: "gpt-6.1-sol", kind: "chat", enabled: false, addedBy: OWNER.email, updatedBy: OWNER.email } });
-    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6.1-sol", category: "analysis" }, LIVE, ENV, NOW)).toEqual({ ok: true, added: false, enabled: true, needsPrice: true });
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6.1-sol", category: "analysis" }, LIVE, ENV)).toEqual({ ok: true, added: false, enabled: true, needsPrice: true });
     await hx.prisma.aiModelRegistry.update({ where: { provider_model: { provider: "openai", model: "gpt-6.1-sol" } }, data: { enabled: false, archivedAt: NOW(), archivedBy: OWNER.email } });
-    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6.1-sol", category: "extraction" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiModelPickerCopy.ARCHIVED });
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6.1-sol", category: "extraction" }, LIVE, ENV)).toEqual({ ok: false, error: AiModelPickerCopy.ARCHIVED });
     expect(await reg("gpt-6.1-sol")).toMatchObject({ enabled: false });
     expect(await cat("extraction")).toBeNull();
   });
@@ -70,7 +71,7 @@ describe("AiModelPickerService.pick", () => {
   it("an inherited effort the new model does not allow refuses the pick and rolls back the add", async () => {
     await hx.prisma.aiModelRegistry.create({ data: { provider: "openai", model: "gpt-6.1-sol", kind: "chat", enabled: true, allowedEfforts: ["high"], addedBy: OWNER.email, updatedBy: OWNER.email } });
     await hx.prisma.aiCategorySetting.create({ data: { category: "drafting", provider: "openai", model: "gpt-6.1-sol", effort: "high", updatedBy: OWNER.email } });
-    const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV, NOW);
+    const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV);
     expect(r).toEqual({ ok: false, error: AiModelPickerCopy.EFFORT_PICK_AGAIN });
     expect(await reg("gpt-6-luna")).toBeNull();
     expect(await cat("drafting")).toMatchObject({ model: "gpt-6.1-sol", effort: "high" });
@@ -78,12 +79,12 @@ describe("AiModelPickerService.pick", () => {
 
   it("a failed list call is reported and nothing is written", async () => {
     const down: AiLiveList = async () => ({ ok: false, error: "The model list could not be read." });
-    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, down, ENV, NOW)).toEqual({ ok: false, error: "The model list could not be read." });
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, down, ENV)).toEqual({ ok: false, error: "The model list could not be read." });
     expect(await reg("gpt-6-luna")).toBeNull();
   });
 
   it("dictation and voice take OpenAI only", async () => {
-    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "anthropic", model: "claude-fiction-1", category: "dictation" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiRegistryCopy.AUDIO_OPENAI_ONLY });
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "anthropic", model: "claude-fiction-1", category: "dictation" }, LIVE, ENV)).toEqual({ ok: false, error: AiRegistryCopy.AUDIO_OPENAI_ONLY });
   });
 });
 
@@ -106,7 +107,7 @@ describe("the picker writes only through AiRegistryService", () => {
         return fn(watched);
       }),
     }) as typeof hx.db;
-    const r = await AiModelPickerService.pick(db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV, NOW);
+    const r = await AiModelPickerService.pick(db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV);
     expect(r.ok).toBe(true);
     expect(spies.map((s) => s.mock.calls.length)).toEqual([1, 1, 1]);
     expect(open).toBe(1);
@@ -116,7 +117,32 @@ describe("the picker writes only through AiRegistryService", () => {
 
   it("a key-shaped id is refused by the shared AiKeyShape check before any list read or write", async () => {
     const shaped = ["sk", "-FICTION", "77ab12cd", "EFGH0123"].join("");
-    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: shaped, category: "drafting" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiRegistryCopy.KEY_SHAPED });
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: shaped, category: "drafting" }, LIVE, ENV)).toEqual({ ok: false, error: AiRegistryCopy.KEY_SHAPED });
     expect(calls).toEqual([]);
+  });
+});
+
+describe("POST /api/ai/models/pick (AiModelPickRoute)", () => {
+  const post = (body: string) => new Request("http://127.0.0.1/api/ai/models/pick", { method: "POST", body });
+
+  it("the Owner picks a listed model: 200, no-store, and the category points at it", async () => {
+    const res = await AiModelPickRoute.handle(post(JSON.stringify({ provider: "openai", model: "gpt-6-luna", category: "drafting" })), { db: hx.db, viewer: OWNER, env: ENV, liveList: LIVE });
+    expect(res.status).toBe(200);
+    expect(res.headers.get("cache-control")).toBe("no-store");
+    expect(await res.json()).toMatchObject({ ok: true, added: true, enabled: true });
+  });
+
+  it("a non-Owner admin gets 403 and nothing is written", async () => {
+    const res = await AiModelPickRoute.handle(post(JSON.stringify({ provider: "openai", model: "gpt-6-luna", category: "drafting" })), { db: hx.db, viewer: { ...OWNER, email: "riley.stone@example.org" }, env: ENV, liveList: LIVE });
+    expect(res.status).toBe(403);
+    expect(await reg("gpt-6-luna")).toBeNull();
+  });
+
+  it("bad JSON is 400, an oversized body is 413, a model off the live list is 422", async () => {
+    const deps = { db: hx.db, viewer: OWNER, env: ENV, liveList: LIVE };
+    expect((await AiModelPickRoute.handle(post("{nope"), deps)).status).toBe(400);
+    expect((await AiModelPickRoute.handle(post("x".repeat(5000)), deps)).status).toBe(413);
+    expect((await AiModelPickRoute.handle(post(JSON.stringify({ provider: "openai", model: "gpt-6-typed", category: "drafting" })), deps)).status).toBe(422);
+    expect(await reg("gpt-6-typed")).toBeNull();
   });
 });
