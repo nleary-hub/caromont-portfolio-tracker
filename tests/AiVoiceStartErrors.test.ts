@@ -68,7 +68,7 @@ describe("client secret errors are specific and logged without secrets", () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const r = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: openai(400, { type: "invalid_request_error", code: "model_not_found", message: "The model `gpt-example-realtime` does not exist or you do not have access to it." }).f });
     expect(r).toEqual({ ok: false, code: "model_unavailable", message: AiToolsCopy.VOICE_MODEL_UNAVAILABLE });
-    expect(log).toHaveBeenCalledWith("AI tools: voice session failed", expect.objectContaining({ code: "model_unavailable", status: 400, type: "invalid_request_error", errorCode: "model_not_found", model: "gpt-example-realtime" }));
+    expect(log).toHaveBeenCalledWith("AI tools: voice session failed", expect.objectContaining({ code: "model_unavailable", status: 400, errorClass: "bad_request", model: "gpt-example-realtime" }));
     expect(db.usage.at(-1)?.event).toBe("failed");
   });
 
@@ -79,7 +79,7 @@ describe("client secret errors are specific and logged without secrets", () => {
     expect(r).toEqual({ ok: false, code: "token", message: AiToolsCopy.VOICE_TOKEN_FAILED });
     const line = JSON.stringify(log.mock.calls);
     expect(line).toContain('"status":401');
-    expect(line).toContain("invalid_api_key");
+    expect(line).not.toContain("invalid_api_key");
     expect(line).not.toMatch(KEY_RE);
   });
 

@@ -1,6 +1,6 @@
 import type { AiVoiceApi } from "./AiModelKinds";
 import type { AiRuntimeConfig } from "./AiProviderClient";
-import { AiProviderError } from "./AiProviderError";
+import { AiProviderError, type AiProviderErrorClass } from "./AiProviderError";
 import { AiResponseCap } from "./AiResponseCap";
 
 export type AiRealtimeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal; redirect?: "error" }) => Promise<{ ok: boolean; status: number; headers?: { get(name: string): string | null }; text(): Promise<string> }>;
@@ -32,9 +32,19 @@ export interface AiRealtimeErrorInfo {
   message?: string;
 }
 
-export type AiRealtimeMintResult = { ok: true; ticket: AiRealtimeTicket } | ({ ok: false; kind: "provider" | "http" | "network" | "timeout" | "parse"; modelUnavailable?: boolean } & AiRealtimeErrorInfo);
+/**
+ * What a server side voice failure carries: the HTTP status, the error class, a fixed message by class and the
+ * modelUnavailable boolean. No provider type, code or message text (QA recheck of 6dfff29, item 2).
+ */
+export interface AiRealtimeSafeError {
+  status?: number;
+  errorClass?: AiProviderErrorClass;
+  message?: string;
+}
 
-export type AiRealtimeCallResult = { ok: true; sdp: string } | ({ ok: false; kind: "http" | "network" | "timeout" | "parse"; modelUnavailable?: boolean } & AiRealtimeErrorInfo);
+export type AiRealtimeMintResult = { ok: true; ticket: AiRealtimeTicket } | ({ ok: false; kind: "provider" | "http" | "network" | "timeout" | "parse"; modelUnavailable?: boolean } & AiRealtimeSafeError);
+
+export type AiRealtimeCallResult = { ok: true; sdp: string } | ({ ok: false; kind: "http" | "network" | "timeout" | "parse"; modelUnavailable?: boolean } & AiRealtimeSafeError);
 
 /**
  * Step 10 adapter for the realtime (speech to speech) API. The only place that knows the provider's request shape, so a
@@ -79,16 +89,14 @@ export class AiRealtimeClient {
       .slice(0, 300);
   }
 
-  /** OpenAI's { error: { type, code, message } } body, scrubbed. Any shape is accepted; missing parts stay undefined. */
   /**
-   * The error as safe to show and log: the status, a fixed message by class (AiProviderError), and the provider's
-   * type and code only when they are plain identifiers (letters, digits, dot, underscore, dash; at most 64). No provider
-   * message text is kept. `modelUnavailable` is read from the scrubbed body before it is dropped.
+   * The error as safe to show and log: the status, the error class, a fixed message by class (AiProviderError) and the
+   * modelUnavailable boolean. The provider's type, code and message are read here only to compute modelUnavailable and
+   * are then dropped; none of them is returned.
    */
-  static safeError(status: number, body: string, secrets: readonly string[] = []): AiRealtimeErrorInfo & { modelUnavailable: boolean } {
-    const raw = AiRealtimeClient.scrubbedError(status, body, secrets);
-    const token = (v: string | undefined) => (v && /^[A-Za-z0-9_.-]{1,64}$/.test(v) ? v : undefined);
-    return { status, type: token(raw.type), code: token(raw.code), message: AiProviderError.forStatus("openai", status), modelUnavailable: AiRealtimeClient.modelUnavailable(raw) };
+  static safeError(status: number, body: string, secrets: readonly string[] = []): Required<Pick<AiRealtimeSafeError, "status" | "errorClass" | "message">> & { modelUnavailable: boolean } {
+    const modelUnavailable = AiRealtimeClient.modelUnavailable(AiRealtimeClient.scrubbedError(status, body, secrets));
+    return { status, errorClass: AiProviderError.classify(status), message: AiProviderError.forStatus("openai", status), modelUnavailable };
   }
 
   /**
@@ -161,7 +169,7 @@ export class AiRealtimeClient {
       return { ok: true, sdp: text };
     } catch (e) {
       const timeout = (e as Error)?.name === "TimeoutError";
-      return { ok: false, kind: timeout ? "timeout" : "network", type: (e as Error)?.name ?? undefined, message: AiProviderError.message("openai", timeout ? "timeout" : "provider_down") };
+      return { ok: false, kind: timeout ? "timeout" : "network", errorClass: timeout ? "timeout" : "provider_down", message: AiProviderError.message("openai", timeout ? "timeout" : "provider_down") };
     }
   }
 }

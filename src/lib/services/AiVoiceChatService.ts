@@ -124,8 +124,8 @@ export class AiVoiceChatService {
     });
     if (!r.ok) {
       const code = r.modelUnavailable ? "model_unavailable" : "token";
-      // The real error for the runtime log: our code, HTTP status and OpenAI's error type, code and message. No secrets.
-      console.error("AI tools: voice session failed", { code, api, kind: r.kind, model, status: r.status ?? null, type: r.type ?? null, errorCode: r.code ?? null, message: r.message ?? null });
+      // The runtime log: our code, the HTTP status and the error class only. No provider type, code or text; no secrets.
+      console.error("AI tools: voice session failed", { code, api, kind: r.kind, model, status: r.status ?? null, errorClass: r.errorClass ?? null });
       return { ok: false, code, message: code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_TOKEN_FAILED };
     }
     return { ok: true, sessionId, ticket: r.ticket, maxSeconds };
@@ -153,10 +153,10 @@ export class AiVoiceChatService {
     const r = await AiRealtimeClient.call(secret, sdp, args.fetchImpl);
     if (r.ok) return { ok: true, sdp: r.sdp };
     const code: AiVoiceErrorCode = r.modelUnavailable ? "model_unavailable" : "connect_failed";
-    await AiVoiceChatService.logFailure(db, viewer, session, code, { status: r.status ?? null, type: r.type ?? r.kind, errorCode: r.code ?? null, message: r.message ?? null, source: "server" }, args.now, [secret]);
+    await AiVoiceChatService.logFailure(db, viewer, session, code, { status: r.status ?? null, type: r.kind, errorClass: r.errorClass ?? null, source: "server" }, args.now, [secret]);
     // OpenAI's status passes through; a network failure or timeout is a 502 or 504 from us.
     const httpStatus = typeof r.status === "number" ? r.status : r.kind === "timeout" ? 504 : 502;
-    return { ok: false, httpStatus, error: { type: r.type ?? r.kind, code: r.code ?? null, message: r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
+    return { ok: false, httpStatus, error: { type: r.kind, code: null, message: r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
   }
 
   /**
@@ -199,9 +199,9 @@ export class AiVoiceChatService {
       return { ok: true, sdp: r.sdp };
     }
     const code: AiVoiceErrorCode = r.modelUnavailable ? "model_unavailable" : "connect_failed";
-    await AiVoiceChatService.logFailure(db, viewer, session, code, { status: r.status ?? null, type: r.type ?? r.kind, errorCode: r.code ?? null, message: r.message ?? null, source: "server", api: "live" }, args.now, [saved.apiKey]);
+    await AiVoiceChatService.logFailure(db, viewer, session, code, { status: r.status ?? null, type: r.kind, errorClass: r.errorClass ?? null, source: "server", api: "live" }, args.now, [saved.apiKey]);
     const httpStatus = typeof r.status === "number" ? r.status : r.kind === "timeout" ? 504 : 502;
-    return { ok: false, httpStatus, error: { type: r.type ?? r.kind, code: r.code ?? null, message: r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
+    return { ok: false, httpStatus, error: { type: r.kind, code: null, message: r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
   }
 
   /** One failed row per session (append-only; usageSeconds 0) plus the log line. Every value is scrubbed of keys and tokens. */

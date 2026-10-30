@@ -69,12 +69,13 @@ describe("POST /api/ai/voice/connect", () => {
     const res = await AiVoiceConnectRoute.handle(post({ sessionId, clientSecret: SECRET, sdp: "v=0 offer" }), { db, viewer: ADMIN, fetchImpl: p.f, now: () => T0 });
     expect(res.status).toBe(401);
     const j = (await res.json()) as { error: { type: string; code: string; message: string } };
-    expect(j.error).toMatchObject({ type: "invalid_request_error", code: "invalid_api_key" });
+    expect(j.error).toMatchObject({ type: "http", code: null });
+    expect(JSON.stringify(j)).not.toMatch(/invalid_request_error|invalid_api_key/);
     expect(JSON.stringify(j)).not.toContain(SECRET);
     const failed = rows(db).filter((r) => r.event === "failed");
     expect(failed).toHaveLength(1);
     expect(failed[0]).toMatchObject({ suggestionId: sessionId, feature: "voice_chat", usageSeconds: 0 });
-    expect(log).toHaveBeenCalledWith("AI tools: voice connect failed", expect.objectContaining({ code: "connect_failed", status: 401, errorCode: "invalid_api_key" }));
+    expect(log).toHaveBeenCalledWith("AI tools: voice connect failed", expect.objectContaining({ code: "connect_failed", status: 401, errorClass: "auth" }));
     expect(JSON.stringify(log.mock.calls)).not.toContain(SECRET);
     // End after a failed connect leaves no session_ended row.
     expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId, now: () => T0 })).toEqual({ ok: true, seconds: 0 });

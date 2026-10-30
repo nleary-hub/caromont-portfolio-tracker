@@ -1,5 +1,5 @@
 import type { AiRuntimeConfig } from "./AiProviderClient";
-import { AiRealtimeClient, type AiRealtimeErrorInfo, type AiRealtimeFetch } from "./AiRealtimeClient";
+import { AiRealtimeClient, type AiRealtimeSafeError, type AiRealtimeFetch } from "./AiRealtimeClient";
 import { AiProviderError } from "./AiProviderError";
 import { AiResponseCap } from "./AiResponseCap";
 
@@ -15,7 +15,7 @@ export interface AiLiveSessionConfig {
   tools: readonly object[];
 }
 
-export type AiLiveCreateResult = { ok: true; sdp: string; liveSessionId: string | null } | ({ ok: false; kind: "provider" | "http" | "network" | "timeout" | "parse"; modelUnavailable?: boolean } & AiRealtimeErrorInfo);
+export type AiLiveCreateResult = { ok: true; sdp: string; liveSessionId: string | null } | ({ ok: false; kind: "provider" | "http" | "network" | "timeout" | "parse"; modelUnavailable?: boolean } & AiRealtimeSafeError);
 
 /** Backend Responses usage the browser saw in nested response.completed events (tokens only; never text). */
 export interface AiLiveBackendUsage {
@@ -84,7 +84,7 @@ export class AiLiveClient {
       return { ok: true, sdp: answer, liveSessionId: typeof j.session?.id === "string" ? j.session.id.slice(0, 200) : null };
     } catch (e) {
       const timeout = (e as Error)?.name === "TimeoutError";
-      return { ok: false, kind: timeout ? "timeout" : "network", type: (e as Error)?.name ?? undefined, message: AiProviderError.message("openai", timeout ? "timeout" : "provider_down") };
+      return { ok: false, kind: timeout ? "timeout" : "network", errorClass: timeout ? "timeout" : "provider_down", message: AiProviderError.message("openai", timeout ? "timeout" : "provider_down") };
     }
   }
 

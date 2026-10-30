@@ -138,9 +138,9 @@ describe("routing by kind", () => {
     const s = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: p.f, now: () => T0 });
     if (!s.ok) throw new Error("start failed");
     const c = await AiVoiceChatService.connect({ db, viewer: ADMIN, sessionId: s.sessionId, clientSecret: "", sdp: "v=0 offer", scope: SCOPE, env: ENV, fetchImpl: p.f, now: at(2) });
-    expect(c).toMatchObject({ ok: false, httpStatus: 400, error: { code: "invalid_model", modelUnavailable: true } });
+    expect(c).toMatchObject({ ok: false, httpStatus: 400, error: { type: "http", code: null, modelUnavailable: true } });
     expect(rows(db).filter((r) => r.event === "failed")).toHaveLength(1);
-    expect(log).toHaveBeenCalledWith("AI tools: voice connect failed", expect.objectContaining({ code: "model_unavailable", api: "live", errorCode: "invalid_model" }));
+    expect(log).toHaveBeenCalledWith("AI tools: voice connect failed", expect.objectContaining({ code: "model_unavailable", api: "live", errorClass: "bad_request" }));
     expect(JSON.stringify(log.mock.calls)).not.toContain(KEY);
     expect(await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId: s.sessionId, now: at(10) })).toEqual({ ok: true, seconds: 0 });
     expect(rows(db).filter((r) => r.event === "session_ended")).toHaveLength(0);
