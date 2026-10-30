@@ -191,7 +191,7 @@ describe("test connection redacts anything key-shaped", () => {
     const config = { provider: "openai" as const, model: "gpt-6-luna", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: KEY, allowedModels: ["gpt-6-luna"] };
     const masked: FetchLike = async () => ({ ok: false, status: 401, text: async () => JSON.stringify({ error: { message: "Incorrect API key provided: sk-proj-****WXYZ." } }) });
     const r = await AiWritingService.testConnection(config, masked);
-    expect(r).toEqual({ ok: false, message: "HTTP 401: Incorrect API key provided: [key hidden]." });
+    expect(r).toEqual({ ok: false, message: "OpenAI did not accept the API key (HTTP 401). Check the key in Provider keys." });
   });
 });
 

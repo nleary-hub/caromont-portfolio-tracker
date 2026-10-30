@@ -24,9 +24,10 @@
  * The direction that is never allowed is the app accepting what the database refuses. The reverse is allowed: where JS \s
  * (or U+0085) matches and the database class does not, the app is stricter. That app-stricter set depends on the engine:
  * PGlite 17.5 gives U+00A0, U+1680, U+2007, U+202F, U+FEFF; Postgres 17.10 C.UTF-8 gives U+0085, U+00A0, U+2007, U+202F,
- * U+FEFF. LOCALE CAVEAT: the Neon database may use another locale and may treat other characters as space (for example
- * U+180E or the U+200B family, which neither measured engine does), so the sweep must still be run on a Neon branch
- * before the merge. The app may refuse what the database accepts. It must never accept what the database refuses.
+ * U+FEFF. Neon (the production database, Postgres 18, builtin C.UTF-8) was measured in the 0071 dry run, step 7: JS
+ * looser 0, JS stricter exactly {U+FEFF}. That is the accepted pass criterion. A change of database version or locale
+ * means re-running that sweep. The app may refuse what the database accepts. It must never accept what the database
+ * refuses.
  *
  * It is a backstop, not a guarantee (a short or oddly shaped key passes). It never returns or logs the text it was given,
  * only the name of the rule that fired.

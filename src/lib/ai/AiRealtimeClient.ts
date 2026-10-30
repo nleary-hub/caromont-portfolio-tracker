@@ -1,5 +1,6 @@
 import type { AiVoiceApi } from "./AiModelKinds";
 import type { AiRuntimeConfig } from "./AiProviderClient";
+import { AiProviderError } from "./AiProviderError";
 import { AiResponseCap } from "./AiResponseCap";
 
 export type AiRealtimeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal; redirect?: "error" }) => Promise<{ ok: boolean; status: number; headers?: { get(name: string): string | null }; text(): Promise<string> }>;
@@ -79,7 +80,22 @@ export class AiRealtimeClient {
   }
 
   /** OpenAI's { error: { type, code, message } } body, scrubbed. Any shape is accepted; missing parts stay undefined. */
-  static safeError(status: number, body: string, secrets: readonly string[] = []): AiRealtimeErrorInfo {
+  /**
+   * The error as safe to show and log: the status, a fixed message by class (AiProviderError), and the provider's
+   * type and code only when they are plain identifiers (letters, digits, dot, underscore, dash; at most 64). No provider
+   * message text is kept. `modelUnavailable` is read from the scrubbed body before it is dropped.
+   */
+  static safeError(status: number, body: string, secrets: readonly string[] = []): AiRealtimeErrorInfo & { modelUnavailable: boolean } {
+    const raw = AiRealtimeClient.scrubbedError(status, body, secrets);
+    const token = (v: string | undefined) => (v && /^[A-Za-z0-9_.-]{1,64}$/.test(v) ? v : undefined);
+    return { status, type: token(raw.type), code: token(raw.code), message: AiProviderError.forStatus("openai", status), modelUnavailable: AiRealtimeClient.modelUnavailable(raw) };
+  }
+
+  /**
+   * The body parsed and scrubbed but with its message kept. Server side it is used only to decide modelUnavailable and
+   * is never returned or logged. The browser uses it on this app's own route reply, whose messages are already fixed.
+   */
+  static scrubbedError(status: number, body: string, secrets: readonly string[]): AiRealtimeErrorInfo {
     let e: { type?: unknown; code?: unknown; message?: unknown } = {};
     try {
       e = (JSON.parse(body) as { error?: typeof e })?.error ?? {};
@@ -109,8 +125,7 @@ export class AiRealtimeClient {
       const raw = await AiResponseCap.text(res, AiResponseCap.VOICE_CHARS).catch(() => "");
       if (raw === null) return { ok: false, kind: "parse" };
       if (!res.ok) {
-        const info = AiRealtimeClient.safeError(res.status, raw, [config.apiKey]);
-        return { ok: false, kind: "http", ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) };
+        return { ok: false, kind: "http", ...AiRealtimeClient.safeError(res.status, raw, [config.apiKey]) };
       }
       const j = JSON.parse(raw) as { value?: unknown; expires_at?: unknown; client_secret?: { value?: unknown; expires_at?: unknown } };
       // Older beta shape nested it under client_secret; accept both.
@@ -140,14 +155,13 @@ export class AiRealtimeClient {
       const text = await AiResponseCap.text(res, AiResponseCap.VOICE_CHARS).catch(() => "");
       if (text === null) return { ok: false, kind: "parse", status: res.status, message: "reply too large" };
       if (!res.ok) {
-        const info = AiRealtimeClient.safeError(res.status, text, [clientSecret]);
-        return { ok: false, kind: "http", ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) };
+        return { ok: false, kind: "http", ...AiRealtimeClient.safeError(res.status, text, [clientSecret]) };
       }
       if (!text.trim()) return { ok: false, kind: "parse", status: res.status, message: "empty SDP answer" };
       return { ok: true, sdp: text };
     } catch (e) {
       const timeout = (e as Error)?.name === "TimeoutError";
-      return { ok: false, kind: timeout ? "timeout" : "network", type: (e as Error)?.name ?? undefined, message: AiRealtimeClient.scrub(String((e as Error)?.message ?? ""), [clientSecret]) || undefined };
+      return { ok: false, kind: timeout ? "timeout" : "network", type: (e as Error)?.name ?? undefined, message: AiProviderError.message("openai", timeout ? "timeout" : "provider_down") };
     }
   }
 }

@@ -432,7 +432,7 @@ describe("provider calls (mocked), timeouts and rate limits", () => {
     const db = await configured();
     const config2 = { ...AiSettingsService.runtime(db.settings, ENV)!, allowedModels: ["gpt-6-luna"] };
     expect(await AiWritingService.testConnection(config2, new MockProvider("OK").fetch)).toMatchObject({ ok: true });
-    expect(await AiWritingService.testConnection(config2, new MockProvider("The model `gpt-9` does not exist", 404).fetch)).toEqual({ ok: false, message: "HTTP 404: The model `gpt-9` does not exist" });
+    expect(await AiWritingService.testConnection(config2, new MockProvider("The model `gpt-9` does not exist", 404).fetch)).toEqual({ ok: false, message: "OpenAI could not use this request (HTTP 404). Check the model and settings, then try again." });
   });
 });
 

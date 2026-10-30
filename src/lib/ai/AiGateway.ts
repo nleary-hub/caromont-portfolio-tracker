@@ -31,8 +31,8 @@ type UsageCountDb = { aiUsageLog: { count(args: { where: Record<string, unknown>
  * There is no silent fallback here. The Owner-picked fallback attempt (D4) is PR G; this file only holds its time split.
  */
 export class AiGateway {
-  /** CTO, Oct 29, 2026: with a usable fallback the primary call gets 45 s and the fallback 35 s. */
-  static readonly PRIMARY_MS = 45_000;
+  /** CTO, Oct 29, 2026: with a usable fallback the primary call gets 40 s and the fallback 35 s. */
+  static readonly PRIMARY_MS = 40_000;
   static readonly FALLBACK_MS = 35_000;
   /** With no usable fallback the single call keeps today's 60 s. */
   static readonly SOLO_MS = AiProviderClient.TIMEOUT_MS;

@@ -116,3 +116,34 @@ describe("log canary: keys and prompts never appear in logs", () => {
     expect(JSON.stringify(results)).not.toContain("CANARYKEY");
   });
 });
+
+describe("size caps are enforced while streaming (QA F3)", () => {
+  it("a chunked reply with no content-length is cancelled at the cap, not buffered", async () => {
+    let pulled = 0;
+    let cancelled = false;
+    const body = new ReadableStream<Uint8Array>({
+      pull(c) { pulled++; c.enqueue(new Uint8Array(64_000).fill(120)); },
+      cancel() { cancelled = true; },
+    });
+    const res = new Response(body);
+    expect(res.headers.get("content-length")).toBeNull();
+    expect(await AiResponseCap.text(res, AiResponseCap.VOICE_CHARS)).toBeNull();
+    expect(cancelled).toBe(true);
+    expect(pulled).toBeLessThanOrEqual(Math.ceil(AiResponseCap.VOICE_CHARS / 64_000) + 2);
+  });
+
+  it("the text provider client cancels an endless chunked reply at MAX_RESPONSE_CHARS", async () => {
+    let cancelled = false;
+    const f = (async () => new Response(new ReadableStream<Uint8Array>({ pull(c) { c.enqueue(new Uint8Array(500_000).fill(120)); }, cancel() { cancelled = true; } }))) as unknown as FetchLike;
+    const config: AiRuntimeConfig = { provider: "openai", model: "gpt-6-luna", baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKey: KEY, allowedModels: ["gpt-6-luna"] };
+    expect(await AiProviderClient.complete(config, { system: "s", user: "u", maxTokens: 10 }, f)).toMatchObject({ ok: false, kind: "too_large" });
+    expect(cancelled).toBe(true);
+  });
+
+  it("a streamed reply under the cap is read in full, multi-byte characters intact", async () => {
+    const parts = ["{\"text\":\"caf", "\u00e9 ok\"}"].map((s) => new TextEncoder().encode(s));
+    const split = [parts[0], parts[1].slice(0, 1), parts[1].slice(1)];
+    const res = new Response(new ReadableStream<Uint8Array>({ start(c) { for (const p of split) c.enqueue(p); c.close(); } }));
+    expect(await AiResponseCap.text(res, 1000)).toBe("{\"text\":\"caf\u00e9 ok\"}");
+  });
+});

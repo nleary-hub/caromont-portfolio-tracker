@@ -123,7 +123,28 @@ describe("the picker writes only through AiRegistryService", () => {
 });
 
 describe("POST /api/ai/models/pick (AiModelPickRoute)", () => {
-  const post = (body: string) => new Request("http://127.0.0.1/api/ai/models/pick", { method: "POST", body });
+  const URL_ = "http://127.0.0.1/api/ai/models/pick";
+  const post = (body: string, headers: Record<string, string> = { "sec-fetch-site": "same-origin" }) => new Request(URL_, { method: "POST", body, headers });
+  const PICK = JSON.stringify({ provider: "openai", model: "gpt-6-luna", category: "drafting" });
+
+  it("same-origin check: cross-site, a foreign Origin, or neither header is 403 and nothing is written", async () => {
+    const deps = { db: hx.db, viewer: OWNER, env: ENV, liveList: LIVE };
+    for (const h of [{ "sec-fetch-site": "cross-site" }, { "sec-fetch-site": "same-site" }, { origin: "https://evil.example.test" }, {} as Record<string, string>]) {
+      const res = await AiModelPickRoute.handle(post(PICK, h), deps);
+      expect(res.status, JSON.stringify(h)).toBe(403);
+    }
+    expect(calls).toEqual([]);
+    expect(await reg("gpt-6-luna")).toBeNull();
+    expect((await AiModelPickRoute.handle(post(PICK, { origin: "http://127.0.0.1" }), deps)).status).toBe(200);
+  });
+
+  it("the body cap holds while streaming: a chunked body with no content-length is cut off at the cap", async () => {
+    let pulled = 0;
+    const stream = new ReadableStream<Uint8Array>({ pull(c) { pulled++; c.enqueue(new TextEncoder().encode("x".repeat(1000))); if (pulled > 50) c.close(); } });
+    const req = new Request(URL_, { method: "POST", body: stream, headers: { "sec-fetch-site": "same-origin" }, duplex: "half" } as RequestInit);
+    expect((await AiModelPickRoute.handle(req, { db: hx.db, viewer: OWNER, env: ENV, liveList: LIVE })).status).toBe(413);
+    expect(pulled).toBeLessThan(10);
+  });
 
   it("the Owner picks a listed model: 200, no-store, and the category points at it", async () => {
     const res = await AiModelPickRoute.handle(post(JSON.stringify({ provider: "openai", model: "gpt-6-luna", category: "drafting" })), { db: hx.db, viewer: OWNER, env: ENV, liveList: LIVE });

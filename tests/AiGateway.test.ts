@@ -28,15 +28,15 @@ function fake(reply: { status?: number; body?: string; headers?: Record<string, 
 }
 
 describe("time limits (CTO, Oct 29, 2026)", () => {
-  it("45 s primary and 35 s fallback when a usable fallback exists, 60 s alone otherwise", () => {
-    expect(AiGateway.budget(true)).toEqual({ primaryMs: 45_000, fallbackMs: 35_000 });
+  it("40 s primary and 35 s fallback when a usable fallback exists, 60 s alone otherwise", () => {
+    expect(AiGateway.budget(true)).toEqual({ primaryMs: 40_000, fallbackMs: 35_000 });
     expect(AiGateway.budget(false)).toEqual({ primaryMs: 60_000, fallbackMs: null });
   });
 
-  it("primary plus fallback (80 s) fits inside the 85 s generation limit with 5 s for guards, database and logging", () => {
+  it("primary plus fallback (75 s) fits inside the 85 s generation limit with 10 s for guards, database and logging", () => {
     const b = AiGateway.budget(true);
     expect(AiGateway.PAGE_LIMIT_S).toBe(85);
-    expect(b.primaryMs + (b.fallbackMs ?? 0)).toBeLessThanOrEqual((AiGateway.PAGE_LIMIT_S - 5) * 1000);
+    expect(b.primaryMs + (b.fallbackMs ?? 0)).toBeLessThanOrEqual((AiGateway.PAGE_LIMIT_S - 10) * 1000);
   });
 
   // Generation runs in server actions, which inherit the limit of the page that hosts them.

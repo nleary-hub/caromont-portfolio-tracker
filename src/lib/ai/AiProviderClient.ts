@@ -1,4 +1,6 @@
 import { AiCopy } from "./AiCopy";
+import { AiResponseCap } from "./AiResponseCap";
+import { AiProviderError } from "./AiProviderError";
 import type { AiPrompt } from "./AiPrompts";
 import { AiProviders, type AiProviderId } from "./AiProviders";
 
@@ -58,14 +60,14 @@ export class AiProviderClient {
       res = await fetchImpl(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body), signal: AbortSignal.timeout(timeoutMs), redirect: "error" });
     } catch (e) {
       const name = (e as { name?: string })?.name;
-      if (name === "TimeoutError" || name === "AbortError") return { ok: false, kind: "timeout", message: "Timed out", ms: ms() };
-      return { ok: false, kind: "network", message: AiProviderClient.scrub(String((e as Error)?.message ?? e), config.apiKey), ms: ms() };
+      if (name === "TimeoutError" || name === "AbortError") return { ok: false, kind: "timeout", message: AiProviderError.message(config.provider, "timeout"), ms: ms() };
+      return { ok: false, kind: "network", message: AiProviderError.message(config.provider, "provider_down"), ms: ms() };
     }
-    const declared = Number(res.headers?.get("content-length") ?? "");
-    if (Number.isFinite(declared) && declared > AiProviderClient.MAX_RESPONSE_CHARS) return { ok: false, kind: "too_large", status: res.status, message: AiProviderClient.TOO_LARGE, ms: ms() };
-    const raw = await res.text().catch(() => "");
-    if (raw.length > AiProviderClient.MAX_RESPONSE_CHARS) return { ok: false, kind: "too_large", status: res.status, message: AiProviderClient.TOO_LARGE, ms: ms() };
-    if (!res.ok) return { ok: false, kind: "http", status: res.status, message: AiProviderClient.errorMessage(raw, res.status, config.apiKey), ms: ms() };
+    // Byte cap enforced while streaming (AiResponseCap); a read error counts as an empty reply, as before.
+    const capped = await AiResponseCap.text(res, AiProviderClient.MAX_RESPONSE_CHARS).catch(() => "");
+    if (capped === null) return { ok: false, kind: "too_large", status: res.status, message: AiProviderClient.TOO_LARGE, ms: ms() };
+    const raw = capped;
+    if (!res.ok) return { ok: false, kind: "http", status: res.status, message: AiProviderError.forStatus(config.provider, res.status), ms: ms() };
     const text = AiProviderClient.textOf(config.provider, raw);
     if (!text) {
       // Out of tokens before any visible text (finish_reason "length" / stop_reason "max_tokens"): say so plainly.
@@ -151,21 +153,6 @@ export class AiProviderClient {
     } catch {
       return false;
     }
-  }
-
-  /** The provider's own error message (OpenAI and Anthropic shapes), key removed, capped. */
-  static errorMessage(raw: string, status: number, apiKey: string): string {
-    let msg = "";
-    try {
-      const j = JSON.parse(raw) as { error?: { message?: unknown } | string; message?: unknown };
-      const e = j.error;
-      msg = typeof e === "string" ? e : typeof e?.message === "string" ? e.message : typeof j.message === "string" ? j.message : "";
-    } catch {
-      msg = "";
-    }
-    if (!msg) msg = `HTTP ${status}`;
-    else msg = `HTTP ${status}: ${msg}`;
-    return AiProviderClient.scrub(msg, apiKey);
   }
 
   /** What replaces anything key-shaped in text bound for the UI or logs. */

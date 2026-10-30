@@ -1,5 +1,6 @@
 import type { AiRuntimeConfig } from "./AiProviderClient";
 import { AiRealtimeClient, type AiRealtimeErrorInfo, type AiRealtimeFetch } from "./AiRealtimeClient";
+import { AiProviderError } from "./AiProviderError";
 import { AiResponseCap } from "./AiResponseCap";
 
 /** What a Live session is started with: the voice model, its conversation prompt, and the Responses backend. */
@@ -70,8 +71,7 @@ export class AiLiveClient {
       const text = await AiResponseCap.text(res, AiResponseCap.VOICE_CHARS).catch(() => "");
       if (text === null) return { ok: false, kind: "parse", status: res.status, message: "reply too large" };
       if (!res.ok) {
-        const info = AiRealtimeClient.safeError(res.status, text, [config.apiKey]);
-        return { ok: false, kind: "http", ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) };
+        return { ok: false, kind: "http", ...AiRealtimeClient.safeError(res.status, text, [config.apiKey]) };
       }
       let j: { session?: { id?: unknown }; transport?: { sdp?: unknown } };
       try {
@@ -84,7 +84,7 @@ export class AiLiveClient {
       return { ok: true, sdp: answer, liveSessionId: typeof j.session?.id === "string" ? j.session.id.slice(0, 200) : null };
     } catch (e) {
       const timeout = (e as Error)?.name === "TimeoutError";
-      return { ok: false, kind: timeout ? "timeout" : "network", type: (e as Error)?.name ?? undefined, message: AiRealtimeClient.scrub(String((e as Error)?.message ?? ""), [config.apiKey]) || undefined };
+      return { ok: false, kind: timeout ? "timeout" : "network", type: (e as Error)?.name ?? undefined, message: AiProviderError.message("openai", timeout ? "timeout" : "provider_down") };
     }
   }
 

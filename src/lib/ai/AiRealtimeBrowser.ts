@@ -138,7 +138,8 @@ export class AiRealtimeBrowser {
     }
     if (!res.ok) {
       close();
-      const info = AiRealtimeClient.safeError(res.status, await res.text().catch(() => ""), [ticket.clientSecret]);
+      // This app's own route reply: its messages are already the fixed ones, so they are kept as sent.
+      const info = AiRealtimeClient.scrubbedError(res.status, await res.text().catch(() => ""), [ticket.clientSecret]);
       throw new AiRealtimeConnectError({ ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) });
     }
     await pc.setRemoteDescription({ type: "answer", sdp: await res.text() });

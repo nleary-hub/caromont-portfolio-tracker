@@ -148,8 +148,8 @@ export class AiWritingService {
       run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");
-        // The provider's message stays on the server (scrubbed of the key); the editor gets a friendly one.
-        console.error("AI writing assistant: provider call failed", { kind: result.kind, status: result.status, message: result.message });
+        // Kind and status only: no provider text is logged. The editor gets a fixed message.
+        console.error("AI writing assistant: provider call failed", { kind: result.kind, status: result.status ?? null });
         return {
           ok: false,
           kind: result.kind === "timeout" ? "timeout" : "provider",
@@ -249,7 +249,7 @@ export class AiWritingService {
       }
     }
     if (ok) return { ok: true, ms: r.ms };
-    const message = r.kind === "timeout" ? `Timed out after ${AiProviderClient.TIMEOUT_MS / 1000} s` : r.message;
-    return { ok: false, message: AiProviderClient.scrub(message, config.apiKey) };
+    // r.message is the fixed AiProviderError string (provider name, HTTP status, class); no provider text.
+    return { ok: false, message: r.message };
   }
 }

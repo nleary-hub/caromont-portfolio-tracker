@@ -158,7 +158,7 @@ describe("the Owner", () => {
     h.viewer = OWNER;
     h.touched = [];
     const { POST } = await import("@/app/api/ai/models/pick/route");
-    const res = await POST(new Request("http://127.0.0.1/x", { method: "POST", body: "{}" })).catch(() => null);
+    const res = await POST(new Request("http://127.0.0.1/x", { method: "POST", body: "{}", headers: { "sec-fetch-site": "same-origin" } })).catch(() => null);
     expect(res?.status === 403 && h.touched.length === 0).toBe(false);
   });
 });

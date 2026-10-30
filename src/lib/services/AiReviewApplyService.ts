@@ -124,7 +124,7 @@ export class AiReviewApplyService {
       run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");
-        console.error("AI review layer: provider call failed", { kind: result.kind, status: result.status, message: result.message });
+        console.error("AI review layer: provider call failed", { kind: result.kind, status: result.status ?? null });
         return {
           ok: false,
           kind: result.kind === "timeout" ? "timeout" : "provider",
