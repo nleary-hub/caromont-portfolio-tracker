@@ -64,6 +64,7 @@ export class AiLiveClient {
         headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
         body: AiLiveClient.body(session, sdp),
         signal: AbortSignal.timeout(AiLiveClient.TIMEOUT_MS),
+        redirect: "error",
       });
       const text = await res.text().catch(() => "");
       if (!res.ok) {

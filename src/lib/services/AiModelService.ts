@@ -338,6 +338,7 @@ export class AiModelService {
         method: "GET",
         headers: { authorization: `Bearer ${config.apiKey}` },
         signal: AbortSignal.timeout(15_000),
+        redirect: "error",
       });
       if (!res.ok) return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
       return { ok: true, body: JSON.parse(await res.text()) };
@@ -375,7 +376,7 @@ export class AiModelService {
     if (!req) return { ok: false, error: AiCopy.providerNeedsKey(provider) };
     const doFetch = fetchImpl ?? (fetch as unknown as FetchLike);
     try {
-      const res = await (doFetch as unknown as (u: string, i: object) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>)(req.url, { method: "GET", headers: req.headers, signal: AbortSignal.timeout(15_000) });
+      const res = await (doFetch as unknown as (u: string, i: object) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>)(req.url, { method: "GET", headers: req.headers, signal: AbortSignal.timeout(15_000), redirect: "error" });
       if (!res.ok) return { ok: false, error: AiCopy.providerListFailed(provider) };
       return { ok: true, body: JSON.parse(await res.text()) };
     } catch {

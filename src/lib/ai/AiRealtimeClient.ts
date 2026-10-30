@@ -1,7 +1,7 @@
 import type { AiVoiceApi } from "./AiModelKinds";
 import type { AiRuntimeConfig } from "./AiProviderClient";
 
-export type AiRealtimeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+export type AiRealtimeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal; redirect?: "error" }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
 /** What the server hands the browser: a short-lived client secret, never the API key. */
 export interface AiRealtimeTicket {
@@ -103,6 +103,7 @@ export class AiRealtimeClient {
         headers: { authorization: `Bearer ${config.apiKey}`, "content-type": "application/json" },
         body: AiRealtimeClient.body(session),
         signal: AbortSignal.timeout(AiRealtimeClient.TIMEOUT_MS),
+        redirect: "error",
       });
       if (!res.ok) {
         const info = AiRealtimeClient.safeError(res.status, await res.text().catch(() => ""), [config.apiKey]);
@@ -131,6 +132,7 @@ export class AiRealtimeClient {
         headers: { authorization: `Bearer ${clientSecret}`, "content-type": "application/sdp" },
         body: sdp,
         signal: AbortSignal.timeout(AiRealtimeClient.TIMEOUT_MS),
+        redirect: "error",
       });
       const text = await res.text().catch(() => "");
       if (!res.ok) {

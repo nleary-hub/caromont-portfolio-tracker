@@ -1,0 +1,86 @@
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { AiModelPickerCopy, AiModelPickerService, type AiLiveList } from "@/lib/services/AiModelPickerService";
+import { AiRegistryCopy } from "@/lib/services/AiRegistryService";
+import { registryHarness, type RegistryHarness } from "./helpers/PgRegistryDb";
+
+// Item 3: the live model picker. Real Prisma over in-memory PGlite; the provider list is a fake function (no network,
+// no key, no spend). Fictional people and models only.
+const OWNER: Viewer = { email: "jordan.pike@example.org", isAdmin: true };
+const OTHER: Viewer = { email: "casey.lund@example.org", isAdmin: true };
+const ENV = { OWNER_EMAIL: OWNER.email };
+const NOW = () => new Date("2026-03-02T15:00:00Z");
+
+let calls: string[] = [];
+const list = (ids: [string, "chat" | "transcription" | "realtime" | null][]): AiLiveList => async (provider) => {
+  calls.push(provider);
+  return { ok: true, models: ids.map(([id, kind]) => ({ id, kind })) };
+};
+const LIVE = list([["gpt-6-luna", "chat"], ["gpt-6.1-sol", "chat"], ["whisper-fiction", "transcription"]]);
+
+let hx: RegistryHarness;
+beforeAll(async () => { hx = await registryHarness(); }, 60_000);
+afterAll(async () => { await hx?.stop(); });
+beforeEach(async () => {
+  calls = [];
+  await hx.pg.exec("TRUNCATE ai_model_registry, ai_category_settings CASCADE;");
+});
+
+const reg = (model: string) => hx.prisma.aiModelRegistry.findUnique({ where: { provider_model: { provider: "openai", model } } });
+const cat = (category: string) => hx.prisma.aiCategorySetting.findUnique({ where: { category } });
+
+describe("AiModelPickerService.pick", () => {
+  it("one Owner action adds the listed model switched on and points the category at it, with audit rows", async () => {
+    const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV, NOW);
+    expect(r).toEqual({ ok: true, added: true, enabled: true, needsPrice: true });
+    expect(await reg("gpt-6-luna")).toMatchObject({ enabled: true, kind: "chat", listedState: "listed", addedBy: OWNER.email });
+    expect(await cat("drafting")).toMatchObject({ provider: "openai", model: "gpt-6-luna", effort: null, updatedBy: OWNER.email });
+    const hist = await hx.prisma.aiSettingsHistory.findMany({ where: { changedBy: OWNER.email, changedAt: NOW() } });
+    expect(hist.map((h) => h.action).sort()).toEqual(["category_set", "model_added", "model_enabled"]);
+  });
+
+  it("a model missing from the live list is refused and nothing is written (no typed ids)", async () => {
+    const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-typed-by-hand", category: "drafting" }, LIVE, ENV, NOW);
+    expect(r).toEqual({ ok: false, error: AiModelPickerCopy.NOT_IN_LIST });
+    expect(await reg("gpt-typed-by-hand")).toBeNull();
+    expect(await cat("drafting")).toBeNull();
+  });
+
+  it("a non-Owner admin is refused before the list is read", async () => {
+    expect(await AiModelPickerService.pick(hx.db, OTHER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiRegistryCopy.NOT_AUTHORIZED });
+    expect(calls).toEqual([]);
+  });
+
+  it("the kind must fit the category: a transcription model cannot serve drafting", async () => {
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "whisper-fiction", category: "drafting" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiModelPickerCopy.WRONG_KIND });
+    expect(await reg("whisper-fiction")).toBeNull();
+  });
+
+  it("an existing switched-off row is switched on; an archived one is refused and stays archived", async () => {
+    await hx.prisma.aiModelRegistry.create({ data: { provider: "openai", model: "gpt-6.1-sol", kind: "chat", enabled: false, addedBy: OWNER.email, updatedBy: OWNER.email } });
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6.1-sol", category: "analysis" }, LIVE, ENV, NOW)).toEqual({ ok: true, added: false, enabled: true, needsPrice: true });
+    await hx.prisma.aiModelRegistry.update({ where: { provider_model: { provider: "openai", model: "gpt-6.1-sol" } }, data: { enabled: false, archivedAt: NOW(), archivedBy: OWNER.email } });
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6.1-sol", category: "extraction" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiModelPickerCopy.ARCHIVED });
+    expect(await reg("gpt-6.1-sol")).toMatchObject({ enabled: false });
+    expect(await cat("extraction")).toBeNull();
+  });
+
+  it("an inherited effort the new model does not allow refuses the pick and rolls back the add", async () => {
+    await hx.prisma.aiModelRegistry.create({ data: { provider: "openai", model: "gpt-6.1-sol", kind: "chat", enabled: true, allowedEfforts: ["high"], addedBy: OWNER.email, updatedBy: OWNER.email } });
+    await hx.prisma.aiCategorySetting.create({ data: { category: "drafting", provider: "openai", model: "gpt-6.1-sol", effort: "high", updatedBy: OWNER.email } });
+    const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV, NOW);
+    expect(r).toEqual({ ok: false, error: AiModelPickerCopy.EFFORT_PICK_AGAIN });
+    expect(await reg("gpt-6-luna")).toBeNull();
+    expect(await cat("drafting")).toMatchObject({ model: "gpt-6.1-sol", effort: "high" });
+  });
+
+  it("a failed list call is reported and nothing is written", async () => {
+    const down: AiLiveList = async () => ({ ok: false, error: "The model list could not be read." });
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, down, ENV, NOW)).toEqual({ ok: false, error: "The model list could not be read." });
+    expect(await reg("gpt-6-luna")).toBeNull();
+  });
+
+  it("dictation and voice take OpenAI only", async () => {
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "anthropic", model: "claude-fiction-1", category: "dictation" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiRegistryCopy.AUDIO_OPENAI_ONLY });
+  });
+});

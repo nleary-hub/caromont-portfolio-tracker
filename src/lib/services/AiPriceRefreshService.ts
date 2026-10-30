@@ -86,7 +86,7 @@ export class AiPriceRefreshService {
     const doFetch = fetchImpl ?? (fetch as unknown as Fetcher);
     let text: string;
     try {
-      const res = await doFetch(OpenAiPricingParser.SOURCE_URL, { method: "GET", headers: { accept: "text/markdown, text/plain" }, signal: AbortSignal.timeout(AiPriceRefreshService.TIMEOUT_MS) });
+      const res = await doFetch(OpenAiPricingParser.SOURCE_URL, { method: "GET", headers: { accept: "text/markdown, text/plain" }, signal: AbortSignal.timeout(AiPriceRefreshService.TIMEOUT_MS), redirect: "error" });
       if (!res.ok) return AiPriceRefreshService.fail(db, admin, "fetch_failed", now);
       text = await res.text();
       if (text.length > AiPriceRefreshService.MAX_BYTES) return AiPriceRefreshService.fail(db, admin, "format_changed", now);
@@ -108,7 +108,7 @@ export class AiPriceRefreshService {
       const row = await AiSettingsService.row(db as never);
       const config = row ? AiSettingsService.runtimeFor(row, row.model || "list", env) : null;
       if (!config || config.provider !== "openai") return null;
-      const res = await doFetch(AiModelService.MODELS_URL, { method: "GET", headers: { authorization: `Bearer ${config.apiKey}` }, signal: AbortSignal.timeout(AiPriceRefreshService.TIMEOUT_MS) });
+      const res = await doFetch(AiModelService.MODELS_URL, { method: "GET", headers: { authorization: `Bearer ${config.apiKey}` }, signal: AbortSignal.timeout(AiPriceRefreshService.TIMEOUT_MS), redirect: "error" });
       if (!res.ok) return null;
       const body = JSON.parse(await res.text()) as { data?: { id?: unknown }[] };
       const ids = (body.data ?? []).map((m) => m?.id).filter((id): id is string => typeof id === "string");

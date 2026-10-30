@@ -19,11 +19,13 @@ export type AiCallUsage = { inputTokens: number | null; outputTokens: number | n
 
 export type AiCallResult =
   | { ok: true; text: string; ms: number; usage?: AiCallUsage }
-  | { ok: false; kind: "timeout" | "http" | "network" | "empty" | "length" | "model_not_allowed"; status?: number; message: string; ms: number };
+  | { ok: false; kind: "timeout" | "http" | "network" | "empty" | "length" | "model_not_allowed" | "too_large"; status?: number; message: string; ms: number };
 
-export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal }) => Promise<{
+/** Item 4a: every provider fetch refuses redirects ("error"), so a key header never follows a 3xx to another host. */
+export type FetchLike = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal; redirect?: "error" }) => Promise<{
   ok: boolean;
   status: number;
+  headers?: { get(name: string): string | null };
   text(): Promise<string>;
 }>;
 
@@ -41,6 +43,9 @@ export class AiProviderClient {
    */
   static readonly CAPPED_MAX_TOKENS = 4096;
   private static readonly MESSAGE_MAX = 300;
+  /** Item 4a: a reply body above this size is refused unread (header) or dropped (body). Replies here are a few KB. */
+  static readonly MAX_RESPONSE_CHARS = 2_000_000;
+  static readonly TOO_LARGE = "The provider reply was too large";
 
   static async complete(config: AiRuntimeConfig, prompt: AiPrompt, fetchImpl: FetchLike = fetch as unknown as FetchLike, timeoutMs = AiProviderClient.TIMEOUT_MS): Promise<AiCallResult> {
     const started = Date.now();
@@ -50,13 +55,16 @@ export class AiProviderClient {
     const ms = () => Date.now() - started;
     let res: Awaited<ReturnType<FetchLike>>;
     try {
-      res = await fetchImpl(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body), signal: AbortSignal.timeout(timeoutMs) });
+      res = await fetchImpl(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body), signal: AbortSignal.timeout(timeoutMs), redirect: "error" });
     } catch (e) {
       const name = (e as { name?: string })?.name;
       if (name === "TimeoutError" || name === "AbortError") return { ok: false, kind: "timeout", message: "Timed out", ms: ms() };
       return { ok: false, kind: "network", message: AiProviderClient.scrub(String((e as Error)?.message ?? e), config.apiKey), ms: ms() };
     }
+    const declared = Number(res.headers?.get("content-length") ?? "");
+    if (Number.isFinite(declared) && declared > AiProviderClient.MAX_RESPONSE_CHARS) return { ok: false, kind: "too_large", status: res.status, message: AiProviderClient.TOO_LARGE, ms: ms() };
     const raw = await res.text().catch(() => "");
+    if (raw.length > AiProviderClient.MAX_RESPONSE_CHARS) return { ok: false, kind: "too_large", status: res.status, message: AiProviderClient.TOO_LARGE, ms: ms() };
     if (!res.ok) return { ok: false, kind: "http", status: res.status, message: AiProviderClient.errorMessage(raw, res.status, config.apiKey), ms: ms() };
     const text = AiProviderClient.textOf(config.provider, raw);
     if (!text) {

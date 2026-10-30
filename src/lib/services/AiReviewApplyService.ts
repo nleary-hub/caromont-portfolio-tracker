@@ -8,15 +8,14 @@ import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiInputs, type AiInput, type AiTranscriber } from "@/lib/ai/AiInput";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiPrompts } from "@/lib/ai/AiPrompts";
-import { AiProviderClient, type FetchLike } from "@/lib/ai/AiProviderClient";
-import { AiProviders } from "@/lib/ai/AiProviders";
+import { AiGateway } from "@/lib/ai/AiGateway";
+import { type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiReviewModel, type AiProposal } from "@/lib/ai/AiReviewModel";
 import { AiReviewPrompts } from "@/lib/ai/AiReviewPrompts";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
-import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
-import { AiSettingsService } from "./AiSettingsService";
+import { type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiWritingContext } from "./AiWritingContext";
 import { AiWritingService, type AiUsageRow, type AiWritingDb } from "./AiWritingService";
 
@@ -99,18 +98,14 @@ export class AiReviewApplyService {
     }
     const current = typeof args.current === "string" ? args.current.slice(0, AppConfig.NOTE_MAX_LENGTH) : "";
 
-    const row = await AiSettingsService.row(db, env).catch(() => null);
-    // PR B: the feature's own provider and model when an admin picked them; otherwise the AI settings, as before.
-    const saved = row?.enabled ? await AiFeatureRuntime.config({ db, feature, settings: row, env, keys: args.keys }) : null;
-    if (!saved) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
-    // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
-    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
-    if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
+    // Item 4a: the shared guard chain (settings, feature runtime with key, allowlist). Fails closed.
+    const resolved = await AiGateway.resolve({ db, feature, env, keys: args.keys });
+    if (!resolved.ok) return resolved.refusal === "off" ? { ok: false, kind: "off", message: AiCopy.unavailable(env) } : { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
+    const config = resolved.config;
 
     const user = viewer!.email;
-    if (AiReviewApplyService.inFlight.has(user)) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
-    const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
-    if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
+    if (!(await AiGateway.rateOk({ db, viewer: viewer!, inFlight: AiReviewApplyService.inFlight, events: RATE_EVENTS, windowMs: AiWritingService.RATE_WINDOW_MS, limit: AiWritingService.RATE_LIMIT, now })))
+      return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
 
     const proposalId = randomUUID();
     const inputLength = current.length + instruction.text.length;
@@ -125,7 +120,7 @@ export class AiReviewApplyService {
     try {
       // Item 9: the project's facts and last 3 updates (null = exactly as before).
       const facts = await AiWritingContext.load({ db, scope, viewer: viewer!, projectId, now });
-      const result = await AiProviderClient.complete(config, AiReviewPrompts.build(feature, current, instruction.text, facts), args.fetchImpl);
+      const result = await AiGateway.complete(config, AiReviewPrompts.build(feature, current, instruction.text, facts), args.fetchImpl);
       run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");

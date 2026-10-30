@@ -6,8 +6,8 @@ import { AiBulkEdit, type AiBulkSummary } from "@/lib/ai/AiBulkEdit";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags, type AiLiveFeature, type AiTemplateFeature, type AiToolFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
-import { AiProviderClient, type FetchLike } from "@/lib/ai/AiProviderClient";
-import { AiProviders } from "@/lib/ai/AiProviders";
+import { AiGateway } from "@/lib/ai/AiGateway";
+import { type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiToolsModel, type AiLinkSuggestion, type AiBrief, type AiProjectDraft, type AiToolChange, type AiToolField, type AiToolProject } from "@/lib/ai/AiToolsModel";
 import { AiToolsPrompts } from "@/lib/ai/AiToolsPrompts";
@@ -15,7 +15,7 @@ import { AiTranscriptionClient, type AiTranscribeFetch } from "@/lib/ai/AiTransc
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
-import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
+import { type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 import { AiWritingService, type AiUsageRow } from "./AiWritingService";
@@ -179,18 +179,14 @@ export class AiToolsService {
     const input = args.input.slice(0, AiToolsService.INPUT_MAX);
     if (!input.trim()) return { ok: false, kind: "empty", message: AiToolsCopy.INPUT_EMPTY };
 
-    const row = await AiSettingsService.row(db, env).catch(() => null);
-    // PR B: the feature's own provider and model when an admin picked them; otherwise the AI settings, as before.
-    const saved = row?.enabled ? await AiFeatureRuntime.config({ db, feature, settings: row, env, keys: args.keys }) : null;
-    if (!saved) return { ok: false, kind: "off", message: AiToolsCopy.aiOff(env) };
-    // Only models an admin turned on (ai_models). Never switched automatically.
-    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
-    if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
+    // Item 4a: the shared guard chain (settings, feature runtime with key, allowlist). Fails closed.
+    const resolved = await AiGateway.resolve({ db, feature, env, keys: args.keys });
+    if (!resolved.ok) return resolved.refusal === "off" ? { ok: false, kind: "off", message: AiToolsCopy.aiOff(env) } : { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
+    const config = resolved.config;
 
     const user = viewer.email;
-    if (AiToolsService.inFlight.has(user)) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
-    const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
-    if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
+    if (!(await AiGateway.rateOk({ db, viewer, inFlight: AiToolsService.inFlight, events: RATE_EVENTS, windowMs: AiWritingService.RATE_WINDOW_MS, limit: AiWritingService.RATE_LIMIT, now })))
+      return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
 
     const proposalId = randomUUID();
     // Item D: the call's tokens, latency and estimated cost, written on the run row (proposed or failed).
@@ -201,7 +197,7 @@ export class AiToolsService {
       });
     AiToolsService.inFlight.add(user);
     try {
-      const result = await AiProviderClient.complete(config, args.build(input), args.fetchImpl);
+      const result = await AiGateway.complete(config, args.build(input), args.fetchImpl);
       run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");

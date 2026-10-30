@@ -378,8 +378,12 @@ describe("static inventory", () => {
     // or a raw SQL write, fails here. When a writer is added: run the detector on EVERY element first (G-APP, before any write),
     // add a test that a key-shaped element is refused with no row and no history change (like the effort test above), then update this list.
     const mentions = src.flatMap((p) => text(p).replace(/\/\*[\s\S]*?\*\//g, "").split("\n").filter((l) => !/^\s*\/\//.test(l) && /allowedEfforts/.test(l)).map((l) => `${path.relative(root, p)}: ${l.trim()}`));
-    expect(mentions.length).toBe(2);
-    expect(mentions.every((m) => m.startsWith("src/lib/services/AiRegistryService.ts: "))).toBe(true);
+    // PR D: the live picker READS the allowed list to keep the inherited category effort (it never writes it).
+    const picker = mentions.filter((m) => m.startsWith("src/lib/services/AiModelPickerService.ts: "));
+    expect(picker).toEqual(["src/lib/services/AiModelPickerService.ts: const allowed = there?.allowedEfforts ?? [];"]);
+    const registry = mentions.filter((m) => !picker.includes(m));
+    expect(registry.length).toBe(2);
+    expect(registry.every((m) => m.startsWith("src/lib/services/AiRegistryService.ts: "))).toBe(true);
     expect(mentions.some((m) => /^[^:]+: allowedEfforts: string\[\];$/.test(m))).toBe(true);
     expect(mentions.some((m) => m.includes("allowedEfforts: r.allowedEfforts"))).toBe(true);
     expect(mentions.join("\n")).not.toMatch(/data:|upsert|INSERT INTO|SET "?allowedEfforts/);
@@ -403,8 +407,14 @@ describe("static inventory", () => {
     expect(offenders).toEqual([]);
   });
 
-  it("nothing in the app calls a second provider or switches providers: no fallback, gateway or config_fault code exists yet", () => {
-    const hits = src.filter((p) => /fallbackAllowed|AiGateway|config_fault|fallback_primary_failed/.test(text(p))).map((p) => path.relative(root, p));
+  it("nothing in the app calls a second provider or switches providers: no fallback or config_fault code exists yet", () => {
+    const hits = src.filter((p) => /fallbackAllowed|config_fault|fallback_primary_failed/.test(text(p))).map((p) => path.relative(root, p));
     expect(hits).toEqual([]);
+  });
+
+  it("PR D: the gateway exists only in its own file and the three text services, and holds no fallback attempt (that is PR G)", () => {
+    const hits = src.filter((p) => /AiGateway/.test(text(p))).map((p) => path.relative(root, p)).sort();
+    expect(hits).toEqual(["src/lib/ai/AiGateway.ts", "src/lib/services/AiReviewApplyService.ts", "src/lib/services/AiToolsService.ts", "src/lib/services/AiWritingService.ts"]);
+    expect((text(path.join(root, "src/lib/ai/AiGateway.ts")).match(/AiProviderClient\.complete\(/g) ?? []).length).toBe(1);
   });
 });

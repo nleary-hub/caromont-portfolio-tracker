@@ -7,13 +7,13 @@ import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiNumberCheck } from "@/lib/ai/AiNumberCheck";
 import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiPrompts, type AiFeature } from "@/lib/ai/AiPrompts";
+import { AiGateway } from "@/lib/ai/AiGateway";
 import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai/AiProviderClient";
-import { AiProviders } from "@/lib/ai/AiProviders";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
-import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
+import { type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiModelService } from "@/lib/services/AiModelService";
-import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
+import { type AiSettingsDb } from "./AiSettingsService";
 import { AiWritingContext } from "./AiWritingContext";
 
 type Env = Record<string, string | undefined>;
@@ -118,14 +118,10 @@ export class AiWritingService {
 
     // PR B: Draft and Fit have their own rows (toggle and env kill switch, on by default, like the other text features).
     if (!(await AiModelService.featureOn(db, feature, env))) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
-    const row = await AiSettingsService.row(db, env).catch(() => null);
-    // PR B: the feature's own provider and model when an admin picked them; otherwise the AI settings, exactly as before.
-    const saved = row?.enabled ? await AiFeatureRuntime.config({ db, feature, settings: row, env, keys: args.keys }) : null;
-    if (!saved) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
-    // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
-    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
-    // Allowlist at call time: a saved model outside the list (for example from before the allowlist) is never called.
-    if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
+    // Item 4a: the shared guard chain (settings, feature runtime with key, allowlist). Fails closed.
+    const resolved = await AiGateway.resolve({ db, feature, env, keys: args.keys });
+    if (!resolved.ok) return resolved.refusal === "off" ? { ok: false, kind: "off", message: AiCopy.unavailable(env) } : { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
+    const config = resolved.config;
 
     const suggestionId = randomUUID();
     const base = { suggestionId, userEmail: viewer.email, projectId, feature, provider: config.provider, model: config.model, inputLength: text.length };
@@ -141,17 +137,14 @@ export class AiWritingService {
       return { ok: false, kind: "phi", message: AiCopy.phiBlocked(phi.kinds) };
     }
 
-    if (AiWritingService.inFlight.has(viewer.email)) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
-    const recent = await db.aiUsageLog.count({
-      where: { userEmail: viewer.email, event: { in: ["suggested", "failed"] }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } },
-    });
-    if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
+    if (!(await AiGateway.rateOk({ db, viewer, inFlight: AiWritingService.inFlight, events: ["suggested", "failed"], windowMs: AiWritingService.RATE_WINDOW_MS, limit: AiWritingService.RATE_LIMIT, now })))
+      return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
 
     AiWritingService.inFlight.add(viewer.email);
     try {
       // Item 9: the project's facts and last 3 updates keep names, dates and terms consistent (null = text alone).
       const facts = await AiWritingContext.load({ db, scope, viewer, projectId, now });
-      const result = await AiProviderClient.complete(config, AiPrompts.build(feature, text, facts), args.fetchImpl);
+      const result = await AiGateway.complete(config, AiPrompts.build(feature, text, facts), args.fetchImpl);
       run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
       if (!result.ok) {
         await log("failed");
