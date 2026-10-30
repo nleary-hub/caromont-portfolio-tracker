@@ -122,6 +122,26 @@ describe("McpOAuth authorize and token", () => {
     await expect(McpOAuth.token({ grant_type: "refresh_token", refresh_token: "x" }, { id: c.client_id, secret: "wrong" }, KEY, allowed)).rejects.toMatchObject({ error: "invalid_client" });
   });
 
+  it("never lets a confidential client skip its secret (code exchange and refresh)", async () => {
+    const c = register([CLAUDE], { token_endpoint_auth_method: "client_secret_basic" });
+    const v = verifier();
+    const a = authorize(c.client_id, v);
+    if (!a.ok) throw new Error("authorize failed");
+    const code = new URL(McpOAuth.approve(a.request, "jordan.pike@example.org", KEY, ORIGIN)).searchParams.get("code")!;
+    const noSecret = { grant_type: "authorization_code", code, code_verifier: v, client_id: c.client_id };
+    await expect(McpOAuth.token(noSecret, null, KEY, allowed)).rejects.toMatchObject({ error: "invalid_client" });
+    await expect(McpOAuth.token({ ...noSecret, client_secret: "" }, null, KEY, allowed)).rejects.toMatchObject({ error: "invalid_client" });
+    const t = await McpOAuth.token(noSecret, { id: c.client_id, secret: c.client_secret! }, KEY, allowed);
+    await expect(McpOAuth.token({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: c.client_id }, null, KEY, allowed)).rejects.toMatchObject({ error: "invalid_client" });
+    const r = await McpOAuth.token({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: c.client_id, client_secret: c.client_secret! }, null, KEY, allowed);
+    expect(r.access_token).toBeTruthy();
+  });
+
+  it("refuses a secret from a client registered without one", async () => {
+    const { client, v, code } = await fullFlow();
+    await expect(McpOAuth.token({ grant_type: "authorization_code", code, code_verifier: v, client_id: client.client_id, client_secret: "made-up" }, null, KEY, allowed)).rejects.toMatchObject({ error: "invalid_client" });
+  });
+
   it("expires codes after two minutes", async () => {
     const { client, v, code } = await fullFlow();
     const later = new Date(Date.now() + (McpTokens.CODE_TTL_S + 5) * 1000);

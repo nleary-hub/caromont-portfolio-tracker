@@ -19,6 +19,8 @@ import { ProjectDependencyService, BlockerInputError, DependencyAccessError, Dep
 import { ProjectHistoryForms } from "@/lib/services/ProjectHistoryForms";
 import { MilestoneError, ProjectArchivedError, ProjectNotFoundError, ProjectService } from "@/lib/services/ProjectService";
 import { ProjectValidationError, type ProjectInput } from "@/lib/validation/ProjectValidator";
+import { ViewSettingsService } from "@/lib/services/ViewSettingsService";
+import { VisibilityPolicy } from "@/lib/visibility/VisibilityPolicy";
 
 /** A refusal or problem whose message is safe to show to the person (through Claude). */
 export class McpToolError extends Error {
@@ -141,12 +143,25 @@ export class McpProjectTools {
     return new McpToolError("Could not complete that. Nothing further was changed.");
   }
 
+  /**
+   * Non-admins see only what the app lets them open (VisibilityPolicy.isViewable: on the dashboard, or listed on a
+   * closed page), so projects hidden from the dashboard or by its status settings stay invisible here too. Admins see
+   * every project of their line, as in the admin drawer and audit pages.
+   */
+  private static async viewableFilter(c: McpToolContext): Promise<(p: unknown) => boolean> {
+    if (c.viewer.isAdmin) return () => true;
+    const settings = await ViewSettingsService.get("dashboard", c.db as never);
+    return (p) => VisibilityPolicy.isViewable(p as never, settings);
+  }
+
   private static async row(c: McpToolContext, projectId: string) {
     const found = await c.db.project.findUnique({ where: { id: projectId } }).catch(() => null);
     if (!found || found.archivedAt || !ServiceLineAccess.inScope(found, c.scope) || !DepartmentAccess.allows(c.scope, found.departmentId)) {
       throw new McpToolError("Project not found in this service line, or it was deleted.");
     }
-    return ProjectRows.fromDb(found);
+    const project = ProjectRows.fromDb(found);
+    if (!(await McpProjectTools.viewableFilter(c))(project)) throw new McpToolError("Project not found in this service line, or it was deleted.");
+    return project;
   }
 
   private static summary(c: McpToolContext, p: ReturnType<typeof ProjectRows.fromDb<Record<string, unknown> & { departmentId?: string | null }>> & Record<string, unknown>) {
@@ -192,7 +207,8 @@ export class McpProjectTools {
     args: { query?: string; status?: string[]; department?: string; owner?: string; includeClosed?: boolean; overdueOnly?: boolean; limit?: number },
   ) {
     McpProjectTools.require(c, "project.view", "viewing projects");
-    const rows = ProjectRows.fromDbAll(await c.db.project.findMany({ where: { ...ServiceLineAccess.projectWhere(c.scope), archivedAt: null }, orderBy: { name: "asc" } }));
+    const viewable = await McpProjectTools.viewableFilter(c);
+    const rows = ProjectRows.fromDbAll(await c.db.project.findMany({ where: { ...ServiceLineAccess.projectWhere(c.scope), archivedAt: null }, orderBy: { name: "asc" } })).filter(viewable);
     const statuses = args.status?.length ? new Set(args.status.map((s) => McpProjectTools.status(s))) : null;
     const dept = args.department ? McpProjectTools.departmentKey(c.scope, args.department) : undefined;
     const q = args.query?.trim().toLowerCase();

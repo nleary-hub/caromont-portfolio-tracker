@@ -15,6 +15,8 @@ export interface McpClientClaims {
   iat: number;
   /** Random, so two identical registrations get different client_ids. */
   j: string;
+  /** Token endpoint auth method it registered with: "none" (public, PKCE only) or a client secret method. */
+  m?: "none" | "client_secret_post" | "client_secret_basic";
 }
 
 /** A one-time authorization code (2 minutes): who approved, for which client, redirect and PKCE challenge. */

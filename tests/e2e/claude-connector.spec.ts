@@ -132,6 +132,17 @@ test("Claude connector: sign in, consent, and edit projects through the app's ow
   const viewerEdit = await call(viewerContext.request, viewerToken, "update_project", { projectId: p.id, changes: { latestUpdate: "Should not save" } });
   expect(viewerEdit.isError).toBe(true);
   expect(viewerEdit.text).toContain("can't edit");
+
+  // A project hidden from the dashboard stays invisible to a non-admin through the connector, as in the app; an admin still sees it.
+  await query(`UPDATE "Project" SET "hiddenFromDashboard" = true WHERE id = $1`, [p.id]);
+  const viewerList = (await call(viewerContext.request, viewerToken, "list_projects", { includeClosed: true })).json();
+  expect(viewerList.projects.map((x: { id: string }) => x.id)).not.toContain(p.id);
+  const viewerHidden = await call(viewerContext.request, viewerToken, "get_project", { projectId: p.id });
+  expect(viewerHidden.isError).toBe(true);
+  expect(viewerHidden.text).toContain("not found");
+  const adminHidden = await call(request, token, "get_project", { projectId: p.id });
+  expect(adminHidden.isError, adminHidden.text).toBe(false);
+  await query(`UPDATE "Project" SET "hiddenFromDashboard" = false WHERE id = $1`, [p.id]);
   await viewerContext.close();
 
   // Turning the person's sign-in off stops the connector on the next call.

@@ -139,7 +139,7 @@ export class McpOAuth {
     const name = (typeof b.client_name === "string" && b.client_name.trim() ? b.client_name.trim() : "MCP client").slice(0, 80);
     const method = b.token_endpoint_auth_method === "client_secret_post" || b.token_endpoint_auth_method === "client_secret_basic" ? b.token_endpoint_auth_method : "none";
     const iat = McpTokens.nowS(now);
-    const claims: McpClientClaims = { r: uris as string[], n: name, iat, j: McpTokens.jti() };
+    const claims: McpClientClaims = { r: uris as string[], n: name, iat, j: McpTokens.jti(), m: method };
     const clientId = McpTokens.sign("client", claims, key);
     return {
       client_id: clientId,
@@ -222,13 +222,19 @@ export class McpOAuth {
   /** Client authentication at the token endpoint: public clients send only client_id; confidential ones the derived secret. */
   private static authenticateClient(form: Record<string, string>, basic: { id: string; secret: string } | null, key: Buffer): string {
     const clientId = basic?.id ?? form.client_id;
-    if (!clientId || !McpTokens.verify("client", clientId, key)) throw new McpOAuthError("invalid_client", "Unknown client.", 401);
+    const client = clientId ? McpTokens.verify("client", clientId, key) : null;
+    if (!clientId || !client) throw new McpOAuthError("invalid_client", "Unknown client.", 401);
     const secret = basic?.secret ?? form.client_secret;
-    if (secret !== undefined && secret !== "") {
-      const want = Buffer.from(McpOAuth.clientSecret(clientId, key));
-      const got = Buffer.from(secret);
-      if (want.length !== got.length || !timingSafeEqual(want, got)) throw new McpOAuthError("invalid_client", "Client authentication failed.", 401);
+    // A client registered with a secret must always present it; a public client may not invent one.
+    const confidential = client.m === "client_secret_post" || client.m === "client_secret_basic";
+    if (!confidential) {
+      if (secret) throw new McpOAuthError("invalid_client", "This client was registered without a secret.", 401);
+      return clientId;
     }
+    if (!secret) throw new McpOAuthError("invalid_client", "Client authentication required.", 401);
+    const want = Buffer.from(McpOAuth.clientSecret(clientId, key));
+    const got = Buffer.from(secret);
+    if (want.length !== got.length || !timingSafeEqual(want, got)) throw new McpOAuthError("invalid_client", "Client authentication failed.", 401);
     return clientId;
   }
 
