@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AiResponseCap } from "@/lib/ai/AiResponseCap";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
@@ -7,7 +8,7 @@ import { AiModelService, type AiModelDb, type AiModelRow, type AiPriceUnit } fro
 import { AiSettingsService, type AiSettingsHistoryRow } from "@/lib/services/AiSettingsService";
 
 type Env = Record<string, string | undefined>;
-type Fetcher = (url: string, init: object) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+type Fetcher = (url: string, init: object) => Promise<{ ok: boolean; status: number; headers?: { get(name: string): string | null }; text(): Promise<string> }>;
 
 export type AiPriceRefreshFailure = "fetch_failed" | "format_changed" | "no_match";
 
@@ -88,8 +89,9 @@ export class AiPriceRefreshService {
     try {
       const res = await doFetch(OpenAiPricingParser.SOURCE_URL, { method: "GET", headers: { accept: "text/markdown, text/plain" }, signal: AbortSignal.timeout(AiPriceRefreshService.TIMEOUT_MS), redirect: "error" });
       if (!res.ok) return AiPriceRefreshService.fail(db, admin, "fetch_failed", now);
-      text = await res.text();
-      if (text.length > AiPriceRefreshService.MAX_BYTES) return AiPriceRefreshService.fail(db, admin, "format_changed", now);
+      const capped = await AiResponseCap.text(res, AiPriceRefreshService.MAX_BYTES);
+      if (capped === null) return AiPriceRefreshService.fail(db, admin, "format_changed", now);
+      text = capped;
     } catch {
       return AiPriceRefreshService.fail(db, admin, "fetch_failed", now);
     }
@@ -110,7 +112,9 @@ export class AiPriceRefreshService {
       if (!config || config.provider !== "openai") return null;
       const res = await doFetch(AiModelService.MODELS_URL, { method: "GET", headers: { authorization: `Bearer ${config.apiKey}` }, signal: AbortSignal.timeout(AiPriceRefreshService.TIMEOUT_MS), redirect: "error" });
       if (!res.ok) return null;
-      const body = JSON.parse(await res.text()) as { data?: { id?: unknown }[] };
+      const raw = await AiResponseCap.text(res, AiResponseCap.MODEL_LIST_CHARS);
+      if (raw === null) return null;
+      const body = JSON.parse(raw) as { data?: { id?: unknown }[] };
       const ids = (body.data ?? []).map((m) => m?.id).filter((id): id is string => typeof id === "string");
       return ids.length ? new Set(ids) : null;
     } catch {

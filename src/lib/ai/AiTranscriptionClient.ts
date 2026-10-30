@@ -1,6 +1,7 @@
 import type { AiRuntimeConfig } from "./AiProviderClient";
+import { AiResponseCap } from "./AiResponseCap";
 
-export type AiTranscribeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: FormData; signal: AbortSignal; redirect?: "error" }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+export type AiTranscribeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: FormData; signal: AbortSignal; redirect?: "error" }) => Promise<{ ok: boolean; status: number; headers?: { get(name: string): string | null }; text(): Promise<string> }>;
 
 export type AiTranscribeResult = { ok: true; text: string } | { ok: false; kind: "timeout" | "http" | "network" | "empty" | "provider" };
 
@@ -29,7 +30,9 @@ export class AiTranscriptionClient {
     try {
       const res = await fetchImpl(AiTranscriptionClient.URL, { method: "POST", headers: { authorization: `Bearer ${config.apiKey}` }, body: form, signal: AbortSignal.timeout(AiTranscriptionClient.TIMEOUT_MS), redirect: "error" });
       if (!res.ok) return { ok: false, kind: "http" };
-      const body = JSON.parse(await res.text()) as { text?: unknown };
+      const raw = await AiResponseCap.text(res, AiResponseCap.TRANSCRIPTION_CHARS);
+      if (raw === null) return { ok: false, kind: "http" };
+      const body = JSON.parse(raw) as { text?: unknown };
       const text = typeof body.text === "string" ? body.text.trim() : "";
       return text ? { ok: true, text } : { ok: false, kind: "empty" };
     } catch (e) {

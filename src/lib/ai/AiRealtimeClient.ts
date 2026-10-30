@@ -1,7 +1,8 @@
 import type { AiVoiceApi } from "./AiModelKinds";
 import type { AiRuntimeConfig } from "./AiProviderClient";
+import { AiResponseCap } from "./AiResponseCap";
 
-export type AiRealtimeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal; redirect?: "error" }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
+export type AiRealtimeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: string; signal: AbortSignal; redirect?: "error" }) => Promise<{ ok: boolean; status: number; headers?: { get(name: string): string | null }; text(): Promise<string> }>;
 
 /** What the server hands the browser: a short-lived client secret, never the API key. */
 export interface AiRealtimeTicket {
@@ -105,11 +106,13 @@ export class AiRealtimeClient {
         signal: AbortSignal.timeout(AiRealtimeClient.TIMEOUT_MS),
         redirect: "error",
       });
+      const raw = await AiResponseCap.text(res, AiResponseCap.VOICE_CHARS).catch(() => "");
+      if (raw === null) return { ok: false, kind: "parse" };
       if (!res.ok) {
-        const info = AiRealtimeClient.safeError(res.status, await res.text().catch(() => ""), [config.apiKey]);
+        const info = AiRealtimeClient.safeError(res.status, raw, [config.apiKey]);
         return { ok: false, kind: "http", ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) };
       }
-      const j = JSON.parse(await res.text()) as { value?: unknown; expires_at?: unknown; client_secret?: { value?: unknown; expires_at?: unknown } };
+      const j = JSON.parse(raw) as { value?: unknown; expires_at?: unknown; client_secret?: { value?: unknown; expires_at?: unknown } };
       // Older beta shape nested it under client_secret; accept both.
       const value = typeof j.value === "string" ? j.value : typeof j.client_secret?.value === "string" ? j.client_secret.value : "";
       const exp = typeof j.expires_at === "number" ? j.expires_at : typeof j.client_secret?.expires_at === "number" ? j.client_secret.expires_at : 0;
@@ -134,7 +137,8 @@ export class AiRealtimeClient {
         signal: AbortSignal.timeout(AiRealtimeClient.TIMEOUT_MS),
         redirect: "error",
       });
-      const text = await res.text().catch(() => "");
+      const text = await AiResponseCap.text(res, AiResponseCap.VOICE_CHARS).catch(() => "");
+      if (text === null) return { ok: false, kind: "parse", status: res.status, message: "reply too large" };
       if (!res.ok) {
         const info = AiRealtimeClient.safeError(res.status, text, [clientSecret]);
         return { ok: false, kind: "http", ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) };

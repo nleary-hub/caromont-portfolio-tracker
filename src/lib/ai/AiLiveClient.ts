@@ -1,5 +1,6 @@
 import type { AiRuntimeConfig } from "./AiProviderClient";
 import { AiRealtimeClient, type AiRealtimeErrorInfo, type AiRealtimeFetch } from "./AiRealtimeClient";
+import { AiResponseCap } from "./AiResponseCap";
 
 /** What a Live session is started with: the voice model, its conversation prompt, and the Responses backend. */
 export interface AiLiveSessionConfig {
@@ -66,7 +67,8 @@ export class AiLiveClient {
         signal: AbortSignal.timeout(AiLiveClient.TIMEOUT_MS),
         redirect: "error",
       });
-      const text = await res.text().catch(() => "");
+      const text = await AiResponseCap.text(res, AiResponseCap.VOICE_CHARS).catch(() => "");
+      if (text === null) return { ok: false, kind: "parse", status: res.status, message: "reply too large" };
       if (!res.ok) {
         const info = AiRealtimeClient.safeError(res.status, text, [config.apiKey]);
         return { ok: false, kind: "http", ...info, modelUnavailable: AiRealtimeClient.modelUnavailable(info) };

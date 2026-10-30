@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { AiResponseCap } from "@/lib/ai/AiResponseCap";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import type { AiModelPrice } from "@/lib/ai/AiRunMetrics";
@@ -334,14 +335,16 @@ export class AiModelService {
     if (!config || config.provider !== "openai") return { ok: false, error: AiCopy.MODEL_CHECK_NEEDS_KEY };
     const doFetch = fetchImpl ?? (fetch as unknown as FetchLike);
     try {
-      const res = await (doFetch as unknown as (u: string, i: object) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>)(AiModelService.MODELS_URL, {
+      const res = await (doFetch as unknown as (u: string, i: object) => Promise<{ ok: boolean; status: number; headers?: { get(name: string): string | null }; text(): Promise<string> }>)(AiModelService.MODELS_URL, {
         method: "GET",
         headers: { authorization: `Bearer ${config.apiKey}` },
         signal: AbortSignal.timeout(15_000),
         redirect: "error",
       });
       if (!res.ok) return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
-      return { ok: true, body: JSON.parse(await res.text()) };
+      const raw = await AiResponseCap.text(res, AiResponseCap.MODEL_LIST_CHARS);
+      if (raw === null) return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
+      return { ok: true, body: JSON.parse(raw) };
     } catch {
       return { ok: false, error: AiCopy.MODEL_CHECK_FAILED };
     }
@@ -376,9 +379,11 @@ export class AiModelService {
     if (!req) return { ok: false, error: AiCopy.providerNeedsKey(provider) };
     const doFetch = fetchImpl ?? (fetch as unknown as FetchLike);
     try {
-      const res = await (doFetch as unknown as (u: string, i: object) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>)(req.url, { method: "GET", headers: req.headers, signal: AbortSignal.timeout(15_000), redirect: "error" });
+      const res = await (doFetch as unknown as (u: string, i: object) => Promise<{ ok: boolean; status: number; headers?: { get(name: string): string | null }; text(): Promise<string> }>)(req.url, { method: "GET", headers: req.headers, signal: AbortSignal.timeout(15_000), redirect: "error" });
       if (!res.ok) return { ok: false, error: AiCopy.providerListFailed(provider) };
-      return { ok: true, body: JSON.parse(await res.text()) };
+      const raw = await AiResponseCap.text(res, AiResponseCap.MODEL_LIST_CHARS);
+      if (raw === null) return { ok: false, error: AiCopy.providerListFailed(provider) };
+      return { ok: true, body: JSON.parse(raw) };
     } catch {
       return { ok: false, error: AiCopy.providerListFailed(provider) };
     }
