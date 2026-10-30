@@ -29,6 +29,9 @@ import { ProjectService } from "@/lib/services/ProjectService";
 import { SnapshotService } from "@/lib/services/SnapshotService";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
+import { useFictionalLeads } from "./helpers/FictionalLeads";
+
+useFictionalLeads();
 
 const ADMIN = Factory.ADMIN;
 const MEMBER = Factory.MEMBER;
@@ -337,13 +340,13 @@ describe("People (contracts leads) and Report contents", () => {
     const fake = new FakeDb();
     const db = fake.asClient();
     const p = await Fx.project(db, "Alpha", "Cath");
-    await ProjectService.update(p.id, { contractsLead: "Jeff Krause" } as never, actor, db, await Fx.scope(db)).catch(() => undefined);
-    fake.state.projects.find((x) => x.id === p.id)!.contractsLead = "Jeff Krause";
+    await ProjectService.update(p.id, { contractsLead: "Jordan Pike" } as never, actor, db, await Fx.scope(db)).catch(() => undefined);
+    fake.state.projects.find((x) => x.id === p.id)!.contractsLead = "Jordan Pike";
     const scope = await Fx.scope(db);
     const rows = await PeopleService.contractsLeads(scope, ADMIN, db);
     // Shown A to Z (PR #25 review); the stored order is unchanged and new names still go at the end.
-    expect(rows.map((r) => r.name)).toEqual(["Amber Hatley", "Dave Dermady", "Jeff Krause", "Mellisa Gonzales", "Shea Waldron"]);
-    expect(rows.find((r) => r.name === "Jeff Krause")!.projects).toBe(1);
+    expect(rows.map((r) => r.name)).toEqual(["Avery Holt", "Casey Lund", "Jordan Pike", "Morgan Vale", "Riley Moss"]);
+    expect(rows.find((r) => r.name === "Jordan Pike")!.projects).toBe(1);
     expect(await PeopleService.addContractsLead(scope, "  Pat   Lee ", ADMIN, db)).toBe("Pat Lee");
     const s2 = await Fx.scope(db);
     expect(s2.contractsLeads.at(-1)).toBe("Pat Lee");
@@ -352,10 +355,10 @@ describe("People (contracts leads) and Report contents", () => {
     expect(PeopleDirectory.NAME_MAX).toBe(200);
     expect(() => ContractsLeadRules.parse("x".repeat(201), [])).toThrow(ContractsLeadValidationError);
     expect(ContractsLeadRules.parse("x".repeat(200), [])).toHaveLength(200);
-    await PeopleService.removeContractsLead(s2, "Jeff Krause", ADMIN, db);
-    expect((await Fx.scope(db)).contractsLeads).not.toContain("Jeff Krause");
+    await PeopleService.removeContractsLead(s2, "Jordan Pike", ADMIN, db);
+    expect((await Fx.scope(db)).contractsLeads).not.toContain("Jordan Pike");
     // Projects keep the lead they have.
-    expect(fake.state.projects.find((x) => x.id === p.id)!.contractsLead).toBe("Jeff Krause");
+    expect(fake.state.projects.find((x) => x.id === p.id)!.contractsLead).toBe("Jordan Pike");
     expect(fake.state.serviceLineHistory.filter((h) => h.action === "contracts_leads_changed")).toHaveLength(2);
     await expect(PeopleService.contractsLeads(scope, MEMBER, db)).rejects.toThrow(AdminRequiredError);
     expect(await DepartmentForms.addContractsLead(MEMBER, "X", db)).toEqual({ ok: false, message: "Not authorized." });

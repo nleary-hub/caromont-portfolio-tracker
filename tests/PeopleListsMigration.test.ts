@@ -140,7 +140,7 @@ describe("0020_people_lists on production-shaped data (PGlite)", () => {
     await db.exec(M20.sql(M));
     // The previous code creates a line (no list columns), edits contracts leads and projects exactly as before.
     await db.query(`insert into service_line (id, name, "shortName", "isDefault", departments, "contractsLeads", "updatedAt", "updatedBy") values ($1, 'Oncology Service Line', 'ONC', false, '{}', '{}', now(), 'old')`, [ONC]);
-    await db.query(`update service_line set "contractsLeads" = array['Jeff Krause'], "updatedBy" = 'old' where id = $1`, [CVPSL]);
+    await db.query(`update service_line set "contractsLeads" = array['Jordan Pike'], "updatedBy" = 'old' where id = $1`, [CVPSL]);
     await db.query(`update "Project" set owner = 'Someone New' where id = $1`, [P(2)]);
     expect(await M20.lists(db, ONC)).toEqual({ owners: [], requesters: [] });
     expect((await M20.lists(db, CVPSL)).owners).not.toContain("Someone New");
@@ -154,7 +154,7 @@ describe("0020_people_lists on production-shaped data (PGlite)", () => {
     await db.exec(M20.sql(M));
     await db.query(`insert into "_prisma_migrations" (id, checksum, migration_name) values ('m20', 'c', $1)`, [M]);
     // New code edits a list before the rollback.
-    await db.query(`update service_line set owners = array_append(owners, 'Jeffrey Krause') where id = $1`, [CVPSL]);
+    await db.query(`update service_line set owners = array_append(owners, 'Jordy Pike') where id = $1`, [CVPSL]);
     const steps = M20.downSteps();
     expect(steps).toEqual([`ALTER TABLE "service_line" DROP COLUMN "requesters";`, `ALTER TABLE "service_line" DROP COLUMN "owners";`, `DELETE FROM "_prisma_migrations" WHERE "migration_name" = '${M}';`]);
     for (const s of steps) await db.exec(s);

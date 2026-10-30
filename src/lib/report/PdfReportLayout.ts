@@ -43,7 +43,7 @@ export class PdfReportLayout {
   /** Owner column before the Contracts lead line (Figma spec). */
   static readonly OWNER_BASE_IN = 1.0;
   /**
-   * Extra owner width so "Contracts: Mellisa Gonzales" (the longest seeded name, with its label) fits on one
+   * Extra owner width so "Contracts: Casey Lund" (the longest seeded name, with its label) fits on one
    * line at 7 pt with useful padding. Taken from the old Flags width, so the total table width is unchanged.
    */
   static readonly OWNER_CONTRACTS_EXTRA_IN = 0.5;

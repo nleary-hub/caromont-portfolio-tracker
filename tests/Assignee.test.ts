@@ -28,7 +28,7 @@ describe("Assignee", () => {
     const s = Assignee.ownerSuggestions(["Owner B", "owner b", null, "", "Mark Wingard", "MARK GARLAND", " Nick  Leary "]);
     expect(s).toEqual(["Nick Leary", "Nicole Smith", "Owner B"]);
     expect(Assignee.OWNER_BASE_SUGGESTIONS).toEqual(["Nicole Smith", "Nick Leary"]);
-    for (const n of ["Shea Waldron", "Jeff Krause", "Cory Gaines"]) expect(s).not.toContain(n);
+    for (const n of ["Avery Holt", "Jordan Pike", "Cory Gaines"]) expect(s).not.toContain(n);
   });
 
   it("dashboard renders blank owner/champion as muted To assign (no amber, no chip)", () => {

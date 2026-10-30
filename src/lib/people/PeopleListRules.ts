@@ -109,7 +109,7 @@ export class PeopleListRules {
     return `${lead} as ${PeopleListRules.COPY[role].noun}. ${changed} ${frozen}`;
   }
 
-  /** Spec: "Renamed to Jeffrey Krause. 4 projects updated." Singular and zero forms are derived (invented). */
+  /** Spec: "Renamed to Jordy Pike. 4 projects updated." Singular and zero forms are derived (invented). */
   static renamedToast(name: string, projects: number): string {
     if (projects === 0) return `Renamed to ${name}.`;
     return `Renamed to ${name}. ${projects === 1 ? "1 project" : `${projects} projects`} updated.`;

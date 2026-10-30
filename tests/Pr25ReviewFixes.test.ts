@@ -15,6 +15,9 @@ import { ProjectPeopleForms } from "@/lib/services/ProjectPeopleForms";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
+import { useFictionalLeads } from "./helpers/FictionalLeads";
+
+useFictionalLeads();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }), usePathname: () => "/" }));
 vi.mock("@/app/actions/departments", () => ({
@@ -77,17 +80,17 @@ describe("3. Contracts leads A to Z on Admin > People and in the drawer picker (
     const fake = new FakeDb();
     const db = fake.asClient();
     const scope = await F.scope(db);
-    expect(scope.contractsLeads).toEqual(["Shea Waldron", "Jeff Krause", "Mellisa Gonzales", "Dave Dermady", "Amber Hatley"]);
+    expect(scope.contractsLeads).toEqual(["Avery Holt", "Jordan Pike", "Casey Lund", "Riley Moss", "Morgan Vale"]);
     const rows = await PeopleService.contractsLeads(scope, ADMIN, db);
-    expect(rows.map((r) => r.name)).toEqual(["Amber Hatley", "Dave Dermady", "Jeff Krause", "Mellisa Gonzales", "Shea Waldron"]);
-    expect(ContractsLead.pickerOptions(scope.contractsLeads)).toEqual(["Amber Hatley", "Dave Dermady", "Jeff Krause", "Mellisa Gonzales", "Shea Waldron"]);
+    expect(rows.map((r) => r.name)).toEqual(["Avery Holt", "Casey Lund", "Jordan Pike", "Morgan Vale", "Riley Moss"]);
+    expect(ContractsLead.pickerOptions(scope.contractsLeads)).toEqual(["Avery Holt", "Casey Lund", "Jordan Pike", "Morgan Vale", "Riley Moss"]);
     // Adding appends to the stored list as before; nothing is re-sorted in the database.
     await DepartmentForms.addContractsLead(ADMIN, "Bea Cole", db);
     expect((await F.scope(db)).contractsLeads.at(-1)).toBe("Bea Cole");
     expect(ContractsLead.options(scope.contractsLeads)).toEqual(scope.contractsLeads);
-    expect(ContractsLead.invalidMessage("X", scope.contractsLeads)).toContain("Shea Waldron, Jeff Krause, Mellisa Gonzales, Dave Dermady, Amber Hatley");
+    expect(ContractsLead.invalidMessage("X", scope.contractsLeads)).toContain("Avery Holt, Jordan Pike, Casey Lund, Riley Moss, Morgan Vale");
     // The frozen seed and sample data keep their order.
-    expect(ServiceLine.CVPSL_CONTRACTS_LEADS[0]).toBe("Shea Waldron");
+    expect(ServiceLine.CVPSL_CONTRACTS_LEADS[0]).toBe("Avery Holt");
   });
 
   it("the drawer's Contracts lead select lists A to Z", async () => {
@@ -175,7 +178,7 @@ describe("5. Duplicate errors use the right article", () => {
     await DepartmentForms.addPerson(ADMIN, "requester", "Nicole Smith", db);
     expect(await DepartmentForms.addPerson(ADMIN, "owner", "nicole smith", db)).toMatchObject({ ok: false, message: "Nicole Smith is already an owner." });
     expect(await DepartmentForms.addPerson(ADMIN, "requester", "NICOLE SMITH", db)).toMatchObject({ ok: false, message: "Nicole Smith is already a requester." });
-    expect(await DepartmentForms.addContractsLead(ADMIN, "jeff  krause", db)).toMatchObject({ ok: false, message: "Jeff Krause is already a contracts lead." });
+    expect(await DepartmentForms.addContractsLead(ADMIN, "jordan  pike", db)).toMatchObject({ ok: false, message: "Jordan Pike is already a contracts lead." });
   });
 });
 

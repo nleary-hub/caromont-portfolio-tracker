@@ -32,7 +32,7 @@ SELECT
   CASE WHEN (i % 7) = 5 THEN 'Went live ' || i ELSE NULL END,
   CASE WHEN (i % 7) = 5 THEN DATE '2026-09-15' + (i % 5) ELSE NULL END,
   i % 4 = 0,
-  (ARRAY['Shea Waldron','Jeff Krause','Mellisa Gonzales','Dave Dermady','Amber Hatley',NULL])[1 + (i % 6)]
+  (ARRAY['Avery Holt','Jordan Pike','Casey Lund','Riley Moss','Morgan Vale',NULL])[1 + (i % 6)]
 FROM generate_series(1, 42) AS i;
 
 -- History: created row per project, status and field changes, admin-only visibility and delete rows.
