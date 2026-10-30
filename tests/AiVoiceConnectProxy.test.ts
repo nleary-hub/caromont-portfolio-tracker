@@ -125,16 +125,18 @@ describe("failed and ice_failed logging", () => {
     await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId });
     expect(rows(db).filter((r) => r.event === "session_ended")).toHaveLength(0);
     expect(JSON.stringify(log.mock.calls)).not.toContain(KEY);
+    expect(log).toHaveBeenCalledWith("AI tools: voice connect failed", expect.objectContaining({ code: "connect_failed", type: "other", source: "browser" }));
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/TypeError|Failed to fetch/);
   });
 
   it("ice_failed is its own code with the network message", async () => {
     const log = vi.spyOn(console, "error").mockImplementation(() => {});
     const { db, sessionId } = await started({ status: 201, body: "" });
-    const f = AiVoiceErrors.ice("failed");
-    expect(f).toEqual({ code: "ice_failed", message: "Voice couldn't connect. Your network may be blocking live audio. Try a different network.", type: "failed" });
+    const f = AiVoiceErrors.ice();
+    expect(f).toEqual({ code: "ice_failed", message: "Voice couldn't connect. Your network may be blocking live audio. Try a different network.", type: "ice" });
     expect(AiToolsCopy.VOICE_ICE_FAILED).not.toMatch(/\u2014/);
     await AiVoiceChatService.reportClientFailure(db, ADMIN, { sessionId, code: f.code, type: f.type });
-    expect(log).toHaveBeenCalledWith("AI tools: voice connect failed", expect.objectContaining({ code: "ice_failed", sessionId, type: "failed" }));
+    expect(log).toHaveBeenCalledWith("AI tools: voice connect failed", expect.objectContaining({ code: "ice_failed", sessionId, type: "ice" }));
     expect(rows(db).filter((r) => r.event === "failed" && r.suggestionId === sessionId)).toHaveLength(1);
     await AiVoiceChatService.end({ db, viewer: ADMIN, sessionId });
     expect(rows(db).filter((r) => r.event === "session_ended")).toHaveLength(0);

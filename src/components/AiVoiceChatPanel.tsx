@@ -85,7 +85,7 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
     } catch (e) {
       setPhase("idle");
       const m = AiVoiceErrors.mic(e);
-      void reportAiVoiceFailure({ code: m.code, type: (e as Error)?.name ?? null });
+      void reportAiVoiceFailure({ code: m.code, type: "mic" });
       return setError(m.message);
     }
     const r = await startAiVoiceChat();
@@ -101,8 +101,8 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
         onPhase: (p) => setPhase(p),
         onTranscript: (who, text, final) => setTranscript((cur) => (final ? AiVoiceTranscript.done(cur, who, text) : AiVoiceTranscript.add(cur, who, text))),
         onDropped: () => void stop(C.VOICE_DROPPED),
-        onIceFailed: (state) => {
-          const f = AiVoiceErrors.ice(state);
+        onIceFailed: () => {
+          const f = AiVoiceErrors.ice();
           // Report first so the failed row exists before End runs (End then adds no session_ended row).
           void reportAiVoiceFailure({ sessionId: r.sessionId, code: f.code, type: f.type }).finally(() => void stop(f.message));
         },
@@ -124,7 +124,7 @@ export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialR
     } catch (e) {
       const c = AiVoiceErrors.connect(e);
       // Awaited so the failed row exists before End runs.
-      await reportAiVoiceFailure({ sessionId: r.sessionId, code: c.code, status: c.status, type: c.type, message: c.detail });
+      await reportAiVoiceFailure({ sessionId: r.sessionId, code: c.code, status: c.status, type: c.type });
       return stop(c.message);
     }
     timer.current = setTimeout(() => void stop(C.VOICE_TIME_UP), r.maxSeconds * 1000);

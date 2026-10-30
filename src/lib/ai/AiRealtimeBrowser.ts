@@ -132,9 +132,10 @@ export class AiRealtimeBrowser {
         body: JSON.stringify({ sessionId, clientSecret: ticket.clientSecret, sdp: offer.sdp }),
         headers: { "content-type": "application/json" },
       });
-    } catch (e) {
+    } catch {
       close();
-      throw new AiRealtimeConnectError({ type: (e as Error)?.name ?? "network", message: AiRealtimeClient.scrub(String((e as Error)?.message ?? ""), [ticket.clientSecret]), modelUnavailable: false });
+      // Our own kind, never the JS error name or its message.
+      throw new AiRealtimeConnectError({ type: "network", modelUnavailable: false });
     }
     if (!res.ok) {
       close();

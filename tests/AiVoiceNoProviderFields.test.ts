@@ -108,3 +108,58 @@ describe("voice service: no provider type, code, prompt or key in logs or client
     expectClean(logged(spies));
   });
 });
+
+describe("reportClientFailure: the browser-sent type is mapped to our fixed kinds and its message is dropped (QA FIX-1 on 79c3baa)", () => {
+  const FREE = "CANARY free text from the browser zq58";
+  const cases: [string, unknown][] = [
+    ["arbitrary text", "anything the client likes"],
+    ["an over-long string", "network".padEnd(33, "x")],
+    ["a 33-character known prefix", "http" + "_".repeat(29)],
+    ["a non-string", { nested: FREE }],
+    ["a number", 42],
+    ["a provider type", "invalid_request_error"],
+    ["a JS error name", "TypeError"],
+  ];
+
+  it.each(cases)("%s logs 'other', with no free-text message (no session)", async (_label, type) => {
+    const spies = spyLogs();
+    await AiVoiceChatService.reportClientFailure(null, ADMIN, { code: "connect_failed", status: 400, type, message: `${FREE} ${PROMPT} ${KEY}` });
+    const err = spies[0];
+    expect(err).toHaveBeenCalledWith("AI tools: voice connect failed (browser)", expect.objectContaining({ code: "connect_failed", status: 400, type: "other", source: "browser" }));
+    expect(Object.keys(err.mock.calls[0][1] as object)).not.toContain("message");
+    const all = logged(spies);
+    for (const l of [FREE, PROMPT, KEY, "invalid_request_error", "TypeError", "anything the client"]) expect(all).not.toContain(l);
+  });
+
+  it.each(["http", "network", "timeout", "parse", "provider", "mic", "ice", "other"])("known kind %s passes through unchanged", async (kind) => {
+    const spies = spyLogs();
+    await AiVoiceChatService.reportClientFailure(null, ADMIN, { code: "connect_failed", type: kind, message: FREE });
+    expect(spies[0]).toHaveBeenCalledWith("AI tools: voice connect failed (browser)", expect.objectContaining({ type: kind }));
+    expect(logged(spies)).not.toContain(FREE);
+  });
+
+  it("with a live session: logFailure gets the mapped kind and no message, and a bad status is dropped", async () => {
+    const spies = spyLogs();
+    const db = await setup("gpt-realtime-example");
+    const f: AiRealtimeFetch = async () => reply(200, JSON.stringify({ value: SECRET, expires_at: 1_800_000_000 }));
+    const s = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: f, now: () => T0 });
+    if (!s.ok) throw new Error("start failed");
+    await AiVoiceChatService.reportClientFailure(db, ADMIN, { sessionId: s.sessionId, code: "connect_failed", status: `${FREE}`, type: `${FREE} ${KEY}`, message: `${FREE} ${PROMPT}` });
+    expect(spies[0]).toHaveBeenCalledWith("AI tools: voice connect failed", expect.objectContaining({ code: "connect_failed", status: null, type: "other", source: "browser" }));
+    expectClean(logged(spies));
+    expect(logged(spies)).not.toContain(FREE);
+    expectClean(JSON.stringify(db.usage));
+    expect(JSON.stringify(db.usage)).not.toContain(FREE);
+  });
+
+  it("the browser sends our kind, never the JS error name or message", async () => {
+    const { AiVoiceErrors } = await import("@/lib/ai/AiVoiceChat");
+    expect(AiVoiceErrors.connect(Object.assign(new TypeError(FREE), { info: { type: "network", modelUnavailable: false } }))).toMatchObject({ type: "network" });
+    expect(AiVoiceErrors.connect(new TypeError(FREE)).type).toBe("other");
+    expect(AiVoiceErrors.connect({ info: { type: "invalid_request_error", code: CODE } }).type).toBe("other");
+    expect(AiVoiceErrors.ice().type).toBe("ice");
+    const src = (await import("node:fs")).readFileSync("src/components/AiVoiceChatPanel.tsx", "utf8");
+    expect(src).not.toMatch(/reportAiVoiceFailure\([^)]*message:/);
+    expect(src).not.toMatch(/reportAiVoiceFailure\([^)]*\.name/);
+  });
+});

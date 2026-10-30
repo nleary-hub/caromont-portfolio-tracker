@@ -122,11 +122,11 @@ describe("browser failures: mic denied, no mic, connection failed, model unavail
     respond(500, JSON.stringify({ error: { type: "server_error", message: "Bearer ek_example_secret failed" } }));
     const e2 = await AiRealtimeBrowser.connect(ticket, mic, h, SID).catch((e) => e);
     const c2 = AiVoiceErrors.connect(e2);
-    expect(c2).toMatchObject({ code: "connect_failed", message: AiToolsCopy.VOICE_CONNECT_FAILED, status: 500, type: "server_error" });
+    expect(c2).toMatchObject({ code: "connect_failed", message: AiToolsCopy.VOICE_CONNECT_FAILED, status: 500, type: "other" });
     expect(c2.detail).not.toContain("ek_example_secret");
 
     vi.stubGlobal("fetch", vi.fn(async () => Promise.reject(new TypeError("Failed to fetch"))));
-    expect(AiVoiceErrors.connect(await AiRealtimeBrowser.connect(ticket, mic, h, SID).catch((e) => e))).toMatchObject({ code: "connect_failed", type: "TypeError" });
+    expect(AiVoiceErrors.connect(await AiRealtimeBrowser.connect(ticket, mic, h, SID).catch((e) => e))).toMatchObject({ code: "connect_failed", type: "network" });
   });
 
   it("the browser report reaches the log for admins only, scrubbed", async () => {
@@ -134,7 +134,8 @@ describe("browser failures: mic denied, no mic, connection failed, model unavail
     expect(await AiVoiceChatService.reportClientFailure(null, MEMBER, { code: "connect_failed" })).toEqual({ ok: false });
     expect(log).not.toHaveBeenCalled();
     await AiVoiceChatService.reportClientFailure(null, ADMIN, { code: "connect_failed", status: 400, type: "invalid_request_error", message: "bad sk-proj-TESTKEY-abcdefghijklmnop-WXYZ" });
-    expect(log).toHaveBeenCalledWith("AI tools: voice connect failed (browser)", expect.objectContaining({ code: "connect_failed", status: 400, type: "invalid_request_error" }));
+    expect(log).toHaveBeenCalledWith("AI tools: voice connect failed (browser)", expect.objectContaining({ code: "connect_failed", status: 400, type: "other" }));
+    expect(JSON.stringify(log.mock.calls)).not.toMatch(/invalid_request_error|bad /);
     expect(JSON.stringify(log.mock.calls)).not.toMatch(KEY_RE);
   });
 

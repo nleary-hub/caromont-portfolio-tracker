@@ -153,7 +153,19 @@ export class AiVoiceChat {
 }
 
 /** Browser-side voice chat failures: which message to show and which code to report for the log. */
+export type AiVoiceClientKind = "http" | "network" | "timeout" | "parse" | "provider" | "mic" | "ice" | "other";
+
 export class AiVoiceErrors {
+  /** Our fixed set of failure kinds a browser report may carry. Anything else is logged as "other". */
+  static readonly CLIENT_KINDS: readonly AiVoiceClientKind[] = ["http", "network", "timeout", "parse", "provider", "mic", "ice", "other"];
+  static readonly CLIENT_KIND_MAX = 32;
+
+  /** A browser-sent kind: non-strings and strings over 32 characters become "other", then only our fixed kinds pass. */
+  static clientKind(v: unknown): AiVoiceClientKind {
+    if (typeof v !== "string" || v.length > AiVoiceErrors.CLIENT_KIND_MAX) return "other";
+    return (AiVoiceErrors.CLIENT_KINDS as readonly string[]).includes(v) ? (v as AiVoiceClientKind) : "other";
+  }
+
   /** getUserMedia failed: permission blocked vs no microphone at all. */
   static mic(e: unknown): { code: "mic_denied" | "no_mic"; message: string } {
     const name = (e as { name?: unknown })?.name;
@@ -164,11 +176,11 @@ export class AiVoiceErrors {
   static connect(e: unknown): { code: "model_unavailable" | "connect_failed"; message: string; status: number | null; type: string | null; detail: string | null } {
     const info = (e as { info?: { status?: number; type?: string; code?: string; message?: string; modelUnavailable?: boolean } })?.info ?? {};
     const unavailable = info.modelUnavailable === true;
-    return { code: unavailable ? "model_unavailable" : "connect_failed", message: unavailable ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED, status: typeof info.status === "number" ? info.status : null, type: info.type ?? info.code ?? (e as Error)?.name ?? null, detail: info.message ?? null };
+    return { code: unavailable ? "model_unavailable" : "connect_failed", message: unavailable ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED, status: typeof info.status === "number" ? info.status : null, type: AiVoiceErrors.clientKind(info.type), detail: info.message ?? null };
   }
 
   /** ICE failed, or dropped before any media flowed: shown as the network message and logged as ice_failed. */
-  static ice(state: string): { code: "ice_failed"; message: string; type: string } {
-    return { code: "ice_failed", message: AiToolsCopy.VOICE_ICE_FAILED, type: state };
+  static ice(): { code: "ice_failed"; message: string; type: "ice" } {
+    return { code: "ice_failed", message: AiToolsCopy.VOICE_ICE_FAILED, type: "ice" };
   }
 }

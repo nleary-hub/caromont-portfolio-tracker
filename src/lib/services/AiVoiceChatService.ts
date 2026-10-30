@@ -7,7 +7,7 @@ import { AiPhiGuard } from "@/lib/ai/AiPhiGuard";
 import { AiRealtimeClient, type AiRealtimeFetch, type AiRealtimeTicket } from "@/lib/ai/AiRealtimeClient";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import type { AiToolChange, AiToolProject } from "@/lib/ai/AiToolsModel";
-import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
+import { AiVoiceChat, AiVoiceErrors } from "@/lib/ai/AiVoiceChat";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService, type AiModelRow } from "@/lib/services/AiModelService";
@@ -228,8 +228,10 @@ export class AiVoiceChatService {
     if (!viewer?.isAdmin) return { ok: false };
     const codes: AiVoiceErrorCode[] = ["mic_denied", "no_mic", "connect_failed", "model_unavailable", "ice_failed"];
     const code = codes.includes(raw.code as AiVoiceErrorCode) ? (raw.code as AiVoiceErrorCode) : "connect_failed";
-    const s = (v: unknown) => (typeof v === "string" && v ? AiRealtimeClient.scrub(v) : null);
-    const detail = { status: typeof raw.status === "number" ? raw.status : null, type: s(raw.type), message: s(raw.message), source: "browser" };
+    // Only our fixed kinds and a numeric status are logged. `message` is dropped: the browser has no text worth more than
+    // the code and kind, and anything it sends is client free text (QA recheck of 79c3baa, FIX-1).
+    const status = typeof raw.status === "number" && Number.isInteger(raw.status) && raw.status >= 100 && raw.status <= 599 ? raw.status : null;
+    const detail = { status, type: AiVoiceErrors.clientKind(raw.type), source: "browser" };
     const session = db && code !== "mic_denied" && code !== "no_mic" ? await AiVoiceChatService.session(db, viewer, raw.sessionId) : null;
     if (db && session && !(await AiVoiceChatService.ended(db, viewer, session.suggestionId))) {
       await AiVoiceChatService.logFailure(db, viewer, session, code, detail, now);
