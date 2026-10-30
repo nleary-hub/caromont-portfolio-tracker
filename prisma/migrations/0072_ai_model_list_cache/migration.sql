@@ -4,6 +4,9 @@
 -- lastError is a short code only, never a provider body or a key.
 -- Merging to main applies this file to Production on deploy (the build runs prisma migrate deploy).
 
+-- Same as 0071: a 5 s lock_timeout (Prisma runs the file in one transaction), so a held lock fails with 55P03 instead of queueing.
+SET LOCAL lock_timeout = '5s';
+
 CREATE TABLE "ai_model_list_cache" (
     "provider" TEXT NOT NULL,
     "models" JSONB NOT NULL DEFAULT '[]'::jsonb,

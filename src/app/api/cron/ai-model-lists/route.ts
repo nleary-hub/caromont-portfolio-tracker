@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { AiPinnedFetch } from "@/lib/ai/AiPinnedFetch";
 import { Db } from "@/lib/db/Db";
 import { ReportHttp } from "@/lib/report/ReportHttp";
 import { AiProviderKeyAccess } from "@/lib/services/AiFeatureProviderService";
@@ -27,7 +28,8 @@ class CronAiModelListsRoute {
         registry: db as AiRegistryDb,
         savedProviders: () => AiProviderKeyAccess.savedProviders(db),
         secret: (p) => keys.secret(p),
-        fetch: fetch as unknown as AiListFetch,
+        // undici fetch so the pinned dispatcher for 'other' comes from the same undici copy.
+        fetch: AiPinnedFetch.fetch as unknown as AiListFetch,
       });
       return NextResponse.json({ outcome: "ok", providers: outcomes.map((o) => ({ provider: o.provider, result: o.result })) });
     } catch (e) {

@@ -10,10 +10,9 @@ export type AiHostLookup = (host: string) => Promise<readonly { address: string;
  * *.internal) or when ANY address it resolves to is loopback, private, link-local, CGNAT, "this network", unique local
  * or an IPv4-mapped IPv6 form of one of those. Only short codes come out; never the host or address.
  *
- * Known limitation (CTO ruling, Oct 29 2026; follow-up FU-DA-SSRF-PIN): this check and the connection resolve the
- * host separately, so a DNS rebind between them is not stopped. Closing it needs connection-level IP pinning (an
- * undici Agent with a custom connect.lookup); undici is not a dependency today, so it was deferred. Mitigations:
- * only the Owner can set the 'other' URL, redirects are refused, and the response caps apply.
+ * DNS rebinding (CTO ruling, Oct 29 2026): resolve() resolves once and validates every address; the 'other' list call
+ * then connects to that exact address through AiPinnedFetch (undici Agent with a pinned connect.lookup), so a second
+ * DNS answer is never used. SNI and the Host header stay the original hostname.
  */
 export class AiHostGuard {
   static readonly systemLookup: AiHostLookup = async (host) => dnsLookup(host, { all: true, verbatim: true });
@@ -26,6 +25,8 @@ export class AiHostGuard {
     ["169.254.0.0", 16],
     ["172.16.0.0", 12],
     ["192.168.0.0", 16],
+    ["224.0.0.0", 4], // multicast
+    ["240.0.0.0", 4], // reserved and broadcast
   ];
 
   private static v4ToInt(ip: string): number {
@@ -66,6 +67,9 @@ export class AiHostGuard {
     if (g.slice(0, 7).every((x) => x === 0) && g[7] === 1) return true; // ::1
     if ((g[0] & 0xfe00) === 0xfc00) return true; // fc00::/7
     if ((g[0] & 0xffc0) === 0xfe80) return true; // fe80::/10
+    if (g[0] === 0x0064 && g[1] === 0xff9b && g.slice(2, 6).every((x) => x === 0)) return true; // 64:ff9b::/96 NAT64
+    if (g[0] === 0x2002) return true; // 2002::/16 6to4
+    if ((g[0] & 0xff00) === 0xff00) return true; // ff00::/8 multicast
     // IPv4-mapped (::ffff:a.b.c.d) and IPv4-compatible (::a.b.c.d): judge the embedded IPv4.
     if (g.slice(0, 5).every((x) => x === 0) && (g[5] === 0xffff || g[5] === 0)) {
       const v4 = `${g[6] >> 8}.${g[6] & 0xff}.${g[7] >> 8}.${g[7] & 0xff}`;
@@ -97,22 +101,37 @@ export class AiHostGuard {
    * Fails closed: a lookup error or an empty answer is refused.
    */
   static async check(url: string, lookup: AiHostLookup = AiHostGuard.systemLookup): Promise<"ok" | "blocked_host" | "dns_failed"> {
+    const r = await AiHostGuard.resolve(url, lookup);
+    return r.ok ? "ok" : r.error;
+  }
+
+  /**
+   * Resolves the URL's host ONCE and validates every answer. On success returns the hostname and the one address to
+   * connect to (the first answer); the caller pins the connection to it. A literal IP host pins to itself.
+   */
+  static async resolve(
+    url: string,
+    lookup: AiHostLookup = AiHostGuard.systemLookup,
+  ): Promise<{ ok: true; hostname: string; address: string; family: 4 | 6 } | { ok: false; error: "blocked_host" | "dns_failed" }> {
     let host: string;
     try {
       host = new URL(url).hostname;
     } catch {
-      return "blocked_host";
+      return { ok: false, error: "blocked_host" };
     }
-    if (AiHostGuard.nameBlocked(host)) return "blocked_host";
+    if (AiHostGuard.nameBlocked(host)) return { ok: false, error: "blocked_host" };
     const bare = host.replace(/^\[|\]$/g, "");
-    if (isIP(bare)) return "ok";
-    let addrs: readonly { address: string }[];
+    const lit = isIP(bare);
+    if (lit) return { ok: true, hostname: bare, address: bare, family: lit as 4 | 6 };
+    let addrs: readonly { address: string; family: number }[];
     try {
       addrs = await lookup(bare);
     } catch {
-      return "dns_failed";
+      return { ok: false, error: "dns_failed" };
     }
-    if (!addrs.length) return "dns_failed";
-    return addrs.some((a) => AiHostGuard.ipBlocked(a.address)) ? "blocked_host" : "ok";
+    if (!addrs.length) return { ok: false, error: "dns_failed" };
+    if (addrs.some((a) => AiHostGuard.ipBlocked(a.address))) return { ok: false, error: "blocked_host" };
+    const first = addrs[0];
+    return { ok: true, hostname: bare, address: first.address, family: isIP(first.address) === 6 ? 6 : 4 };
   }
 }

@@ -3,6 +3,7 @@ import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { AiFeatureProviders, type AiFeatureProvider, type AiProviderSecret } from "@/lib/ai/AiFeatureProviders";
 import { AiHostGuard, type AiHostLookup } from "@/lib/ai/AiHostGuard";
+import { AiPinnedFetch } from "@/lib/ai/AiPinnedFetch";
 import { AiModelListGate, type AiCachedModel, type AiListError, type AiListResponse } from "@/lib/ai/AiModelListGate";
 import { AiRegistryService, type AiRegistryDb } from "@/lib/services/AiRegistryService";
 
@@ -11,7 +12,7 @@ type Env = Record<string, string | undefined>;
 export type AiListTrigger = "page_open" | "cron" | "key_saved" | "manual";
 
 /** A fetch for list calls: GET, redirect "manual", a timeout signal. A real fetch fits. */
-export type AiListFetch = (url: string, init: { method: "GET"; headers: Record<string, string>; redirect: "manual"; signal: AbortSignal }) => Promise<AiListResponse>;
+export type AiListFetch = (url: string, init: { method: "GET"; headers: Record<string, string>; redirect: "manual"; signal: AbortSignal; dispatcher?: unknown }) => Promise<AiListResponse>;
 
 export interface AiModelListCacheRow {
   provider: string;
@@ -47,6 +48,8 @@ export interface AiModelListDeps {
   deadlineMs?: number;
   /** DNS for the 'other' host check. Tests inject it; default is the system resolver. */
   lookup?: AiHostLookup;
+  /** Builds the pinned dispatcher for 'other'. Tests inject it; default is AiPinnedFetch.dispatcher. */
+  pin?: (hostname: string, address: string, family: 4 | 6) => unknown;
 }
 
 export type AiListOutcome =
@@ -187,9 +190,12 @@ export class AiModelListRefreshService {
       if (!url) return { ok: false, error: "bad_base_url", calls };
       if (provider === "anthropic" && calls >= AiModelListGate.ANTHROPIC_PAGE_MAX) return { ok: false, error: "page_cap", calls };
       // QA FIX 2: the 'other' host is checked after DNS before every call (a rebind between save and call is caught here).
+      // Resolved once; the connection is pinned to the validated address, so a later DNS answer is never used.
+      let dispatcher: unknown;
       if (provider === "other") {
-        const host = await AiHostGuard.check(url, deps.lookup ?? AiHostGuard.systemLookup);
-        if (host !== "ok") return { ok: false, error: host, calls };
+        const host = await AiHostGuard.resolve(url, deps.lookup ?? AiHostGuard.systemLookup);
+        if (!host.ok) return { ok: false, error: host.error, calls };
+        dispatcher = (deps.pin ?? AiPinnedFetch.dispatcher)(host.hostname, host.address, host.family);
       }
       const deadlineAt = deps.deadlineAt ?? Date.now() + (deps.deadlineMs ?? AiModelListRefreshService.RUN_DEADLINE_MS);
       const left = deadlineAt - Date.now();
@@ -197,7 +203,7 @@ export class AiModelListRefreshService {
       calls += 1;
       let res: AiListResponse;
       try {
-        res = await deps.fetch(url, { method: "GET", headers: req.headers, redirect: "manual", signal: AbortSignal.timeout(Math.min(left, deps.timeoutMs ?? AiModelListRefreshService.TIMEOUT_MS)) });
+        res = await deps.fetch(url, { method: "GET", headers: req.headers, redirect: "manual", signal: AbortSignal.timeout(Math.min(left, deps.timeoutMs ?? AiModelListRefreshService.TIMEOUT_MS)), ...(dispatcher ? { dispatcher } : {}) });
       } catch (e) {
         const name = (e as Error)?.name;
         return { ok: false, error: name === "TimeoutError" || name === "AbortError" ? "timeout" : "network", calls };

@@ -2,6 +2,7 @@ import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } 
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import type { AiFeatureProvider } from "@/lib/ai/AiFeatureProviders";
 import { AiHostGuard, type AiHostLookup } from "@/lib/ai/AiHostGuard";
+import { AiPinnedFetch } from "@/lib/ai/AiPinnedFetch";
 import type { AiListResponse } from "@/lib/ai/AiModelListGate";
 import { AiModelListRefreshService, type AiListFetch, type AiModelListCacheRow, type AiModelListDeps } from "@/lib/services/AiModelListRefreshService";
 import { AiRegistryService, type AiRegistryDb } from "@/lib/services/AiRegistryService";
@@ -157,5 +158,81 @@ describe("cron route auth (spec -g test 6, QA FIX 3)", () => {
     const run = vi.spyOn(AiModelListRefreshService, "runCron");
     for (const auth of [undefined, ["Bearer", wrong].join(" "), secret, ["Basic", secret].join(" ")]) for (const r of await call(auth)) expect(r.status).toBe(401);
     expect(run).not.toHaveBeenCalled();
+  });
+});
+
+// DNS rebinding closed by IP pinning (CTO ruling, Oct 29 2026). No socket is opened: the pinned lookup and the Agent
+// options are read directly, and the list call goes to a fake fetch.
+describe("AiHostGuard: added ranges and octal literal", () => {
+  it.each(["224.0.0.1", "239.255.255.255", "240.0.0.1", "255.255.255.255", "64:ff9b::a00:1", "64:ff9b::cb00:710a", "2002:a00:1::1", "2002:cb00:710a::1", "ff02::1"])(
+    "refuses %s", (ip) => expect(AiHostGuard.ipBlocked(ip)).toBe(true));
+  it.each(["223.255.255.255", "64:ff9c::1", "2003::1", "2001:db8::2"])("allows %s", (ip) => expect(AiHostGuard.ipBlocked(ip)).toBe(false));
+  it.each(["https://0177.0.0.1/v1", "https://0177.0.0.01/v1", "https://012.0.0.1/v1", "https://[64:ff9b::7f00:1]/v1", "https://[2002:7f00:1::]/v1", "https://224.0.0.1/v1"])(
+    "refuses the literal host %s without DNS", async (url) => {
+      const lookup = vi.fn(answer("203.0.113.10"));
+      expect(await AiHostGuard.check(url, lookup)).toBe("blocked_host");
+      expect(lookup).not.toHaveBeenCalled();
+    });
+});
+
+describe("AiPinnedFetch: connection pinned to the validated address", () => {
+  it("(1) the pinned lookup returns only the validated address, for any host asked and in both callback forms", () => {
+    const look = AiPinnedFetch.pinnedLookup("203.0.113.10", 4);
+    const one = vi.fn(); const all = vi.fn(); const bare = vi.fn();
+    look("models.example.test", { family: 0 }, one);
+    look("other.example.test", { all: true }, all);
+    look("models.example.test", bare as never);
+    expect(one).toHaveBeenCalledWith(null, "203.0.113.10", 4);
+    expect(all).toHaveBeenCalledWith(null, [{ address: "203.0.113.10", family: 4 }]);
+    expect(bare).toHaveBeenCalledWith(null, "203.0.113.10", 4);
+  });
+
+  it("(2) rebinding resolver stub: public first, then private; the private address is never used", async () => {
+    let n = 0;
+    const rebind = vi.fn<AiHostLookup>(async () => [{ address: n++ === 0 ? "203.0.113.10" : "10.0.0.7", family: 4 }]);
+    const pins: { hostname: string; address: string }[] = [];
+    const seen: string[] = [];
+    const d = deps({
+      lookup: rebind,
+      pin: (hostname, address, family) => {
+        pins.push({ hostname, address });
+        return AiPinnedFetch.agentOptions(hostname, address, family);
+      },
+      fetch: vi.fn<AiListFetch>(async (_url, init) => {
+        // The connection's lookup after the guard: the stub now answers private, the pinned lookup does not ask it.
+        await rebind("models.example.test");
+        (init.dispatcher as ReturnType<typeof AiPinnedFetch.agentOptions>).connect.lookup("models.example.test", {}, (_e, a) => seen.push(String(a)));
+        return ok();
+      }),
+    });
+    expect(await AiModelListRefreshService.manual(d, OWNER, "other")).toMatchObject({ result: "refreshed" });
+    expect(pins).toEqual([{ hostname: "models.example.test", address: "203.0.113.10" }]);
+    expect(seen).toEqual(["203.0.113.10"]);
+    expect(seen).not.toContain("10.0.0.7");
+    expect(rebind).toHaveBeenCalledTimes(2); // once by the guard, once by the simulated rebind; its private answer is ignored
+  });
+
+  it("(3) servername and Host stay the hostname: SNI set, URL host unchanged, no Host header override", async () => {
+    const opts = AiPinnedFetch.agentOptions("models.example.test", "203.0.113.10", 4);
+    expect(opts.connect.servername).toBe("models.example.test");
+    const d = deps({ pin: (h, a, f) => AiPinnedFetch.agentOptions(h, a, f) });
+    await AiModelListRefreshService.manual(d, OWNER, "other");
+    const [url, init] = vi.mocked(d.fetch).mock.calls[0];
+    expect(new URL(url).hostname).toBe("models.example.test");
+    expect(Object.keys(init.headers).map((k) => k.toLowerCase())).not.toContain("host");
+    expect((init.dispatcher as typeof opts).connect.servername).toBe("models.example.test");
+    expect(init.redirect).toBe("manual");
+  });
+
+  it("the default pin builds a real undici Agent without opening a socket", () => {
+    const agent = AiPinnedFetch.dispatcher("models.example.test", "203.0.113.10", 4);
+    expect(agent.constructor.name).toBe("Agent");
+    void agent.close();
+  });
+
+  it("openai, anthropic and xai get no dispatcher", async () => {
+    const d = deps({ secret: async () => ({ apiKey: CANARY, baseUrl: null }) });
+    await AiModelListRefreshService.manual(d, OWNER, "openai");
+    expect(vi.mocked(d.fetch).mock.calls[0][1].dispatcher).toBeUndefined();
   });
 });
