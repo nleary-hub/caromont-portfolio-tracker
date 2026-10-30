@@ -192,7 +192,7 @@ describe("global Dashboard heartbeat setting", () => {
     expect(html).not.toMatch(/switch|heartbeat/i);
   });
 
-  it("the sign-in render is unchanged (AuthStage markup pinned to main)", () => {
+  it("the sign-in render is unchanged apart from the logo (AuthStage markup pinned to main)", () => {
     const html = renderToStaticMarkup(
       createElement(
         AuthStage,
@@ -200,7 +200,11 @@ describe("global Dashboard heartbeat setting", () => {
         createElement("p", null, "Sample"),
       ),
     );
-    expect(createHash("sha256").update(html).digest("hex")).toBe(
+    // The Today Line lockup above the form is the only intended change; without it the markup is still main's.
+    expect(html).toContain('data-testid="signin-brand"');
+    const withoutBrand = html.replace(/<div class="si-brand" data-testid="signin-brand">[\s\S]*?<\/span><\/div>/, "");
+    expect(withoutBrand).not.toBe(html);
+    expect(createHash("sha256").update(withoutBrand).digest("hex")).toBe(
       "ec1f6a890608e94eafb83b476e4e9cca79371110fc6146b2bb9ddfe50dc03241",
     );
   });
