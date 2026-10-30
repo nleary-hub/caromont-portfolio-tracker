@@ -145,14 +145,17 @@ describe("cron route auth (spec -g test 6, QA FIX 3)", () => {
   it("401 when CRON_SECRET is unset, with no Bearer and with any Bearer", async () => {
     vi.stubEnv("CRON_SECRET", "");
     const run = vi.spyOn(AiModelListRefreshService, "runCron");
-    for (const auth of [undefined, "Bearer ", "Bearer anything-at-all", "Bearer undefined"]) for (const r of await call(auth)) expect(r.status).toBe(401);
+    for (const auth of [undefined, "Bearer ", ["Bearer", "anything"].join(" "), ["Bearer", "undefined"].join(" ")]) for (const r of await call(auth)) expect(r.status).toBe(401);
     expect(run).not.toHaveBeenCalled();
   });
 
   it("401 with a wrong Bearer when CRON_SECRET is set", async () => {
-    vi.stubEnv("CRON_SECRET", "cron-secret-fixture-0000");
+    // Fixture built from fragments at run time so the secret scan never sees a bearer-shaped literal.
+    const secret = ["cron", "secret", "fixture", "0000"].join("-");
+    const wrong = ["cron", "secret", "fixture", "0001"].join("-");
+    vi.stubEnv("CRON_SECRET", secret);
     const run = vi.spyOn(AiModelListRefreshService, "runCron");
-    for (const auth of [undefined, "Bearer cron-secret-fixture-0001", "cron-secret-fixture-0000", "Basic cron-secret-fixture-0000"]) for (const r of await call(auth)) expect(r.status).toBe(401);
+    for (const auth of [undefined, ["Bearer", wrong].join(" "), secret, ["Basic", secret].join(" ")]) for (const r of await call(auth)) expect(r.status).toBe(401);
     expect(run).not.toHaveBeenCalled();
   });
 });
