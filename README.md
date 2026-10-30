@@ -80,6 +80,26 @@ OAuth redirect URI: `https://<domain>/api/auth/callback/google`.
   no `pgbouncer=true` flag is needed with driver adapters.
 - All secrets live in Vercel Project Settings > Environment Variables, never in the repo.
 
+### Migration checklist (transaction form, standing rule from the 0072 dry run)
+
+- Prisma 7.4 and later (pinned: 7.10.0) does not run a PostgreSQL migration file as one transaction. When its parser
+  (sqlparser) can read the file, `migrate deploy` sends each statement on its own, so each one autocommits and a bare
+  `SET LOCAL` does nothing. It sends the whole file as one batch only when the parser fails. Never rely on that.
+- A migration that must be all-or-nothing, or that uses `lock_timeout`, is written as one explicit transaction:
+  `BEGIN;` first, `SET LOCAL lock_timeout = '5s';` right after it (no session-level `SET`), the statements, `COMMIT;` last.
+  Lock-taking ALTERs go first. A CHECK that is replaced is dropped and re-added in the same `ALTER TABLE` statement.
+  Statements that can't run in a transaction (`CREATE INDEX CONCURRENTLY`) go in their own migration with no BEGIN/COMMIT.
+- Each such migration gets a Vitest pin (example: `tests/AiModelListCacheTxn.test.ts`). `tests/MigrationTxnGuard.test.ts`
+  fails any migration from 0072 onward that uses `SET LOCAL` without a top-level `BEGIN`.
+- Any Prisma upgrade (minor or major, for example 8.x) re-runs the Neon dry-run lock test (expect P3018 with 55P03 at
+  about 5 s, nothing left behind) and the forced-failure test before it merges.
+- Never edit an applied migration file, not even a comment: Prisma checksums the whole file, so `migrate dev` reports drift.
+- Follow-up FU-0071-TXN (open): `0071_ai_registry_and_fallback` uses `SET LOCAL lock_timeout` with no BEGIN/COMMIT. Its
+  header says Prisma 7.10.0 sends the whole file as one implicit transaction; that is true for 0071 only because the parser
+  falls back on its DO blocks, not as a Prisma rule. Production applied it cleanly, so nothing changes there. The risk is a
+  fresh replay (CI, a new Neon branch, a rebuild) after a Prisma upgrade whose parser reads 0071: it would then run without
+  atomicity or lock_timeout. 0071's file stays as is (checksum); this note is its correction. Re-check on every Prisma upgrade.
+
 ## Google OAuth setup
 
 The Auth.js route is `src/app/api/auth/[...nextauth]/route.ts` with the default base path `/api/auth`,
