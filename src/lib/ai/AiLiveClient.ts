@@ -58,6 +58,17 @@ export class AiLiveClient {
     });
   }
 
+  static readonly SESSION_ID = /^[A-Za-z0-9_-]{1,64}$/;
+  static readonly KEY_PREFIX = /^(sk|ek|rk|pk|xai)[-_]/i;
+
+  /**
+   * The provider's session id, kept only when it is a plain id (letters, digits, underscore, dash; 1 to 64) that does
+   * not start with a key prefix (sk, ek, rk, pk, xai then - or _, as in AiRealtimeClient.scrub). Anything else is null, so no provider body text reaches the log (QA recheck of 19be882).
+   */
+  static sessionId(v: unknown): string | null {
+    return typeof v === "string" && AiLiveClient.SESSION_ID.test(v) && !AiLiveClient.KEY_PREFIX.test(v) ? v : null;
+  }
+
   static async create(config: Pick<AiRuntimeConfig, "provider" | "apiKey">, session: AiLiveSessionConfig, sdp: string, fetchImpl: AiRealtimeFetch = fetch as unknown as AiRealtimeFetch): Promise<AiLiveCreateResult> {
     if (config.provider !== "openai") return { ok: false, kind: "provider" };
     try {
@@ -81,7 +92,7 @@ export class AiLiveClient {
       }
       const answer = typeof j?.transport?.sdp === "string" ? j.transport.sdp : "";
       if (!answer.trim()) return { ok: false, kind: "parse", status: res.status, message: "empty SDP answer" };
-      return { ok: true, sdp: answer, liveSessionId: typeof j.session?.id === "string" ? j.session.id.slice(0, 200) : null };
+      return { ok: true, sdp: answer, liveSessionId: AiLiveClient.sessionId(j.session?.id) };
     } catch (e) {
       const timeout = (e as Error)?.name === "TimeoutError";
       return { ok: false, kind: timeout ? "timeout" : "network", errorClass: timeout ? "timeout" : "provider_down", message: AiProviderError.message("openai", timeout ? "timeout" : "provider_down") };

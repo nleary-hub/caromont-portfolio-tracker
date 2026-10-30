@@ -163,3 +163,50 @@ describe("reportClientFailure: the browser-sent type is mapped to our fixed kind
     expect(src).not.toMatch(/reportAiVoiceFailure\([^)]*\.name/);
   });
 });
+
+describe("live success: the provider's session.id reaches the log only as a plain id (QA FIX-1 on 19be882)", () => {
+  const liveOk = (id: unknown): AiRealtimeFetch => async (url) => (url === AiLiveClient.SESSIONS_URL ? reply(201, JSON.stringify({ session: { id }, transport: { type: "webrtc", sdp: "v=0 live answer" } })) : reply(200, "{}"));
+  async function connectWith(id: unknown) {
+    const spies = spyLogs();
+    const db = await setup("gpt-live-example");
+    const f = liveOk(id);
+    const s = await AiVoiceChatService.start({ db, viewer: ADMIN, scope: SCOPE, env: ENV, fetchImpl: f, now: () => T0 });
+    if (!s.ok) throw new Error("start failed");
+    const c = await AiVoiceChatService.connect({ db, viewer: ADMIN, sessionId: s.sessionId, clientSecret: "", sdp: "v=0 offer", scope: SCOPE, env: ENV, fetchImpl: f, now: () => new Date(T0.getTime() + 2000) });
+    expect(c.ok).toBe(true);
+    const started = spies[2].mock.calls.find((x) => x[0] === "AI tools: voice live session started");
+    expect(started).toBeDefined();
+    return { logs: logged(spies), liveSessionId: (started![1] as { liveSessionId: unknown }).liveSessionId };
+  }
+
+  const bad: [string, unknown][] = [
+    ["canary free text", `${PROMPT} ${TYPE}`],
+    ["a key-shaped string with spaces", `sk-proj-TESTKEY abc def ${CODE}`],
+    ["a key-shaped string with symbols", "sk-proj-TESTKEY-abc!@#$%zz"],
+    ["a plain key-shaped id", KEY],
+    ["over 64 characters", "s".repeat(65)],
+    ["over 200 characters with a canary", `${"a".repeat(190)}${CODE}`],
+    ["an empty string", ""],
+    ["a non-string", { id: PROMPT }],
+  ];
+
+  it.each(bad)("%s is logged as null and never appears in any log", async (_label, id) => {
+    const r = await connectWith(id);
+    expect(r.liveSessionId).toBeNull();
+    expectClean(r.logs);
+    if (typeof id === "string" && id) expect(r.logs).not.toContain(id.slice(0, 20));
+  });
+
+  it.each(["live_example_1", "sess-ABC_123", "x".repeat(64)])("a valid id %s passes through", async (id) => {
+    const r = await connectWith(id);
+    expect(r.liveSessionId).toBe(id);
+  });
+
+  it("AiLiveClient.sessionId applies the pattern at the source", () => {
+    expect(AiLiveClient.sessionId("live_example_1")).toBe("live_example_1");
+    expect(AiLiveClient.sessionId("a b")).toBeNull();
+    expect(AiLiveClient.sessionId(KEY)).toBeNull();
+    expect(AiLiveClient.sessionId("x".repeat(65))).toBeNull();
+    expect(AiLiveClient.sessionId(42)).toBeNull();
+  });
+});
