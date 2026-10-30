@@ -127,6 +127,7 @@ export class UpdateTimeline {
     request_to_project: "Request to draft",
     meeting_brief: "Meeting Playbook",
     related_links: "Dependency suggestions",
+    claude_connector: "Claude connector",
   };
 
   /** The AI source of a save (any of its rows carries the tag), or null for a manual edit. */

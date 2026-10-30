@@ -63,8 +63,32 @@ See `.env.example` for the full annotated list.
 | `AUTH_DEV_LOGIN` | optional | `true` enables the email-only dev form (never in production) |
 | `AUTH_TRUST_HOST` / `AUTH_URL` | optional | Only needed off Vercel. Do not set them on Vercel |
 | `AI_SETTINGS_ENCRYPTION_KEY` | for AI | 32 random bytes, base64 (`openssl rand -base64 32`). Encrypts the AI provider keys saved under Admin > AI settings > Provider keys (AES-256-GCM, one binding per provider row). Empty = keys can't be saved or used. Changing it makes saved keys unreadable. Never decrypted on Vercel preview deployments (`VERCEL_ENV=preview`), so AI is off there |
+| `MCP_CONNECTOR_DISABLED` | no | `true` turns the Claude connector off (every `/api/mcp`, `/oauth/*` and `/.well-known/oauth-*` endpoint answers 404). Default: on |
+| `MCP_OAUTH_SECRET` | no | Signs the Claude connector's tokens. Unset = derived from `AUTH_SECRET` under its own label. Set or change it to sign everyone out of the connector at once |
+| `MCP_REDIRECT_URIS` | no | Extra exact OAuth redirect URIs the connector may send codes to (space or comma separated). Claude's own callbacks and loopback addresses are always allowed |
 
 OAuth redirect URI: `https://<domain>/api/auth/callback/google`.
+
+## Claude connector (remote MCP)
+
+Claude (claude.ai, the desktop and mobile apps, Claude Code) can use the tracker as a custom connector: Settings >
+Connectors > Add custom connector, URL `https://<domain>/api/mcp`. Code: `src/lib/mcp/`, routes `src/app/api/mcp`,
+`src/app/oauth/*`, `src/app/.well-known/*`.
+
+- **Sign-in:** OAuth 2.1 with Dynamic Client Registration and PKCE (S256), the app as its own authorization server.
+  `/oauth/authorize` is the consent page and stays behind the normal sign-in, so only a signed-in person can approve,
+  for themself. Codes (2 min), access tokens (1 h) and refresh tokens (30 days) are HMAC-signed values
+  (`McpTokens`), so there are no new tables. Redirect URIs are limited to Claude's callbacks, loopback, and
+  `MCP_REDIRECT_URIS`.
+- **Access:** every request resolves the person again (`McpViewer`): turned off in Admin > People, off the access
+  list or no longer an active account = 401 on the next call. Their role, line and department access apply as in the app.
+- **Writes:** only through the core services the drawer uses (`ProjectService.saveForm`, `saveMilestones`,
+  `setPeopleField`, `createFromForm`, `ProjectDependencyService` blockers), never the in-app AI layer. History rows are
+  written under the person's email with `comment = "ai:claude_connector"` (timeline label "Claude connector").
+- **Tools:** whoami, list_projects, get_project, get_project_history, update_project, set_project_person,
+  update_milestones, add_blocker, update_blocker, resolve_blocker, create_project. No delete or hide.
+- **Tests:** `tests/McpConnectorOAuth.test.ts` (OAuth), `tests/e2e/claude-connector.spec.ts` (full flow on a local
+  server: consent, token, edits, History tag, Viewer refusal, revocation).
 
 ## Deploying on Vercel
 
