@@ -5,7 +5,8 @@
   "crons": [
     { "path": "/api/cron/ai-retention", "schedule": "0 9 * * *" },
     { "path": "/api/cron/freeze", "schedule": "0 21 * * *" },
-    { "path": "/api/cron/freeze", "schedule": "0 22 * * *" }
+    { "path": "/api/cron/freeze", "schedule": "0 22 * * *" },
+    { "path": "/api/cron/ai-model-lists", "schedule": "0 10 * * *" }
   ],
   "git": {
     "deploymentEnabled": { "ai-redesign-*": false }
