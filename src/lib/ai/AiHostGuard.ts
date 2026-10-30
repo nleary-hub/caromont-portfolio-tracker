@@ -9,6 +9,11 @@ export type AiHostLookup = (host: string) => Promise<readonly { address: string;
  * every list call, after DNS resolution: a host is refused when its name is local (localhost, *.localhost, *.local,
  * *.internal) or when ANY address it resolves to is loopback, private, link-local, CGNAT, "this network", unique local
  * or an IPv4-mapped IPv6 form of one of those. Only short codes come out; never the host or address.
+ *
+ * Known limitation (CTO ruling, Oct 29 2026; follow-up FU-DA-SSRF-PIN): this check and the connection resolve the
+ * host separately, so a DNS rebind between them is not stopped. Closing it needs connection-level IP pinning (an
+ * undici Agent with a custom connect.lookup); undici is not a dependency today, so it was deferred. Mitigations:
+ * only the Owner can set the 'other' URL, redirects are refused, and the response caps apply.
  */
 export class AiHostGuard {
   static readonly systemLookup: AiHostLookup = async (host) => dnsLookup(host, { all: true, verbatim: true });
