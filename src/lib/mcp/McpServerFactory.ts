@@ -2,6 +2,7 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import type { CallToolResult } from "@modelcontextprotocol/sdk/types.js";
 import { z } from "zod";
 import type { GateUser } from "@/lib/permissions/RoleResolver";
+import { McpAppActions, MCP_APP_ACTIONS, NOT_AVAILABLE } from "@/lib/mcp/McpAppActions";
 import { McpProjectTools, McpToolError, type McpToolContext, type MilestoneAction } from "@/lib/mcp/McpProjectTools";
 
 const lineArg = z.string().optional().describe("Service line short name or id. Leave out to use your active line.");
@@ -20,6 +21,10 @@ export class McpServerFactory {
     "Rules from the app: a project becomes Complete only when its last milestone is checked (use update_milestones), never by",
     "setting the status; the next milestone and due date come from the first open milestone; people must be on the line's lists",
     "(whoami shows them). Confirm with the person before bulk changes, and tell them exactly what you changed.",
+    "Everything else the app's screens do (departments, people and access, roles, templates, service lines, settings,",
+    "layout, report options, hide/delete/restore, reopen, review, dependencies, CSV import) is reached with list_app_actions",
+    "then run_app_action. Actions marked needsConfirmation change or remove a lot: describe the change and get a clear yes",
+    "from the person first, then pass confirmed: true.",
   ].join(" ");
 
   static create(viewer: GateUser): McpServer {
@@ -237,6 +242,56 @@ export class McpServerFactory {
         annotations: WRITE,
       },
       async ({ serviceLine, ...input }) => run(serviceLine, (c) => McpProjectTools.createProject(c, input)),
+    );
+
+    server.registerTool(
+      "list_app_actions",
+      {
+        title: "List app actions",
+        description:
+          "Every other thing the app's screens can do (read_* actions read an admin screen; the rest change something), with each action's input schema and whether it needs the person's confirmation. Filter by area, e.g. departments, people, roles, templates, service lines, settings, report, projects, dependencies, import, audit. Also lists what the connector deliberately can't do.",
+        inputSchema: { area: z.string().optional() },
+        annotations: READ,
+      },
+      async ({ area }) => {
+        const want = area?.trim().toLowerCase();
+        const actions = MCP_APP_ACTIONS.filter((a) => !want || a.area === want).map((a) => ({
+          name: a.name,
+          area: a.area,
+          kind: a.kind,
+          needsConfirmation: Boolean(a.confirm),
+          description: a.description,
+          input: z.toJSONSchema(a.input),
+        }));
+        return { content: [{ type: "text", text: JSON.stringify({ areas: [...new Set(MCP_APP_ACTIONS.map((a) => a.area))], actions, notAvailable: NOT_AVAILABLE }, null, 2) }] };
+      },
+    );
+
+    server.registerTool(
+      "run_app_action",
+      {
+        title: "Run app action",
+        description:
+          "Run one action from list_app_actions with its input. It runs the app's own code as you, with your permissions, validation and audit history. For an action marked needsConfirmation, first tell the person exactly what will change and get a clear yes, then pass confirmed: true.",
+        inputSchema: { action: z.string(), input: z.record(z.string(), z.unknown()).optional(), confirmed: z.boolean().optional() },
+        annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
+      },
+      async ({ action, input, confirmed }) => {
+        const a = McpAppActions.find(action);
+        if (!a) return { isError: true, content: [{ type: "text", text: `Unknown action "${action}". Call list_app_actions to see what is available.` }] };
+        if (a.confirm && confirmed !== true) {
+          return { isError: true, content: [{ type: "text", text: `"${a.name}" needs the person's confirmation. Describe exactly what will change, get a clear yes, then call again with confirmed: true.` }] };
+        }
+        const parsed = a.input.safeParse(input ?? {});
+        if (!parsed.success) return { isError: true, content: [{ type: "text", text: `Input not valid for ${a.name}: ${parsed.error.issues.map((x) => `${x.path.join(".") || "input"}: ${x.message}`).join("; ")}` }] };
+        try {
+          const out = await a.run(parsed.data as Record<string, unknown>);
+          const failed = out && typeof out === "object" && (out as { ok?: unknown }).ok === false;
+          return { ...(failed ? { isError: true } : {}), content: [{ type: "text", text: JSON.stringify(out ?? { ok: true }, null, 2) }] };
+        } catch (e) {
+          return { isError: true, content: [{ type: "text", text: McpAppActions.explain(e) }] };
+        }
+      },
     );
 
     return server;

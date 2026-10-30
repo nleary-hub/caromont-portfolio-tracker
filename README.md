@@ -86,7 +86,17 @@ Connectors > Add custom connector, URL `https://<domain>/api/mcp`. Code: `src/li
   `setPeopleField`, `createFromForm`, `ProjectDependencyService` blockers), never the in-app AI layer. History rows are
   written under the person's email with `comment = "ai:claude_connector"` (timeline label "Claude connector").
 - **Tools:** whoami, list_projects, get_project, get_project_history, update_project, set_project_person,
-  update_milestones, add_blocker, update_blocker, resolve_blocker, create_project. No delete or hide.
+  update_milestones, add_blocker, update_blocker, resolve_blocker, create_project, plus `list_app_actions` and
+  `run_app_action` for everything else the screens do (`src/lib/mcp/McpAppActions.ts`): departments, people lists,
+  access, invites, roles, templates, service lines, settings and layout, report options (Owner), hide/delete/restore,
+  reopen, review, dependencies, CSV import, and read_* actions that mirror each admin page's permission check.
+- **App actions run the app's own Server Functions.** The route runs each request inside `ActingViewer.run(...)`;
+  `CurrentViewer.get()` and `AdminGate.adminViewer()` return that person first, so each `src/app/actions/*` function
+  applies its own permission check, validation, history and audit rows. Nothing else sets `ActingViewer`, and outside
+  a connector request it is always empty. Actions that delete, move, remove access or change many records need
+  `confirmed: true` after the person says yes.
+- **Not available through the connector** (`NOT_AVAILABLE`): creating, resetting or showing passwords, AI settings
+  and keys and the AI features, report freeze and email, the year-end PDF, and the person's own password.
 - **Tests:** `tests/McpConnectorOAuth.test.ts` (OAuth), `tests/e2e/claude-connector.spec.ts` (full flow on a local
   server: consent, token, edits, History tag, Viewer refusal, revocation).
 

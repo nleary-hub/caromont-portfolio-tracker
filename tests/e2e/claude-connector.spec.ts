@@ -156,3 +156,57 @@ test("Claude connector: sign in, consent, and edit projects through the app's ow
   expect(blockedRes.status()).toBe(401);
   await query(`DELETE FROM sign_in_block WHERE email = $1`, [ADMIN]);
 });
+
+test("Claude connector: app actions run the app's own Server Functions as the person", async ({ page, request, browser }) => {
+  const token = await connect(page, request, ADMIN);
+  const run = (action: string, input: Record<string, unknown> = {}, confirmed?: boolean) =>
+    call(request, token, "run_app_action", { action, input, ...(confirmed === undefined ? {} : { confirmed }) });
+
+  const listed = (await call(request, token, "list_app_actions")).json();
+  expect(listed.actions.map((a: { name: string }) => a.name)).toEqual(expect.arrayContaining(["read_departments", "save_department", "delete_project", "read_audit_log", "invite_user"]));
+  expect(listed.notAvailable.length).toBeGreaterThan(0);
+  expect(listed.actions.find((a: { name: string }) => a.name === "delete_project").needsConfirmation).toBe(true);
+
+  // Department rename through the Admin > Departments Server Function: same validation and department_history row.
+  const before = (await run("read_departments")).json();
+  const dept = before.active[0];
+  const renamed = await run("save_department", { id: dept.id, name: `${dept.name} Connector`, shortName: dept.shortName });
+  expect(renamed.isError, renamed.text).toBe(false);
+  const hist = await query(`SELECT action, "changedBy", "newValue"->>'name' AS name FROM department_history WHERE "departmentId" = $1 ORDER BY "changedAt" DESC LIMIT 1`, [dept.id]);
+  expect(hist[0]).toMatchObject({ action: "edited", changedBy: ADMIN, name: `${dept.name} Connector` });
+  await run("save_department", { id: dept.id, name: dept.name, shortName: dept.shortName });
+
+  // Unknown input is refused before anything runs.
+  expect((await run("save_department", { name: "" })).isError).toBe(true);
+
+  // A confirmable action is refused until confirmed, then runs; restore brings it back. Both land in the audit log.
+  const p = (await call(request, token, "create_project", { name: "Connector Delete Check", department: dept.name })).json();
+  const unconfirmed = await run("delete_project", { projectId: p.id });
+  expect(unconfirmed.isError).toBe(true);
+  expect(unconfirmed.text).toContain("confirmation");
+  expect((await query(`SELECT "archivedAt" FROM "Project" WHERE id = $1`, [p.id]))[0].archivedAt).toBeNull();
+  const deleted = await run("delete_project", { projectId: p.id }, true);
+  expect(deleted.isError, deleted.text).toBe(false);
+  expect((await query(`SELECT "archivedAt" FROM "Project" WHERE id = $1`, [p.id]))[0].archivedAt).not.toBeNull();
+  expect((await run("restore_project", { projectId: p.id })).isError).toBe(false);
+  expect((await query(`SELECT "archivedAt", "deletedBy" FROM "Project" WHERE id = $1`, [p.id]))[0].archivedAt).toBeNull();
+  const audit = await run("read_audit_log");
+  expect(audit.isError, audit.text).toBe(false);
+  expect(audit.text).toContain("Connector Delete Check");
+
+  // Settings reads come back for an admin.
+  const settings = (await run("read_settings")).json();
+  expect(settings).toHaveProperty("viewSettings");
+
+  // A Viewer is refused admin reads and writes by the app's own checks.
+  await query(`INSERT INTO app_user (email, "createdAt") VALUES ($1, now()) ON CONFLICT DO NOTHING`, [VIEWER]);
+  await query(`INSERT INTO service_line_access (email, "serviceLineId", "grantedBy") VALUES ($1, $2, 'e2e') ON CONFLICT DO NOTHING`, [VIEWER, LINE]);
+  const vc = await browser.newContext();
+  const vt = await connect(await vc.newPage(), vc.request, VIEWER);
+  const vRead = await call(vc.request, vt, "run_app_action", { action: "read_departments" });
+  expect(vRead.isError).toBe(true);
+  const vWrite = await call(vc.request, vt, "run_app_action", { action: "save_department", input: { id: dept.id, name: "Viewer Rename", shortName: dept.shortName } });
+  expect(vWrite.isError).toBe(true);
+  expect((await query(`SELECT name FROM department WHERE id = $1`, [dept.id]))[0].name).toBe(dept.name);
+  await vc.close();
+});

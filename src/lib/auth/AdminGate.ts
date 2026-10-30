@@ -1,5 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
+import { ActingViewer } from "@/lib/auth/ActingViewer";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { SessionAccess } from "@/lib/auth/SessionAccess";
 
@@ -12,6 +13,9 @@ import { SessionAccess } from "@/lib/auth/SessionAccess";
 export class AdminGate {
   /** The signed-in admin as a viewer (for line scope and the admin menu), or null. */
   static async adminViewer(): Promise<(Viewer & { isAdmin: true }) | null> {
+    // A Claude connector request acts for its person (ActingViewer, set only by /api/mcp).
+    const acting = ActingViewer.get();
+    if (acting) return acting.isAdmin ? { email: acting.email, isAdmin: true } : null;
     const session = await auth();
     if (SessionAccess.mustChangePassword(session)) redirect(SessionAccess.SET_PASSWORD_PATH);
     const viewer = SessionAccess.viewer(session);
