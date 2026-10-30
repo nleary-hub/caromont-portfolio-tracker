@@ -1,11 +1,10 @@
-import { randomUUID } from "node:crypto";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { AiKeyShape } from "@/lib/ai/AiKeyShape";
 import { AiKeyProviders } from "@/lib/ai/AiKeyProviders";
 import { AiModelKinds, type AiListedModel, type AiModelKind } from "@/lib/ai/AiModelKinds";
 import { AiRegistry, type AiCategory } from "@/lib/ai/AiRegistry";
-import { AiRegistryCopy, AiRegistryService, type AiRegistryDb, type AiRegistryResult } from "@/lib/services/AiRegistryService";
+import { AiRegistryCopy, AiRegistryService, type AiRegistryDb, type AiRegistryResult, type AiRegistryTx } from "@/lib/services/AiRegistryService";
 
 type Env = Record<string, string | undefined>;
 
@@ -31,6 +30,11 @@ export class AiModelPickerCopy {
  * After a successful pick the screen asks for a price ("Save price" / "Skip, leave unpriced"); `needsPrice` says so.
  */
 export class AiModelPickerService {
+  /** The open transaction, shaped as an AiRegistryDb whose $transaction runs on that same transaction. */
+  private static joined(tx: AiRegistryTx): AiRegistryDb {
+    return new Proxy(tx as object, { get: (t, k) => (k === "$transaction" ? (fn: (x: AiRegistryTx) => Promise<unknown>) => fn(tx) : Reflect.get(t, k)) }) as AiRegistryDb;
+  }
+
   static async pick(
     db: AiRegistryDb,
     actor: Viewer | null,
@@ -56,46 +60,38 @@ export class AiModelPickerService {
     if (!listed) return { ok: false, error: AiModelPickerCopy.NOT_IN_LIST };
     if (!AiModelKinds.fits({ id: listed.id, kind: listed.kind }, need)) return { ok: false, error: AiModelPickerCopy.WRONG_KIND };
 
-    const pair = AiRegistryService.pair(input.provider, input.model);
-    const next = `${category}=${pair}`;
-    for (const v of [pair, next]) if (AiKeyShape.historyValueProblem(v)) return { ok: false, error: AiRegistryCopy.BAD_MODEL_ID };
-    const who = actor.email;
-    const hist = (field: string, action: string, oldValue: string | null, newValue: string | null, at: Date) => ({ id: randomUUID(), field, action, oldValue, newValue, changedAt: at, changedBy: who });
     const key = { provider_model: { provider: input.provider, model: input.model } };
+    // Every write goes through AiRegistryService (its Owner check, AiKeyShape checks and audit rows). Each of its methods
+    // opens db.$transaction; inside ours that call runs on our transaction, so the whole pick commits or rolls back once.
+    // A refusal from any step is thrown so the steps before it roll back too.
+    const step = async (r: Promise<AiRegistryResult>) => {
+      const out = await r;
+      if (!out.ok) throw new PickRefused(out.error);
+    };
     try {
       return await db.$transaction(async (tx) => {
-        const at = now();
+        const inner = AiModelPickerService.joined(tx);
         const there = await tx.aiModelRegistry.findUnique({ where: key });
         let added = false;
         let enabled = false;
         if (!there) {
-          await tx.aiModelRegistry.create({ data: { provider: input.provider, model: input.model, kind: listed.kind ?? need, enabled: true, listedState: "listed", addedAt: at, addedBy: who, updatedAt: at, updatedBy: who } });
-          await tx.aiSettingsHistory.create({ data: hist(AiRegistryService.FIELD_MODEL, "model_added", null, pair, at) });
-          await tx.aiSettingsHistory.create({ data: hist(AiRegistryService.FIELD_MODEL, "model_enabled", pair, pair, at) });
+          await step(AiRegistryService.addModel(inner, actor, { provider: input.provider, model: input.model, kind: listed.kind ?? need }, env));
           added = true;
-          enabled = true;
         } else {
-          if (there.archivedAt !== null) return { ok: false as const, error: AiModelPickerCopy.ARCHIVED };
-          if (!AiModelKinds.fits({ id: there.model, kind: there.kind }, need)) return { ok: false as const, error: AiModelPickerCopy.WRONG_KIND };
-          if (!there.enabled) {
-            await tx.aiModelRegistry.update({ where: key, data: { enabled: true, updatedAt: at, updatedBy: who } });
-            await tx.aiSettingsHistory.create({ data: hist(AiRegistryService.FIELD_MODEL, "model_enabled", pair, pair, at) });
-            enabled = true;
-          }
+          if (there.archivedAt !== null) throw new PickRefused(AiModelPickerCopy.ARCHIVED);
+          if (!AiModelKinds.fits({ id: there.model, kind: there.kind }, need)) throw new PickRefused(AiModelPickerCopy.WRONG_KIND);
+        }
+        if (!there?.enabled) {
+          await step(AiRegistryService.setEnabled(inner, actor, { provider: input.provider, model: input.model, enabled: true }, env));
+          enabled = true;
         }
         const before = await tx.aiCategorySetting.findUnique({ where: { category } });
         // The inherited effort is never dropped silently: it must be allowed on the picked model, or the pick is refused.
         const effort = before?.effort ?? null;
         const allowed = there?.allowedEfforts ?? [];
         if (effort !== null && !allowed.includes(effort)) throw new PickRefused(AiModelPickerCopy.EFFORT_PICK_AGAIN);
-        const oldV = before?.provider && before?.model ? `${category}=${AiRegistryService.pair(before.provider, before.model)}` : null;
-        if (oldV !== next) {
-          await tx.aiCategorySetting.upsert({
-            where: { category },
-            create: { category, provider: input.provider, model: input.model, effort, updatedAt: at, updatedBy: who },
-            update: { provider: input.provider, model: input.model, effort, updatedAt: at, updatedBy: who },
-          });
-          await tx.aiSettingsHistory.create({ data: hist(AiRegistryService.FIELD_CATEGORY, "category_set", oldV, next, at) });
+        if (before?.provider !== input.provider || before?.model !== input.model) {
+          await step(AiRegistryService.setCategory(inner, actor, { category, provider: input.provider, model: input.model, effort }, env));
         }
         const prices = await tx.aiModelPrice.findMany({ where: { provider: input.provider, model: input.model } });
         return { ok: true as const, added, enabled, needsPrice: prices.length === 0 };

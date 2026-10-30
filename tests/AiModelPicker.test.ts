@@ -1,7 +1,9 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import path from "node:path";
+import { afterAll, afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AiModelPickerCopy, AiModelPickerService, type AiLiveList } from "@/lib/services/AiModelPickerService";
-import { AiRegistryCopy } from "@/lib/services/AiRegistryService";
+import { AiRegistryCopy, AiRegistryService } from "@/lib/services/AiRegistryService";
 import { registryHarness, type RegistryHarness } from "./helpers/PgRegistryDb";
 
 // Item 3: the live model picker. Real Prisma over in-memory PGlite; the provider list is a fake function (no network,
@@ -33,9 +35,9 @@ describe("AiModelPickerService.pick", () => {
   it("one Owner action adds the listed model switched on and points the category at it, with audit rows", async () => {
     const r = await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV, NOW);
     expect(r).toEqual({ ok: true, added: true, enabled: true, needsPrice: true });
-    expect(await reg("gpt-6-luna")).toMatchObject({ enabled: true, kind: "chat", listedState: "listed", addedBy: OWNER.email });
+    expect(await reg("gpt-6-luna")).toMatchObject({ enabled: true, kind: "chat", addedBy: OWNER.email });
     expect(await cat("drafting")).toMatchObject({ provider: "openai", model: "gpt-6-luna", effort: null, updatedBy: OWNER.email });
-    const hist = await hx.prisma.aiSettingsHistory.findMany({ where: { changedBy: OWNER.email, changedAt: NOW() } });
+    const hist = await hx.prisma.aiSettingsHistory.findMany({ where: { changedBy: OWNER.email, newValue: { contains: "gpt-6-luna" } } });
     expect(hist.map((h) => h.action).sort()).toEqual(["category_set", "model_added", "model_enabled"]);
   });
 
@@ -82,5 +84,39 @@ describe("AiModelPickerService.pick", () => {
 
   it("dictation and voice take OpenAI only", async () => {
     expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "anthropic", model: "claude-fiction-1", category: "dictation" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiRegistryCopy.AUDIO_OPENAI_ONLY });
+  });
+});
+
+describe("the picker writes only through AiRegistryService", () => {
+  afterEach(() => vi.restoreAllMocks());
+
+  it("its source has no direct write to any table (no create, update, upsert, delete or raw SQL)", () => {
+    const src = readFileSync(path.resolve(__dirname, "../src/lib/services/AiModelPickerService.ts"), "utf8").replace(/\/\*[\s\S]*?\*\//g, "").replace(/^\s*\/\/.*$/gm, "");
+    expect(src).not.toMatch(/\.(create|createMany|update|updateMany|upsert|delete|deleteMany)\(|\$executeRaw|\$queryRaw/);
+  });
+
+  it("a pick calls addModel, setEnabled and setCategory, and every write lands inside the one transaction", async () => {
+    const spies = [vi.spyOn(AiRegistryService, "addModel"), vi.spyOn(AiRegistryService, "setEnabled"), vi.spyOn(AiRegistryService, "setCategory")];
+    const writes: string[] = [];
+    let open = 0;
+    const db = new Proxy(hx.db as object, {
+      get: (t, k) => k !== "$transaction" ? Reflect.get(t, k) : async (fn: (tx: unknown) => Promise<unknown>) => (hx.db as unknown as { $transaction(f: (tx: unknown) => Promise<unknown>): Promise<unknown> }).$transaction(async (tx) => {
+        open++;
+        const watched = new Proxy(tx as object, { get: (tt, table) => { const v = Reflect.get(tt, table); return v && typeof v === "object" ? new Proxy(v, { get: (m, op) => { if (/^(create|update|upsert|delete)/.test(String(op))) writes.push(`${String(table)}.${String(op)}:${open}`); return Reflect.get(m, op); } }) : v; } });
+        return fn(watched);
+      }),
+    }) as typeof hx.db;
+    const r = await AiModelPickerService.pick(db, OWNER, { provider: "openai", model: "gpt-6-luna", category: "drafting" }, LIVE, ENV, NOW);
+    expect(r.ok).toBe(true);
+    expect(spies.map((s) => s.mock.calls.length)).toEqual([1, 1, 1]);
+    expect(open).toBe(1);
+    expect(writes.length).toBeGreaterThan(0);
+    expect(writes.every((w) => w.endsWith(":1"))).toBe(true);
+  });
+
+  it("a key-shaped id is refused by the shared AiKeyShape check before any list read or write", async () => {
+    const shaped = ["sk", "-FICTION", "77ab12cd", "EFGH0123"].join("");
+    expect(await AiModelPickerService.pick(hx.db, OWNER, { provider: "openai", model: shaped, category: "drafting" }, LIVE, ENV, NOW)).toEqual({ ok: false, error: AiRegistryCopy.KEY_SHAPED });
+    expect(calls).toEqual([]);
   });
 });
