@@ -12,24 +12,44 @@ const FIRST_CHECKED = "0072";
 const checked = () => migrationFolders().filter((f) => f >= FIRST_CHECKED);
 const stmts = (f: string) => sqlStatements(readFileSync(path.join(MIGRATIONS_DIR, f, "migration.sql"), "utf8"));
 
+/** Why a migration breaks the rule, or null when it is fine. */
+function txnViolation(s: string[]): string | null {
+  if (!s.some((x) => /^SET LOCAL\b/i.test(x))) return null;
+  if (!/^(BEGIN|START TRANSACTION)$/i.test(s[0] ?? "")) return "SET LOCAL without a top-level BEGIN as the first statement";
+  if (!/^(COMMIT|END)$/i.test(s[s.length - 1] ?? "")) return "explicit transaction not closed by COMMIT as the last statement";
+  return null;
+}
+
+// Synthetic 0071-style fixture (fictional): SET LOCAL with no BEGIN, a DO block whose plpgsql BEGIN is not a transaction.
+const FIXTURE_0071_STYLE = `-- fictional fixture
+SET LOCAL lock_timeout = '5s';
+DO $$ BEGIN PERFORM 1; END $$;
+CREATE TABLE fixture_t (a int);`;
+const FIXTURE_GOOD = `BEGIN;
+SET LOCAL lock_timeout = '5s';
+DO $$ BEGIN PERFORM 1; END $$;
+CREATE TABLE fixture_t (a int);
+COMMIT;`;
+
 describe("migration transaction guard (0072 onward)", () => {
   it("covers at least 0072", () => {
     expect(checked()).toContain("0072_ai_model_list_cache");
   });
 
   it.each(checked())("%s: SET LOCAL only after a top-level BEGIN as the first statement, with COMMIT last", (f) => {
-    const s = stmts(f);
-    if (!s.some((x) => /^SET LOCAL\b/i.test(x))) return;
-    expect(s[0]).toMatch(/^(BEGIN|START TRANSACTION)$/i);
-    expect(s[s.length - 1]).toMatch(/^(COMMIT|END)$/i);
-    const firstSetLocal = s.findIndex((x) => /^SET LOCAL\b/i.test(x));
-    expect(firstSetLocal).toBeGreaterThan(0);
+    expect(txnViolation(stmts(f))).toBeNull();
   });
 
-  it("the guard itself fails a file that uses SET LOCAL without BEGIN (0071-style)", () => {
-    const s = sqlStatements("SET LOCAL lock_timeout = '5s';\nDO $$ BEGIN PERFORM 1; END $$;\nCREATE TABLE t (a int);");
-    expect(s[0]).not.toMatch(/^(BEGIN|START TRANSACTION)$/i);
-    expect(s.some((x) => /^SET LOCAL\b/i.test(x))).toBe(true);
-    expect(s).toHaveLength(3);
+  it("fails a synthetic 0071-style fixture (SET LOCAL without BEGIN)", () => {
+    expect(txnViolation(sqlStatements(FIXTURE_0071_STYLE))).toBe("SET LOCAL without a top-level BEGIN as the first statement");
+  });
+
+  it("fails a fixture that opens BEGIN but never COMMITs", () => {
+    expect(txnViolation(sqlStatements(FIXTURE_GOOD.replace("COMMIT;", "")))).toBe("explicit transaction not closed by COMMIT as the last statement");
+  });
+
+  it("passes the same fixture written as one explicit transaction, and a file with no SET LOCAL", () => {
+    expect(txnViolation(sqlStatements(FIXTURE_GOOD))).toBeNull();
+    expect(txnViolation(sqlStatements("CREATE TABLE fixture_u (a int);"))).toBeNull();
   });
 });

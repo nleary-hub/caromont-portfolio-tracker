@@ -93,6 +93,12 @@ OAuth redirect URI: `https://<domain>/api/auth/callback/google`.
   fails any migration from 0072 onward that uses `SET LOCAL` without a top-level `BEGIN`.
 - Any Prisma upgrade (minor or major, for example 8.x) re-runs the Neon dry-run lock test (expect P3018 with 55P03 at
   about 5 s, nothing left behind) and the forced-failure test before it merges.
+- 25P02 rule (FU-0072-ERRTEXT, open): with an explicit-transaction migration, Prisma 7.10.0 reports a failing statement only
+  as `current transaction is aborted, commands ignored until end of transaction block` (25P02), with no P3018 and no cause in
+  `_prisma_migrations.logs`. 25P02 there means an earlier statement failed and its cause is hidden (lock timeout, CHECK,
+  name clash, anything). Before any `migrate resolve`, check and record `pg_stat_activity`, `pg_locks` and the database
+  logs, and confirm nothing from the migration was applied. Never re-run blind: find and remove the cause first, then
+  P3009, `migrate resolve --rolled-back <name>`, deploy. Re-test on every Prisma upgrade; close when the real SQLSTATE shows.
 - Never edit an applied migration file, not even a comment: Prisma checksums the whole file, so `migrate dev` reports drift.
 - Follow-up FU-0071-TXN (open): `0071_ai_registry_and_fallback` uses `SET LOCAL lock_timeout` with no BEGIN/COMMIT. Its
   header says Prisma 7.10.0 sends the whole file as one implicit transaction; that is true for 0071 only because the parser
