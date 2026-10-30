@@ -95,6 +95,10 @@ Connectors > Add custom connector, URL `https://<domain>/api/mcp`. Code: `src/li
   applies its own permission check, validation, history and audit rows. Nothing else sets `ActingViewer`, and outside
   a connector request it is always empty. Actions that delete, move, remove access or change many records need
   `confirmed: true` after the person says yes.
+- **Two approval levels (OAuth scopes):** `projects` (the project tools) and `admin` (list_app_actions and
+  run_app_action). The consent page spells out the admin tasks when they are requested; a request with no scope gets
+  both. Tokens issued before scopes existed count as `projects` only, so an earlier connection must be removed and
+  added again in Claude (and approved) before it can do admin tasks.
 - **Not available through the connector** (`NOT_AVAILABLE`): creating, resetting or showing passwords, AI settings
   and keys and the AI features, report freeze and email, the year-end PDF, and the person's own password.
 - **Tests:** `tests/McpConnectorOAuth.test.ts` (OAuth), `tests/e2e/claude-connector.spec.ts` (full flow on a local

@@ -1,8 +1,10 @@
+import { revalidatePath } from "next/cache";
 import { z } from "zod";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { ActingViewer } from "@/lib/auth/ActingViewer";
 import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { DepartmentFilter } from "@/lib/domain/DepartmentFilter";
+import { TotalsGridPlacement } from "@/lib/domain/TotalsGridPlacement";
 import { Permissions } from "@/lib/permissions/Permissions";
 import { GRANTABLE_KEYS, PERMISSION_GROUPS } from "@/lib/permissions/PermissionKeys";
 import { RoleEditPolicy } from "@/lib/permissions/RoleEditPolicy";
@@ -617,9 +619,14 @@ export const MCP_APP_ACTIONS: readonly McpAppAction[] = [
     area: "report",
     kind: "write",
     description: "Owner only. Report display options for the active line: departments shown, totals grid placement, the Waiting-on field and whether it shows.",
-    input: z.object({ departments: z.array(z.string()), totalsGrid: z.string(), waitingOnField: z.string().optional(), showWaitingOn: z.boolean().optional() }),
+    input: z.object({ departments: z.array(z.string()), totalsGrid: z.string(), showWaitingOn: z.boolean().optional() }),
     run: async (i) =>
-      reports.saveReportOptions({} as never, form({ departments: i.departments as string[], totalsGrid: String(i.totalsGrid), waitingOnField: (i.waitingOnField as string) ?? undefined, showWaitingOn: Boolean(i.showWaitingOn) })),
+      // The settings form sends a waitingOnField marker with its checkbox; send it whenever showWaitingOn is given, so
+      // false is saved too (a missing marker means "leave as is").
+      reports.saveReportOptions(
+        {} as never,
+        form({ departments: i.departments as string[], totalsGrid: String(i.totalsGrid), ...(i.showWaitingOn === undefined ? {} : { waitingOnField: "1", showWaitingOn: Boolean(i.showWaitingOn) }) }),
+      ),
   }),
   A({
     name: "save_report_colors",
@@ -636,8 +643,15 @@ export const MCP_APP_ACTIONS: readonly McpAppAction[] = [
     description: "Owner only. Show or hide the key page in the report, with the totals grid placement.",
     input: z.object({ showKeyPage: z.boolean(), totalsGrid: z.string() }),
     run: async (i) => {
-      await reports.setShowKeyPageForm(form({ showKeyPage: Boolean(i.showKeyPage), totalsGrid: String(i.totalsGrid) }));
-      return { ok: true };
+      // reports.setShowKeyPageForm returns nothing and swallows failures, so the connector saves through the same service
+      // call with the same Owner check and returns what was stored.
+      const v = viewer();
+      if (!OwnerPolicy.isOwner(v)) throw new McpAppActionError("Only the Owner can change report options.");
+      const s = await ServiceLineAccess.activeFor(v);
+      const saved = await ReportOptionsService.update({ showKeyPage: Boolean(i.showKeyPage), totalsGrid: TotalsGridPlacement.normalize(String(i.totalsGrid)) }, v, undefined, s);
+      revalidatePath("/reports");
+      revalidatePath("/admin/settings");
+      return { ok: true, showKeyPage: saved.showKeyPage, totalsGrid: saved.totalsGrid };
     },
   }),
 

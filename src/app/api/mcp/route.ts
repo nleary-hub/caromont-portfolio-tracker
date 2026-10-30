@@ -31,7 +31,7 @@ class McpRoute {
     const viewer = await McpViewer.forEmail(grant.e).catch(() => null);
     if (!viewer) return McpRoute.unauthorized(origin, "invalid_token");
 
-    const server = McpServerFactory.create(viewer);
+    const server = McpServerFactory.create(viewer, McpOAuth.scopesOf(grant));
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
     try {
       await server.connect(transport);

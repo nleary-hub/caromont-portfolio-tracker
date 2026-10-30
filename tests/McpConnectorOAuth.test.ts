@@ -148,6 +148,30 @@ describe("McpOAuth authorize and token", () => {
     await expect(McpOAuth.token({ grant_type: "authorization_code", code, code_verifier: v, client_id: client.client_id }, null, KEY, allowed, later)).rejects.toMatchObject({ error: "invalid_grant" });
   });
 
+  it("grants projects and admin by default, projects only when asked, and refuses unknown scopes", async () => {
+    expect(McpOAuth.parseScopes(undefined)).toEqual(["projects", "admin"]);
+    expect(McpOAuth.parseScopes("projects")).toEqual(["projects"]);
+    expect(McpOAuth.parseScopes("admin")).toEqual(["projects", "admin"]);
+    expect(McpOAuth.parseScopes("everything")).toBeNull();
+    const c = register();
+    const v = verifier();
+    const bad = authorize(c.client_id, v, { scope: "everything" });
+    expect("redirect" in bad && new URL(bad.redirect).searchParams.get("error")).toBe("invalid_scope");
+    const a = authorize(c.client_id, v, { scope: "projects" });
+    if (!a.ok) throw new Error("authorize failed");
+    const code = new URL(McpOAuth.approve(a.request, "jordan.pike@example.org", KEY, ORIGIN)).searchParams.get("code")!;
+    const t = await McpOAuth.token({ grant_type: "authorization_code", code, code_verifier: v, client_id: c.client_id }, null, KEY, allowed);
+    expect(t.scope).toBe("projects");
+    expect(McpOAuth.scopesOf(McpOAuth.bearer(`Bearer ${t.access_token}`, KEY)!)).toEqual(["projects"]);
+    const r = await McpOAuth.token({ grant_type: "refresh_token", refresh_token: t.refresh_token, client_id: c.client_id }, null, KEY, allowed);
+    expect(r.scope).toBe("projects");
+  });
+
+  it("treats tokens issued before scopes existed as projects only", () => {
+    const legacy = McpTokens.sign("access", { e: "a@example.org", c: "x", exp: McpTokens.nowS() + 60, jti: "j" }, KEY);
+    expect(McpOAuth.scopesOf(McpOAuth.bearer(`Bearer ${legacy}`, KEY)!)).toEqual(["projects"]);
+  });
+
   it("can be switched off", () => {
     expect(McpOAuth.enabled({})).toBe(true);
     expect(McpOAuth.enabled({ MCP_CONNECTOR_DISABLED: "true" })).toBe(false);

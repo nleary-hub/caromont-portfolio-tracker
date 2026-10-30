@@ -45,6 +45,13 @@ export default async function ConnectorAuthorizePage({ searchParams }: { searchP
               It will be able to read and change projects you can change, with your role and service line access. Its edits show in each project&apos;s
               History as &ldquo;Claude connector&rdquo;. You can disconnect it in Claude at any time; an admin turning your sign-in off stops it too.
             </p>
+            {checked.request.scopes.includes("admin") && (
+              <p className="type-caption text-muted" data-testid="connector-admin-scope">
+                <strong>Admin tasks:</strong> it will also be able to do what your role allows on the admin screens: departments and name lists, people,
+                sign-in on or off, service line and department access, roles and permissions, templates, service lines, settings and layout, report options,
+                hiding, deleting and restoring projects, and CSV import. Big changes ask you first. It can&apos;t see or set passwords or AI keys.
+              </p>
+            )}
           </div>
           {Object.entries(params)
             .filter(([k]) => ["response_type", "client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "scope", "resource"].includes(k))

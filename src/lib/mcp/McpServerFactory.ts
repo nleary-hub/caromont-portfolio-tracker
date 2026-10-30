@@ -27,7 +27,12 @@ export class McpServerFactory {
     "from the person first, then pass confirmed: true.",
   ].join(" ");
 
-  static create(viewer: GateUser): McpServer {
+  /** Said when a connection approved before admin actions existed (projects scope only) asks for one. */
+  static readonly NEEDS_ADMIN_SCOPE =
+    "This connection was approved for projects only. To let Claude do admin tasks too, remove the connector in Claude, add it again, and approve it on the tracker's Allow access page (it lists the admin tasks).";
+
+  static create(viewer: GateUser, scopes: readonly string[] = ["projects"]): McpServer {
+    const admin = scopes.includes("admin");
     const server = new McpServer({ name: "service-line-portfolio", version: "1.0.0" }, { instructions: McpServerFactory.INSTRUCTIONS });
 
     const run = async (serviceLine: string | undefined, fn: (c: McpToolContext) => Promise<unknown>): Promise<CallToolResult> => {
@@ -254,6 +259,7 @@ export class McpServerFactory {
         annotations: READ,
       },
       async ({ area }) => {
+        if (!admin) return { isError: true, content: [{ type: "text", text: McpServerFactory.NEEDS_ADMIN_SCOPE }] };
         const want = area?.trim().toLowerCase();
         const actions = MCP_APP_ACTIONS.filter((a) => !want || a.area === want).map((a) => ({
           name: a.name,
@@ -277,6 +283,7 @@ export class McpServerFactory {
         annotations: { readOnlyHint: false, destructiveHint: true, idempotentHint: false, openWorldHint: false },
       },
       async ({ action, input, confirmed }) => {
+        if (!admin) return { isError: true, content: [{ type: "text", text: McpServerFactory.NEEDS_ADMIN_SCOPE }] };
         const a = McpAppActions.find(action);
         if (!a) return { isError: true, content: [{ type: "text", text: `Unknown action "${action}". Call list_app_actions to see what is available.` }] };
         if (a.confirm && confirmed !== true) {
