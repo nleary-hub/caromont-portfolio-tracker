@@ -432,6 +432,26 @@ describe("on a real migrated database (PGlite): the refresh writes the registry 
     expect(JSON.stringify((await h.pg.query(`SELECT * FROM ai_model_list_cache`)).rows)).not.toContain(CANARY);
   });
 
+  it("PR 110 review fix: a registry transaction failure on a real database writes registry_failed (passes the 0072 CHECK), keeps fetchedAt null and is not 'refreshed'", async () => {
+    vi.restoreAllMocks();
+    const failing = new Proxy(h.prisma as object, { get(t, k) { if (k === "$transaction") return async () => { throw new Error("tx failed"); }; const v = Reflect.get(t, k); return typeof v === "function" ? v.bind(t) : v; } }) as unknown as AiRegistryDb;
+    const d: AiModelListDeps = {
+      db: h.prisma as unknown as AiModelListDeps["db"],
+      registry: failing,
+      savedProviders: async () => new Set<AiFeatureProvider>(["xai"]),
+      secret: async () => ({ apiKey: CANARY, baseUrl: null }),
+      fetch: async () => res(200, list("demo-chat-1")),
+      env: ENV,
+      now: () => new Date("2026-10-30T10:05:00Z"),
+    };
+    const quiet = vi.spyOn(console, "error").mockImplementation(() => {});
+    const out = await AiModelListRefreshService.runCron(d);
+    quiet.mockRestore();
+    expect(out).toEqual([expect.objectContaining({ provider: "xai", result: "failed", error: "registry_failed" })]);
+    const row = (await h.pg.query<{ lastError: string; stale: boolean; fetchedAt: Date | null; models: unknown }>(`SELECT "lastError", stale, "fetchedAt", models FROM ai_model_list_cache WHERE provider = 'xai'`)).rows[0];
+    expect(row).toMatchObject({ lastError: "registry_failed", stale: true, fetchedAt: null, models: [] });
+  });
+
   it("applyListedStates refuses another admin and a made-up system actor", async () => {
     vi.restoreAllMocks();
     expect(await AiRegistryService.applyListedStates(h.db, ADMIN, { provider: "openai", listedIds: [] }, ENV)).toMatchObject({ ok: false });

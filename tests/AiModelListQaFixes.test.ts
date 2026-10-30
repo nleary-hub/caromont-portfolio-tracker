@@ -130,8 +130,93 @@ describe("run deadline (QA FIX 4)", () => {
 
   it("the default run deadline is 45 s, below the route's 60 s maxDuration", async () => {
     expect(AiModelListRefreshService.RUN_DEADLINE_MS).toBe(45_000);
-    const route = (await import("node:fs")).readFileSync(require("node:path").resolve(__dirname, "../src/app/api/cron/ai-model-lists/route.ts"), "utf8");
+    const route = (await import("node:fs")).readFileSync((await import("node:path")).resolve(__dirname, "../src/app/api/cron/ai-model-lists/route.ts"), "utf8");
     expect(route).toMatch(/maxDuration = 60;/);
+  });
+});
+
+describe("PR 110 review fixes", () => {
+  const openaiOnly = { savedProviders: async () => new Set<AiFeatureProvider>(["openai"]), secret: async () => ({ apiKey: CANARY, baseUrl: null }) };
+  const goodRow = (): AiModelListCacheRow => ({ provider: "openai", models: [{ id: "demo-chat-0" }], fetchedAt: new Date("2026-10-28T10:00:00Z"), lastAttemptAt: new Date("2026-10-28T10:00:00Z"), lastError: null, stale: false, lastFailureLoggedAt: null });
+
+  it("a failed registry save is recorded as a failure: old list kept, stale, registry_failed, never 'refreshed'", async () => {
+    vi.spyOn(AiRegistryService, "applyListedStates").mockResolvedValue({ ok: false, error: "save failed" });
+    const m = mem();
+    m.rows.set("openai", goodRow());
+    const d = deps(openaiOnly, m);
+    const out = await AiModelListRefreshService.runCron(d);
+    expect(out).toEqual([expect.objectContaining({ provider: "openai", result: "failed", error: "registry_failed" })]);
+    const row = m.rows.get("openai")!;
+    expect(row).toMatchObject({ lastError: "registry_failed", stale: true, models: [{ id: "demo-chat-0" }] });
+    expect(row.fetchedAt).toEqual(new Date("2026-10-28T10:00:00Z"));
+    expect(row.lastAttemptAt).toBeInstanceOf(Date);
+    expect(m.history.map((h) => h.action)).toEqual(["models_refresh_failed"]);
+    expect(m.history[0].newValue).toBe("openai: registry_failed");
+  });
+
+  it("a registry save that throws is recorded the same way", async () => {
+    vi.spyOn(AiRegistryService, "applyListedStates").mockRejectedValue(new Error("connection lost"));
+    const m = mem();
+    m.rows.set("openai", goodRow());
+    const out = await AiModelListRefreshService.runCron(deps(openaiOnly, m));
+    expect(out).toEqual([expect.objectContaining({ result: "failed", error: "registry_failed" })]);
+    expect(m.rows.get("openai")).toMatchObject({ lastError: "registry_failed", stale: true, models: [{ id: "demo-chat-0" }] });
+  });
+
+  it("after a registry failure, Refresh lists retries a minute later and a good save then marks the cache fresh", async () => {
+    const apply = vi.spyOn(AiRegistryService, "applyListedStates").mockResolvedValueOnce({ ok: false, error: "save failed" }).mockResolvedValue({ ok: true, changed: 1 });
+    const m = mem();
+    m.rows.set("openai", goodRow());
+    const d = deps(openaiOnly, m);
+    expect((await AiModelListRefreshService.runCron(d))[0]).toMatchObject({ result: "failed", error: "registry_failed" });
+    expect(await AiModelListRefreshService.manual(d, OWNER, "openai")).toMatchObject({ result: "refreshed", count: 1 });
+    expect(apply).toHaveBeenCalledTimes(2);
+    expect(m.rows.get("openai")).toMatchObject({ lastError: null, stale: false, models: [{ id: "demo-chat-1" }] });
+  });
+
+  it("on success the registry is written before the cache is marked fresh", async () => {
+    const order: string[] = [];
+    vi.spyOn(AiRegistryService, "applyListedStates").mockImplementation(async () => { order.push("registry"); return { ok: true, changed: 0 }; });
+    const m = mem();
+    const upsert = m.db.aiModelListCache.upsert;
+    m.db.aiModelListCache.upsert = async (a) => { order.push("cache"); return upsert(a); };
+    expect((await AiModelListRefreshService.runCron(deps(openaiOnly, m)))[0]).toMatchObject({ result: "refreshed" });
+    expect(order).toEqual(["registry", "cache"]);
+  });
+
+  it("a DNS lookup that never answers is cut at the run deadline and recorded as a timeout; no call is made", async () => {
+    const stall: AiHostLookup = () => new Promise(() => {});
+    const fetch = vi.fn<AiListFetch>(async () => ok());
+    const d = deps({ lookup: stall, fetch, deadlineMs: 120, timeoutMs: 15_000 });
+    const started = Date.now();
+    const out = await AiModelListRefreshService.runCron(d);
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(out).toEqual([expect.objectContaining({ provider: "other", result: "failed", error: "timeout", calls: 0 })]);
+    expect(fetch).not.toHaveBeenCalled();
+    expect(d.m.rows.get("other")).toMatchObject({ lastError: "timeout", stale: true });
+    expect(d.m.rows.get("other")!.lastAttemptAt).toBeInstanceOf(Date);
+    expect(d.m.history.map((h) => h.action)).toEqual(["models_refresh_failed"]);
+  });
+
+  it("a stalled DNS lookup on Refresh lists is cut at the per-call timeout", async () => {
+    const stall: AiHostLookup = () => new Promise(() => {});
+    const fetch = vi.fn<AiListFetch>(async () => ok());
+    const d = deps({ lookup: stall, fetch, timeoutMs: 80 });
+    const started = Date.now();
+    expect(await AiModelListRefreshService.manual(d, OWNER, "other")).toMatchObject({ result: "failed", error: "timeout" });
+    expect(Date.now() - started).toBeLessThan(5_000);
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("a slow but finished DNS answer still leaves the call inside the same run budget", async () => {
+    const slow: AiHostLookup = () => new Promise((r) => setTimeout(() => r([{ address: "203.0.113.10", family: 4 }]), 60));
+    const fetch = vi.fn<AiListFetch>(async (_u, init) => {
+      expect(init.signal.aborted).toBe(false);
+      return ok();
+    });
+    const d = deps({ lookup: slow, fetch, deadlineMs: 2_000, pin: () => ({}) });
+    expect((await AiModelListRefreshService.runCron(d))[0]).toMatchObject({ result: "refreshed" });
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 });
 

@@ -146,20 +146,25 @@ export class AiModelListRefreshService {
     let error: AiListError | null = got.ok ? null : got.error;
     if (got.ok && got.models.length === 0) error = previous.length > 0 ? "empty_after_list" : "no_models";
     if (error || !got.ok) return AiModelListRefreshService.fail(deps, provider, row, error ?? "network", got.calls, now, by);
+    const before = new Set(previous.map((m) => m.id));
+    const after = new Set(got.models.map((m) => m.id));
+    // Review fix (PR 110): the registry's listedState is written BEFORE the cache is marked fresh. If that write fails, the
+    // run is recorded as a failure (stale, lastError registry_failed, old list kept), never as a success. Without this the
+    // cache said "fresh" while the registry kept old states, and the daily job then skipped the provider for 20 hours.
+    // A later page open (10 min) or Refresh lists (60 s) retries; the registry write is idempotent.
+    const actor = by === AiModelListRefreshService.SYSTEM_ACTOR ? AiModelListRefreshService.SYSTEM_ACTOR : ({ email: by, isAdmin: true } as Viewer);
+    const applied = await AiRegistryService.applyListedStates(deps.registry, actor, { provider, listedIds: [...after] }, deps.env).catch(() => ({ ok: false as const }));
+    if (!applied.ok) return AiModelListRefreshService.fail(deps, provider, row, "registry_failed", got.calls, now, by);
     await deps.db.aiModelListCache.upsert({
       where: { provider },
       create: { provider, models: got.models, fetchedAt: now, lastAttemptAt: now, lastError: null, stale: false },
       update: { models: got.models, fetchedAt: now, lastAttemptAt: now, lastError: null, stale: false },
     });
-    const before = new Set(previous.map((m) => m.id));
-    const after = new Set(got.models.map((m) => m.id));
     const added = [...after].filter((id) => !before.has(id)).length;
     const removed = [...before].filter((id) => !after.has(id)).length;
     if (!row?.fetchedAt || added || removed) {
       await deps.db.aiSettingsHistory.create({ data: { id: randomUUID(), field: AiModelListRefreshService.FIELD, action: "models_refreshed", oldValue: row?.fetchedAt ? `${provider}: ${before.size} models` : null, newValue: `${provider}: ${after.size} models (+${added} -${removed}) by ${trigger}`, changedAt: now, changedBy: by } });
     }
-    const actor = by === AiModelListRefreshService.SYSTEM_ACTOR ? AiModelListRefreshService.SYSTEM_ACTOR : ({ email: by, isAdmin: true } as Viewer);
-    await AiRegistryService.applyListedStates(deps.registry, actor, { provider, listedIds: [...after] }, deps.env);
     console.info("model-list refresh", provider, trigger, "calls", got.calls, "models", after.size, "dropped", got.dropped);
     return { provider, result: "refreshed", count: after.size, dropped: got.dropped, calls: got.calls };
   }
@@ -185,19 +190,25 @@ export class AiModelListRefreshService {
     let dropped = 0;
     let calls = 0;
     let after: string | null = null;
+    // One budget for the whole fetch (every page, every DNS lookup); a cron or page-open run shares its run deadline.
+    const deadlineAt = deps.deadlineAt ?? Date.now() + (deps.deadlineMs ?? AiModelListRefreshService.RUN_DEADLINE_MS);
     for (;;) {
       const url = AiModelListGate.pageUrl(provider, secret.baseUrl ?? null, after);
       if (!url) return { ok: false, error: "bad_base_url", calls };
       if (provider === "anthropic" && calls >= AiModelListGate.ANTHROPIC_PAGE_MAX) return { ok: false, error: "page_cap", calls };
       // QA FIX 2: the 'other' host is checked after DNS before every call (a rebind between save and call is caught here).
       // Resolved once; the connection is pinned to the validated address, so a later DNS answer is never used.
+      // Review fix (PR 110): the DNS lookup counts against the same budget as the call. A stalled lookup is cut at the
+      // smaller of the per-call timeout and what is left of the run, and recorded as a timeout like any other.
       let dispatcher: unknown;
       if (provider === "other") {
-        const host = await AiHostGuard.resolve(url, deps.lookup ?? AiHostGuard.systemLookup);
+        const dnsLeft = deadlineAt - Date.now();
+        if (dnsLeft <= 0) return { ok: false, error: "timeout", calls };
+        const host = await AiModelListRefreshService.within(AiHostGuard.resolve(url, deps.lookup ?? AiHostGuard.systemLookup), Math.min(dnsLeft, deps.timeoutMs ?? AiModelListRefreshService.TIMEOUT_MS));
+        if (host === "timeout") return { ok: false, error: "timeout", calls };
         if (!host.ok) return { ok: false, error: host.error, calls };
         dispatcher = (deps.pin ?? AiPinnedFetch.dispatcher)(host.hostname, host.address, host.family);
       }
-      const deadlineAt = deps.deadlineAt ?? Date.now() + (deps.deadlineMs ?? AiModelListRefreshService.RUN_DEADLINE_MS);
       const left = deadlineAt - Date.now();
       if (left <= 0) return { ok: false, error: "timeout", calls };
       calls += 1;
@@ -233,5 +244,16 @@ export class AiModelListRefreshService {
     const merged = AiModelListGate.merge(pages);
     if (merged === "too_many") return { ok: false, error: "too_many", calls };
     return { ok: true, models: merged, dropped, calls };
+  }
+
+  /** Resolves to the promise's value, or "timeout" after ms. The timer is cleared either way; the promise is not cancelled. */
+  private static async within<T>(p: Promise<T>, ms: number): Promise<T | "timeout"> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const late = new Promise<"timeout">((resolve) => { timer = setTimeout(() => resolve("timeout"), ms); });
+    try {
+      return await Promise.race([p, late]);
+    } finally {
+      clearTimeout(timer);
+    }
   }
 }

@@ -26,7 +26,8 @@ export type AiListError =
   | "empty_after_list"
   | "no_models"
   | "blocked_host"
-  | "dns_failed";
+  | "dns_failed"
+  | "registry_failed";
 
 /** A response as the gate reads it. A real fetch Response fits. */
 export interface AiListResponse {
