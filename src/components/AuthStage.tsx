@@ -1,5 +1,6 @@
 import { Fragment, type ReactNode } from "react";
 import { SignInBackdrop } from "@/components/SignInBackdrop";
+import { BrandLogo } from "@/components/brand/BrandLogo";
 
 const HEADLINE = ["Service", "Line", "Portfolio", "Tracker"];
 
@@ -25,6 +26,10 @@ export function AuthStage({ state, children }: { state?: AuthStageState; childre
             </Fragment>
           ))}
         </h1>
+        {/* Today Line lockup, centred above the form, directly on the surface (no tile). */}
+        <div className="si-brand" data-testid="signin-brand">
+          <BrandLogo kind="lockup" height={44} />
+        </div>
         <div className="si-card-shell">
           <div className="si-card">{children}</div>
         </div>
