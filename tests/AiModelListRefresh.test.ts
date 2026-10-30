@@ -208,6 +208,17 @@ describe("failure behaviour (test 5 and QA 1, 3)", () => {
     });
   }
 
+  it("1 MB cap for openai, anthropic and xai; 4 MB for 'other' (QA limits)", async () => {
+    expect(AiModelListGate.bodyMax("openai")).toBe(1_048_576);
+    expect(AiModelListGate.bodyMax("anthropic")).toBe(1_048_576);
+    expect(AiModelListGate.bodyMax("xai")).toBe(1_048_576);
+    expect(AiModelListGate.bodyMax("other")).toBe(4 * 1_048_576);
+    expect([AiModelListGate.ITEM_MAX, AiModelListGate.ID_MAX, AiModelListGate.DEPTH_MAX, AiModelListGate.ANTHROPIC_PAGE_MAX, AiModelListRefreshService.TIMEOUT_MS, AiModelListRefreshService.RUN_DEADLINE_MS]).toEqual([2000, 100, 16, 10, 15_000, 45_000]);
+    const two = "x".repeat(2 * 1_048_576);
+    expect(await AiModelListGate.readCapped(res(200, two), AiModelListGate.bodyMax("openai"))).toBe("too_large");
+    expect(await AiModelListGate.readCapped(res(200, two), AiModelListGate.bodyMax("other"))).toBe(two);
+  });
+
   it("streaming body past 1 MB is cut off", async () => {
     const chunk = new Uint8Array(512 * 1024);
     let sent = 0;
@@ -287,22 +298,33 @@ describe("no key in logs, history or cache (test 10)", () => {
   });
 });
 
-describe("raw-id entry points accept only ids in the cached list (3.5)", () => {
-  it("refuses an id not in the cache, accepts one in it", async () => {
-    const db = { aiModelListCache: { findUnique: async () => ({ models: [{ id: "demo-chat-1", kind: "chat" }] }) } };
+describe("raw-id entry points: the list check guards add and enable only (3.5, QA FIX 1)", () => {
+  const fetched = new Date("2026-10-29T10:00:00Z");
+  it("refuses an id not in a fetched list, accepts one in it", async () => {
+    const db = { aiModelListCache: { findUnique: async () => ({ models: [{ id: "demo-chat-1", kind: "chat" }], fetchedAt: fetched }) } };
     expect(await AiModelListCheck.refusal(db, "openai", "demo-chat-1")).toBeNull();
     expect(await AiModelListCheck.refusal(db, "openai", "demo-chat-9")).toBe(AiModelListCheck.NOT_IN_LIST);
-    const empty = { aiModelListCache: { findUnique: async () => null } };
-    expect(await AiModelListCheck.refusal(empty, "openai", "demo-chat-1")).toBe(AiModelListCheck.NOT_IN_LIST);
   });
 
-  it("all five AiModelService entry points call the check", () => {
+  it("a missing cache row or a row never fetched means no check (the Owner is never locked out)", async () => {
+    const none = { aiModelListCache: { findUnique: async () => null } };
+    expect(await AiModelListCheck.inList(none, "openai", "demo-chat-1")).toBeNull();
+    expect(await AiModelListCheck.refusal(none, "openai", "demo-chat-1")).toBeNull();
+    const neverFetched = { aiModelListCache: { findUnique: async () => ({ models: [], fetchedAt: null }) } };
+    expect(await AiModelListCheck.inList(neverFetched, "openai", "demo-chat-1")).toBeNull();
+    const failedOnly = { aiModelListCache: { findUnique: async () => ({ models: [] }) } };
+    expect(await AiModelListCheck.refusal(failedOnly, "anthropic", "demo-chat-1")).toBeNull();
+  });
+
+  it("only add and setEnabled call the check; setPrices and both assignment paths never do", () => {
     const src = readFileSync(path.join(root, "src/lib/services/AiModelService.ts"), "utf8");
-    for (const fn of ["add", "setEnabled", "setPrices", "setFeatureModel", "setFeatureProviderModel"]) {
+    const body = (fn: string) => {
       const start = src.indexOf(`static async ${fn}(`);
-      const end = src.indexOf("\n  static ", start + 10);
-      expect(src.slice(start, end), fn).toContain("AiModelListCheck.refusal(");
-    }
+      return src.slice(start, src.indexOf("\n  static ", start + 10));
+    };
+    for (const fn of ["add", "setEnabled"]) expect(body(fn), fn).toContain("AiModelListCheck.refusal(");
+    for (const fn of ["setPrices", "setFeatureModel", "setFeatureProviderModel"]) expect(body(fn), fn).not.toContain("AiModelListCheck");
+    expect(src.match(/AiModelListCheck\.refusal\(/g)).toHaveLength(2);
   });
 });
 

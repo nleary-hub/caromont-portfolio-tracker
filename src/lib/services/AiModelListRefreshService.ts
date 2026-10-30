@@ -2,6 +2,7 @@ import { randomUUID } from "node:crypto";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { AiFeatureProviders, type AiFeatureProvider, type AiProviderSecret } from "@/lib/ai/AiFeatureProviders";
+import { AiHostGuard, type AiHostLookup } from "@/lib/ai/AiHostGuard";
 import { AiModelListGate, type AiCachedModel, type AiListError, type AiListResponse } from "@/lib/ai/AiModelListGate";
 import { AiRegistryService, type AiRegistryDb } from "@/lib/services/AiRegistryService";
 
@@ -42,6 +43,10 @@ export interface AiModelListDeps {
   env?: Env;
   now?: () => Date;
   timeoutMs?: number;
+  /** Total budget of one run (cron, page open), shared by every provider; default RUN_DEADLINE_MS. */
+  deadlineMs?: number;
+  /** DNS for the 'other' host check. Tests inject it; default is the system resolver. */
+  lookup?: AiHostLookup;
 }
 
 export type AiListOutcome =
@@ -66,6 +71,8 @@ export class AiModelListRefreshService {
   static readonly FAIL_LOG_MS = 24 * 3_600_000;
   static readonly OLD_LIST_MS = 26 * 3_600_000;
   static readonly TIMEOUT_MS = 15_000;
+  /** QA FIX 4: a whole run stops calling at 45 s so the attempt and failure are written before the route's 60 s kill. */
+  static readonly RUN_DEADLINE_MS = 45_000;
 
   private static inflight = new Map<AiFeatureProvider, Promise<AiListOutcome>>();
 
@@ -111,7 +118,8 @@ export class AiModelListRefreshService {
   private static async all(deps: AiModelListDeps, trigger: AiListTrigger, by: string): Promise<AiListOutcome[]> {
     if (!AiModelListRefreshService.enabled(deps.env)) return AiFeatureProviders.ALL.map((provider) => ({ provider, result: "skipped" as const, reason: "gate_off" as const }));
     const saved = await deps.savedProviders().catch(() => new Set<AiFeatureProvider>());
-    return Promise.all([...saved].map((p) => AiModelListRefreshService.refresh(deps, p, trigger, by)));
+    const runDeps = { ...deps, deadlineAt: Date.now() + (deps.deadlineMs ?? AiModelListRefreshService.RUN_DEADLINE_MS) };
+    return Promise.all([...saved].map((p) => AiModelListRefreshService.refresh(runDeps, p, trigger, by)));
   }
 
   /** One provider, one trigger. Single flight: a second caller while a fetch runs gets the same outcome. */
@@ -167,7 +175,7 @@ export class AiModelListRefreshService {
   }
 
   /** Fetch every page (Anthropic pages; the others are one call). No retries. */
-  private static async fetchAll(deps: AiModelListDeps, provider: AiFeatureProvider, secret: AiProviderSecret): Promise<{ ok: true; models: AiCachedModel[]; dropped: number; calls: number } | { ok: false; error: AiListError; calls: number }> {
+  private static async fetchAll(deps: AiModelListDeps & { deadlineAt?: number }, provider: AiFeatureProvider, secret: AiProviderSecret): Promise<{ ok: true; models: AiCachedModel[]; dropped: number; calls: number } | { ok: false; error: AiListError; calls: number }> {
     const req = AiFeatureProviders.modelsRequest(provider, secret);
     if (!req) return { ok: false, error: provider === "other" ? "bad_base_url" : "no_key", calls: 0 };
     const pages: AiCachedModel[][] = [];
@@ -178,10 +186,18 @@ export class AiModelListRefreshService {
       const url = AiModelListGate.pageUrl(provider, secret.baseUrl ?? null, after);
       if (!url) return { ok: false, error: "bad_base_url", calls };
       if (provider === "anthropic" && calls >= AiModelListGate.ANTHROPIC_PAGE_MAX) return { ok: false, error: "page_cap", calls };
+      // QA FIX 2: the 'other' host is checked after DNS before every call (a rebind between save and call is caught here).
+      if (provider === "other") {
+        const host = await AiHostGuard.check(url, deps.lookup ?? AiHostGuard.systemLookup);
+        if (host !== "ok") return { ok: false, error: host, calls };
+      }
+      const deadlineAt = deps.deadlineAt ?? Date.now() + (deps.deadlineMs ?? AiModelListRefreshService.RUN_DEADLINE_MS);
+      const left = deadlineAt - Date.now();
+      if (left <= 0) return { ok: false, error: "timeout", calls };
       calls += 1;
       let res: AiListResponse;
       try {
-        res = await deps.fetch(url, { method: "GET", headers: req.headers, redirect: "manual", signal: AbortSignal.timeout(deps.timeoutMs ?? AiModelListRefreshService.TIMEOUT_MS) });
+        res = await deps.fetch(url, { method: "GET", headers: req.headers, redirect: "manual", signal: AbortSignal.timeout(Math.min(left, deps.timeoutMs ?? AiModelListRefreshService.TIMEOUT_MS)) });
       } catch (e) {
         const name = (e as Error)?.name;
         return { ok: false, error: name === "TimeoutError" || name === "AbortError" ? "timeout" : "network", calls };
@@ -190,9 +206,10 @@ export class AiModelListRefreshService {
       if (res.status === 0 || !res.ok) return { ok: false, error: res.status === 0 ? "redirect" : "http_error", calls };
       let text: string | "too_large";
       try {
-        text = await AiModelListGate.readCapped(res);
-      } catch {
-        return { ok: false, error: "network", calls };
+        text = await AiModelListGate.readCapped(res, AiModelListGate.bodyMax(provider));
+      } catch (e) {
+        const name = (e as Error)?.name;
+        return { ok: false, error: name === "TimeoutError" || name === "AbortError" ? "timeout" : "network", calls };
       }
       if (text === "too_large") return { ok: false, error: "too_large", calls };
       const parsed = AiModelListGate.parseBody(text);

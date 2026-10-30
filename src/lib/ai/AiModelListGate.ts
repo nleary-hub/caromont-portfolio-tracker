@@ -24,7 +24,9 @@ export type AiListError =
   | "too_many"
   | "page_cap"
   | "empty_after_list"
-  | "no_models";
+  | "no_models"
+  | "blocked_host"
+  | "dns_failed";
 
 /** A response as the gate reads it. A real fetch Response fits. */
 export interface AiListResponse {
@@ -41,7 +43,13 @@ export interface AiListResponse {
  * text it refused, only counts and short codes.
  */
 export class AiModelListGate {
+  /** QA limits (Oct 29): 1 MB for openai, anthropic and xai; 4 MB for 'other'. The stored array keeps the 1 MB DB CHECK. */
   static readonly BODY_MAX = 1_048_576;
+  static readonly BODY_MAX_OTHER = 4 * 1_048_576;
+
+  static bodyMax(provider: AiFeatureProvider): number {
+    return provider === "other" ? AiModelListGate.BODY_MAX_OTHER : AiModelListGate.BODY_MAX;
+  }
   static readonly ITEM_MAX = 2000;
   static readonly ID_MAX = 100;
   static readonly DEPTH_MAX = 16;
@@ -73,8 +81,7 @@ export class AiModelListGate {
   }
 
   /** The body as text, or "too_large" past BODY_MAX bytes (the stream is cancelled there). */
-  static async readCapped(res: AiListResponse): Promise<string | "too_large"> {
-    const cap = AiModelListGate.BODY_MAX;
+  static async readCapped(res: AiListResponse, cap: number = AiModelListGate.BODY_MAX): Promise<string | "too_large"> {
     if (res.body && typeof res.body.getReader === "function") {
       const reader = res.body.getReader();
       const parts: Uint8Array[] = [];

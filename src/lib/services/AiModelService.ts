@@ -434,8 +434,6 @@ export class AiModelService {
     return db.$transaction(async (tx) => {
       const row = id ? await tx.aiModel.findUnique({ where: { id } }) : null;
       if (!row || !id) return { ok: false, error: AiCopy.MODEL_ID_INVALID };
-      const notListed = await AiModelListCheck.refusal(tx, AiFeatureProviders.stored(row.provider), id);
-      if (notListed) return { ok: false, error: notListed };
       const next = { priceUnit, inputPrice: inP === "" ? null : inP, outputPrice: outP === "" ? null : outP };
       const fmt = (u: string | null, i: Price, o: Price) => `${u ?? "none"} in ${AiModelService.priceText(i) || "none"} out ${AiModelService.priceText(o) || "none"}`;
       const before = fmt(row.priceUnit, row.inputPrice, row.outputPrice);
@@ -483,8 +481,6 @@ export class AiModelService {
       if (model) {
         const row = await tx.aiModel.findUnique({ where: { id: model } });
         if (!row?.enabled) return { ok: false, error: AiCopy.MODEL_NOT_ALLOWED };
-        const notListed = await AiModelListCheck.refusal(tx, AiFeatureProviders.stored(row.provider), model);
-        if (notListed) return { ok: false, error: notListed };
         // The type filter, enforced here too: dictation takes transcription models, voice chat realtime ones.
         if (!AiModelKinds.fits(row, AiModelKinds.forFeature(feature))) return { ok: false, error: AiCopy.MODEL_WRONG_KIND };
       }
@@ -518,8 +514,6 @@ export class AiModelService {
       if (!row?.enabled) return { ok: false, error: AiCopy.MODEL_NOT_ALLOWED };
       if (!AiModelKinds.fits(row, "chat")) return { ok: false, error: AiCopy.MODEL_WRONG_KIND };
       if (AiFeatureProviders.stored(row.provider) !== provider) return { ok: false, error: AiCopy.modelOtherProvider(model, AiFeatureProviders.label(AiFeatureProviders.stored(row.provider))) };
-      const notListed = await AiModelListCheck.refusal(tx, provider, model);
-      if (notListed) return { ok: false, error: notListed };
       if (provider !== before.provider) {
         const states = await (keys ?? AiProviderKeyAccess.source(tx, env)).states().catch(() => AiFeatureProviders.noKeys());
         if (states[provider] !== "ok") return { ok: false, error: states[provider] === "failing" ? AiCopy.PROVIDER_KEY_FAILING : AiCopy.PROVIDER_NO_KEY };

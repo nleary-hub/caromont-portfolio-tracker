@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
+import { AiHostGuard, type AiHostLookup } from "@/lib/ai/AiHostGuard";
 import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
 import { DisplayName } from "@/lib/auth/DisplayName";
 import { AiKeyCopy, AiKeyProviders, type AiKeyActionResult, type AiKeyActionView, type AiKeyProvider, type AiKeyRowView, type AiKeyState } from "@/lib/ai/AiKeyProviders";
@@ -255,6 +256,7 @@ export class AiProviderKeyService {
     input: { apiKey: unknown; baseUrl?: unknown; label?: unknown },
     env: Env = process.env,
     now: Date = new Date(),
+    lookup: AiHostLookup = AiHostGuard.systemLookup,
   ): Promise<AiKeyActionResult> {
     AdminPolicy.assertAdmin(admin);
     const provider = AiKeyProviders.parse(providerRaw);
@@ -274,6 +276,8 @@ export class AiProviderKeyService {
       if (l.length > AiKeyProviders.LABEL_MAX) fieldErrors.label = AiKeyCopy.LABEL_TOO_LONG;
       label = l || null;
     }
+    // QA FIX 2: the 'other' host must not be local or resolve to a private, loopback, link-local, CGNAT or ULA address.
+    if (provider === "other" && baseUrl && (await AiHostGuard.check(baseUrl, lookup)) !== "ok") fieldErrors.baseUrl = AiKeyCopy.INVALID_URL;
     if (Object.keys(fieldErrors).length || !apiKey) return { ok: false, error: AiKeyCopy.SAVE_FAILED, fieldErrors };
     if (provider === "openai") await AiProviderKeyService.ensureOpenAiCopied(db, env, now);
     const last4 = AiKeyCipher.last4(apiKey);

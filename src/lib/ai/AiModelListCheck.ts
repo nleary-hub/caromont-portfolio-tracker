@@ -9,9 +9,11 @@ export class AiModelListCheck {
   static readonly NOT_IN_LIST = "This model is not in the provider's current list";
 
   static async inList(db: unknown, provider: string, id: string): Promise<boolean | null> {
-    const cache = (db as { aiModelListCache?: { findUnique?: (a: { where: { provider: string } }) => Promise<{ models: unknown } | null> } })?.aiModelListCache;
+    const cache = (db as { aiModelListCache?: { findUnique?: (a: { where: { provider: string } }) => Promise<{ models: unknown; fetchedAt?: Date | null } | null> } })?.aiModelListCache;
     if (typeof cache?.findUnique !== "function") return null;
-    const row = await cache.findUnique({ where: { provider } }).catch(() => null);
+    const row = (await cache.findUnique({ where: { provider } }).catch(() => null)) as { models: unknown; fetchedAt?: Date | null } | null;
+    // QA FIX 1: no row, or a row that never had a successful fetch, means "no check" (the Owner is never locked out).
+    if (!row || !row.fetchedAt) return null;
     const models = Array.isArray(row?.models) ? (row!.models as unknown[]) : [];
     return AiModelListGate.idOk(id) && models.some((m) => (m as { id?: unknown })?.id === id);
   }
