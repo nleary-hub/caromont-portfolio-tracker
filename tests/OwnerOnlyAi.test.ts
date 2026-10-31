@@ -79,9 +79,9 @@ describe("every AI entry point uses the one Owner gate", () => {
     }
   });
 
-  it("no other Server Function file or API route calls an AI service (cron retention excepted: no session, no provider call)", () => {
+  it("no other Server Function file or API route calls an AI service (the cron routes excepted: retention has no session and no provider call; the model-list refresh has no session and makes list calls only, behind its Bearer check)", () => {
     const files = [...walk(path.join(root, "src/app/api")).map((p) => path.relative(root, p)), ...readdirSync(path.join(root, "src/app/actions")).map((f) => `src/app/actions/${f}`)];
-    const outside = files.filter((f) => !ACTIONS.some((a) => f.endsWith(`/actions/${a}`)) && !ROUTES.includes(f) && f !== "src/app/api/cron/ai-retention/route.ts");
+    const outside = files.filter((f) => !ACTIONS.some((a) => f.endsWith(`/actions/${a}`)) && !ROUTES.includes(f) && f !== "src/app/api/cron/ai-retention/route.ts" && f !== "src/app/api/cron/ai-model-lists/route.ts");
     for (const f of outside) expect(readFileSync(path.join(root, f), "utf8"), f).not.toMatch(/@\/lib\/ai\/|services\/Ai[A-Z]/);
   });
 

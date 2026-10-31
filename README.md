@@ -118,6 +118,44 @@ Connectors > Add custom connector, URL `https://<domain>/api/mcp`. Code: `src/li
   no `pgbouncer=true` flag is needed with driver adapters.
 - All secrets live in Vercel Project Settings > Environment Variables, never in the repo.
 
+### Migration checklist (transaction form, standing rule from the 0072 dry run)
+
+- Prisma 7.4 and later (pinned: 7.10.0) does not run a PostgreSQL migration file as one transaction. When its parser
+  (sqlparser) can read the file, `migrate deploy` sends each statement on its own, so each one autocommits and a bare
+  `SET LOCAL` does nothing. It sends the whole file as one batch only when the parser fails. Never rely on that.
+- A migration that must be all-or-nothing, or that uses `lock_timeout`, is written as one explicit transaction:
+  `BEGIN;` first, `SET LOCAL lock_timeout = '5s';` right after it (no session-level `SET`), the statements, `COMMIT;` last.
+  Lock-taking ALTERs go first. A CHECK that is replaced is dropped and re-added in the same `ALTER TABLE` statement.
+  Statements that can't run in a transaction (`CREATE INDEX CONCURRENTLY`) go in their own migration with no BEGIN/COMMIT.
+- Each such migration gets a Vitest pin (example: `tests/AiModelListCacheTxn.test.ts`). `tests/MigrationTxnGuard.test.ts`
+  fails any migration from 0072 onward that uses `SET LOCAL` without a top-level `BEGIN`.
+- Any Prisma upgrade (minor or major, for example 8.x) re-runs the Neon dry-run lock test (expect P3018 with 55P03 at
+  about 5 s, nothing left behind) and the forced-failure test before it merges.
+- 25P02 rule (FU-0072-ERRTEXT, open): with an explicit-transaction migration, Prisma 7.10.0 reports a failing statement only
+  as `current transaction is aborted, commands ignored until end of transaction block` (25P02), with no P3018 and no cause in
+  `_prisma_migrations.logs`. 25P02 there means an earlier statement failed and its cause is hidden (lock timeout, CHECK,
+  name clash, anything). Before any `migrate resolve`, check and record `pg_stat_activity`, `pg_locks` and the database
+  logs, and confirm nothing from the migration was applied. Never re-run blind: find and remove the cause first, then
+  P3009, `migrate resolve --rolled-back <name>`, deploy. Re-test on every Prisma upgrade; close when the real SQLSTATE shows.
+- Never edit an applied migration file, not even a comment: Prisma checksums the whole file, so `migrate dev` reports drift.
+- Follow-up FU-0071-TXN (open): `0071_ai_registry_and_fallback` uses `SET LOCAL lock_timeout` with no BEGIN/COMMIT. Its
+  header says Prisma 7.10.0 sends the whole file as one implicit transaction; that is true for 0071 only because the parser
+  falls back on its DO blocks, not as a Prisma rule. Production applied it cleanly, so nothing changes there. The risk is a
+  fresh replay (CI, a new Neon branch, a rebuild) after a Prisma upgrade whose parser reads 0071: it would then run without
+  atomicity or lock_timeout. 0071's file stays as is (checksum); this note is its correction. Re-check on every Prisma upgrade.
+
+#### Approved exception: 0016_service_lines
+
+- This is the one approved exception to the add-only rule above ("Never edit an applied migration file"). The owner
+  directed it on Oct 29, 2026, and QA cleared it in PR #108 (merge b08867c; QA final clearance ab8268f7, checksum proof
+  1cd0bebd). It replaced real names in the public repo with fictional ones in one line of
+  `0016_service_lines/migration.sql`. The live data and the old git history were left alone.
+- `prisma migrate deploy` matches applied migrations by name, and the production `_prisma_migrations` row for 0016 is
+  unchanged, so deploys are not affected. The stored checksum in production stays the original file's.
+- Checksum warnings on 0016 from `migrate dev` or fresh-replay checks are expected. Never "fix" them by editing
+  `_prisma_migrations` or by restoring the old line.
+- Follow-up FU-0016-CHECKSUM (open): check `migrate diff` and fresh-replay behaviour later.
+
 ## Google OAuth setup
 
 The Auth.js route is `src/app/api/auth/[...nextauth]/route.ts` with the default base path `/api/auth`,

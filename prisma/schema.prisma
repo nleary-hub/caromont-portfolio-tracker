@@ -1452,3 +1452,19 @@ model AiDeniedCounter {
   @@id([who, action])
   @@map("ai_denied_counter")
 }
+
+/// 0072: one cached model list per provider. No key, URL or provider body is stored.
+model AiModelListCache {
+  /// "openai" | "anthropic" | "xai" | "other" (DB check)
+  provider            String    @id
+  /// [{id, kind, lifecycle?, shutdownAt?}] after the app gate; at most 2,000 items and 1 MB (DB check)
+  models              Json      @default("[]")
+  fetchedAt           DateTime?
+  lastAttemptAt       DateTime?
+  /// Short code only (DB check)
+  lastError           String?
+  stale               Boolean   @default(false)
+  lastFailureLoggedAt DateTime?
+
+  @@map("ai_model_list_cache")
+}

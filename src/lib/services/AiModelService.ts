@@ -4,6 +4,7 @@ import { AiCopy } from "@/lib/ai/AiCopy";
 import type { AiModelPrice } from "@/lib/ai/AiRunMetrics";
 import { AiFeatureFlags, type AiToggleFeature } from "@/lib/ai/AiFeatureFlags";
 import { AiProviders } from "@/lib/ai/AiProviders";
+import { AiModelListCheck } from "@/lib/ai/AiModelListCheck";
 import { AiModelKinds, type AiListedModel, type AiModelKind } from "@/lib/ai/AiModelKinds";
 import type { FetchLike } from "@/lib/ai/AiProviderClient";
 import type { AiSettingsHistoryRow, AiSettingsRow } from "@/lib/services/AiSettingsService";
@@ -307,6 +308,8 @@ export class AiModelService {
     const provider = opts.provider === undefined ? "openai" : AiFeatureProviders.parse(opts.provider);
     if (!provider) return { ok: false, error: AiCopy.SAVE_FAILED };
     if (await db.aiModel.findUnique({ where: { id } })) return { ok: false, error: AiCopy.MODEL_EXISTS };
+    const notListed = await AiModelListCheck.refusal(db, provider, id);
+    if (notListed) return { ok: false, error: notListed };
     const listed = provider === "openai" ? await AiModelService.openAiHas(db, id, env, fetchImpl) : await AiModelService.providerHas(db, provider, id, env, fetchImpl, opts.keys);
     const unchecked = opts.manual === true && (listed === AiCopy.MODEL_CHECK_FAILED || listed === AiCopy.MODEL_CHECK_NEEDS_KEY || listed === AiCopy.providerListFailed(provider) || listed === AiCopy.providerNeedsKey(provider));
     if (listed !== true && !unchecked) return { ok: false, error: listed };
@@ -402,6 +405,10 @@ export class AiModelService {
       const row = id ? await tx.aiModel.findUnique({ where: { id } }) : null;
       if (!row || !id) return { ok: false, error: AiCopy.MODEL_ID_INVALID };
       if (row.enabled === enabled) return { ok: true };
+      if (enabled) {
+        const notListed = await AiModelListCheck.refusal(tx, AiFeatureProviders.stored(row.provider), id);
+        if (notListed) return { ok: false, error: notListed };
+      }
       if (!enabled && !confirmed) {
         const settings = await tx.aiSettings.findUnique({ where: { id: AiSettingsService.ID } });
         const featureRows = await tx.aiFeatureSetting.findMany();

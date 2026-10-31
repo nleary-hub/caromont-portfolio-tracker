@@ -34,12 +34,13 @@ async function eventRow(pg: PGlite, over: Record<string, unknown> = {}): Promise
 }
 
 describe("the migration file", () => {
-  it("is byte-for-byte draft e (sha256), is the last migration, and nothing after it exists (add-only, only 0071)", () => {
+  it("is byte-for-byte draft e (sha256), is followed only by 0072 (add-only; 0073 and later are not here yet)", () => {
     const sql = migration0071();
     expect(createHash("sha256").update(sql).digest("hex")).toBe(DRAFT_E_SHA256);
     const folders = migrationFolders();
-    expect(folders[folders.length - 1]).toBe("0071_ai_registry_and_fallback");
-    expect(folders.filter((f) => /^007[2-9]/.test(f))).toEqual([]);
+    expect(folders[folders.length - 2]).toBe("0071_ai_registry_and_fallback");
+    expect(folders[folders.length - 1]).toBe("0072_ai_model_list_cache");
+    expect(folders.filter((f) => /^007[3-9]/.test(f))).toEqual([]);
   });
 
   it("holds no BEGIN or COMMIT statement (the tool that sends the file makes it one transaction) and no GRANT or REVOKE", () => {
@@ -68,7 +69,8 @@ describe("applying 0071 twice changes nothing (idempotent)", () => {
       const cats = await pg.query(`SELECT category, provider, model FROM ai_category_settings ORDER BY 1`);
       return JSON.stringify({ cons: cons.rows, trig: trig.rows, counts, cats: cats.rows });
     };
-    const pg = await migratedPglite();
+    // Through 0071 only: 0072 re-creates the history CHECKs as supersets, so re-running 0071 after it would narrow them.
+    const pg = await migratedPglite("0071_ai_registry_and_fallback");
     const before = await snapshot(pg);
     await pg.exec(migration0071());
     const after = await snapshot(pg);
@@ -115,9 +117,12 @@ describe("the CHECK lists read back from a migrated database (FG9, FG22)", () =>
   it("the history field and action lists keep every old value and add the new ones", async () => {
     const fields = await listOf("ai_settings_history", "ai_settings_history_field");
     expect(fields.slice(0, 16)).toEqual(["enabled", "provider", "model", "baseUrl", "azureEndpoint", "azureDeployment", "apiKey", "aiModel", "aiFeature", "aiPriceRefresh", "aiFeatureModel", "aiVoiceInstructions", "providerKey", "aiFeatureProvider", "aiFeatureTextModel", "aiVoiceSessionCap"]);
-    expect(fields.slice(16).sort()).toEqual(["aiCategory", "aiDenied", "aiFallback", "aiFallbackAck", "aiFeatureOverride", "aiMaxOutputTokens", "aiModelRegistry", "aiStepUp"]);
+    expect(fields.slice(16).sort()).toEqual(["aiCategory", "aiDenied", "aiFallback", "aiFallbackAck", "aiFeatureOverride", "aiMaxOutputTokens", "aiModelList", "aiModelRegistry", "aiStepUp"]);
     const actions = await listOf("ai_settings_history", "ai_settings_history_action");
-    expect(actions).toHaveLength(30);
+    // 30 after 0071, plus 0072's models_refreshed and models_refresh_failed.
+    expect(actions).toHaveLength(32);
+    expect(actions).toContain("models_refreshed");
+    expect(actions).toContain("models_refresh_failed");
     for (const a of ["fallback_set", "fallback_cleared", "fallback_ack", "cap_set", "cap_reverted", "model_archived", "model_restored", "denied", "denied_folded", "step_up_refused", "category_set", "override_set", "override_cleared"]) expect(actions).toContain(a);
   });
 });
