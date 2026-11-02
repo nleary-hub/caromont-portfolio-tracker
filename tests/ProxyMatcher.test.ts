@@ -67,4 +67,24 @@ describe("proxy matcher", () => {
     const files = (await readdir("public/brand")).map((f) => `/brand/${f}`).sort();
     expect(files).toEqual(LOGO_FILES.filter((f) => f.startsWith("/brand/")).sort());
   });
+
+  it("exempts exactly main's connector routes, and keeps /oauth/authorize behind sign-in", () => {
+    // Byte-identical to origin/main 047a9cd: the logo swap must not widen or narrow the connector segment.
+    expect(config.matcher[0]).toContain("api/mcp|oauth/register|oauth/token|\\.well-known/|");
+    const PUBLIC_CONNECTOR = ["/api/mcp", "/api/mcp/x", "/oauth/register", "/oauth/token", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"];
+    for (const path of PUBLIC_CONNECTOR) {
+      expect(proxied(path), path).toBe(false);
+      expect(proxiedByNext(path), `next: ${path}`).toBe(false);
+    }
+    for (const path of ["/oauth/authorize", "/oauth/authorize?client_id=x", "/oauth", "/oauth/other"]) {
+      expect(proxied(path.split("?")[0]), path).toBe(true);
+      expect(proxiedByNext(path.split("?")[0]), `next: ${path}`).toBe(true);
+    }
+  });
+
+  it("adds only the logo files and the manifest as new exemptions versus main", () => {
+    const MAIN = "/((?!api/auth|api/cron/|api/share/|api/mcp|oauth/register|oauth/token|\\.well-known/|signin|fonts/|_next/static|_next/image|favicon.ico|robots.txt).*)";
+    const added = "brand/[\\w.-]+\\.(?:svg|png|ico)$|manifest\\.webmanifest$|";
+    expect(config.matcher[0]).toBe(MAIN.replace("fonts/|", `fonts/|${added}`));
+  });
 });
