@@ -194,7 +194,7 @@ Visible rows only. No To/Cc and no missing-requester list.
   plain `fetch` (no SDK). Uploads the PDF and handoff.json. Scope caveat: `drive.file` only sees files and
   folders the app created. Leave `GOOGLE_DRIVE_FOLDER_ID` empty and the app finds or creates its own
   folder "Cardiac Status Reports"; a folder made by hand in the Drive UI will not be writable.
-- **Check Drive** (Admin > Report freeze, CVPSL, admins only; `POST /api/reports/drive-check`, 403 for anyone
+- **Check Drive** (Admin > Report freeze, CVPSL, Owner only; `POST /api/reports/drive-check`, 404 for anyone
   else): with the same settings and client as the freeze, saves a small plain text file named
   `portfolio-drive-setup-test-<timestamp>.txt` in the report folder, reads it back and deletes it. Nothing is
   frozen or sent. The result names the step that failed (save, read back, remove) with Drive's error text; it
@@ -211,8 +211,24 @@ Visible rows only. No To/Cc and no missing-requester list.
   daily retry lands on one issue; no error text in the message). The banner goes away once a run saves to Drive.
 - **Refresh token expiry.** A Google OAuth app left in **Testing** issues refresh tokens that expire after 7 days,
   which is what broke Drive saves from Oct 13, 2026 (the Sep 29 save worked; every save since got `invalid_grant`).
-  Publish the app (Google Auth Platform > Audience > Publish app) before minting the token, then put it in
-  `GOOGLE_DRIVE_REFRESH_TOKEN` on Vercel, redeploy and press Check Drive.
+  Publish the app (Google Auth Platform > Audience > Publish app) first, then press **Reconnect Drive** and
+  Check Drive.
+- **Reconnect Drive** (Admin > Report freeze, CVPSL, Owner only, checked on the server; anyone else gets the
+  generic 404). A form POST to `/api/drive/connect` sends the Owner to Google's consent page; Google returns to
+  `/api/drive/callback`, which saves the new refresh token. Authorization code flow with a random `state` and PKCE
+  S256 (both kept in an httpOnly, SameSite=Lax cookie scoped to `/api/drive` for 10 minutes and cleared on return),
+  scope `drive.file` only, `access_type=offline` and `prompt=consent` so Google always returns a refresh token. A
+  wrong or missing state, a cancelled sign-in, a refused code, no refresh token or the Drive box unticked saves
+  nothing. It uses the same OAuth client (`GOOGLE_DRIVE_CLIENT_ID` and `_SECRET`): `drive.file` only sees files that
+  client created, so a new client would lose the report folder. The client must be a **Web application** client
+  with `<APP_BASE_URL>/api/drive/callback` as an authorized redirect URI. Turned off on preview deployments.
+- **Where the token lives.** Reconnect Drive keeps the refresh token in `drive_connection` (migration 0073, one row),
+  encrypted with AES-256-GCM (`AiKeyCipher`, key `AI_SETTINGS_ENCRYPTION_KEY`, its own binding
+  `drive_connection.refreshToken`). The freeze delivery and Check Drive use it first and fall back to
+  `GOOGLE_DRIVE_REFRESH_TOKEN` when there is no row or it can't be decrypted. The plain token is never logged,
+  sent to Sentry or the browser, or put in a URL. Tradeoff: a long-lived Drive credential now sits in the database
+  (readable only with the encryption key, which stays in Vercel) instead of only in a Vercel env var. Rotating
+  `AI_SETTINGS_ENCRYPTION_KEY` makes the saved token unreadable (the env var takes over); press Reconnect Drive again.
 - A run re-attempts delivery when nothing was delivered, when everything failed, or when Drive is
   configured but the last delivery used the fallback link.
 - **Vercel Deployment Protection** (on by default for Hobby preview and possibly production URLs)
@@ -235,7 +251,7 @@ signed link, handoff.json downloads, Freeze now, the key-page toggle and Generat
 | `APP_BASE_URL` | absolute links in handoff.json and signed links | Falls back to `https://$VERCEL_PROJECT_PRODUCTION_URL`. |
 | `REPORT_RECIPIENT_EMAIL` | handoff.json `reportRecipient` | One address. |
 | `ADMIN_EMAILS` | Freeze now, draft PDF, delivery status | From PR #1. |
-| `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | Drive upload | Needs a Google Cloud OAuth client (Nick's approval). Unset = fallback link. |
+| `GOOGLE_DRIVE_CLIENT_ID`, `GOOGLE_DRIVE_CLIENT_SECRET`, `GOOGLE_DRIVE_REFRESH_TOKEN` | Drive upload | Needs a Google Cloud OAuth client (Nick's approval). The refresh token is optional once Reconnect Drive has saved one (the saved token wins). Unset = fallback link. |
 | `GOOGLE_DRIVE_FOLDER_ID` | Drive upload | Optional; see the drive.file caveat above. |
 
 ## Year-end report: summary grid and table

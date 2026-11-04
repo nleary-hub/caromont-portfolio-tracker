@@ -1,6 +1,7 @@
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { PrismaClient, ReportArtifact, ReportSnapshot } from "@/generated/prisma/client";
 import { ReportEnv } from "@/lib/config/ReportEnv";
+import { DriveConnection, type DriveConnectionDb } from "@/lib/report/DriveConnection";
 import { Db } from "@/lib/db/Db";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import { FreezeGuard } from "@/lib/report/FreezeGuard";
@@ -200,7 +201,8 @@ export class FreezeService {
       );
     }
 
-    if (!ReportDeliveryService.needsDelivery(ReportDeliveryService.parse(snapshot.deliveryJson), env)) return null;
+    const driveReady = (await DriveConnection.resolve(env, db as unknown as DriveConnectionDb)) !== null;
+    if (!ReportDeliveryService.needsDelivery(ReportDeliveryService.parse(snapshot.deliveryJson), env, driveReady)) return null;
     return ReportDeliveryService.deliver(snapshot.id, { pdf, handoff }, options.actor, options, db, line);
   }
 }

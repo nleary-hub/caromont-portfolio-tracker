@@ -1,4 +1,5 @@
-import { ReportEnv, type EnvSource } from "@/lib/config/ReportEnv";
+import { type EnvSource } from "@/lib/config/ReportEnv";
+import { DriveConnection, type DriveConnectionDb, type DriveTokenSource } from "@/lib/report/DriveConnection";
 import { FreezeGuard } from "@/lib/report/FreezeGuard";
 import { DriveError, GoogleDriveClient, type FetchLike } from "@/lib/report/GoogleDriveClient";
 import { ReportLog } from "@/lib/report/ReportLog";
@@ -12,7 +13,7 @@ export type DriveCheckResult =
 
 /**
  * Admin > Report freeze > Check Drive: proves the production Drive setup works without a freeze. Uses the same
- * settings and client as the freeze delivery (ReportEnv.drive, GoogleDriveClient): saves a small plain text file in
+ * settings and client as the freeze delivery (DriveConnection.resolve, GoogleDriveClient): saves a small plain text file in
  * the report folder, reads it back, deletes it. Returns the folder name and id and a message per step, never a
  * secret. No email, no freeze. No em dashes in the copy.
  */
@@ -21,7 +22,7 @@ export class DriveCheckService {
   /** Check Drive on a preview deployment (FreezeGuard): the service message and the UI note (one string). */
   static readonly PREVIEW_OFF = "Drive checks are turned off on preview deployments.";
   static readonly NOT_CONFIGURED = "Drive isn't set up on this server.";
-  static readonly NOT_CONFIGURED_DETAIL = "Add GOOGLE_DRIVE_CLIENT_ID, GOOGLE_DRIVE_CLIENT_SECRET and GOOGLE_DRIVE_REFRESH_TOKEN, then redeploy.";
+  static readonly NOT_CONFIGURED_DETAIL = "Add GOOGLE_DRIVE_CLIENT_ID and GOOGLE_DRIVE_CLIENT_SECRET, redeploy, then press Reconnect Drive.";
   static readonly READ_FAILED = "Saved a test file, but couldn't read it back.";
   static readonly MISMATCH_DETAIL = "The file read back didn't match what was saved.";
 
@@ -65,9 +66,15 @@ export class DriveCheckService {
   }
 
   /** Refused on a preview deployment (FreezeGuard) before any Drive call: previews share production settings. */
-  static async run(env: EnvSource = process.env, fetchImpl: FetchLike = fetch, now: () => Date = () => new Date()): Promise<DriveCheckResult> {
+  static async run(
+    env: EnvSource = process.env,
+    fetchImpl: FetchLike = fetch,
+    now: () => Date = () => new Date(),
+    db: DriveConnectionDb = DriveConnection.appDb,
+  ): Promise<DriveCheckResult> {
     if (FreezeGuard.disabled()) return { ok: false, step: "setup", message: DriveCheckService.PREVIEW_OFF, detail: null };
-    const drive = ReportEnv.drive(env);
+    // The token from Reconnect Drive first, then GOOGLE_DRIVE_REFRESH_TOKEN (same as the freeze delivery).
+    const drive = await DriveConnection.resolve(env, db);
     if (!drive) return { ok: false, step: "setup", message: DriveCheckService.NOT_CONFIGURED, detail: DriveCheckService.NOT_CONFIGURED_DETAIL };
     const client = new GoogleDriveClient(drive, fetchImpl);
     const started = now();
@@ -105,7 +112,7 @@ export class DriveCheckService {
     if (readError !== null) return fail("read", DriveCheckService.READ_FAILED, readError);
 
     const at = now();
-    ReportLog.info("drive.check.ok", { folderId: folder.id });
+    ReportLog.info("drive.check.ok", { folderId: folder.id, tokenSource: drive.source satisfies DriveTokenSource });
     return { ok: true, message: DriveCheckService.ok(DriveCheckService.time(at)), at: at.toISOString(), folder };
   }
 }

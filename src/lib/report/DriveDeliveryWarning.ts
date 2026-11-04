@@ -29,7 +29,7 @@ export class DriveDeliveryWarning {
   static readonly EXPIRED_TITLE = "The latest report didn't save to Google Drive: the app's Google sign-in for Drive has expired.";
   static readonly FAILED_TITLE = "The latest report didn't save to Google Drive.";
   static readonly EXPIRED_FIX =
-    "Reconnect Drive: make a new refresh token, put it in GOOGLE_DRIVE_REFRESH_TOKEN on Vercel, redeploy, then press Check Drive. If the Google OAuth app is in Testing, publish it first, or the new token expires again in 7 days.";
+    "Press Reconnect Drive below and sign in to Google, then press Check Drive. If the Google OAuth app is in Testing, publish it first, or the new sign-in expires again in 7 days.";
   static readonly FAILED_FIX = "Press Check Drive to see whether it still fails. The freeze retries the save every day until it works.";
 
   static from(newest: DriveWarningInput | null | undefined): DriveWarning | null {
