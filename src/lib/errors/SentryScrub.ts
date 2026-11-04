@@ -54,8 +54,32 @@ export class SentryScrub {
     };
   }
 
-  /** An error event with anything that could be user data removed or replaced. */
-  static event(event: ErrorEvent): ErrorEvent {
+  /**
+   * The Claude connector's own version probe, which is expected and not a bug. MCP 2026-07-28 clients that also speak
+   * the older handshake protocol ("dual-era") first send a request with a newer MCP-Protocol-Version header; a server on
+   * 2025-11-25 or earlier answers 400 and the client falls back to initialize (spec: basic/versioning, Backward
+   * Compatibility). The MCP SDK still reports that 400 through transport.onerror, which Sentry captures. Only a
+   * well-formed version newer than every version the SDK lists is dropped; an older, unknown or malformed version is
+   * still reported, as is every other MCP error.
+   */
+  static isMcpNewerVersionProbe(event: ErrorEvent): boolean {
+    const values = event.exception?.values ?? [];
+    if (values.length !== 1) return false;
+    const ex = values[0];
+    if (ex.mechanism?.type !== "auto.ai.mcp_server" || typeof ex.value !== "string") return false;
+    const m = /^Bad Request: Unsupported protocol version: (\S+) \(supported versions: ([^)]*)\)$/.exec(ex.value);
+    if (!m) return false;
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    const requested = m[1];
+    const supported = m[2].split(",").map((v) => v.trim());
+    if (!date.test(requested) || !supported.length || !supported.every((v) => date.test(v))) return false;
+    // YYYY-MM-DD strings sort as dates.
+    return supported.every((v) => requested > v);
+  }
+
+  /** An error event with anything that could be user data removed or replaced, or null for expected noise. */
+  static event(event: ErrorEvent): ErrorEvent | null {
+    if (SentryScrub.isMcpNewerVersionProbe(event)) return null;
     delete event.user;
     delete event.extra;
     if (event.request) {

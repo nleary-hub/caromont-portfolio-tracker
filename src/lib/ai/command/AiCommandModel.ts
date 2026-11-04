@@ -20,7 +20,8 @@ export class AiCommandModel {
   /** Turns of history sent each time (the browser keeps the conversation). */
   static readonly MAX_TURNS = 12;
   static readonly TURN_MAX = 2000;
-  static readonly MAX_TOKENS = 1600;
+  /** Per round. Headroom for reasoning models, which count hidden reasoning against max_completion_tokens (see AiPrompts). */
+  static readonly MAX_TOKENS = 8000;
   /** The tools the command bar may call. draft_project is here (voice chat leaves it to the bar). */
   static readonly TOOLS = AiActionTools.ALL;
 

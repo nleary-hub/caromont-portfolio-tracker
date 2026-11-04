@@ -31,7 +31,8 @@ const strs = (v: unknown, n: number) => (Array.isArray(v) ? v.filter((x): x is s
  * filter in plain words for the person to read before the preview. Pure, unit tested.
  */
 export class AiBulkEditFull {
-  static readonly MAX_TOKENS = 600;
+  /** Headroom for reasoning models, which count hidden reasoning against max_completion_tokens (see AiPrompts). */
+  static readonly MAX_TOKENS = 4000;
 
   static parse(text: string): AiBulkFullPlan | null {
     const body = JSONish(text) as { filter?: unknown; action?: unknown } | null;
