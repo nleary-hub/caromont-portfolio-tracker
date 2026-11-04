@@ -16,7 +16,12 @@ export class DbUrl {
   private static readonly LIBPQ_COMPAT = /[?&]uselibpqcompat=true(?=&|#|$)/i;
 
   static strictSsl(connectionString: string): string {
-    if (DbUrl.LIBPQ_COMPAT.test(connectionString)) return connectionString;
-    return connectionString.replace(DbUrl.ALIASED, "$1verify-full");
+    // Only look in the query string (from the first "?", where the URL parser ends the host part), so a password that
+    // happens to contain "&sslmode=require" is never touched.
+    const q = connectionString.indexOf("?");
+    if (q < 0) return connectionString;
+    const query = connectionString.slice(q);
+    if (DbUrl.LIBPQ_COMPAT.test(query)) return connectionString;
+    return connectionString.slice(0, q) + query.replace(DbUrl.ALIASED, "$1verify-full");
   }
 }

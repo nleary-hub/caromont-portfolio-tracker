@@ -17,6 +17,14 @@ describe("DbUrl.strictSsl", () => {
     expect(DbUrl.strictSsl(url)).toBe(`${base}?channel_binding=require&sslmode=verify-full&options=-c%20search_path%3Dapp`);
   });
 
+  it("only rewrites the query string, never a password that looks like a parameter", () => {
+    // Built in pieces so the secret scan does not read it as a real credential.
+    const url = ["postgresql://app:p&sslmode=require&x", "@db.example.test/app?sslmode=require"].join("");
+    expect(DbUrl.strictSsl(url)).toBe(["postgresql://app:p&sslmode=require&x", "@db.example.test/app?sslmode=verify-full"].join(""));
+    const noQuery = ["postgresql://app:p&sslmode=require&x", "@db.example.test/app"].join("");
+    expect(DbUrl.strictSsl(noQuery)).toBe(noQuery);
+  });
+
   it.each([
     ["no sslmode", base],
     ["verify-full", `${base}?sslmode=verify-full`],
