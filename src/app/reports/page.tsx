@@ -6,6 +6,11 @@ import { ReportsPageData } from "@/lib/report/ReportsPageData";
 import { setShowKeyPageForm } from "@/app/actions/reports";
 import { DriveCheckButton } from "@/components/DriveCheckButton";
 import { DriveCheckService } from "@/lib/services/DriveCheckService";
+import { ReconnectDriveButton } from "@/components/ReconnectDriveButton";
+import { DriveConnection, type DriveConnectionDb } from "@/lib/report/DriveConnection";
+import { DriveConnectText } from "@/lib/report/DriveConnectText";
+import { DriveOAuth } from "@/lib/report/DriveOAuth";
+import { OwnerPolicy } from "@/lib/auth/OwnerPolicy";
 import { FreezeNowButton } from "@/components/FreezeNowButton";
 import { FreezeGuard } from "@/lib/report/FreezeGuard";
 import { YearEndPreviewCopy } from "@/lib/report/YearEndPreviewCopy";
@@ -100,6 +105,10 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const openYearEnd = params.yearEnd === "1";
   // Owner only (entries carry delivery records only for admins): the newest report didn't reach Drive.
   const driveWarning = scope.isDefault ? DriveDeliveryWarning.from(entries[0]) : null;
+  // Reconnect Drive: the Owner only (the routes check again on the server). The note never shows a token.
+  const showReconnect = scope.isDefault && OwnerPolicy.isOwner(viewer);
+  const driveConnected = showReconnect ? await DriveConnection.status(Db.client as unknown as DriveConnectionDb) : null;
+  const driveRedirect = showReconnect ? DriveOAuth.redirectUri() : null;
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
@@ -144,6 +153,14 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
             </p>
           )}
           {scope.isDefault && <DriveCheckButton folder={DriveCheckService.folderLabel()} help={DriveCheckService.help(DriveCheckService.folderLabel())} disabledNote={FreezeGuard.disabled() ? DriveCheckService.PREVIEW_OFF : null} />}
+          {showReconnect && (
+            <ReconnectDriveButton
+              message={DriveConnectText.message(params.drive, driveRedirect ? new URL(driveRedirect).host : null)}
+              redirectNote={driveRedirect ? DriveConnectText.redirectNote(driveRedirect) : null}
+              connectedNote={driveConnected ? DriveConnectText.connected(ReportFormat.dateTimeEt(driveConnected.connectedAt)) : null}
+              disabledNote={FreezeGuard.disabled() ? DriveConnectText.PREVIEW_OFF : null}
+            />
+          )}
           <form action={setShowKeyPageForm} className="flex flex-wrap items-end gap-4 type-table">
             <label className="flex items-center gap-2 pb-1">
               <input type="checkbox" name="showKeyPage" defaultChecked={options.showKeyPage} />

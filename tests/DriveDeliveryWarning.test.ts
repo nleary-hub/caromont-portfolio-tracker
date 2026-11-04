@@ -49,7 +49,8 @@ describe("DriveDeliveryWarning", () => {
     expect(w.body).toContain("went out only as a signed link");
     expect(w.body).toContain("Wednesday email");
     expect(w.body).toMatch(/Last tried Nov 3, 2026/);
-    expect(w.body).toContain("GOOGLE_DRIVE_REFRESH_TOKEN");
+    expect(w.body).toContain("Press Reconnect Drive");
+    expect(w.body).not.toContain("GOOGLE_DRIVE_REFRESH_TOKEN");
     expect(w.body).toContain("publish it first");
     expect(w.detail).toBe(EXPIRED);
   });

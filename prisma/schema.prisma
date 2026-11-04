@@ -1468,3 +1468,16 @@ model AiModelListCache {
 
   @@map("ai_model_list_cache")
 }
+
+/// The Google Drive connection made in the app (migration 0073; Report freeze > Reconnect Drive). One row at most (id 1,
+/// DB check). refreshTokenCiphertext is AES-256-GCM bound to "drive_connection.refreshToken" (DriveConnection, AiKeyCipher)
+/// and never leaves the server. The freeze delivery and Check Drive prefer it over GOOGLE_DRIVE_REFRESH_TOKEN.
+model DriveConnection {
+  id                     Int      @id @default(1)
+  /// "v1:<iv>:<tag>:<ciphertext>" (base64). Never returned to the client.
+  refreshTokenCiphertext String
+  connectedAt            DateTime @default(now())
+  connectedBy            String
+
+  @@map("drive_connection")
+}
