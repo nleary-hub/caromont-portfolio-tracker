@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { ViewSettings } from "@/lib/domain/ViewSettings";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
@@ -8,6 +7,7 @@ import { ReportGeometry, ReportLayout } from "@/lib/report/pdf/ReportLayout";
 import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { ReportOptionsForm } from "@/lib/services/ReportOptionsForm";
 import { ReportOptionsService } from "@/lib/services/ReportOptionsService";
+import { PdfCanonical } from "./helpers/PdfCanonical";
 
 const m = new TextMeasure();
 const settings = ViewSettings.normalize("report", null);
@@ -19,7 +19,9 @@ async function pinnedRender(opts: { waitingOn?: boolean | "none" }): Promise<Buf
   return PdfReportRenderer.renderDocument(SampleReportData.docInput({}, opts));
 }
 
-const sha = (b: Uint8Array) => createHash("sha256").update(b).digest("hex");
+// Fingerprint of the PDF content, not its compressed bytes: Node's zlib compresses differently on different
+// machines, so a raw byte hash failed everywhere except the machine that recorded it (see PdfCanonical).
+const sha = (b: Uint8Array) => PdfCanonical.sha(b);
 
 afterEach(() => vi.useRealTimers());
 
@@ -68,12 +70,15 @@ describe("ReportRow.waitingOn (PDF 'Waiting on' line)", () => {
     expect(sha(none)).toBe(sha(plain));
     // Deliberate PDF change (Oct 20, 2026 batch, items 8 and 9: Updated line off by default, new order within
     // departments). Was 74404053... on main @ 4081287. Sample: tracker-samples/2026-10-20. Same harness.
-    expect(sha(plain)).toBe("23f2ba9b685ebb578aeb6a28fe5f854745cce2b1ad97ba0c4989924bfbd9c81a");
+    // Content fingerprint of that same rendering, whose raw-byte hash was 23f2ba9b... when compressed with standard
+    // zlib (checked Nov 3, 2026: same render, same bytes once decompressed).
+    expect(sha(plain)).toBe("9f6caecb487536e2a8802d1e4ae012a68ecba0d631023de11649d5473639c3d3");
     expect(sha(on)).not.toBe(sha(plain));
     // Option on, same fixture and settings as the approved 1c sample (ai-overhaul-samples/2026-10-17/after.pdf).
     // Nick approved exactly this rendering. Update only with a new sample and his approval.
     // Oct 20, 2026 batch (items 8 and 9) changed it from dabd2387...; sample sent to Nick (tracker-samples/2026-10-20).
-    expect(sha(on)).toBe("a6494a23516fe816c39e3449bd85f4da9372e072dcf26777cd99dd574eabd75a");
+    // Content fingerprint of that approved rendering (raw-byte hash a6494a23... with standard zlib; checked Nov 3, 2026).
+    expect(sha(on)).toBe("7b45aeb6bf800edaf3425816e2ba99ebfdfd24f6fe0116096c55c24f6ff23915");
   }, 60000);
 });
 

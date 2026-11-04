@@ -1,8 +1,8 @@
-import { createHash } from "node:crypto";
 import { describe, expect, it, vi, beforeEach } from "vitest";
 import { PdfReportRenderer } from "@/lib/report/PdfReportRenderer";
 import { ReportDisplaySettings } from "@/lib/report/ReportDisplaySettings";
 import { SampleReportData } from "@/lib/report/SampleReportData";
+import { PdfCanonical } from "./helpers/PdfCanonical";
 
 // Roles & Permissions: freeze, archive, report options and year-end storage are Owner-only; the admin here is the Owner.
 beforeEach(() => {
@@ -28,7 +28,12 @@ function snapshot(displaySettingsJson?: unknown) {
     ...(displaySettingsJson === undefined ? {} : { displaySettingsJson }),
   };
 }
-const sha = (b: Buffer) => createHash("sha256").update(b).digest("hex");
+// Fingerprint of the PDF content, not its compressed bytes: Node's zlib compresses differently on different
+// machines, so a raw byte hash failed everywhere except the machine that recorded it (see PdfCanonical).
+const sha = (b: Buffer) => PdfCanonical.sha(b);
+// Content fingerprint of the freeze PDF on main @ 4081287; its raw-byte hash was 0d29953e... when compressed with
+// standard zlib (checked Nov 3, 2026: same render, same bytes once decompressed).
+const MAIN_FREEZE_PDF = "631cdaf524e369e5a86f158643f58e553148ad2283ac724d43d281f3c77da2c5";
 async function render(s: ReturnType<typeof snapshot>) {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(SampleReportData.GENERATED_AT);
@@ -41,8 +46,8 @@ async function render(s: ReturnType<typeof snapshot>) {
 
 describe("Freeze display settings (0064)", () => {
   it("no saved settings: the freeze PDF is byte-identical to main @ 4081287 (same fixture and harness)", async () => {
-    expect(sha(await render(snapshot()))).toBe("0d29953e31f6fa5e41f399dc630e3407cd89c0d0a91d3280a78c8dbd8fceac1a");
-    expect(sha(await render(snapshot(null)))).toBe("0d29953e31f6fa5e41f399dc630e3407cd89c0d0a91d3280a78c8dbd8fceac1a");
+    expect(sha(await render(snapshot()))).toBe(MAIN_FREEZE_PDF);
+    expect(sha(await render(snapshot(null)))).toBe(MAIN_FREEZE_PDF);
   }, 60000);
 
   it("recorded settings change the render (Updated hidden, PDF order, managers)", async () => {
@@ -50,7 +55,7 @@ describe("Freeze display settings (0064)", () => {
     const s = snapshot(saved);
     const doc = PdfReportRenderer.docInput(PdfReportRenderer.inputFromSnapshot(s as never));
     expect(doc).toMatchObject({ showUpdatedOn: false, pdfDefaultOrder: true, departmentManagers: { Cath: "Riley Sample" } });
-    expect(sha(await render(s))).not.toBe("0d29953e31f6fa5e41f399dc630e3407cd89c0d0a91d3280a78c8dbd8fceac1a");
+    expect(sha(await render(s))).not.toBe(MAIN_FREEZE_PDF);
   }, 60000);
 
   it("parse, toDoc and summary", () => {
