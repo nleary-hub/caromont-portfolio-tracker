@@ -21,6 +21,7 @@ import { ReportSchedule } from "@/lib/report/ReportSchedule";
 import { DateOnly } from "@/lib/domain/DateOnly";
 import type { ArchiveEntry } from "@/lib/services/ReportArchiveService";
 import { ArchiveDeliveryText } from "@/lib/report/ArchiveDeliveryText";
+import { DriveDeliveryWarning } from "@/lib/report/DriveDeliveryWarning";
 import { YearEndReportButton } from "@/components/YearEndReportButton";
 import { YearEndOnDemandButton } from "@/components/YearEndOnDemandButton";
 import { FiscalYear } from "@/lib/domain/FiscalYear";
@@ -97,6 +98,8 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
   const today = DateOnly.today();
   // Deep link for review and screenshots: ?yearEnd=1 opens the dialog.
   const openYearEnd = params.yearEnd === "1";
+  // Owner only (entries carry delivery records only for admins): the newest report didn't reach Drive.
+  const driveWarning = scope.isDefault ? DriveDeliveryWarning.from(entries[0]) : null;
 
   return (
     <main className="mx-auto flex max-w-[1100px] flex-col gap-6 px-6 py-6">
@@ -121,6 +124,13 @@ export default async function ReportsPage({ searchParams }: { searchParams: Prom
       {options && (
         <section id="report-admin" aria-labelledby="report-freeze-heading" className="flex flex-col gap-3 rounded-card border border-line bg-card px-4 py-3">
           <h2 id="report-freeze-heading" className="type-heading">{AdminMenu.REPORT_FREEZE}</h2>
+          {driveWarning && (
+            <div role="alert" data-testid="drive-delivery-warning" className="flex flex-col gap-1 rounded-control border border-(--status-at-risk-dark-fg) bg-(--status-at-risk-dark-bg) px-3 py-2">
+              <p className="type-table-strong text-(--status-at-risk-dark-fg)">{driveWarning.title}</p>
+              <p className="type-table">{driveWarning.body}</p>
+              {driveWarning.detail && <p className="text-muted type-caption break-words">{driveWarning.detail}</p>}
+            </div>
+          )}
           <div className="flex flex-wrap items-center gap-4">
             {scope.isDefault && <FreezeNowButton disabledNote={FreezeGuard.disabled() ? FreezeGuard.NOTE : null} />}
             <a href="/api/reports/preview" download className="type-table-strong text-accent">
