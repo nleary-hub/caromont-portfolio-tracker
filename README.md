@@ -66,6 +66,8 @@ See `.env.example` for the full annotated list.
 | `MCP_CONNECTOR_DISABLED` | no | `true` turns the Claude connector off (every `/api/mcp`, `/oauth/*` and `/.well-known/oauth-*` endpoint answers 404). Default: on |
 | `MCP_OAUTH_SECRET` | no | Signs the Claude connector's tokens. Unset = derived from `AUTH_SECRET` under its own label. Set or change it to sign everyone out of the connector at once |
 | `MCP_REDIRECT_URIS` | no | Extra exact OAuth redirect URIs the connector may send codes to (space or comma separated). Claude's own callbacks and loopback addresses are always allowed |
+| `NEXT_PUBLIC_SENTRY_DSN` | no | Sentry error tracking (project `caromont-portfolio-tracker` in org `nick-qo`). Public client key, not a secret. Inlined at build time, so redeploy after changing it. Empty = Sentry off. See "Sentry" |
+| `SENTRY_AUTH_TOKEN` | no | Build-time secret for uploading source maps to Sentry (readable stack traces). Empty = no upload, no source maps, build still passes |
 
 OAuth redirect URI: `https://<domain>/api/auth/callback/google`.
 
@@ -103,6 +105,15 @@ Connectors > Add custom connector, URL `https://<domain>/api/mcp`. Code: `src/li
   and keys and the AI features, report freeze and email, the year-end PDF, and the person's own password.
 - **Tests:** `tests/McpConnectorOAuth.test.ts` (OAuth), `tests/e2e/claude-connector.spec.ts` (full flow on a local
   server: consent, token, edits, History tag, Viewer refusal, revocation).
+
+## Sentry
+
+Errors from the browser, the server, the edge runtime and the proxy go to Sentry when `NEXT_PUBLIC_SENTRY_DSN` is set. Setup: `src/instrumentation.ts`, `src/instrumentation-client.ts`, `src/sentry.server.config.ts`, `src/sentry.edge.config.ts`, and `withSentryConfig` in `next.config.ts`. Shared settings are in `src/lib/errors/SentryScrub.ts`:
+
+- Sentry SDK v11 collects user identity, cookies, headers, request and response bodies, AI prompts and database values by default. Every one of those categories is turned off (`dataCollection`), and local variables in stack frames are off.
+- Each error is scrubbed again before it is sent, with the same rules as the app's own client error reports (`ClientErrorScrub`): no user, no request body, headers, cookies or query string, quoted text, emails, long numbers and tokens replaced, ids in paths replaced. Console and input breadcrumbs are dropped. Sampled trace spans get the same URL scrubbing on their name and attributes (`beforeSendSpan`). Signed report links (`/api/share/<token>/<file>`) and any path segment of 20+ characters are replaced, because those links work without sign-in.
+- Errors only: Session Replay and user feedback are not installed, and logs and metrics are dropped. Tracing samples 5% of requests.
+- The app's own `/api/client-errors` report to the Vercel log keeps working alongside Sentry.
 
 ## Deploying on Vercel
 

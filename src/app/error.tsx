@@ -1,11 +1,15 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 import { reportClientError } from "@/components/ClientErrorReporter";
 
-/** Route error boundary: reports the error (scrubbed) and offers a retry. */
+/** Route error boundary: reports the error (scrubbed, to the server log and Sentry) and offers a retry. */
 export default function RouteError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  useEffect(() => reportClientError("boundary", error), [error]);
+  useEffect(() => {
+    reportClientError("boundary", error);
+    Sentry.captureException(error);
+  }, [error]);
   return (
     <main className="flex min-h-[60vh] flex-col items-center justify-center gap-3 p-6 text-center" role="alert">
       <h1 className="type-heading">Something went wrong</h1>

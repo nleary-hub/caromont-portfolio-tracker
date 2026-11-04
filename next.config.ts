@@ -1,4 +1,5 @@
 import type { NextConfig } from "next";
+import { withSentryConfig } from "@sentry/nextjs/config";
 
 const REPORT_FONTS = ["./src/lib/report/fonts/**/*"];
 
@@ -15,4 +16,17 @@ const nextConfig: NextConfig = {
   images: { unoptimized: true },
 };
 
-export default nextConfig;
+// Sentry build step. Source maps upload only when SENTRY_AUTH_TOKEN is set (a build secret in Vercel); without it,
+// source map handling is off and the build is unchanged apart from the SDK.
+const sentryAuthToken = process.env.SENTRY_AUTH_TOKEN || undefined;
+
+export default withSentryConfig(nextConfig, {
+  org: "nick-qo",
+  project: "caromont-portfolio-tracker",
+  authToken: sentryAuthToken,
+  sourcemaps: { disable: !sentryAuthToken },
+  release: { create: Boolean(sentryAuthToken) },
+  widenClientFileUpload: true,
+  telemetry: false,
+  silent: !process.env.CI,
+});
