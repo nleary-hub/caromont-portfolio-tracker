@@ -6,8 +6,9 @@
 // Claude connector: /api/mcp (connector bearer token checked in the route), /oauth/register and /oauth/token (OAuth
 // endpoints that never read the session) and /.well-known/ metadata are public; /oauth/authorize (the consent page)
 // stays behind sign-in, so only a signed-in person can approve a connection, for themself.
+// /about, /privacy and /terms (exact paths, PublicPages) are public: Google's OAuth branding needs them signed out.
 export { auth as proxy } from "@/auth";
 
 export const config = {
-  matcher: ["/((?!api/auth|api/cron/|api/share/|api/mcp|oauth/register|oauth/token|\\.well-known/|signin|fonts/|_next/static|_next/image|favicon.ico|robots.txt).*)"],
+  matcher: ["/((?!api/auth|api/cron/|api/share/|api/mcp|oauth/register|oauth/token|\\.well-known/|signin|about$|privacy$|terms$|fonts/|_next/static|_next/image|favicon.ico|robots.txt).*)"],
 };
