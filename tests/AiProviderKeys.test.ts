@@ -280,7 +280,11 @@ describe("Provider keys: save, test, rotate, delete", () => {
     const { db } = ctx;
     expect(await AiProviderKeyService.save(db, ADMIN, "other", { apiKey: NEW_KEY, baseUrl: "http://gateway.example.org/v1" }, ENV, NOW)).toMatchObject({ ok: false, fieldErrors: { baseUrl: "Enter a full https:// URL." } });
     const ok = provider(200);
-    expect(await AiProviderKeyService.save(db, ADMIN, "other", { apiKey: NEW_KEY, baseUrl: "https://gateway.example.org/v1/", label: "Local gateway" }, ENV, NOW)).toMatchObject({ ok: true });
+    // QA FIX 2 (save time): a local host, a private literal, or a name resolving to a private address is refused.
+    for (const [url, ip] of [["https://localhost/v1", "203.0.113.10"], ["https://169.254.169.254/v1", "203.0.113.10"], ["https://[::1]/v1", "203.0.113.10"], ["https://gateway.example.org/v1", "10.0.0.5"], ["https://gateway.example.org/v1", "::ffff:192.168.0.2"]] as const) {
+      expect(await AiProviderKeyService.save(db, ADMIN, "other", { apiKey: NEW_KEY, baseUrl: url }, ENV, NOW, async () => [{ address: ip, family: ip.includes(":") ? 6 : 4 }]), url + " " + ip).toMatchObject({ ok: false, fieldErrors: { baseUrl: "Enter a full https:// URL." } });
+    }
+    expect(await AiProviderKeyService.save(db, ADMIN, "other", { apiKey: NEW_KEY, baseUrl: "https://gateway.example.org/v1/", label: "Local gateway" }, ENV, NOW, async () => [{ address: "203.0.113.10", family: 4 }])).toMatchObject({ ok: true });
     await AiProviderKeyService.test(db, ADMIN, "other", ENV, NOW, ok.fetchImpl);
     expect(ok.calls[0].url).toBe("https://gateway.example.org/v1/models");
     const other = (await AiProviderKeyService.list(db, ENV, NOW)).find((s) => s.provider === "other")!;

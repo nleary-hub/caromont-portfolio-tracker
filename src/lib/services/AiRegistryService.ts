@@ -270,6 +270,38 @@ export class AiRegistryService {
     }
   }
 
+  /** The only non-Owner actor the registry accepts, and only for applyListedStates. */
+  static readonly LIST_REFRESH_ACTOR = "system:model-list-refresh";
+
+  /**
+   * 0072 (model-list refresh): mark every registry row of one provider 'listed' or 'no_longer_listed' from a list that
+   * already passed the response gate. Writes listedState ONLY: never kind, enabled, archive, cap, efforts, a category, an
+   * override or a fallback, and never adds a row. A no-longer-listed model keeps being used; only the Owner changes it.
+   * Callers: the Owner (page open, key save, Refresh lists) or the daily job with LIST_REFRESH_ACTOR.
+   */
+  static async applyListedStates(db: AiRegistryDb, actor: Viewer | typeof AiRegistryService.LIST_REFRESH_ACTOR | null, input: { provider: string; listedIds: readonly string[] }, env?: Env): Promise<AiRegistryResult<{ changed: number }>> {
+    const isSystem = actor === AiRegistryService.LIST_REFRESH_ACTOR;
+    if (!isSystem && !AiRegistryService.owner(actor as Viewer | null, env)) return { ok: false, error: AiRegistryCopy.NOT_AUTHORIZED };
+    if (!AiKeyProviders.parse(input.provider)) return { ok: false, error: AiRegistryCopy.BAD_PROVIDER };
+    const listed = new Set(input.listedIds);
+    try {
+      return await db.$transaction(async (tx) => {
+        const rows = await tx.aiModelRegistry.findMany({ where: { provider: input.provider } });
+        let changed = 0;
+        for (const r of rows) {
+          const next = listed.has(r.model) ? "listed" : "no_longer_listed";
+          if (r.listedState === next) continue;
+          await tx.aiModelRegistry.update({ where: { provider_model: { provider: r.provider, model: r.model } }, data: { listedState: next } });
+          changed += 1;
+        }
+        return { ok: true as const, changed };
+      });
+    } catch (e) {
+      console.error("Registry write failed: applyListedStates", (e as Error)?.name);
+      return { ok: false, error: AiRegistryCopy.SAVE_FAILED };
+    }
+  }
+
   /**
    * Point a category at a model that is already in the registry. Dictation and Voice chat take an OpenAI model of their own
    * kind (transcription, realtime). Text categories take a chat model. This never sets a fallback: the fallback columns are
