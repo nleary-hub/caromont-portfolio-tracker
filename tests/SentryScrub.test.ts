@@ -56,7 +56,7 @@ describe("SentryScrub", () => {
         { category: "fetch", data: { url: "/api/x?email=pat@example.org", method: "GET", status_code: 500, body: "x" } },
       ],
     } as unknown as ErrorEvent;
-    const out = SentryScrub.event(event);
+    const out = SentryScrub.event(event)!;
     expect(out.user).toBeUndefined();
     expect(out.extra).toBeUndefined();
     expect(out.request).toEqual({ method: "POST", url: "https://app.example.org/projects/:id" });
@@ -103,6 +103,35 @@ describe("SentryScrub", () => {
     expect(out.attributes["http.target"]).toBe("/projects/:id");
     expect(out.attributes["http.request.method"]).toBe("GET");
     expect(out.attributes["http.response.status_code"]).toBe(200);
+  });
+
+  describe("the MCP newer-version probe (Sentry CAROMONT-PORTFOLIO-TRACKER-1)", () => {
+    const SUPPORTED = "2025-11-25, 2025-06-18, 2025-03-26, 2024-11-05, 2024-10-07";
+    const mcp = (value: string, mechanism = "auto.ai.mcp_server") =>
+      ({ type: undefined, exception: { values: [{ type: "Error", value, mechanism: { type: mechanism, handled: false } }] } }) as unknown as ErrorEvent;
+    const rejected = (version: string) => `Bad Request: Unsupported protocol version: ${version} (supported versions: ${SUPPORTED})`;
+
+    it("drops the 400 a dual-era client gets when it tries the 2026-07-28 protocol first", () => {
+      expect(SentryScrub.isMcpNewerVersionProbe(mcp(rejected("2026-07-28")))).toBe(true);
+      expect(SentryScrub.event(mcp(rejected("2026-07-28")))).toBeNull();
+      expect(SentryScrub.options().beforeSend?.(mcp(rejected("2026-07-28")), {})).toBeNull();
+    });
+
+    it("still reports an older, unknown or malformed version", () => {
+      for (const v of ["2024-01-01", "2025-11-25", "1.0", "latest", "2026-7-28", "<script>"]) {
+        expect(SentryScrub.isMcpNewerVersionProbe(mcp(rejected(v))), v).toBe(false);
+        expect(SentryScrub.event(mcp(rejected(v))), v).not.toBeNull();
+      }
+    });
+
+    it("still reports the same text from anywhere but the MCP transport, and every other MCP error", () => {
+      expect(SentryScrub.event(mcp(rejected("2026-07-28"), "generic"))).not.toBeNull();
+      expect(SentryScrub.event(mcp("Not Acceptable: Client must accept text/event-stream"))).not.toBeNull();
+      expect(SentryScrub.event(mcp("Bad Request: Unsupported protocol version: 2026-07-28 (supported versions: )"))).not.toBeNull();
+      const two = mcp(rejected("2026-07-28"));
+      two.exception!.values!.push({ type: "Error", value: "Database down" });
+      expect(SentryScrub.event(two)).not.toBeNull();
+    });
   });
 
   it("registers the span scrubber", () => {
