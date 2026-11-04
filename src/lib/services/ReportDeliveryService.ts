@@ -2,6 +2,7 @@ import type { Prisma, PrismaClient, ReportArtifact } from "@/generated/prisma/cl
 import { ReportEnv, type EnvSource } from "@/lib/config/ReportEnv";
 import { Db } from "@/lib/db/Db";
 import { GoogleDriveClient, type FetchLike } from "@/lib/report/GoogleDriveClient";
+import { ReportAlert } from "@/lib/report/ReportAlert";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { SignedLink } from "@/lib/report/SignedLink";
 import { ServiceLineDrive } from "@/lib/report/ServiceLineDrive";
@@ -108,6 +109,7 @@ export class ReportDeliveryService {
         record.driveError = e instanceof Error ? e.message : String(e);
         await ReportDeliveryService.log(db, snapshotId, "drive", "failed", { error: record.driveError }, triggeredBy, now);
         ReportLog.error("delivery.drive.failed", { snapshotId, error: record.driveError });
+        ReportAlert.driveSaveFailed(record.driveError);
       }
     } else {
       record.driveError = ReportDeliveryService.NOT_CONFIGURED;

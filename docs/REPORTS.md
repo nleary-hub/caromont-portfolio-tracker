@@ -203,6 +203,16 @@ Visible rows only. No To/Cc and no missing-requester list.
   at least 32 chars), expires after 7 days. `/api/share/<token>/pdf` and `/api/share/<token>/handoff`
   serve the files without app sign-in (excluded from the auth proxy); a bad, tampered or expired token
   gets 404. With no secret either, the delivery is recorded as failed and retried on the next run.
+- **Drive save warning and alert.** When the newest frozen report didn't reach Drive (it fell back to the signed
+  link, or nothing went out), Report archive > Report freeze shows the Owner a warning banner (`DriveDeliveryWarning`)
+  with the period, the last try and Google's error text. Google's `invalid_grant` answer means the refresh token
+  expired or was revoked and gets the reconnect steps. Drive left unset on purpose (signed link, "not configured")
+  shows no banner. Each failed Drive save also sends one Sentry event (`ReportAlert`, fixed fingerprint, so every
+  daily retry lands on one issue; no error text in the message). The banner goes away once a run saves to Drive.
+- **Refresh token expiry.** A Google OAuth app left in **Testing** issues refresh tokens that expire after 7 days,
+  which is what broke Drive saves from Oct 13, 2026 (the Sep 29 save worked; every save since got `invalid_grant`).
+  Publish the app (Google Auth Platform > Audience > Publish app) before minting the token, then put it in
+  `GOOGLE_DRIVE_REFRESH_TOKEN` on Vercel, redeploy and press Check Drive.
 - A run re-attempts delivery when nothing was delivered, when everything failed, or when Drive is
   configured but the last delivery used the fallback link.
 - **Vercel Deployment Protection** (on by default for Hobby preview and possibly production URLs)
