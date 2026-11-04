@@ -3,6 +3,7 @@ import type { Breadcrumb, ErrorEvent } from "@sentry/nextjs";
 import { ClientErrorScrub } from "@/lib/errors/ClientErrorScrub";
 
 type Options = NonNullable<Parameters<typeof Sentry.init>[0]>;
+type StreamedSpanJSON = Parameters<NonNullable<Options["beforeSendSpan"]>>[0];
 
 /**
  * Sentry settings shared by the browser, server and edge setups (instrumentation-client.ts, sentry.server.config.ts,
@@ -46,6 +47,7 @@ export class SentryScrub {
       maxBreadcrumbs: 30,
       beforeSend: (event) => SentryScrub.event(event),
       beforeBreadcrumb: (crumb) => SentryScrub.breadcrumb(crumb),
+      beforeSendSpan: (span) => SentryScrub.span(span),
       // Errors only: no logs or metrics leave the app.
       beforeSendLog: () => null,
       beforeSendMetric: () => null,
@@ -88,9 +90,34 @@ export class SentryScrub {
     return out;
   }
 
-  /** Origin (if any) plus the path with ids replaced; no query string or hash. */
+  /** A sampled trace span: its name and every text attribute have URLs and paths scrubbed like event URLs. */
+  static span(span: StreamedSpanJSON): StreamedSpanJSON {
+    span.name = SentryScrub.inline(span.name);
+    for (const [k, v] of Object.entries(span.attributes ?? {})) {
+      if (typeof v === "string") span.attributes[k] = SentryScrub.inline(v);
+    }
+    return span;
+  }
+
+  /** Text with every URL or path in it (a word starting with "/" or "http") replaced by its scrubbed form. */
+  static inline(raw: string): string {
+    return raw.replace(/(?:https?:\/\/|\/)[^\s"'<>]*/g, (m) => SentryScrub.url(m));
+  }
+
+  /**
+   * Origin (if any) plus the path with ids replaced; no query string or hash. Signed report links
+   * (/api/share/<token>/<file>) and any other long path segment are replaced too, because they work without sign-in.
+   */
   static url(raw: string): string {
     const origin = /^https?:\/\/[^/?#]+/.exec(raw)?.[0] ?? "";
-    return origin + ClientErrorScrub.route(raw);
+    const segs = ClientErrorScrub.route(raw).split("/");
+    for (let i = 0; i < segs.length; i++) {
+      if (segs[i - 2] === "api" && segs[i - 1] === "share") {
+        segs[i] = ":token";
+        if (i + 1 < segs.length) segs[i + 1] = ":file";
+        break;
+      }
+    }
+    return origin + segs.map((seg) => (seg.length >= 20 ? ":token" : seg)).join("/");
   }
 }
