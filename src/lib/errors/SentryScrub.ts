@@ -1,0 +1,96 @@
+import type * as Sentry from "@sentry/nextjs";
+import type { Breadcrumb, ErrorEvent } from "@sentry/nextjs";
+import { ClientErrorScrub } from "@/lib/errors/ClientErrorScrub";
+
+type Options = NonNullable<Parameters<typeof Sentry.init>[0]>;
+
+/**
+ * Sentry settings shared by the browser, server and edge setups (instrumentation-client.ts, sentry.server.config.ts,
+ * sentry.edge.config.ts). Sentry SDK v11 collects everything by default (user, cookies, headers, request and response
+ * bodies, AI prompts, database values), so every category is turned off here, and each error is scrubbed again with
+ * the same rules as the app's own client error reports before it leaves: message, stack and route path only.
+ */
+export class SentryScrub {
+  static readonly TRACES_SAMPLE_RATE = 0.05;
+
+  /** Nothing about people, requests or data: only what helps find the bug. */
+  static readonly DATA_COLLECTION: NonNullable<Options["dataCollection"]> = {
+    userInfo: false,
+    cookies: false,
+    httpHeaders: false,
+    httpBodies: [],
+    urlQueryParams: false,
+    graphQL: { document: false, variables: false },
+    genAI: { inputs: false, outputs: false },
+    mcp: { inputs: false, outputs: false },
+    databaseQueryData: false,
+    queues: false,
+    stackFrameVariables: false,
+  };
+
+  /** The DSN, or undefined (Sentry then stays off and sends nothing). */
+  static dsn(): string | undefined {
+    const v = process.env.NEXT_PUBLIC_SENTRY_DSN;
+    return v && v.trim() ? v.trim() : undefined;
+  }
+
+  /** Options every runtime passes to Sentry.init. */
+  static options(): Options {
+    const dsn = SentryScrub.dsn();
+    return {
+      dsn,
+      enabled: Boolean(dsn),
+      environment: process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV || process.env.NODE_ENV,
+      tracesSampleRate: SentryScrub.TRACES_SAMPLE_RATE,
+      dataCollection: SentryScrub.DATA_COLLECTION,
+      maxBreadcrumbs: 30,
+      beforeSend: (event) => SentryScrub.event(event),
+      beforeBreadcrumb: (crumb) => SentryScrub.breadcrumb(crumb),
+      // Errors only: no logs or metrics leave the app.
+      beforeSendLog: () => null,
+      beforeSendMetric: () => null,
+    };
+  }
+
+  /** An error event with anything that could be user data removed or replaced. */
+  static event(event: ErrorEvent): ErrorEvent {
+    delete event.user;
+    delete event.extra;
+    if (event.request) {
+      event.request = { method: event.request.method, url: event.request.url ? SentryScrub.url(event.request.url) : undefined };
+    }
+    if (event.transaction) event.transaction = ClientErrorScrub.route(event.transaction);
+    if (event.message) event.message = ClientErrorScrub.text(event.message, ClientErrorScrub.MESSAGE_MAX);
+    if (event.logentry) {
+      event.logentry = { message: ClientErrorScrub.text(event.logentry.message ?? "", ClientErrorScrub.MESSAGE_MAX) };
+    }
+    for (const ex of event.exception?.values ?? []) {
+      if (ex.value) ex.value = ClientErrorScrub.text(ex.value, ClientErrorScrub.MESSAGE_MAX);
+      for (const frame of ex.stacktrace?.frames ?? []) delete frame.vars;
+    }
+    if (event.breadcrumbs) event.breadcrumbs = event.breadcrumbs.map((b) => SentryScrub.breadcrumb(b)).filter((b): b is Breadcrumb => b !== null);
+    return event;
+  }
+
+  /** A breadcrumb with its message scrubbed and only safe fields kept. Console and input breadcrumbs are dropped. */
+  static breadcrumb(crumb: Breadcrumb): Breadcrumb | null {
+    if (crumb.category === "console" || crumb.category === "ui.input") return null;
+    const out: Breadcrumb = { type: crumb.type, category: crumb.category, level: crumb.level, timestamp: crumb.timestamp };
+    if (crumb.message) out.message = ClientErrorScrub.text(crumb.message, ClientErrorScrub.MESSAGE_MAX);
+    const d = crumb.data;
+    if (d) {
+      const data: Record<string, unknown> = {};
+      for (const k of ["url", "from", "to"] as const) if (typeof d[k] === "string") data[k] = SentryScrub.url(d[k]);
+      if (typeof d.method === "string") data.method = d.method;
+      if (typeof d.status_code === "number") data.status_code = d.status_code;
+      out.data = data;
+    }
+    return out;
+  }
+
+  /** Origin (if any) plus the path with ids replaced; no query string or hash. */
+  static url(raw: string): string {
+    const origin = /^https?:\/\/[^/?#]+/.exec(raw)?.[0] ?? "";
+    return origin + ClientErrorScrub.route(raw);
+  }
+}
