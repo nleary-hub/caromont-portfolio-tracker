@@ -175,7 +175,9 @@ so Google's callback path is `/api/auth/callback/google`.
 1. In https://console.cloud.google.com/ create (or pick) a project, for example `caromont-portfolio-tracker`.
 2. **OAuth consent screen** (newer consoles: **Google Auth Platform** > **Branding / Audience**): app name
    `Service Line Portfolio Tracker`, your address as support and developer contact, audience **External**,
-   default scopes only (`openid`, `email`, `profile`). While the app is in **Testing**, add every person who
+   default scopes only (`openid`, `email`, `profile`). Branding links (public, no sign-in, `PublicPages`): home page
+   `https://caromont-portfolio-tracker.vercel.app/about`, privacy policy `.../privacy`, terms of service `.../terms`;
+   authorized domain `caromont-portfolio-tracker.vercel.app`. While the app is in **Testing**, add every person who
    needs to sign in under **Audience** > **Test users**, or click **Publish app** (basic scopes need no
    verification).
 3. **Credentials** > **Create credentials** > **OAuth client ID**, type **Web application**:
