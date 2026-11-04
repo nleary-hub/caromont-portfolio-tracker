@@ -1,11 +1,11 @@
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AiActionModel, type AiActionLists } from "@/lib/ai/actions/AiActionModel";
 import { AiActionTools } from "@/lib/ai/actions/AiActionTools";
 import type { AiToolProject } from "@/lib/ai/AiToolsModel";
 import { UpdateTimeline } from "@/lib/history/UpdateTimeline";
 import { AiActionService } from "@/lib/services/AiActionService";
 import { AiToolsService } from "@/lib/services/AiToolsService";
-import { DEPARTMENTS, GOLDEN, P, PEOPLE, scope } from "./fixtures/portfolio-mirror";
+import { DEPARTMENTS, GOLDEN, NOW, P, PEOPLE, scope } from "./fixtures/portfolio-mirror";
 import { ActionsDb, FakePorts } from "./helpers/ActionsDb";
 import { Factory } from "./helpers/factories";
 
@@ -21,10 +21,16 @@ const ref = (i: number) => `P${projects.findIndex((p) => p.id === P(i)) + 1}`;
 const base = () => ({ db: db as never, viewer: ADMIN, scope: scope(), projects, env: ENV });
 
 beforeEach(async () => {
+  // The mirror's due dates are written around its fixed "today" (Oct 17, 2026). Pin the clock there, or signals
+  // like "overdue" drift as real days pass (on Nov 3 the overdue search found 6 projects, not the 4 below).
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
   db = new ActionsDb();
   ports = new FakePorts(db);
   projects = await AiToolsService.projects(db as never, scope());
 });
+
+afterEach(() => vi.useRealTimers());
 
 async function state() {
   return { projects: await AiActionService.load(db, scope(), projects), lists: await AiActionService.lists(db, scope()) };
