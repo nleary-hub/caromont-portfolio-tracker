@@ -26,7 +26,8 @@ const clip = (v: unknown, n: number) => (typeof v === "string" ? v.replace(/\s+/
  * is shown, never saved.
  */
 export class AiNextStepModel {
-  static readonly MAX_TOKENS = 700;
+  /** Headroom for reasoning models, which count hidden reasoning against max_completion_tokens (see AiPrompts). */
+  static readonly MAX_TOKENS = 4000;
   static readonly MILESTONE_MAX = 40;
 
   static system(context: string, templates: readonly AiNextStepTemplate[]): string {
