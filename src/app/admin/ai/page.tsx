@@ -158,19 +158,19 @@ export default async function AiSettingsPage() {
         </p>
       )}
 
-      {/* The text feature Provider pickers' "No key" / "Key failing" hints scroll here and focus it. */}
-      <section id={PROVIDER_KEYS_CARD_ID} className={`${section} scroll-mt-6 outline-none`} aria-labelledby="provider-keys-heading">
-        <AiProviderKeysCard rows={keyRows} preview={preview} dbReady={dbReady} encryptionReady={view.encryption.ready} adminName={viewer.name ?? LineAccessService.displayName({ email: viewer.email })} />
-      </section>
-
-      {/* One shared OpenAI model list for the settings card, the Models panel and the feature pickers. */}
+      {/* Company and model first. One shared OpenAI model list for this card, the Models panel and the feature pickers. */}
       <OpenAiModelListProvider>
       <ProviderModelListsProvider>
       <section className={`${section} relative z-20`} aria-labelledby="ai-settings-heading">
         <h2 id="ai-settings-heading" className="type-heading">
           {AiCopy.SWITCH_LABEL}
         </h2>
-        <AiSettingsForm view={view} keySavedLine={keySavedLine} dbReady={dbReady} modelOptions={AiModelService.optionsOf(models, "chat")} />
+        <AiSettingsForm view={view} keySavedLine={keySavedLine} dbReady={dbReady} modelOptions={AiModelService.optionsOf(models, "chat")} modelsByProvider={chatModels} keyStates={keyStates} />
+      </section>
+
+      {/* The text feature Provider pickers' "No key" / "Key failing" hints scroll here and focus it. */}
+      <section id={PROVIDER_KEYS_CARD_ID} className={`${section} scroll-mt-6 outline-none`} aria-labelledby="provider-keys-heading">
+        <AiProviderKeysCard rows={keyRows} preview={preview} dbReady={dbReady} encryptionReady={view.encryption.ready} adminName={viewer.name ?? LineAccessService.displayName({ email: viewer.email })} />
       </section>
 
       <section className={section} aria-labelledby="ai-models-heading">
@@ -201,7 +201,10 @@ export default async function AiSettingsPage() {
         <AiContextCard view={glossary} dbReady={dbReady && glossaryReady} />
       </section>
 
-      <section className={section} aria-labelledby="ai-usage-heading">
+      <details className={section} data-testid="ai-activity">
+        <summary className="cursor-pointer type-heading">{AiCopy.ACTIVITY_LABEL}</summary>
+        <div className="mt-3 flex flex-col gap-6">
+      <section aria-labelledby="ai-usage-heading">
         <AiUsageCard rows={usage} when={(d) => AiPageFormat.when(d)} />
       </section>
 
@@ -240,6 +243,8 @@ export default async function AiSettingsPage() {
           </table>
         </div>
       </section>
+        </div>
+      </details>
     </main>
   );
 }

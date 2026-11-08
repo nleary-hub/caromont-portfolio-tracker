@@ -87,6 +87,7 @@ describe("test connection uses the admin's pick", () => {
     expect(src).toContain("if (!picked) return { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${AiCopy.TEST_PICK_MODEL}` };");
     // Item 2: the test reads the OpenAI key from the key registry, not the legacy copy.
     expect(src).toContain("AiProviderKeyService.openAiRuntime(Db.client, picked)");
+    expect(src).toContain("case \"anthropic\":");
     expect(src).not.toContain("AiSettingsService.runtimeFor(");
     expect(src).toContain('AiModelService.enabledIds(Db.client, "chat")');
     expect(AiCopy.TEST_PICK_MODEL).toBe("Pick a model to test first.");

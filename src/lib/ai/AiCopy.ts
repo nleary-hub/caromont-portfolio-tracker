@@ -19,6 +19,13 @@ export class AiCopy {
   static readonly SWITCH_ON_MODEL_OFF = "On, but not ready. The chosen model is turned off under Models. Choose a model that is on.";
   static readonly PROVIDER_LABEL = "Provider";
   static readonly PROVIDER_PLACEHOLDER = "Select a provider";
+  /** The writing-assistant company control. History still says Provider. */
+  static readonly COMPANY_LABEL = "Company";
+  static readonly COMPANY_HELP = "The company the writing assistant calls. A feature below can pick a different company and model.";
+  static readonly ADVANCED_LABEL = "Advanced";
+  static readonly ADVANCED_HELP = "The API key for this company, and a test of the company and key that are already saved.";
+  static readonly ACTIVITY_LABEL = "Activity";
+  static readonly VOICE_OPTIONS_LABEL = "Voice options";
   static readonly MODEL_LABEL = "Model name";
   /** Placeholder copy for Writing Bot to finalize (step 3b: admins choose the models). */
   static readonly MODEL_HELP = "Choose a chat model. Click Show OpenAI models to see every model your saved API key can use. Only models turned on under Models can be saved.";
@@ -26,15 +33,18 @@ export class AiCopy {
   static readonly MODEL_NOT_ALLOWED = "That model is turned off. An admin can choose one that's on in AI settings.";
   static readonly MODEL_PICKER_EMPTY = "No models are on. Turn one on under Models.";
   static readonly MODEL_PICKER_PLACEHOLDER = "Choose a model";
+  static readonly SETTINGS_MODEL_TYPE_PLACEHOLDER = "Type the model id";
   static readonly MODEL_PICKER_OFF = "Off under Models";
   static readonly MODEL_PICKER_MANUAL_LABEL = "Or type a model ID";
   static readonly MODEL_PICKER_LIST_FAILED = "Couldn't load OpenAI's model list. You can still type a model ID under each picker. Only models turned on under Models can be used.";
   static readonly TEST_MODEL_LABEL = "Model to test";
+  static readonly TEST_SAVED_HELP = "Tests the company and key that are saved. Save first if you just changed them.";
+  static readonly ANTHROPIC_LEGACY_KEY = "This company is using the key saved with these settings. Add an Anthropic key under Provider keys to load its model list.";
   static readonly TEST_PICK_MODEL = "Pick a model to test first.";
 
   // ---- Admin > AI settings: Models and Features (step 3b) -----------------------------------------------------------
   static readonly MODELS_TITLE = "Models";
-  static readonly MODELS_INTRO = "OpenAI models admins can choose. New models start off. Enter prices by hand, or refresh them from OpenAI's pricing page. Prices are for reference only.";
+  static readonly MODELS_INTRO = "Models admins can choose, for every company. New models start off. Enter prices by hand, or refresh them from OpenAI's pricing page. Prices are for reference only.";
   static readonly MODELS_HEADERS = ["Model", "On", "Price unit", "Input price", "Output price", ""] as const;
   static readonly MODELS_EMPTY = "No models yet.";
   static readonly MODEL_IN_USE = "In use";
@@ -68,6 +78,25 @@ export class AiCopy {
   static readonly MODEL_CHECK_FAILED = "Couldn't reach OpenAI to check the model. Try again.";
   static readonly MODEL_WRONG_KIND = "That model doesn't fit this feature. Choose one from the list.";
   static readonly MODEL_LIST_LOAD = "Show OpenAI models";
+
+  /** The catalog button for the company whose list is about to load. OpenAI keeps the original label. */
+  static modelListLoad(provider: string): string {
+    return provider === "openai" ? AiCopy.MODEL_LIST_LOAD : `Show ${AiCopy.featureProviderName(provider)} models`;
+  }
+
+  /** Help under the writing-assistant model picker. OpenAI keeps MODEL_HELP. */
+  static settingsModelHelp(provider: string): string {
+    switch (provider) {
+      case "anthropic":
+        return "Choose an Anthropic chat model. Click Show Anthropic models to load the ones your saved key can use. Only models turned on under Models can be saved.";
+      case "azure_openai":
+        return "Azure doesn't use the OpenAI model list. Type the model name for this deployment. Only a model turned on under Models can be saved.";
+      case "openai_compatible":
+        return "This company has no shared model list. Type the model id for the base URL. Only a model turned on under Models can be saved.";
+      default:
+        return AiCopy.MODEL_HELP;
+    }
+  }
   static readonly MODEL_LIST_LOADING = "Loading…";
   static readonly MODEL_LIST_HELP = "Models OpenAI lists for the saved API key. Adding one doesn't turn it on.";
   static readonly MODEL_LIST_EMPTY = "OpenAI listed no chat, transcription or voice models for this key.";
@@ -245,7 +274,7 @@ export class AiCopy {
   static unavailable(env: Record<string, string | undefined> = process.env): string {
     return env.VERCEL_ENV === "preview" ? AiCopy.PREVIEW_OFF : AiCopy.UNAVAILABLE;
   }
-  static readonly KEY_USE_PROVIDER_KEYS = "The OpenAI key is managed under Provider keys at the top of this page.";
+  static readonly KEY_USE_PROVIDER_KEYS = "The OpenAI key is managed under Provider keys on this page.";
   static readonly KEY_UNREADABLE = "The saved key can't be read with the current encryption key. Paste the key again to replace it.";
   static readonly SAVE = "Save";
   static readonly SAVING = "Saving…";

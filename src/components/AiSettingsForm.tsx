@@ -1,11 +1,13 @@
 "use client";
 
-import { useActionState, useState, useTransition } from "react";
+import { useActionState, useEffect, useRef, useState, useTransition } from "react";
 import { clearAiKey, saveAiSettings, testAiConnection, type AiSettingsFormState, type AiTestResult } from "@/app/actions/ai";
 import { AiAlert } from "@/components/AiNoteAssistant";
+import { focusProviderKeys, useProviderModelLists } from "@/components/AiFeatureProviderPicker";
 import { ModelField, Field } from "@/components/AiModelPicker";
 import { useOpenAiModelList, type OpenAiListState } from "@/components/useOpenAiModelList";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
+import { type AiFeatureProvider, type AiProviderKeyStates } from "@/lib/ai/AiFeatureProviders";
 import { AiProviders, type AiProviderId } from "@/lib/ai/AiProviders";
 import type { AiSettingsView } from "@/lib/services/AiSettingsService";
 
@@ -20,16 +22,31 @@ const PRIMARY = `h-7 rounded-control btn-primary bg-accent-strong px-3.5 text-wh
  * saved it when. Pasting a key and saving replaces it; Clear key removes it. With no encryption key on the server the
  * key field stays visible but disabled, with the reason; the other settings still save (turning AI off must always
  * work). Test connection is disabled until a provider and readable key are saved; it tests the model picked in its own
- * picker. Both pickers read OpenAI's model list (the same source as the Models panel, #63), with manual entry when the
- * list can't load.
+ * picker. Each picker reads the catalog for its company: OpenAI's list, Anthropic's list, or a typed id for Azure and a
+ * custom base URL. Manual entry stays available when a list can't load.
  */
-export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [], initialList = null }: { view: AiSettingsView; keySavedLine: string | null; dbReady: boolean; modelOptions?: readonly string[]; initialList?: OpenAiListState }) {
+export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [], modelsByProvider, keyStates, initialList = null }: { view: AiSettingsView; keySavedLine: string | null; dbReady: boolean; modelOptions?: readonly string[]; modelsByProvider?: Partial<Record<AiFeatureProvider, readonly string[]>>; keyStates?: AiProviderKeyStates; initialList?: OpenAiListState }) {
   const openAi = useOpenAiModelList(initialList);
+  const lists = useProviderModelLists();
+  const loadCatalog = lists.load;
+  const loadCatalogRef = useRef(loadCatalog);
+  loadCatalogRef.current = loadCatalog;
   // #70: the test picker starts on the saved writing-assistant model when there is one, otherwise empty.
   const [testModel, setTestModel] = useState(view.model ?? "");
   const [state, action, pending] = useActionState<AiSettingsFormState, FormData>(saveAiSettings, null);
   const [enabled, setEnabled] = useState(view.enabled);
   const [provider, setProvider] = useState<AiProviderId | "">(view.provider ?? "");
+  const catalog = AiProviders.catalogOf(provider);
+  const savedCatalog = AiProviders.catalogOf(view.provider);
+  useEffect(() => {
+    if (catalog === "anthropic" || savedCatalog === "anthropic") loadCatalogRef.current("anthropic");
+  }, [catalog, savedCatalog]);
+  const companyModels = (p: "openai" | "anthropic" | "manual") => (p === "anthropic" ? (modelsByProvider?.anthropic ?? []) : p === "openai" ? (modelsByProvider?.openai ?? modelOptions) : []);
+  const companyList = (p: "openai" | "anthropic" | "manual") => (p === "anthropic" ? lists.list("anthropic") : p === "openai" ? openAi.list : null);
+  const companyLoading = (p: "openai" | "anthropic" | "manual") => (p === "anthropic" ? lists.loading("anthropic") : p === "openai" ? openAi.loading : false);
+  const loadCompany = (p: "openai" | "anthropic" | "manual") => (p === "anthropic" ? lists.load("anthropic") : p === "openai" ? openAi.load() : undefined);
+  const shownModel = provider === (view.provider ?? "") ? (view.model ?? "") : "";
+  const selectedRemote = companyList(catalog);
   // The key field shows when no key is saved, or after Replace key. A successful save closes it again.
   const [replacing, setReplacing] = useState(false);
   const [seenState, setSeenState] = useState<AiSettingsFormState>(null);
@@ -38,8 +55,9 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
     if (state?.ok) setReplacing(false);
   }
   // The OpenAI key lives under Provider keys (0053): this form only shows its status there.
-  const managedAbove = view.key.source === "provider_keys";
-  const keyInput = !managedAbove && (!view.key.set || replacing);
+  const legacyCompany = provider === "azure_openai" || provider === "openai_compatible";
+  const managedAbove = !legacyCompany && provider !== "anthropic" && view.key.source === "provider_keys";
+  const keyInput = legacyCompany || (!managedAbove && provider !== "anthropic" && (!view.key.set || replacing));
   const [confirmClear, setConfirmClear] = useState(false);
   const [keyMessage, setKeyMessage] = useState<string | null>(null);
   const [test, setTest] = useState<AiTestResult | null>(null);
@@ -58,9 +76,14 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
   return (
     <div className="flex flex-col gap-4">
       {/* OpenAI's model list failed: said once here for every picker on the page; each picker keeps its typed-ID field. */}
-      {openAi.list?.ok === false && (
+      {catalog === "openai" && openAi.list?.ok === false && (
         <AiAlert tone="danger" testId="ai-model-list-failed">
           {C.MODEL_PICKER_LIST_FAILED}
+        </AiAlert>
+      )}
+      {selectedRemote?.ok === false && catalog !== "openai" && (
+        <AiAlert tone="danger" testId="ai-company-list-failed">
+          {selectedRemote.error}
         </AiAlert>
       )}
       <form action={action} className="flex flex-col gap-4" data-testid="ai-settings-form">
@@ -96,8 +119,8 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
         </div>
 
         <div className="grid grid-cols-2 gap-3">
-          <Field id="ai-provider" label={C.PROVIDER_LABEL} error={err("provider")}>
-            <select id="ai-provider" name="provider" className={INPUT} value={provider} onChange={(e) => setProvider(e.target.value as AiProviderId | "")} aria-invalid={Boolean(err("provider")) || undefined} disabled={!dbReady}>
+          <Field id="ai-provider" label={C.COMPANY_LABEL} error={err("provider")} help={C.COMPANY_HELP}>
+            <select id="ai-provider" name="provider" className={INPUT} value={provider} onChange={(e) => setProvider(e.target.value as AiProviderId | "")} aria-invalid={Boolean(err("provider")) || undefined} disabled={!dbReady} data-testid="ai-provider">
               <option value="">{C.PROVIDER_PLACEHOLDER}</option>
               {AiProviders.ALL.map((p) => (
                 <option key={p} value={p}>
@@ -106,7 +129,7 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
               ))}
             </select>
           </Field>
-          <ModelField value={view.model} error={err("model")} disabled={!dbReady} options={modelOptions} list={openAi.list} listLoading={openAi.loading} onLoadList={openAi.load} />
+          <ModelField key={`${provider}:${shownModel}`} value={shownModel} error={err("model")} disabled={!dbReady} options={companyModels(catalog)} list={companyList(catalog)} listLoading={companyLoading(catalog)} onLoadList={catalog === "manual" ? undefined : () => loadCompany(catalog)} loadLabel={C.modelListLoad(catalog === "anthropic" ? "anthropic" : "openai")} help={C.settingsModelHelp(provider)} typedOnly={catalog === "manual"} placeholder={catalog === "manual" ? C.SETTINGS_MODEL_TYPE_PLACEHOLDER : undefined} />
           {provider === "openai_compatible" && (
             <div className="col-span-2">
               <Field id="ai-base-url" label={C.BASE_URL_LABEL} error={err("baseUrl")} help={C.BASE_URL_HELP}>
@@ -126,10 +149,22 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
           )}
         </div>
 
-        {/* API key: write-only. */}
+        <details className="rounded-control border border-line px-3 py-2" data-testid="ai-settings-advanced">
+          <summary className={`cursor-pointer type-table-strong text-fg ${FOCUS}`}>{C.ADVANCED_LABEL}</summary>
+          <p className="mt-1 text-muted type-caption">{C.ADVANCED_HELP}</p>
+          <div className="mt-3 flex flex-col gap-4">
+        {/* API key: write-only. OpenAI and Anthropic keys live under Provider keys. Azure and a custom base URL use the key on this form. */}
         <div className="flex flex-col gap-1.5" data-testid="ai-key">
           <span className="text-muted type-caption">{C.KEY_LABEL}</span>
-          <div className="flex h-8 items-center gap-2">
+          {provider === "anthropic" ? (
+            <p className="text-fg type-table" data-testid="ai-company-key">
+              {keyStates?.anthropic === "ok" ? "Anthropic key is saved under Provider keys." : keyStates?.anthropic === "failing" ? `${C.PROVIDER_HINT_KEY_FAILING}. ${C.providerNeedsKey("anthropic")}` : view.provider === "anthropic" && view.key.set ? C.ANTHROPIC_LEGACY_KEY : C.providerNeedsKey("anthropic")}{" "}
+              <button type="button" className={`underline ${FOCUS}`} onClick={focusProviderKeys}>
+                Provider keys
+              </button>
+            </p>
+          ) : null}
+          <div className={`flex h-8 items-center gap-2 ${provider === "anthropic" ? "hidden" : ""}`}>
             <span className={`inline-flex items-center gap-1.5 type-table-strong ${view.key.set ? "text-fg" : "text-muted"}`} data-testid="ai-key-status">
               <span aria-hidden className={`size-2 rounded-full ${view.key.set ? (view.key.readable ? "bg-(--status-on-track-dark-fg)" : "bg-(--status-at-risk-dark-fg)") : "bg-(--status-not-started-dark-fg)"}`} />
               {view.key.set ? C.keySet(view.key.last4) : C.KEY_NOT_SET}
@@ -204,6 +239,25 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
           )}
         </div>
 
+        {/* Test connection: the saved company and key, never an unsaved change. The result never contains the key. */}
+        <div className="flex flex-col gap-2 rounded-control border border-line bg-input/60 px-3 py-2.5" data-testid="ai-test">
+          <ModelField id="ai-test-model" name={null} label={C.TEST_MODEL_LABEL} value={view.model ?? ""} disabled={!canTest} options={companyModels(savedCatalog)} list={companyList(savedCatalog)} listLoading={companyLoading(savedCatalog)} onLoadList={savedCatalog === "manual" ? undefined : () => loadCompany(savedCatalog)} loadLabel={C.modelListLoad(savedCatalog === "anthropic" ? "anthropic" : "openai")} help={C.TEST_SAVED_HELP} typedOnly={savedCatalog === "manual"} placeholder={savedCatalog === "manual" ? C.SETTINGS_MODEL_TYPE_PLACEHOLDER : undefined} onChange={setTestModel} />
+          <div className="flex items-center gap-3">
+            <button type="button" className={GHOST} disabled={testing || !canTest} onClick={() => startTest(async () => setTest(await testAiConnection(testModel)))} data-testid="ai-test-button">
+              {testing ? C.TESTING : C.TEST}
+            </button>
+            <span className="text-muted type-caption" data-testid="ai-test-help">{canTest ? C.TEST_HELP : C.TEST_NEEDS_SETTINGS}</span>
+          </div>
+          {test && (
+            <p role="status" className={`flex items-start gap-2 type-table ${test.ok ? "text-(--status-on-track-dark-fg)" : "text-danger"}`} data-testid={test.ok ? "ai-test-ok" : "ai-test-error"}>
+              <span aria-hidden className={`mt-1 size-2 shrink-0 rounded-full ${test.ok ? "bg-(--status-on-track-dark-fg)" : "bg-danger"}`} />
+              <span className="min-w-0 break-words">{test.message}</span>
+            </p>
+          )}
+        </div>
+          </div>
+        </details>
+
         <div className="flex items-center gap-2 border-t border-line pt-3">
           <span className={`min-w-0 flex-1 type-table ${state && !state.ok ? "text-danger" : "text-muted"}`} role={state ? "status" : undefined} data-testid="ai-save-message">
             {state?.message ?? ""}
@@ -213,23 +267,6 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
           </button>
         </div>
       </form>
-
-      {/* Test connection: the saved settings, a tiny prompt; the result never contains the key. */}
-      <div className="flex flex-col gap-2 rounded-control border border-line bg-input/60 px-3 py-2.5" data-testid="ai-test">
-        <ModelField id="ai-test-model" name={null} label={C.TEST_MODEL_LABEL} value={view.model ?? ""} disabled={!canTest} options={modelOptions} list={openAi.list} listLoading={openAi.loading} onLoadList={openAi.load} onChange={setTestModel} />
-        <div className="flex items-center gap-3">
-          <button type="button" className={GHOST} disabled={testing || !canTest} onClick={() => startTest(async () => setTest(await testAiConnection(testModel)))} data-testid="ai-test-button">
-            {testing ? C.TESTING : C.TEST}
-          </button>
-          <span className="text-muted type-caption" data-testid="ai-test-help">{canTest ? C.TEST_HELP : C.TEST_NEEDS_SETTINGS}</span>
-        </div>
-        {test && (
-          <p role="status" className={`flex items-start gap-2 type-table ${test.ok ? "text-(--status-on-track-dark-fg)" : "text-danger"}`} data-testid={test.ok ? "ai-test-ok" : "ai-test-error"}>
-            <span aria-hidden className={`mt-1 size-2 shrink-0 rounded-full ${test.ok ? "bg-(--status-on-track-dark-fg)" : "bg-danger"}`} />
-            <span className="min-w-0 break-words">{test.message}</span>
-          </p>
-        )}
-      </div>
     </div>
   );
 }

@@ -3,6 +3,7 @@
 import { revalidatePath } from "next/cache";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import { AiCopy } from "@/lib/ai/AiCopy";
+import { AiFeatureProviders } from "@/lib/ai/AiFeatureProviders";
 import { AiProviders } from "@/lib/ai/AiProviders";
 import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
@@ -28,6 +29,31 @@ class AiActions {
   static async admin() {
     const viewer = await OwnerGate.ownerViewer();
     return viewer?.isAdmin ? viewer : null;
+  }
+
+  /** The saved company's key with the model the admin picked. OpenAI stays on the key registry. */
+  static async testConfig(provider: ReturnType<typeof AiProviders.parse>, model: string) {
+    switch (provider) {
+      case "openai":
+        return null;
+      case "anthropic": {
+        const secret = await AiProviderKeyService.secret(Db.client as unknown as AiProviderKeyDb, "anthropic").catch(() => null);
+        if (secret?.apiKey) return AiFeatureProviders.runtime("anthropic", model, { apiKey: secret.apiKey, baseUrl: secret.baseUrl });
+        const resolved = await AiSettingsService.row(Db.client as unknown as AiSettingsDb);
+        return resolved ? AiSettingsService.runtime({ ...resolved, model }) : null;
+      }
+      case "azure_openai":
+      case "openai_compatible": {
+        const resolved = await AiSettingsService.row(Db.client as unknown as AiSettingsDb);
+        return resolved ? AiSettingsService.runtime({ ...resolved, model }) : null;
+      }
+      case null:
+        return null;
+      default: {
+        const unknown: never = provider;
+        return unknown;
+      }
+    }
   }
 }
 
@@ -63,7 +89,9 @@ export async function saveAiSettings(_prev: AiSettingsFormState, form: FormData)
   if (!viewer) return { ok: false, message: "Not authorized." };
   if (!Db.isConfigured()) return { ok: false, message: AiCopy.SAVE_FAILED };
   try {
-    const r = await AiSettingsService.save(Db.client as unknown as AiSettingsDb, viewer, { ...AiSettingsService.parseForm(form), allowedModels: await AiModelService.enabledIds(Db.client, "chat") });
+    const models = await AiModelService.list(Db.client as never).catch(() => []);
+    const modelOwners = Object.fromEntries(AiModelService.views(models, null).map((m) => [m.id, m.provider ?? "openai"]));
+    const r = await AiSettingsService.save(Db.client as unknown as AiSettingsDb, viewer, { ...AiSettingsService.parseForm(form), allowedModels: await AiModelService.enabledIds(Db.client, "chat"), modelOwners });
     if (!r.ok) return { ok: false, message: r.error, ...(r.fieldErrors ? { fieldErrors: r.fieldErrors as Record<string, string> } : {}) };
     revalidatePath("/admin/ai");
     revalidatePath("/");
@@ -108,7 +136,8 @@ export async function testAiConnection(model?: string): Promise<AiTestResult> {
   try {
     // Item 2: the OpenAI key comes from the key registry, never from the legacy ai_settings copy. No key = refused.
     const row = await AiSettingsService.storedRow(Db.client as unknown as AiSettingsDb);
-    const saved = AiProviders.parse(row?.provider) === "openai" ? await AiProviderKeyService.openAiRuntime(Db.client, picked) : null;
+    const provider = AiProviders.parse(row?.provider);
+    const saved = provider === "openai" ? await AiProviderKeyService.openAiRuntime(Db.client, picked) : await AiActions.testConfig(provider, picked);
     if (!saved) return { ok: false, message: AiCopy.TEST_NEEDS_SETTINGS };
     const config = { ...saved, allowedModels: await AiModelService.enabledIds(Db.client, "chat") };
     if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, message: `${AiCopy.TEST_FAILED_PREFIX} ${AiCopy.MODEL_NOT_ALLOWED}` };
