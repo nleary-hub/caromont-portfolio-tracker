@@ -43,11 +43,22 @@ export class ReportEnv {
     return v && ReportEnv.EMAIL_RE.test(v) ? v : null;
   }
 
-  static drive(env: EnvSource = process.env): DriveEnv | null {
+  /** The Drive OAuth client and folder, without a refresh token (Reconnect Drive uses these to get one). */
+  static driveClient(env: EnvSource = process.env): Omit<DriveEnv, "refreshToken"> | null {
     const clientId = ReportEnv.value(env, "GOOGLE_DRIVE_CLIENT_ID");
     const clientSecret = ReportEnv.value(env, "GOOGLE_DRIVE_CLIENT_SECRET");
+    if (!clientId || !clientSecret) return null;
+    return { clientId, clientSecret, folderId: ReportEnv.value(env, "GOOGLE_DRIVE_FOLDER_ID") };
+  }
+
+  /**
+   * Drive settings from the environment only (GOOGLE_DRIVE_REFRESH_TOKEN). The freeze and Check Drive go through
+   * DriveConnection.resolve, which prefers the token saved by Reconnect Drive and falls back to this.
+   */
+  static drive(env: EnvSource = process.env): DriveEnv | null {
+    const client = ReportEnv.driveClient(env);
     const refreshToken = ReportEnv.value(env, "GOOGLE_DRIVE_REFRESH_TOKEN");
-    if (!clientId || !clientSecret || !refreshToken) return null;
-    return { clientId, clientSecret, refreshToken, folderId: ReportEnv.value(env, "GOOGLE_DRIVE_FOLDER_ID") };
+    if (!client || !refreshToken) return null;
+    return { ...client, refreshToken };
   }
 }

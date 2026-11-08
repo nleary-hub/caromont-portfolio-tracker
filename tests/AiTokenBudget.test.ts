@@ -4,6 +4,9 @@ import path from "node:path";
 import { describe, expect, it, vi } from "vitest";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiPrompts } from "@/lib/ai/AiPrompts";
+import { AiBulkEditFull } from "@/lib/ai/bulk/AiBulkEditFull";
+import { AiCommandModel } from "@/lib/ai/command/AiCommandModel";
+import { AiNextStepModel } from "@/lib/ai/nextstep/AiNextStepModel";
 import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { ServiceLine } from "@/lib/domain/ServiceLine";
 import { AiSettingsService } from "@/lib/services/AiSettingsService";
@@ -39,6 +42,20 @@ describe("token budgets", () => {
     expect(AiPrompts.TEST_MAX_TOKENS).toBe(2000);
     expect(AiPrompts.build("fit_for_report", "x").maxTokens).toBe(4000);
     expect(AiPrompts.build("draft_from_bullets", "x").maxTokens).toBe(8000);
+  });
+
+  it("Suggest next step, bulk edit and the command bar have reasoning headroom (were 700 / 600 / 1600)", () => {
+    expect(AiNextStepModel.MAX_TOKENS).toBe(4000);
+    expect(AiBulkEditFull.MAX_TOKENS).toBe(4000);
+    expect(AiCommandModel.MAX_TOKENS).toBe(8000);
+    for (const n of [AiNextStepModel.MAX_TOKENS, AiBulkEditFull.MAX_TOKENS, AiCommandModel.MAX_TOKENS]) {
+      const prompt = { system: "s", user: "u", maxTokens: n };
+      // OpenAI and Azure get the whole budget; Anthropic and compatible servers stay at the 4096 hard cap.
+      expect(AiProviderClient.request(OPENAI, prompt).body.max_completion_tokens).toBe(n);
+      expect(AiProviderClient.request(AZURE, prompt).body.max_completion_tokens).toBe(n);
+      expect(AiProviderClient.request(ANTHROPIC, prompt).body.max_tokens).toBe(Math.min(n, 4096));
+      expect(AiProviderClient.request(COMPAT, prompt).body.max_tokens).toBe(Math.min(n, 4096));
+    }
   });
 
   it("OpenAI and Azure send the full budget as max_completion_tokens, with no reasoning_effort or temperature", () => {

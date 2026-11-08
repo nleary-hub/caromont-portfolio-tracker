@@ -623,8 +623,13 @@ describe("CG3: the first denial, a flood, bounded keys", () => {
   };
   const BASE = "0c9edc69e5e66c958707e3873a16a71daa33e108";
 
-  it("static guard: the files under src/app/api/cron are exactly the two that exist at 0c9edc6, with the same content, and AiRetentionService.ts is unchanged", () => {
-    expect(walk("src/app/api/cron")).toEqual(["src/app/api/cron/ai-retention/route.ts", "src/app/api/cron/freeze/route.ts"]);
+  // The one approved addition since 0c9edc6: the daily model-list refresh (addendum g 3.2, CTO-approved). It is a new file;
+  // the two pinned routes and the retention service stay byte-identical.
+  const APPROVED_NEW_CRON = "src/app/api/cron/ai-model-lists/route.ts";
+  const APPROVED_NEW_JOB = { path: "/api/cron/ai-model-lists", schedule: "0 10 * * *" };
+
+  it("static guard: the files under src/app/api/cron are the two that exist at 0c9edc6 (same content) plus the approved model-list route, and AiRetentionService.ts is unchanged", () => {
+    expect(walk("src/app/api/cron")).toEqual([APPROVED_NEW_CRON, "src/app/api/cron/ai-retention/route.ts", "src/app/api/cron/freeze/route.ts"]);
     for (const [file, pin] of Object.entries(PINS)) expect(sha(file), file).toBe(pin);
   });
 
@@ -633,7 +638,7 @@ describe("CG3: the first denial, a flood, bounded keys", () => {
     let baseVercel: string | null = null;
     try {
       execFileSync("git", ["cat-file", "-e", `${BASE}^{commit}`], { cwd: root, stdio: "ignore" });
-      out = execFileSync("git", ["diff", "--name-only", BASE, "--", "src/app/api/cron", "src/lib/services/AiRetentionService.ts"], { cwd: root, encoding: "utf8" });
+      out = execFileSync("git", ["diff", "--name-only", BASE, "--", "src/app/api/cron", "src/lib/services/AiRetentionService.ts", `:(exclude)${APPROVED_NEW_CRON}`], { cwd: root, encoding: "utf8" });
       baseVercel = execFileSync("git", ["show", `${BASE}:vercel.json`], { cwd: root, encoding: "utf8" });
     } catch {
       out = null; // a source archive or a shallow clone: the content pins above are the guard there
@@ -643,15 +648,16 @@ describe("CG3: the first denial, a flood, bounded keys", () => {
     // Only the crons array of vercel.json is compared, so other top-level keys such as "git" may change.
     const headCrons = (JSON.parse(readFileSync(path.join(root, "vercel.json"), "utf8")) as { crons: unknown }).crons;
     const baseCrons = (JSON.parse(baseVercel) as { crons: unknown }).crons;
-    expect(headCrons).toEqual(baseCrons);
+    expect(headCrons).toEqual([...(baseCrons as unknown[]), APPROVED_NEW_JOB]);
   });
 
-  it("static guard: the cron schedule lists the same three jobs as at 0c9edc6, and nothing for the counter", () => {
+  it("static guard: the cron schedule lists the same three jobs as at 0c9edc6 plus the approved model-list job, and nothing for the counter", () => {
     const crons = (JSON.parse(readFileSync(path.join(root, "vercel.json"), "utf8")) as { crons: { path: string; schedule: string }[] }).crons;
     expect(crons).toEqual([
       { path: "/api/cron/ai-retention", schedule: "0 9 * * *" },
       { path: "/api/cron/freeze", schedule: "0 21 * * *" },
       { path: "/api/cron/freeze", schedule: "0 22 * * *" },
+      APPROVED_NEW_JOB,
     ]);
   });
 

@@ -7,6 +7,7 @@ import { SessionAccess } from "@/lib/auth/SessionAccess";
 import { PasswordField } from "@/components/PasswordField";
 import { AuthMessageIcon, AuthStage } from "@/components/AuthStage";
 import { SignInButton } from "@/components/SignInButton";
+import { PublicLinks } from "@/components/PublicDocPage";
 import { PasswordCopy } from "@/lib/auth/PasswordCopy";
 import { SessionPolicy } from "@/lib/auth/SessionPolicy";
 import { SignInMessages } from "@/lib/auth/SignInMessages";
@@ -202,6 +203,7 @@ export default async function SignInPage({
           </form>
         )}
       </div>
+      <PublicLinks current={SIGN_IN_PATH} />
     </AuthStage>
   );
 }

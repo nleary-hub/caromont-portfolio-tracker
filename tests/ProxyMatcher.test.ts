@@ -36,7 +36,11 @@ const LOGO_FILES = [
   "/brand/portfolio-tracker-maskable.svg",
   "/manifest.webmanifest",
 ];
-const STILL_SIGNED_IN = ["/brand", "/brand/", "/brandx", "/brand/sub/page", "/brand/x.json", "/Brand/favicon.svg", "/manifest.webmanifest/x", "/manifestXwebmanifest", "/manifest.webmanifestfoo", "/brand/sub/favicon.svg"];
+const STILL_SIGNED_IN = ["/brand", "/brand/", "/brandx", "/brand/sub/page", "/brand/x.json", "/Brand/favicon.svg", "/manifest.webmanifest/x", "/manifestXwebmanifest", "/manifest.webmanifestfoo", "/brand/sub/favicon.svg", "/brand/favicon.svg/", "/brand/favicon.SVG"];
+/** Names the tightened stem allows: a word character or hyphen, then word characters, dots or hyphens. */
+const TIGHT_PUBLIC = ["/brand/a.svg", "/brand/-.png", "/brand/-mark.png", "/brand/a.b.ico", "/brand/_icon.svg"];
+/** A leading dot matched the old [\w.-]+ stem and must stay behind sign-in. */
+const LEADING_DOT = ["/brand/.hidden.svg", "/brand/.env.png", "/brand/..secret.ico", "/brand/.svg"];
 
 describe("proxy matcher", () => {
   it("serves the public Inter font without sign-in, so /signin renders in Inter", () => {
@@ -62,6 +66,17 @@ describe("proxy matcher", () => {
     }
   });
 
+  it("serves a logo only when its filename matches [\\w-][\\w.-]*", () => {
+    for (const path of TIGHT_PUBLIC) {
+      expect(proxied(path), path).toBe(false);
+      expect(proxiedByNext(path), `next: ${path}`).toBe(false);
+    }
+    for (const path of LEADING_DOT) {
+      expect(proxied(path), path).toBe(true);
+      expect(proxiedByNext(path), `next: ${path}`).toBe(true);
+    }
+  });
+
   it("covers every file in public/brand", async () => {
     const { readdir } = await import("node:fs/promises");
     const files = (await readdir("public/brand")).map((f) => `/brand/${f}`).sort();
@@ -69,7 +84,7 @@ describe("proxy matcher", () => {
   });
 
   it("exempts exactly main's connector routes, and keeps /oauth/authorize behind sign-in", () => {
-    // Byte-identical to origin/main 047a9cd: the logo swap must not widen or narrow the connector segment.
+    // Byte-identical to origin/main: the logo swap must not widen or narrow the connector segment.
     expect(config.matcher[0]).toContain("api/mcp|oauth/register|oauth/token|\\.well-known/|");
     const PUBLIC_CONNECTOR = ["/api/mcp", "/api/mcp/x", "/oauth/register", "/oauth/token", "/.well-known/oauth-authorization-server", "/.well-known/oauth-protected-resource"];
     for (const path of PUBLIC_CONNECTOR) {
@@ -83,8 +98,8 @@ describe("proxy matcher", () => {
   });
 
   it("adds only the logo files and the manifest as new exemptions versus main", () => {
-    const MAIN = "/((?!api/auth|api/cron/|api/share/|api/mcp|oauth/register|oauth/token|\\.well-known/|signin|fonts/|_next/static|_next/image|favicon.ico|robots.txt).*)";
-    const added = "brand/[\\w.-]+\\.(?:svg|png|ico)$|manifest\\.webmanifest$|";
+    const MAIN = "/((?!api/auth|api/cron/|api/share/|api/mcp|oauth/register|oauth/token|\\.well-known/|signin|about$|privacy$|terms$|fonts/|_next/static|_next/image|favicon.ico|robots.txt).*)";
+    const added = "brand/[\\w-][\\w.-]*\\.(?:svg|png|ico)$|manifest\\.webmanifest$|";
     expect(config.matcher[0]).toBe(MAIN.replace("fonts/|", `fonts/|${added}`));
   });
 });

@@ -18,6 +18,11 @@ export class DriveError extends Error {
     super(message);
     this.name = "DriveError";
   }
+
+  /** Google's token answer when the refresh token has expired or been revoked (Testing-mode apps: after 7 days). */
+  static isExpiredSignIn(message: string | undefined | null): boolean {
+    return typeof message === "string" && /invalid_grant/i.test(message);
+  }
 }
 
 /**

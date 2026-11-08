@@ -1,7 +1,9 @@
 import type { Prisma, PrismaClient, ReportArtifact } from "@/generated/prisma/client";
+import { DriveConnection, type DriveConnectionDb } from "@/lib/report/DriveConnection";
 import { ReportEnv, type EnvSource } from "@/lib/config/ReportEnv";
 import { Db } from "@/lib/db/Db";
 import { GoogleDriveClient, type FetchLike } from "@/lib/report/GoogleDriveClient";
+import { ReportAlert } from "@/lib/report/ReportAlert";
 import { ReportLog } from "@/lib/report/ReportLog";
 import { SignedLink } from "@/lib/report/SignedLink";
 import { ServiceLineDrive } from "@/lib/report/ServiceLineDrive";
@@ -59,10 +61,14 @@ export class ReportDeliveryService {
     return record;
   }
 
-  /** Deliver when never delivered, when everything failed, or when Drive is configured but was not used yet. */
-  static needsDelivery(existing: DeliveryRecord | null, env: EnvSource = process.env): boolean {
+  /**
+   * Deliver when never delivered, when everything failed, or when Drive is configured but was not used yet.
+   * driveReady: whether Drive can be used now (FreezeService passes DriveConnection.resolve, which counts the token
+   * saved by Reconnect Drive); defaults to the env-only check.
+   */
+  static needsDelivery(existing: DeliveryRecord | null, env: EnvSource = process.env, driveReady: boolean = ReportEnv.drive(env) !== null): boolean {
     if (!existing || existing.status === "failed") return true;
-    return existing.status === "signed_link" && ReportEnv.drive(env) !== null;
+    return existing.status === "signed_link" && driveReady;
   }
 
   private static async log(
@@ -93,7 +99,8 @@ export class ReportDeliveryService {
     const now = deps.now ?? new Date();
     const record: DeliveryRecord = { status: "failed", attemptedAt: now.toISOString(), triggeredBy };
 
-    const drive = ReportEnv.drive(env);
+    // The token saved by Reconnect Drive first, then GOOGLE_DRIVE_REFRESH_TOKEN.
+    const drive = await DriveConnection.resolve(env, db as unknown as DriveConnectionDb);
     if (drive) {
       try {
         const client = new GoogleDriveClient(drive, deps.fetch ?? fetch);
@@ -108,6 +115,7 @@ export class ReportDeliveryService {
         record.driveError = e instanceof Error ? e.message : String(e);
         await ReportDeliveryService.log(db, snapshotId, "drive", "failed", { error: record.driveError }, triggeredBy, now);
         ReportLog.error("delivery.drive.failed", { snapshotId, error: record.driveError });
+        ReportAlert.driveSaveFailed(record.driveError);
       }
     } else {
       record.driveError = ReportDeliveryService.NOT_CONFIGURED;

@@ -1,11 +1,15 @@
 "use client";
 
+import * as Sentry from "@sentry/nextjs";
 import { useEffect } from "react";
 import { reportClientError } from "@/components/ClientErrorReporter";
 
-/** Root error boundary (the layout itself failed): reports the error (scrubbed) and offers a retry. */
+/** Root error boundary (the layout itself failed): reports the error (scrubbed, to the server log and Sentry) and offers a retry. */
 export default function GlobalError({ error, reset }: { error: Error & { digest?: string }; reset: () => void }) {
-  useEffect(() => reportClientError("boundary", error), [error]);
+  useEffect(() => {
+    reportClientError("boundary", error);
+    Sentry.captureException(error);
+  }, [error]);
   return (
     <html lang="en">
       <body style={{ fontFamily: "system-ui, sans-serif", background: "#0f1115", color: "#e6e6e6", padding: 32 }}>

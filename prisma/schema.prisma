@@ -1452,3 +1452,32 @@ model AiDeniedCounter {
   @@id([who, action])
   @@map("ai_denied_counter")
 }
+
+/// 0072: one cached model list per provider. No key, URL or provider body is stored.
+model AiModelListCache {
+  /// "openai" | "anthropic" | "xai" | "other" (DB check)
+  provider            String    @id
+  /// [{id, kind, lifecycle?, shutdownAt?}] after the app gate; at most 2,000 items and 1 MB (DB check)
+  models              Json      @default("[]")
+  fetchedAt           DateTime?
+  lastAttemptAt       DateTime?
+  /// Short code only (DB check)
+  lastError           String?
+  stale               Boolean   @default(false)
+  lastFailureLoggedAt DateTime?
+
+  @@map("ai_model_list_cache")
+}
+
+/// The Google Drive connection made in the app (migration 0073; Report freeze > Reconnect Drive). One row at most (id 1,
+/// DB check). refreshTokenCiphertext is AES-256-GCM bound to "drive_connection.refreshToken" (DriveConnection, AiKeyCipher)
+/// and never leaves the server. The freeze delivery and Check Drive prefer it over GOOGLE_DRIVE_REFRESH_TOKEN.
+model DriveConnection {
+  id                     Int      @id @default(1)
+  /// "v1:<iv>:<tag>:<ciphertext>" (base64). Never returned to the client.
+  refreshTokenCiphertext String
+  connectedAt            DateTime @default(now())
+  connectedBy            String
+
+  @@map("drive_connection")
+}
