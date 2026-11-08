@@ -24,10 +24,11 @@ export interface AiSettingsRow {
   updatedAt: Date;
   updatedBy: string;
   /**
-   * Set by row() when the OpenAI key lives in ai_provider_keys (migration 0053): that row's ciphertext (null after a
-   * delete), which runtime() decrypts with the row's own binding instead of the legacy column. Never sent to a client.
+   * Set by row() when the OpenAI or Anthropic key lives in ai_provider_keys: that row's ciphertext (null when none is
+   * saved), which runtime() decrypts with the row's own binding instead of the legacy column. Never sent to a client.
+   * `bindingProvider` absent means OpenAI, which is how this field was first used.
    */
-  providerKey?: { ciphertext: string | null; last4: string | null; setAt: Date | null; setBy: string | null };
+  providerKey?: { ciphertext: string | null; last4: string | null; setAt: Date | null; setBy: string | null; bindingProvider?: "openai" | "anthropic" };
 }
 
 export interface AiSettingsHistoryRow {
@@ -83,6 +84,8 @@ export interface AiSettingsInput {
   newKey?: string | null;
   /** The enabled models (ai_models) the model must be one of; absent = the 0039 seed. Set by the server action. */
   allowedModels?: readonly string[];
+  /** Model id to the company it was added under. When present, OpenAI and Anthropic refuse a model from the other company. */
+  modelOwners?: Readonly<Record<string, string>>;
 }
 
 export type AiSettingsSaveResult = { ok: true } | { ok: false; error: string; fieldErrors?: Partial<Record<keyof AiSettingsFields | "apiKey", string>> };
@@ -101,15 +104,30 @@ export class AiSettingsService {
    */
   static async row(db: AiSettingsDb, env: Env = process.env): Promise<AiSettingsRow | null> {
     const row = await AiSettingsService.storedRow(db);
-    if (!row || AiKeyCipher.isPreview(env) || AiProviders.parse(row.provider) !== "openai") return row;
+    if (!row || AiKeyCipher.isPreview(env)) return row;
+    const provider = AiProviders.parse(row.provider);
     const kdb = db as unknown as Partial<AiProviderKeyDb>;
     if (typeof kdb.aiProviderKey?.findUnique !== "function" || typeof kdb.$transaction !== "function") return row;
-    try {
-      const key = await AiProviderKeyService.ensureOpenAiCopied(kdb as AiProviderKeyDb, env);
-      return key ? { ...row, providerKey: { ciphertext: key.ciphertext, last4: key.last4, setAt: key.setAt, setBy: key.setBy } } : row;
-    } catch {
-      return row;
+    if (provider === "openai") {
+      try {
+        const key = await AiProviderKeyService.ensureOpenAiCopied(kdb as AiProviderKeyDb, env);
+        return key ? { ...row, providerKey: { ciphertext: key.ciphertext, last4: key.last4, setAt: key.setAt, setBy: key.setBy, bindingProvider: "openai" } } : row;
+      } catch {
+        return row;
+      }
     }
+    // Anthropic uses the Provider keys row, never a leftover OpenAI key in the legacy column.
+    if (provider === "anthropic") {
+      try {
+        const key = await kdb.aiProviderKey!.findUnique({ where: { provider: "anthropic" } });
+        // No Provider keys row: keep the legacy ai_settings key (a setup from before Provider keys).
+        if (!key?.ciphertext) return row;
+        return { ...row, providerKey: { ciphertext: key.ciphertext, last4: key.last4, setAt: key.setAt, setBy: key.setBy, bindingProvider: "anthropic" } };
+      } catch {
+        return row;
+      }
+    }
+    return row;
   }
 
   /** ai_settings exactly as stored (no key resolution). */
@@ -119,7 +137,7 @@ export class AiSettingsService {
 
   /** Where the key of `row` comes from: the ai_provider_keys "openai" row, or the legacy column. */
   private static keyOf(row: AiSettingsRow | null): { ciphertext: string | null; last4: string | null; setAt: Date | null; setBy: string | null; binding: string; source: "provider_keys" | "legacy" } {
-    if (row?.providerKey) return { ...row.providerKey, binding: AiKeyCipher.providerBinding("openai"), source: "provider_keys" };
+    if (row?.providerKey) return { ...row.providerKey, binding: AiKeyCipher.providerBinding(row.providerKey.bindingProvider ?? "openai"), source: "provider_keys" };
     return { ciphertext: row?.apiKeyCiphertext ?? null, last4: row?.apiKeyLast4 ?? null, setAt: row?.apiKeySetAt ?? null, setBy: row?.apiKeySetBy ?? null, binding: AiKeyCipher.LEGACY_BINDING, source: "legacy" };
   }
 
@@ -214,6 +232,11 @@ export class AiSettingsService {
     // Allowlist: any model an admin hasn't turned on under Models is refused, on or off.
     // Turning AI off always works: an unchanged saved model is not re-checked when the switch is off.
     else if (f.model.trim() && (f.enabled || f.model.trim() !== (current?.model ?? "").trim()) && !AiProviders.modelAllowed(f.model, input.allowedModels ?? [])) errors.model = AiCopy.MODEL_NOT_ALLOWED;
+    else if (f.model.trim() && input.modelOwners) {
+      const owner = input.modelOwners[f.model.trim()];
+      const expected = f.provider === "anthropic" ? "anthropic" : f.provider === "openai" ? "openai" : null;
+      if (expected && owner && owner !== expected) errors.model = AiCopy.modelOtherProvider(f.model.trim(), AiCopy.featureProviderName(owner));
+    }
     if (f.provider === "openai_compatible" && f.baseUrl.trim() && !AiProviders.httpsUrl(f.baseUrl)) errors.baseUrl = AiCopy.INVALID_URL;
     if (f.provider === "azure_openai" && f.azureEndpoint.trim() && !AiProviders.httpsUrl(f.azureEndpoint)) errors.azureEndpoint = AiCopy.INVALID_URL;
     if (newKey) {

@@ -31,6 +31,28 @@ export class AiProviders {
     }
   }
 
+  /**
+   * Which model catalog the writing-assistant picker reads for a company.
+   * OpenAI and Anthropic have a list for the saved key. Azure and a custom base URL do not: the admin types the model id.
+   */
+  static catalogOf(p: AiProviderId | "" | null): "openai" | "anthropic" | "manual" {
+    switch (p) {
+      case "openai":
+      case "":
+      case null:
+        return "openai";
+      case "anthropic":
+        return "anthropic";
+      case "azure_openai":
+      case "openai_compatible":
+        return "manual";
+      default: {
+        const unknown: never = p;
+        return unknown;
+      }
+    }
+  }
+
   /** Exact match against the models an admin turned on. Checked on save and again before every call. No built-in list. */
   static modelAllowed(model: unknown, allowed: readonly string[]): boolean {
     return typeof model === "string" && allowed.includes(model.trim());

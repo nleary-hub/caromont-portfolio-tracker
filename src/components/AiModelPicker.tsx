@@ -39,6 +39,8 @@ export function ModelField({
   onLoadList,
   onChange,
   onCommit,
+  loadLabel = C.MODEL_LIST_LOAD,
+  typedOnly = false,
   row,
 }: {
   value: string;
@@ -60,6 +62,10 @@ export function ModelField({
   onLoadList?: () => void;
   onChange?: (model: string) => void;
   onCommit?: (model: string) => void;
+  /** Catalog button label. OpenAI keeps "Show OpenAI models". */
+  loadLabel?: string;
+  /** Azure and a custom base URL: type the model id. There is no shared catalog to open. */
+  typedOnly?: boolean;
   /**
    * PR B: the one-grid layout of Admin > AI settings Features. The trigger goes in the row's model cell (the label is
    * kept for screen readers) and the help, list button and typed-ID field go in a line under the row. Each value is the
@@ -134,7 +140,7 @@ export function ModelField({
   const loadButton = onLoadList && (
     <div className="flex items-center gap-2">
       <button type="button" className={GHOST} onClick={onLoadList} disabled={disabled || listLoading} data-testid={`${id}-load-list`}>
-        {listLoading ? C.MODEL_LIST_LOADING : C.MODEL_LIST_LOAD}
+        {listLoading ? C.MODEL_LIST_LOADING : loadLabel}
       </button>
       {list?.ok && <span className="text-muted type-caption">{C.modelsListed(listed.length, AiModelKinds.label(kind))}</span>}
     </div>
@@ -214,12 +220,33 @@ export function ModelField({
       </div>
     );
   }
+  const typedInput = (
+    <input
+      id={id}
+      name={name ?? undefined}
+      className={INPUT}
+      value={model}
+      onChange={(e) => set(e.target.value)}
+      onBlur={commitTyped}
+      placeholder={placeholder}
+      maxLength={100}
+      autoComplete="off"
+      spellCheck={false}
+      disabled={disabled}
+      aria-invalid={Boolean(error) || undefined}
+      data-testid={`${id}-typed-only`}
+    />
+  );
   return (
     <Field id={id} label={label} error={error} help={help}>
-      {name && <input type="hidden" name={name} value={model} />}
-      {picker}
-      {loadButton}
-      {manualField}
+      {typedOnly ? typedInput : (
+        <>
+          {name && <input type="hidden" name={name} value={model} />}
+          {picker}
+          {loadButton}
+          {manualField}
+        </>
+      )}
     </Field>
   );
 }

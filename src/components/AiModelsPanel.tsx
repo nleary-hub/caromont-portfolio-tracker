@@ -40,14 +40,17 @@ export function AiToggle({ checked, onChange, labelledBy, describedBy, disabled,
 }
 
 /** Admin > AI settings: the model list (add, on/off with the in-use warning, prices). */
-export function AiModelsPanel({ models, dbReady, initialList = null, keyStates }: { models: AiModelView[]; dbReady: boolean; initialList?: OpenAiListState; keyStates?: AiProviderKeyStates }) {
+export function AiModelsPanel({ models, dbReady, initialList = null, keyStates, initialAddProvider = "openai" }: { models: AiModelView[]; dbReady: boolean; initialList?: OpenAiListState; keyStates?: AiProviderKeyStates; initialAddProvider?: AiFeatureProvider }) {
   const [newId, setNewId] = useState("");
-  /** PR B: the provider a typed model is added under (checked against that provider's list). OpenAI by default. */
-  const [addProvider, setAddProvider] = useState<AiFeatureProvider>("openai");
+  /** The company a model is browsed and added under. OpenAI by default, so today's list is unchanged until this changes. */
+  const [addProvider, setAddProvider] = useState<AiFeatureProvider>(initialAddProvider);
   const lists = useProviderModelLists();
   const { list, loading: listing, load: loadList, shared } = useOpenAiModelList(initialList);
+  const catalogList = addProvider === "openai" ? list : lists.list(addProvider);
+  const catalogLoading = addProvider === "openai" ? listing : lists.loading(addProvider);
+  const loadCatalog = () => (addProvider === "openai" ? loadList() : lists.load(addProvider));
   /** The list failed to load: the typed id is saved unchecked (still off), with the note shown. */
-  const manual = list?.ok === false;
+  const manual = catalogList?.ok === false;
   const [addResult, setAddResult] = useState<AiAdminResult | null>(null);
   const [adding, startAdd] = useTransition();
   const [pending, startToggle] = useTransition();
@@ -93,16 +96,21 @@ export function AiModelsPanel({ models, dbReady, initialList = null, keyStates }
         </table>
       </div>
 
+      <div className="flex flex-wrap items-end gap-2">
+        <ProviderPickerCell feature="catalog" value={addProvider} keyStates={keyStates} onChange={(p) => { setAddProvider(p); setAddResult(null); }} />
+      </div>
       <OpenAiModelList
-        state={list}
-        loading={listing}
+        state={catalogList}
+        loading={catalogLoading}
         disabled={!dbReady || locked}
         have={new Set(models.map((m) => m.id))}
-        onLoad={loadList}
-        sharedError={shared}
+        onLoad={loadCatalog}
+        loadLabel={C.modelListLoad(addProvider)}
+        help={addProvider === "openai" ? C.MODEL_LIST_HELP : `Models ${AiFeatureProviders.label(addProvider)} lists for the saved key. Adding one doesn't turn it on.`}
+        sharedError={addProvider === "openai" && shared}
         onAdd={(id) =>
           startAdd(async () => {
-            const r = await addAiModel(id);
+            const r = addProvider === "openai" ? await addAiModel(id) : await addAiModel(id, false, addProvider);
             setAddResult(r);
           })
         }
@@ -127,7 +135,6 @@ export function AiModelsPanel({ models, dbReady, initialList = null, keyStates }
           {addProvider === "openai" ? C.MODEL_ADD_LABEL : C.modelAddLabel(addProvider)}
         </label>
         <div className="flex items-start gap-2">
-          {keyStates && <ProviderPickerCell feature="add" value={addProvider} keyStates={keyStates} onChange={(p) => { setAddProvider(p); setAddResult(null); }} />}
           <input id="ai-model-add" className={INPUT} value={newId} onChange={(e) => setNewId(e.target.value)} placeholder={C.MODEL_ADD_PLACEHOLDER} maxLength={100} autoComplete="off" spellCheck={false} disabled={!dbReady} readOnly={locked} aria-disabled={locked || undefined} aria-invalid={(addResult && !addResult.ok) || undefined} aria-describedby={addResult && !addResult.ok ? "ai-model-add-error" : "ai-model-add-help"} />
           <button type="submit" className={`${SECONDARY} aria-disabled:cursor-not-allowed aria-disabled:opacity-50`} disabled={!dbReady || adding || !newId.trim()} aria-disabled={locked || undefined} data-testid="ai-model-add-button">
             {adding ? C.MODEL_ADDING : C.MODEL_ADD}
@@ -159,14 +166,14 @@ export type { OpenAiListState };
  * OpenAI's model list for the saved key, by type. Adding one saves it off; nothing is turned on here. When the list
  * can't load, the note says so and the Add box below saves the typed id without the check.
  */
-export function OpenAiModelList({ state, loading, disabled, have, onLoad, onAdd, sharedError = false }: { state: OpenAiListState; loading: boolean; disabled: boolean; have: ReadonlySet<string>; onLoad: () => void; onAdd: (id: string) => void; sharedError?: boolean }) {
+export function OpenAiModelList({ state, loading, disabled, have, onLoad, onAdd, sharedError = false, loadLabel = C.MODEL_LIST_LOAD, help = C.MODEL_LIST_HELP }: { state: OpenAiListState; loading: boolean; disabled: boolean; have: ReadonlySet<string>; onLoad: () => void; onAdd: (id: string) => void; sharedError?: boolean; loadLabel?: string; help?: string }) {
   return (
     <div className="flex flex-col gap-2" data-testid="ai-openai-list">
       <div className="flex items-center gap-3">
         <button type="button" className={SECONDARY} onClick={onLoad} disabled={disabled || loading} data-testid="ai-openai-list-load">
-          {loading ? C.MODEL_LIST_LOADING : C.MODEL_LIST_LOAD}
+          {loading ? C.MODEL_LIST_LOADING : loadLabel}
         </button>
-        <span className="text-muted type-caption">{C.MODEL_LIST_HELP}</span>
+        <span className="text-muted type-caption">{help}</span>
       </div>
       {state && !state.ok && !sharedError && (
         <div id="ai-openai-list-error">
@@ -604,10 +611,13 @@ export function AiFeaturesPanel({
             </div>
             {/* Under the Voice model field's help, in the same column. */}
             {f.feature === "voice_chat" && (
-              <div className="col-start-2 col-span-3 row-start-3 min-w-0 pt-2">
-                <VoiceInstructionsField initial={f.instructions ?? ""} disabled={!dbReady || pending} />
-                <VoiceSessionCapField initialSeconds={f.maxSessionSeconds ?? AiVoiceChat.MAX_SESSION_S} disabled={!dbReady || pending} />
-              </div>
+              <details className="col-start-2 col-span-3 row-start-3 min-w-0 pt-2" data-testid="ai-voice-options">
+                <summary className="cursor-pointer text-muted type-caption">{C.VOICE_OPTIONS_LABEL}</summary>
+                <div className="pt-2">
+                  <VoiceInstructionsField initial={f.instructions ?? ""} disabled={!dbReady || pending} />
+                  <VoiceSessionCapField initialSeconds={f.maxSessionSeconds ?? AiVoiceChat.MAX_SESSION_S} disabled={!dbReady || pending} />
+                </div>
+              </details>
             )}
           </div>
         );
