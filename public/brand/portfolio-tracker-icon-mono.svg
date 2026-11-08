@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024" width="1024" height="1024" role="img">
+  <title>Portfolio Tracker app icon (single colour)</title>
+  <desc>Portfolio Tracker logo, Today Line. Selected 2026-10-29.</desc>
+  <defs><mask id="mi2" maskUnits="userSpaceOnUse" x="0" y="0" width="1024" height="1024"><rect width="1024" height="1024" fill="#fff"/>
+    <g transform="translate(64 64) scale(3.5)"><path d="M40 22H142A6 6 0 0 1 148 28V78A6 6 0 0 1 142 84H40A22 22 0 0 1 18 62V44A22 22 0 0 1 40 22Z" fill="#000" fill-rule="nonzero"/><path d="M178 22H128A22 22 0 0 1 150 44V62A22 22 0 0 1 128 84H178A6 6 0 0 1 172 78V28A6 6 0 0 1 178 22Z" fill="#000" fill-rule="nonzero"/><path d="M76 98H142A6 6 0 0 1 148 104V154A6 6 0 0 1 142 160H76A22 22 0 0 1 54 138V120A22 22 0 0 1 76 98Z" fill="#000" fill-rule="nonzero"/><path d="M178 98H200A22 22 0 0 1 222 120V138A22 22 0 0 1 200 160H178A6 6 0 0 1 172 154V104A6 6 0 0 1 178 98Z" fill="#000" fill-rule="nonzero"/><path d="M118 174H142A6 6 0 0 1 148 180V230A6 6 0 0 1 142 236H118A22 22 0 0 1 96 214V196A22 22 0 0 1 118 174Z" fill="#000" fill-rule="nonzero"/><path d="M178 174H218A22 22 0 0 1 240 196V214A22 22 0 0 1 218 236H178A6 6 0 0 1 172 230V180A6 6 0 0 1 178 174Z" fill="#000" fill-rule="nonzero"/></g></mask></defs>
+  <rect width="1024" height="1024" rx="220" fill="currentColor" mask="url(#mi2)"/>
+</svg>
