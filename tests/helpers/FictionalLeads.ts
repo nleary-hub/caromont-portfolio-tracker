@@ -8,7 +8,8 @@ import { ServiceLine } from "@/lib/domain/ServiceLine";
  */
 export const FICTIONAL_LEADS: readonly string[] = ["Avery Holt", "Jordan Pike", "Casey Lund", "Riley Moss", "Morgan Vale"];
 
-export function useFictionalLeads(): void {
+/** Vitest setup, not a React hook. The name must not start with `use` or the hooks rule rejects the top-level call. */
+export function installFictionalLeads(): void {
   let live: readonly string[];
   beforeAll(() => {
     live = ServiceLine.CVPSL_CONTRACTS_LEADS;

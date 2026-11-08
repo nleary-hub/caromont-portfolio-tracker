@@ -4,7 +4,7 @@ import { McpTokens } from "@/lib/mcp/McpTokens";
 import { McpViewer } from "@/lib/mcp/McpViewer";
 
 // OAuth token endpoint for the Claude connector: authorization_code with PKCE, and refresh_token. Each grant re-checks
-// that the person may still use the app. Public (see src/proxy.ts).
+// that the person may still use the connector (admin, and not blocked). Public (see src/proxy.ts).
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 

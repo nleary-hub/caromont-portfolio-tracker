@@ -1,10 +1,10 @@
 import { createHash, randomBytes } from "node:crypto";
 import { expect, test, type APIRequestContext } from "@playwright/test";
-import { LINE, query, signIn } from "./helpers/rbacSeed";
+import { query, signIn } from "./helpers/rbacSeed";
 
 // Claude connector end to end on the real server (next dev + PGlite with every migration): discovery, Dynamic Client
 // Registration, sign-in and the consent page, the token exchange, then real MCP tool calls through the project
-// services, the History tag, the permission limits and revocation. Fictional people and projects only.
+// services, the History tag and revocation. Only ADMIN_EMAILS accounts can connect. Fictional people and projects only.
 const ADMIN = "jordan.pike@example.org";
 const VIEWER = "riley.moss@example.org";
 const CALLBACK = "https://claude.ai/api/mcp/auth_callback";
@@ -27,6 +27,26 @@ const call = async (request: APIRequestContext, token: string, name: string, arg
   const text = r.result?.content?.[0]?.text ?? "";
   return { isError: Boolean(r.result?.isError), text, json: () => JSON.parse(text) };
 };
+
+async function expectNonAdminRefused(page: import("@playwright/test").Page, request: APIRequestContext, email: string) {
+  const reg = await request.post("/oauth/register", { data: { client_name: "Claude", redirect_uris: [CALLBACK] } });
+  expect(reg.status()).toBe(201);
+  const client = await reg.json();
+  await signIn(page, email);
+  const q = new URLSearchParams({
+    response_type: "code",
+    client_id: client.client_id,
+    redirect_uri: CALLBACK,
+    code_challenge: challenge,
+    code_challenge_method: "S256",
+    state: "xyz",
+    scope: "projects admin",
+  });
+  await page.goto(`/oauth/authorize?${q}`);
+  await expect(page.getByTestId("connector-admin-only")).toBeVisible();
+  await expect(page.getByTestId("connector-consent")).toHaveCount(0);
+  await expect(page.getByTestId("connector-approve")).toHaveCount(0);
+}
 
 async function connect(page: import("@playwright/test").Page, request: APIRequestContext, email: string, scope = "projects"): Promise<string> {
   const reg = await request.post("/oauth/register", { data: { client_name: "Claude", redirect_uris: [CALLBACK] } });
@@ -126,30 +146,16 @@ test("Claude connector: sign in, consent, and edit projects through the app's ow
   const history = (await call(request, token, "get_project_history", { projectId: p.id })).json();
   expect(history.changes.length).toBeGreaterThan(0);
 
-  // A Viewer with access to the line can read but not change.
-  await query(`INSERT INTO app_user (email, "createdAt") VALUES ($1, now()) ON CONFLICT DO NOTHING`, [VIEWER]);
-  await query(`INSERT INTO service_line_access (email, "serviceLineId", "grantedBy") VALUES ($1, $2, 'e2e') ON CONFLICT DO NOTHING`, [VIEWER, LINE]);
+  // A non-admin is refused at authorize. No Allow button and no code.
   const viewerContext = await browser.newContext();
-  const viewerPage = await viewerContext.newPage();
-  const viewerToken = await connect(viewerPage, viewerContext.request, VIEWER);
-  const viewerRead = await call(viewerContext.request, viewerToken, "get_project", { projectId: p.id });
-  expect(viewerRead.isError, viewerRead.text).toBe(false);
-  expect(viewerRead.json().canEdit).toBe(false);
-  const viewerEdit = await call(viewerContext.request, viewerToken, "update_project", { projectId: p.id, changes: { latestUpdate: "Should not save" } });
-  expect(viewerEdit.isError).toBe(true);
-  expect(viewerEdit.text).toContain("can't edit");
+  await expectNonAdminRefused(await viewerContext.newPage(), viewerContext.request, VIEWER);
+  await viewerContext.close();
 
-  // A project hidden from the dashboard stays invisible to a non-admin through the connector, as in the app; an admin still sees it.
+  // A project hidden from the dashboard stays visible to an admin through the connector.
   await query(`UPDATE "Project" SET "hiddenFromDashboard" = true WHERE id = $1`, [p.id]);
-  const viewerList = (await call(viewerContext.request, viewerToken, "list_projects", { includeClosed: true })).json();
-  expect(viewerList.projects.map((x: { id: string }) => x.id)).not.toContain(p.id);
-  const viewerHidden = await call(viewerContext.request, viewerToken, "get_project", { projectId: p.id });
-  expect(viewerHidden.isError).toBe(true);
-  expect(viewerHidden.text).toContain("not found");
   const adminHidden = await call(request, token, "get_project", { projectId: p.id });
   expect(adminHidden.isError, adminHidden.text).toBe(false);
   await query(`UPDATE "Project" SET "hiddenFromDashboard" = false WHERE id = $1`, [p.id]);
-  await viewerContext.close();
 
   // Turning the person's sign-in off stops the connector on the next call.
   await query(`INSERT INTO sign_in_block (email, "blockedBy", "blockedAt") VALUES ($1, 'e2e', now()) ON CONFLICT DO NOTHING`, [ADMIN]).catch(async () => {
@@ -218,15 +224,8 @@ test("Claude connector: app actions run the app's own Server Functions as the pe
   expect((await run("read_settings")).json().reportOptions.showKeyPage).toBe(!opts.showKeyPage);
   await run("set_report_key_page", { showKeyPage: opts.showKeyPage, totalsGrid: opts.totalsGrid });
 
-  // A Viewer is refused admin reads and writes by the app's own checks.
-  await query(`INSERT INTO app_user (email, "createdAt") VALUES ($1, now()) ON CONFLICT DO NOTHING`, [VIEWER]);
-  await query(`INSERT INTO service_line_access (email, "serviceLineId", "grantedBy") VALUES ($1, $2, 'e2e') ON CONFLICT DO NOTHING`, [VIEWER, LINE]);
+  // A non-admin cannot approve a connection that asks for admin scope either.
   const vc = await browser.newContext();
-  const vt = await connect(await vc.newPage(), vc.request, VIEWER, "projects admin");
-  const vRead = await call(vc.request, vt, "run_app_action", { action: "read_departments" });
-  expect(vRead.isError).toBe(true);
-  const vWrite = await call(vc.request, vt, "run_app_action", { action: "save_department", input: { id: dept.id, name: "Viewer Rename", shortName: dept.shortName } });
-  expect(vWrite.isError).toBe(true);
-  expect((await query(`SELECT name FROM department WHERE id = $1`, [dept.id]))[0].name).toBe(dept.name);
+  await expectNonAdminRefused(await vc.newPage(), vc.request, VIEWER);
   await vc.close();
 });

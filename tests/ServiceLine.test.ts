@@ -20,9 +20,9 @@ import { DashboardViewModel } from "@/lib/dashboard/DashboardViewModel";
 import { SnapshotService } from "@/lib/services/SnapshotService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
-import { useFictionalLeads } from "./helpers/FictionalLeads";
+import { installFictionalLeads } from "./helpers/FictionalLeads";
 
-useFictionalLeads();
+installFictionalLeads();
 
 const ADMIN = Factory.ADMIN;
 const MEMBER = { email: "member@example.org", isAdmin: false };

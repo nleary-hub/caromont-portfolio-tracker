@@ -8,8 +8,10 @@ import { McpTokens } from "@/lib/mcp/McpTokens";
 import { McpViewer } from "@/lib/mcp/McpViewer";
 
 // The Claude connector (remote MCP server, Streamable HTTP, stateless). Every request needs a connector access token
-// (OAuth, see /oauth/*); the person is resolved again on each request, so turning their sign-in off ends access at once.
-// Public to the sign-in proxy (it uses bearer tokens, not the session cookie; see src/proxy.ts).
+// (OAuth, see /oauth/*). The person is resolved again on each request (McpViewer.requestAccess): only an ADMIN_EMAILS
+// admin is served, a non-admin token is 403, and a block or a lost account is 401. That re-check is what ends an
+// existing token when an email leaves ADMIN_EMAILS or sign-in is turned off. Public to the sign-in proxy (it uses
+// bearer tokens, not the session cookie; see src/proxy.ts).
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -28,8 +30,12 @@ class McpRoute {
     const grant = McpOAuth.bearer(header, McpTokens.key());
     if (!grant) return McpRoute.unauthorized(origin, "invalid_token");
     if (!Db.isConfigured()) return McpHttp.json({ error: "Database not configured" }, 503);
-    const viewer = await McpViewer.forEmail(grant.e).catch(() => null);
-    if (!viewer) return McpRoute.unauthorized(origin, "invalid_token");
+    const access = await McpViewer.requestAccess(grant.e).catch(() => null);
+    if (!access?.ok) {
+      if (access?.status === 403) return McpHttp.json({ error: "forbidden", error_description: access.message }, 403);
+      return McpRoute.unauthorized(origin, "invalid_token");
+    }
+    const viewer = access.user;
 
     const server = McpServerFactory.create(viewer, McpOAuth.scopesOf(grant));
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });
