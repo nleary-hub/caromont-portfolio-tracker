@@ -78,12 +78,16 @@ Connectors > Add custom connector, URL `https://<domain>/api/mcp`. Code: `src/li
 `src/app/oauth/*`, `src/app/.well-known/*`.
 
 - **Sign-in:** OAuth 2.1 with Dynamic Client Registration and PKCE (S256), the app as its own authorization server.
-  `/oauth/authorize` is the consent page and stays behind the normal sign-in, so only a signed-in person can approve,
-  for themself. Codes (2 min), access tokens (1 h) and refresh tokens (30 days) are HMAC-signed values
+  `/oauth/authorize` is the consent page and stays behind the normal sign-in. Only an admin (`ADMIN_EMAILS`, the same
+  check the app already uses) can approve, and only for themself. Anyone else sees a refusal and no code is issued.
+  Codes (2 min), access tokens (1 h) and refresh tokens (30 days) are HMAC-signed values
   (`McpTokens`), so there are no new tables. Redirect URIs are limited to Claude's callbacks, loopback, and
   `MCP_REDIRECT_URIS`.
-- **Access:** every request resolves the person again (`McpViewer`): turned off in Admin > People, off the access
-  list or no longer an active account = 401 on the next call. Their role, line and department access apply as in the app.
+- **Access:** only admin accounts. Every request resolves the person again (`McpViewer.requestAccess`) from
+  `ADMIN_EMAILS` (the same source as admin rights in the app, including a password admin). A token for anyone else
+  is 403 on the next call, which is also what happens when an email is taken off `ADMIN_EMAILS`. Turned off in
+  Admin > People, off the access list, or no longer an active account = 401. No new table. Their role, line and
+  department access still apply as in the app.
 - **Writes:** only through the core services the drawer uses (`ProjectService.saveForm`, `saveMilestones`,
   `setPeopleField`, `createFromForm`, `ProjectDependencyService` blockers), never the in-app AI layer. History rows are
   written under the person's email with `comment = "ai:claude_connector"` (timeline label "Claude connector").
@@ -103,8 +107,9 @@ Connectors > Add custom connector, URL `https://<domain>/api/mcp`. Code: `src/li
   added again in Claude (and approved) before it can do admin tasks.
 - **Not available through the connector** (`NOT_AVAILABLE`): creating, resetting or showing passwords, AI settings
   and keys and the AI features, report freeze and email, the year-end PDF, and the person's own password.
-- **Tests:** `tests/McpConnectorOAuth.test.ts` (OAuth), `tests/e2e/claude-connector.spec.ts` (full flow on a local
-  server: consent, token, edits, History tag, Viewer refusal, revocation).
+- **Tests:** `tests/McpConnectorOAuth.test.ts` (OAuth), `tests/McpConnectorAdminOnly.test.ts` (admin-only gate),
+  `tests/e2e/claude-connector.spec.ts` (full flow on a local server: consent, token, edits, History tag, non-admin
+  refusal at authorize, revocation).
 
 ## Sentry
 

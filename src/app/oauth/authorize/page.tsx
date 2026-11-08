@@ -4,13 +4,14 @@ import { AuthMessageIcon, AuthStage } from "@/components/AuthStage";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { McpOAuth } from "@/lib/mcp/McpOAuth";
 import { McpTokens } from "@/lib/mcp/McpTokens";
+import { McpViewer } from "@/lib/mcp/McpViewer";
 import { decideConnectorAccess } from "./actions";
 
 export const dynamic = "force-dynamic";
 
 /**
- * Consent screen for the Claude connector (OAuth authorize endpoint). The proxy has already required sign-in, so this
- * page only ever approves access for the person who is signed in, with their own role and service line access.
+ * Consent screen for the Claude connector (OAuth authorize endpoint). The proxy has already required sign-in. Only an
+ * admin (ADMIN_EMAILS, the same check McpViewer uses) is offered Allow. Anyone else sees a refusal and no code is issued.
  */
 export default async function ConnectorAuthorizePage({ searchParams }: { searchParams: Promise<Record<string, string | string[] | undefined>> }) {
   if (!McpOAuth.enabled()) notFound();
@@ -27,13 +28,19 @@ export default async function ConnectorAuthorizePage({ searchParams }: { searchP
   const origin = McpOAuth.origin(`${proto}://${host}/`);
   const checked = McpOAuth.checkAuthorize(params, McpTokens.key(), origin);
   if (!checked.ok && "redirect" in checked) redirect(checked.redirect);
+  const access = checked.ok ? await McpViewer.access(viewer.email) : null;
 
   return (
-    <AuthStage state={checked.ok ? undefined : "error"}>
+    <AuthStage state={checked.ok && access?.ok ? undefined : "error"}>
       {!checked.ok ? (
         <p role="alert" className="si-error" data-testid="connector-error">
           <AuthMessageIcon kind="alert" />
           <span>{checked.message}</span>
+        </p>
+      ) : !access?.ok ? (
+        <p role="alert" className="si-error" data-testid="connector-admin-only">
+          <AuthMessageIcon kind="alert" />
+          <span>{access?.message}</span>
         </p>
       ) : (
         <form action={decideConnectorAccess} className="space-y-4" data-testid="connector-consent">

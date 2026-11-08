@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { CurrentViewer } from "@/lib/auth/CurrentViewer";
 import { McpOAuth } from "@/lib/mcp/McpOAuth";
 import { McpTokens } from "@/lib/mcp/McpTokens";
+import { McpViewer } from "@/lib/mcp/McpViewer";
 
 /** The query the consent form carries back. Everything is checked again here; the hidden fields are never trusted. */
 const FIELDS = ["response_type", "client_id", "redirect_uri", "code_challenge", "code_challenge_method", "state", "scope", "resource"] as const;
@@ -16,7 +17,7 @@ async function originOf(): Promise<string> {
   return McpOAuth.origin(`${proto}://${host}/`);
 }
 
-/** Approve or deny a Claude connector request. Only the signed-in person can approve, and only for themself. */
+/** Approve or deny a Claude connector request. Only the signed-in admin can approve, and only for themself. */
 export async function decideConnectorAccess(formData: FormData): Promise<void> {
   if (!McpOAuth.enabled()) redirect("/");
   const viewer = await CurrentViewer.get();
@@ -32,6 +33,13 @@ export async function decideConnectorAccess(formData: FormData): Promise<void> {
   if (!checked.ok) {
     if ("redirect" in checked) redirect(checked.redirect);
     redirect("/");
+  }
+  // Re-checked here so a forged Allow cannot mint a code. The page shows the same refusal.
+  const access = await McpViewer.access(viewer.email);
+  if (!access.ok) {
+    const q = new URLSearchParams();
+    for (const f of FIELDS) if (params[f]) q.set(f, params[f]);
+    redirect(`${McpOAuth.AUTHORIZE_PATH}?${q.toString()}`);
   }
   if (formData.get("decision") !== "approve") redirect(McpOAuth.deny(checked.request, origin));
   console.info("Claude connector approved", { client: checked.request.clientName });
