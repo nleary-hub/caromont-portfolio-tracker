@@ -34,7 +34,7 @@ export interface McpTokenResponse {
   scope: string;
 }
 
-/** Re-checks that the person behind a code or refresh token may still use the app (McpViewer.forEmail). */
+/** Re-checks that the person behind a code or refresh token may still use the connector (McpViewer.stillAllowed). */
 export type McpStillAllowed = (email: string) => Promise<boolean>;
 
 /**
@@ -291,13 +291,13 @@ export class McpOAuth {
       if (!code || code.c !== clientHash) throw new McpOAuthError("invalid_grant", "The code is invalid or expired.");
       if (form.redirect_uri && form.redirect_uri !== code.r) throw new McpOAuthError("invalid_grant", "redirect_uri does not match.");
       if (!McpTokens.pkceMatches(form.code_verifier, code.cc)) throw new McpOAuthError("invalid_grant", "PKCE verification failed.");
-      if (!(await stillAllowed(code.e))) throw new McpOAuthError("invalid_grant", "This account can no longer use the app.");
+      if (!(await stillAllowed(code.e))) throw new McpOAuthError("invalid_grant", "This account cannot use the Claude connector.");
       return McpOAuth.issue(code.e, clientHash, McpOAuth.scopesOf({ s: code.s }), key, now);
     }
     if (form.grant_type === "refresh_token") {
       const refresh = McpTokens.verify("refresh", form.refresh_token, key, now);
       if (!refresh || refresh.c !== clientHash) throw new McpOAuthError("invalid_grant", "The refresh token is invalid or expired.");
-      if (!(await stillAllowed(refresh.e))) throw new McpOAuthError("invalid_grant", "This account can no longer use the app.");
+      if (!(await stillAllowed(refresh.e))) throw new McpOAuthError("invalid_grant", "This account cannot use the Claude connector.");
       return McpOAuth.issue(refresh.e, clientHash, McpOAuth.scopesOf(refresh), key, now);
     }
     throw new McpOAuthError("unsupported_grant_type", "Only authorization_code and refresh_token are supported.");
