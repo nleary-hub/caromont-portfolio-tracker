@@ -32,9 +32,9 @@ import {
 import { ReportDeliveryService } from "@/lib/services/ReportDeliveryService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
-import { useFictionalLeads } from "./helpers/FictionalLeads";
+import { installFictionalLeads } from "./helpers/FictionalLeads";
 
-useFictionalLeads();
+installFictionalLeads();
 
 const ADMIN = Factory.ADMIN;
 const actor = { changedBy: ADMIN.email };

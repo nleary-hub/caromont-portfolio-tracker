@@ -15,9 +15,9 @@ import { ProjectPeopleForms } from "@/lib/services/ProjectPeopleForms";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
-import { useFictionalLeads } from "./helpers/FictionalLeads";
+import { installFictionalLeads } from "./helpers/FictionalLeads";
 
-useFictionalLeads();
+installFictionalLeads();
 
 vi.mock("next/navigation", () => ({ useRouter: () => ({ refresh: () => {}, push: () => {}, replace: () => {} }), usePathname: () => "/" }));
 vi.mock("@/app/actions/departments", () => ({

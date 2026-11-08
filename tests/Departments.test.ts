@@ -29,9 +29,9 @@ import { ProjectService } from "@/lib/services/ProjectService";
 import { SnapshotService } from "@/lib/services/SnapshotService";
 import { FakeDb } from "./helpers/FakeDb";
 import { Factory } from "./helpers/factories";
-import { useFictionalLeads } from "./helpers/FictionalLeads";
+import { installFictionalLeads } from "./helpers/FictionalLeads";
 
-useFictionalLeads();
+installFictionalLeads();
 
 const ADMIN = Factory.ADMIN;
 const MEMBER = Factory.MEMBER;

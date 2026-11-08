@@ -14,9 +14,9 @@ import { TextMeasure } from "@/lib/report/pdf/TextMeasure";
 import { ProjectService } from "@/lib/services/ProjectService";
 import { Factory } from "./helpers/factories";
 import { FakeDb } from "./helpers/FakeDb";
-import { useFictionalLeads } from "./helpers/FictionalLeads";
+import { installFictionalLeads } from "./helpers/FictionalLeads";
 
-useFictionalLeads();
+installFictionalLeads();
 
 const m = new TextMeasure();
 const actor = { changedBy: "owner@example.org" };
