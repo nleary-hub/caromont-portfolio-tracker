@@ -101,7 +101,8 @@ describe("browser failures: mic denied, no mic, connection failed, model unavail
 
   it("connect: posts the SDP to this app's proxy route (not OpenAI), and maps errors", async () => {
     const pc = { ontrack: null, onconnectionstatechange: null, addTrack: vi.fn(), createDataChannel: () => ({ close: vi.fn(), onmessage: null }), createOffer: async () => ({ sdp: "v=0 example" }), setLocalDescription: async () => {}, setRemoteDescription: async () => {}, close: vi.fn() };
-    vi.stubGlobal("RTCPeerConnection", vi.fn(() => pc));
+    // A constructor mock needs a `function` implementation (Vitest 4 rejects arrows used with `new`).
+    vi.stubGlobal("RTCPeerConnection", vi.fn(function () { return pc; }));
     vi.stubGlobal("document", { createElement: () => ({}) });
     const urls: string[] = [];
     const respond = (status: number, body: string) => vi.stubGlobal("fetch", vi.fn(async (u: string) => (urls.push(u), { ok: status < 300, status, text: async () => body })));
