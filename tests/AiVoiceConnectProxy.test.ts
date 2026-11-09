@@ -142,7 +142,8 @@ describe("failed and ice_failed logging", () => {
   it("browser: ICE failed or disconnected before media is ice_failed; after media it is a drop", async () => {
     const make = () => ({ ontrack: null, onconnectionstatechange: null as null | (() => void), oniceconnectionstatechange: null as null | (() => void), iceConnectionState: "new", connectionState: "new", addTrack: vi.fn(), createDataChannel: () => ({ close: vi.fn(), onmessage: null }), createOffer: async () => ({ sdp: "v=0" }), setLocalDescription: async () => {}, setRemoteDescription: async () => {}, close: vi.fn() });
     let pc = make();
-    vi.stubGlobal("RTCPeerConnection", vi.fn(() => pc));
+    // A constructor mock needs a `function` implementation (Vitest 4 rejects arrows used with `new`).
+    vi.stubGlobal("RTCPeerConnection", vi.fn(function () { return pc; }));
     vi.stubGlobal("document", { createElement: () => ({}) });
     vi.stubGlobal("fetch", vi.fn(async () => ({ ok: true, status: 201, text: async () => "v=0 answer" })));
     const mic = { getAudioTracks: () => [], getTracks: () => [] } as unknown as MediaStream;

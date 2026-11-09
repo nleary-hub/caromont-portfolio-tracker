@@ -30,7 +30,11 @@ export function AiSettingsForm({ view, keySavedLine, dbReady, modelOptions = [],
   const lists = useProviderModelLists();
   const loadCatalog = lists.load;
   const loadCatalogRef = useRef(loadCatalog);
-  loadCatalogRef.current = loadCatalog;
+  // Keep the ref on the latest loader. Updated in an effect (not during render) and declared before the effect that
+  // reads it, so it is current when that effect runs.
+  useEffect(() => {
+    loadCatalogRef.current = loadCatalog;
+  });
   // #70: the test picker starts on the saved writing-assistant model when there is one, otherwise empty.
   const [testModel, setTestModel] = useState(view.model ?? "");
   const [state, action, pending] = useActionState<AiSettingsFormState, FormData>(saveAiSettings, null);
