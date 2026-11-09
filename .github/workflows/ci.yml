@@ -1,0 +1,47 @@
+# Checks every pull request and every push to main: lint, typecheck, then the full Vitest suite.
+# Needs no secrets. The opt-in real-Postgres suites stay skipped because their env vars are unset.
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+# A new push to the same PR cancels the run still going for the old commit, to save minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+permissions:
+  contents: read
+
+jobs:
+  checks:
+    name: Lint, typecheck and tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v7
+
+      # Node 24 matches the Vercel project's build setting (24.x).
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 24
+          cache: npm
+
+      # npm ci installs exactly what package-lock.json pins; postinstall runs prisma generate.
+      - name: Install
+        id: install
+        run: npm ci --no-audit --no-fund
+
+      - name: Lint
+        run: npm run lint
+
+      # The next two steps still run when lint fails, so one run shows every problem at once.
+      - name: Typecheck
+        if: ${{ !cancelled() && steps.install.outcome != 'failure' }}
+        run: npm run typecheck
+
+      - name: Tests
+        if: ${{ !cancelled() && steps.install.outcome != 'failure' }}
+        run: npm test
