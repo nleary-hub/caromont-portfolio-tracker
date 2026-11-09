@@ -48,6 +48,8 @@ or Docker `postgres:16`.
 | `npm run import:csv -- file.csv [--update-wording] [--commit] [--as admin@...]` | CSV import via `DATABASE_URL` (dry run unless `--commit`) |
 | `npm run export:csv -- out.csv` | CSV export (id + template columns) of non-archived projects |
 
+On GitHub, `.github/workflows/ci.yml` runs `npm ci`, then lint, typecheck and `npm test` on Node 24 (the Vercel build's version) for every pull request and every push to main. It needs no secrets.
+
 ## Environment variables
 
 See `.env.example` for the full annotated list.
