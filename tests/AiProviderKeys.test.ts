@@ -123,12 +123,12 @@ describe("0053 copy of the legacy OpenAI key (lazy, idempotent, race-safe)", () 
     expect(AiSettingsService.runtime(rows[1], ENV)?.apiKey).toBe(LEGACY_KEY);
   });
 
-  it("reads fall back to the legacy column while the new table can't be used (not migrated yet)", async () => {
+  it("fails closed when the provider registry cannot be read instead of reviving legacy credentials", async () => {
     const { db } = await setup();
     const broken = Object.assign(Object.create(db), { aiProviderKey: { ...db.aiProviderKey, findUnique: async () => { throw new Error('relation "ai_provider_keys" does not exist'); } } });
     const row = await AiSettingsService.row(broken, ENV);
-    expect(row?.providerKey).toBeUndefined();
-    expect(AiSettingsService.runtime(row, ENV)?.apiKey).toBe(LEGACY_KEY);
+    expect(row?.providerKey?.ciphertext).toBeNull();
+    expect(AiSettingsService.runtime(row, ENV)).toBeNull();
   });
 
   it("only an OpenAI legacy key moves; other legacy providers keep using ai_settings", async () => {
