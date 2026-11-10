@@ -34,14 +34,15 @@ async function eventRow(pg: PGlite, over: Record<string, unknown> = {}): Promise
 }
 
 describe("the migration file", () => {
-  it("is byte-for-byte draft e (sha256), is followed only by 0072 and 0073 (both add-only; 0074 and later are not here yet)", () => {
+  it("is byte-for-byte draft e (sha256), is followed only by 0072, 0073 and 0074 (all add-only; 0075 and later are not here yet)", () => {
     const sql = migration0071();
     expect(createHash("sha256").update(sql).digest("hex")).toBe(DRAFT_E_SHA256);
     const folders = migrationFolders();
-    expect(folders[folders.length - 3]).toBe("0071_ai_registry_and_fallback");
-    expect(folders[folders.length - 2]).toBe("0072_ai_model_list_cache");
-    expect(folders[folders.length - 1]).toBe("0073_drive_connection");
-    expect(folders.filter((f) => /^007[4-9]/.test(f))).toEqual([]);
+    expect(folders[folders.length - 4]).toBe("0071_ai_registry_and_fallback");
+    expect(folders[folders.length - 3]).toBe("0072_ai_model_list_cache");
+    expect(folders[folders.length - 2]).toBe("0073_drive_connection");
+    expect(folders[folders.length - 1]).toBe("0074_ai_spend_caps");
+    expect(folders.filter((f) => /^007[5-9]/.test(f))).toEqual([]);
   });
 
   it("holds no BEGIN or COMMIT statement (the tool that sends the file makes it one transaction) and no GRANT or REVOKE", () => {

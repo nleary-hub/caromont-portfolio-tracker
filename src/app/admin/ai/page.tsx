@@ -7,6 +7,8 @@ import { AiPriceRefresh } from "@/components/AiPriceRefresh";
 import { AiProviderKeysCard } from "@/components/AiProviderKeysCard";
 import { AiContextCard } from "@/components/AiContextCard";
 import { AiUsageCard } from "@/components/AiUsageCard";
+import { AiSpendCapsCard } from "@/components/AiSpendCapsCard";
+import { AiSpendCapService, type AiSpendCapReadDb, type AiSpendCapView } from "@/lib/services/AiSpendCapService";
 import type { AiMetricsRow } from "@/lib/ai/AiRunMetrics";
 import { AiGlossaryService, type GlossaryDb, type GlossaryView } from "@/lib/services/AiGlossaryService";
 import { AiSettingsForm } from "@/components/AiSettingsForm";
@@ -84,6 +86,9 @@ export default async function AiSettingsPage() {
   let defaults: Record<string, string> = {};
   let routedChoices: Record<string, AiFeatureChoice> = choices;
   let usage: AiMetricsRow[] = [];
+  // 0074: monthly spend caps and this month's spend per person.
+  let spendCaps: AiSpendCapView = { ready: false, defaultCapUsd: null, people: [] };
+  const spendNames: Record<string, string> = {};
   if (dbReady) {
     try {
       glossary = await AiGlossaryService.view(Db.client as unknown as GlossaryDb);
@@ -127,6 +132,17 @@ export default async function AiSettingsPage() {
     } catch {
       // 0059 not applied yet: the Usage card shows no runs.
       usage = [];
+    }
+    try {
+      spendCaps = await AiSpendCapService.view(Db.client as unknown as AiSpendCapReadDb);
+      const emails = spendCaps.people.map((p) => p.email);
+      if (emails.length) {
+        const users = await Db.client.appUser.findMany({ where: { email: { in: emails } } }).catch(() => []);
+        for (const u of users) spendNames[u.email.toLowerCase()] = LineAccessService.displayName(u);
+      }
+    } catch {
+      // Read failed: the card is read-only and shows no one.
+      spendCaps = { ready: false, defaultCapUsd: null, people: [] };
     }
   }
   // Chat models that are on under Models, by the provider they were added under (the text feature model pickers).
@@ -199,6 +215,10 @@ export default async function AiSettingsPage() {
 
       <section className={section} aria-labelledby="ai-context-heading">
         <AiContextCard view={glossary} dbReady={dbReady && glossaryReady} />
+      </section>
+
+      <section className={section} aria-labelledby="ai-spend-caps-heading">
+        <AiSpendCapsCard view={spendCaps} dbReady={dbReady && !preview} names={spendNames} />
       </section>
 
       <details className={section} data-testid="ai-activity">

@@ -14,6 +14,7 @@ import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
+import { AiSpendCapService } from "./AiSpendCapService";
 import { AiWritingContext } from "./AiWritingContext";
 
 type Env = Record<string, string | undefined>;
@@ -62,7 +63,7 @@ export interface AiWritingDb extends AiSettingsDb {
 /** What the editor gets back. Never carries settings or the key. */
 export type AiSuggestResult =
   | { ok: true; suggestionId: string; feature: AiFeature; text: string; limit: number; numbers: { ok: boolean; missing: string[] }; phiOk: boolean }
-  | { ok: false; kind: "off" | "not_allowed" | "empty" | "phi" | "rate" | "timeout" | "provider"; message: string };
+  | { ok: false; kind: "off" | "not_allowed" | "empty" | "phi" | "rate" | "cap" | "timeout" | "provider"; message: string };
 
 /** accepted_with_override: "Use this text" after Edit with the number check still failing and the box ticked. */
 export type AiOutcome = "accepted" | "edited" | "accepted_with_override" | "discarded";
@@ -146,6 +147,9 @@ export class AiWritingService {
       where: { userEmail: viewer.email, event: { in: ["suggested", "failed"] }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } },
     });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
+    // 0074: the monthly spend cap (no cap rows = no cap).
+    const spend = await AiSpendCapService.check({ db, email: viewer.email, env, now });
+    if (!spend.ok) return { ok: false, kind: "cap", message: spend.message };
 
     AiWritingService.inFlight.add(viewer.email);
     try {

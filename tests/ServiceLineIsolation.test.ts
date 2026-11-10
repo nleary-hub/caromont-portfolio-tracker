@@ -400,6 +400,7 @@ describe("service line isolation", () => {
       join(root, "actions/aiPrices.ts"),
       join(root, "actions/aiKeys.ts"),
       join(root, "actions/aiContext.ts"),
+      join(root, "actions/aiSpendCaps.ts"), // monthly AI spend caps are per person, app-wide (Admin > AI settings)
       join(root, "actions/roles.ts"), // roles and their permissions are app-wide (Admin > Roles)
     ]); // aiAdmin, aiPrices, aiKeys, aiContext (glossary, role title): AI settings are app-wide, admin only (like actions/ai.ts settings)
     const actions = Lines.files(join(root, "actions")).filter(

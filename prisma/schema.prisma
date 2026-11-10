@@ -1481,3 +1481,32 @@ model DriveConnection {
 
   @@map("drive_connection")
 }
+
+/// Monthly AI spend caps (migration 0074; Admin > AI settings > Monthly spend caps). One row per person who has their
+/// own cap, plus the row "default" for everyone else. No row at all = no cap (the feature is off until an admin sets one).
+/// The Owner is capped like anyone else (AI is Owner-only today). A cap of 0 turns AI off for that person. Spend is the estimated cost already written on
+/// ai_usage_log, summed per person for the calendar month in Eastern time.
+model AiSpendCap {
+  /// A lowercase email, or "default" (DB check)
+  email         String   @id
+  /// US dollars per calendar month, 0 to 10,000 (DB check)
+  monthlyCapUsd Decimal  @db.Decimal(10, 2)
+  updatedAt     DateTime @default(now())
+  updatedBy     String
+
+  @@map("ai_spend_caps")
+}
+
+/// Append-only change log of AI spend caps (0074, trigger). A null amount means no cap (before) or cap removed (after).
+model AiSpendCapHistory {
+  id        String   @id @db.Uuid
+  /// A lowercase email, or "default"
+  email     String
+  oldCapUsd Decimal? @db.Decimal(10, 2)
+  newCapUsd Decimal? @db.Decimal(10, 2)
+  changedAt DateTime @default(now())
+  changedBy String
+
+  @@index([changedAt])
+  @@map("ai_spend_cap_history")
+}

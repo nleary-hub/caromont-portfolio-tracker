@@ -17,6 +17,7 @@ import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiSettingsService } from "./AiSettingsService";
+import { AiSpendCapService } from "./AiSpendCapService";
 import { AiWritingContext } from "./AiWritingContext";
 import { AiWritingService, type AiUsageRow, type AiWritingDb } from "./AiWritingService";
 
@@ -28,7 +29,7 @@ export type AiReviewEvent = "proposed" | "applied" | "rejected" | "undone" | "fa
 
 export type AiProposeResult =
   | ({ ok: true } & AiProposal)
-  | { ok: false; kind: "off" | "feature_off" | "denied" | "gone" | "empty" | "unsupported" | "rate" | "timeout" | "provider"; message: string };
+  | { ok: false; kind: "off" | "feature_off" | "denied" | "gone" | "empty" | "unsupported" | "rate" | "cap" | "timeout" | "provider"; message: string };
 
 export type AiDecisionResult = { ok: true } | { ok: false; message: string };
 
@@ -111,6 +112,9 @@ export class AiReviewApplyService {
     if (AiReviewApplyService.inFlight.has(user)) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
+    // 0074: the monthly spend cap (no cap rows = no cap).
+    const spend = await AiSpendCapService.check({ db, email: user, env, now });
+    if (!spend.ok) return { ok: false, kind: "cap", message: spend.message };
 
     const proposalId = randomUUID();
     const inputLength = current.length + instruction.text.length;

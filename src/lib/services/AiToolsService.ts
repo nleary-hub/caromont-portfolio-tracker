@@ -18,6 +18,7 @@ import { AiModelService } from "@/lib/services/AiModelService";
 import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
+import { AiSpendCapService } from "./AiSpendCapService";
 import { AiWritingService, type AiUsageRow } from "./AiWritingService";
 import { PortfolioContextService } from "./PortfolioContextService";
 
@@ -87,7 +88,7 @@ export interface ProjectRowForTools {
 /** Saves one applied line through the normal project save (ProjectService.update: validation, history, Changed). */
 export type AiToolSave = (projectId: string, patch: Record<string, string | null>, meta: { comment: string | null }) => Promise<void>;
 
-export type AiToolFailure = { ok: false; kind: "off" | "feature_off" | "denied" | "empty" | "rate" | "timeout" | "provider" | "parse"; message: string };
+export type AiToolFailure = { ok: false; kind: "off" | "feature_off" | "denied" | "empty" | "rate" | "cap" | "timeout" | "provider" | "parse"; message: string };
 export type AiToolProposeResult = { ok: true; proposalId: string; feature: AiToolFeature; changes: AiToolChange[]; bulk?: AiBulkSummary } | AiToolFailure;
 export type AiToolLineResult = { ok: true } | { ok: false; message: string };
 
@@ -191,6 +192,9 @@ export class AiToolsService {
     if (AiToolsService.inFlight.has(user)) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
+    // 0074: the monthly spend cap (no cap rows = no cap).
+    const spend = await AiSpendCapService.check({ db, email: user, env, now });
+    if (!spend.ok) return { ok: false, kind: "cap", message: spend.message };
 
     const proposalId = randomUUID();
     // Item D: the call's tokens, latency and estimated cost, written on the run row (proposed or failed).
@@ -365,6 +369,8 @@ export class AiToolsService {
     const user = viewer.email;
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, message: AiCopy.RATE_LIMITED };
+    const spend = await AiSpendCapService.check({ db, email: user, env, now });
+    if (!spend.ok) return { ok: false, message: spend.message };
     const r = await AiTranscriptionClient.transcribe(saved, model, audio, args.fetchImpl);
     await db.aiUsageLog.create({
       data: { id: randomUUID(), suggestionId: randomUUID(), userEmail: user, projectId: null, feature: "dictation", event: r.ok ? "proposed" : "failed", provider: saved.provider, model, inputLength: audio.size, outputLength: r.ok ? r.text.length : null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
