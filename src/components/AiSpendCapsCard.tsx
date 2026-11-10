@@ -29,8 +29,18 @@ function capLabel(p: AiSpendPersonView): string {
 export function AiSpendCapsCard({ view, dbReady, names }: { view: AiSpendCapView; dbReady: boolean; names: Record<string, string> }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  const [fallback, setFallback] = useState(amountText(view.defaultCapUsd));
-  const [own, setOwn] = useState<Record<string, string>>(Object.fromEntries(view.people.map((p) => [p.email, amountText(p.ownCapUsd)])));
+  // Inputs show the saved amounts unless the admin is editing; a successful save drops the edit, so after the refresh
+  // every input matches what the server now holds (including a cap set from the "Set cap" row).
+  const [fallbackDraft, setFallbackDraft] = useState<string | null>(null);
+  const [drafts, setDrafts] = useState<Record<string, string>>({});
+  const fallback = fallbackDraft ?? amountText(view.defaultCapUsd);
+  const ownValue = (p: AiSpendPersonView) => drafts[p.email] ?? amountText(p.ownCapUsd);
+  const dropDraft = (email: string) =>
+    setDrafts((d) => {
+      const next = { ...d };
+      delete next[email];
+      return next;
+    });
   const [email, setEmail] = useState("");
   const [amount, setAmount] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
@@ -39,10 +49,11 @@ export function AiSpendCapsCard({ view, dbReady, names }: { view: AiSpendCapView
     start(async () => {
       const r = await setAiSpendCap(target, value);
       setMsg(r.ok ? { ok: true, text: C.SAVED } : { ok: false, text: r.error });
-      if (r.ok) {
-        after?.();
-        router.refresh();
-      }
+      if (r.ok)
+        start(() => {
+          after?.();
+          router.refresh();
+        });
     });
   return (
     <div className="flex flex-col gap-3" data-testid="ai-spend-caps">
@@ -57,8 +68,8 @@ export function AiSpendCapsCard({ view, dbReady, names }: { view: AiSpendCapView
         <span className="text-muted type-label">{C.DEFAULT_LABEL}</span>
         <span className="flex items-center gap-2">
           <span className="text-muted type-table">$</span>
-          <input className={`${INPUT} w-32`} inputMode="decimal" value={fallback} placeholder={C.DEFAULT_PLACEHOLDER} disabled={off} onChange={(e) => setFallback(e.target.value)} data-testid="ai-spend-default" />
-          <button type="button" className={GHOST} disabled={off || fallback.trim() === amountText(view.defaultCapUsd)} onClick={() => run(AiSpendCap.DEFAULT_KEY, fallback)} data-testid="ai-spend-default-save">
+          <input className={`${INPUT} w-32`} inputMode="decimal" value={fallback} placeholder={C.DEFAULT_PLACEHOLDER} disabled={off} onChange={(e) => setFallbackDraft(e.target.value)} data-testid="ai-spend-default" />
+          <button type="button" className={GHOST} disabled={off || fallback.trim() === amountText(view.defaultCapUsd)} onClick={() => run(AiSpendCap.DEFAULT_KEY, fallback, () => setFallbackDraft(null))} data-testid="ai-spend-default-save">
             {C.SAVE}
           </button>
         </span>
@@ -97,11 +108,11 @@ export function AiSpendCapsCard({ view, dbReady, names }: { view: AiSpendCapView
                     <td className={TD}>{capLabel(p)}</td>
                     <td className="px-2.5 py-1.5">
                       <span className="flex items-center justify-end gap-2">
-                        <input className={`${INPUT} w-24`} inputMode="decimal" value={own[p.email] ?? ""} placeholder={C.USES_DEFAULT} disabled={off} onChange={(e) => setOwn({ ...own, [p.email]: e.target.value })} aria-label={`Own cap for ${p.email}`} />
-                        <button type="button" className={GHOST} disabled={off || (own[p.email] ?? "").trim() === amountText(p.ownCapUsd)} onClick={() => run(p.email, own[p.email] ?? "")}>
+                        <input className={`${INPUT} w-24`} inputMode="decimal" value={ownValue(p)} placeholder={C.USES_DEFAULT} disabled={off} onChange={(e) => setDrafts((d) => ({ ...d, [p.email]: e.target.value }))} aria-label={`Own cap for ${p.email}`} />
+                        <button type="button" className={GHOST} disabled={off || ownValue(p).trim() === amountText(p.ownCapUsd)} onClick={() => run(p.email, ownValue(p), () => dropDraft(p.email))}>
                           {C.SAVE}
                         </button>
-                        <button type="button" className={LINK} disabled={off || p.ownCapUsd === null} onClick={() => run(p.email, "", () => setOwn({ ...own, [p.email]: "" }))}>
+                        <button type="button" className={LINK} disabled={off || p.ownCapUsd === null} onClick={() => run(p.email, "", () => dropDraft(p.email))}>
                           {C.REMOVE}
                         </button>
                       </span>
