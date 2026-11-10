@@ -1,6 +1,7 @@
 import { randomBytes } from "node:crypto";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
+import { AiProviderClient, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiKeyCipher } from "@/lib/ai/AiKeyCipher";
 import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
@@ -34,6 +35,57 @@ async function setup(row: AiSettingsRow | null) {
 
 const saveAnthropicOn = (db: PgProviderKeyDb) =>
   AiSettingsService.save(db as never, ADMIN, { fields: ANTHROPIC_ON, allowedModels: MODELS, modelOwners: OWNERS }, ENV, NOW);
+
+function legacyOpenAiRow(): AiSettingsRow {
+  return openAiRow({ apiKeyCiphertext: AiKeyCipher.encrypt(OPENAI_KEY, cipherKey()), apiKeyLast4: "a1B2", apiKeySetAt: NOW, apiKeySetBy: ADMIN.email });
+}
+
+describe("legacy key isolation", () => {
+  it.each(["missing", "migrated", "empty", "lookup failure"])("refuses switching a legacy OpenAI key to Anthropic: %s registry", async (state) => {
+    const db = await setup(legacyOpenAiRow());
+    if (state === "migrated") await AiProviderKeyService.ensureOpenAiCopied(db, ENV);
+    if (state === "empty") {
+      await AiProviderKeyService.save(db, ADMIN, "anthropic", { apiKey: ANTHROPIC_KEY }, ENV, NOW);
+      await db.aiProviderKey.update({ where: { provider: "anthropic" }, data: { ciphertext: null, last4: null } });
+    }
+    if (state === "lookup failure") db.aiProviderKey.findUnique = async () => { throw new Error("unavailable"); };
+    expect(await saveAnthropicOn(db)).toMatchObject({ ok: false, fieldErrors: { apiKey: AiCopy.REQUIRED_KEY } });
+    expect(await AiSettingsService.storedRow(db as never)).toMatchObject({ provider: "openai", apiKeyLast4: "a1B2" });
+  });
+
+  it("clears legacy material even on a disabled provider switch, so a later enable cannot reuse it", async () => {
+    const db = await setup(legacyOpenAiRow());
+    const transaction = vi.spyOn(db, "$transaction");
+    expect(await AiSettingsService.save(db as never, ADMIN, { fields: { ...ANTHROPIC_ON, enabled: false }, allowedModels: MODELS }, ENV, NOW)).toEqual({ ok: true });
+    expect(transaction).toHaveBeenCalledWith(expect.any(Function), { isolationLevel: "Serializable" });
+    expect(await AiSettingsService.storedRow(db as never)).toMatchObject({ provider: "anthropic", apiKeyCiphertext: null, apiKeyLast4: null, apiKeySetAt: null, apiKeySetBy: null });
+    expect(AiSettingsService.runtime(await AiSettingsService.row(db as never, ENV), ENV)).toBeNull();
+    expect(await saveAnthropicOn(db)).toMatchObject({ ok: false, fieldErrors: { apiKey: AiCopy.REQUIRED_KEY } });
+  });
+
+  it("uses the target registry key and discards the old legacy copy", async () => {
+    const db = await setup(legacyOpenAiRow());
+    await AiProviderKeyService.save(db, ADMIN, "anthropic", { apiKey: ANTHROPIC_KEY }, ENV, NOW);
+    expect(await saveAnthropicOn(db)).toEqual({ ok: true });
+    const runtime = AiSettingsService.runtime(await AiSettingsService.row(db as never, ENV), ENV)!;
+    expect(runtime).toMatchObject({ provider: "anthropic", apiKey: ANTHROPIC_KEY });
+    const transport = vi.fn<FetchLike>(async () => ({ ok: true, status: 200, text: async () => JSON.stringify({ content: [{ type: "text", text: "fictional response" }] }) }));
+    await AiProviderClient.complete({ ...runtime, allowedModels: MODELS }, { system: "fake", user: "fake", maxTokens: 20 }, transport);
+    expect(transport).toHaveBeenCalledOnce();
+    expect(transport.mock.calls[0][0]).toBe("https://api.anthropic.com/v1/messages");
+    expect(transport.mock.calls[0][1].headers["x-api-key"]).toBe(ANTHROPIC_KEY);
+    expect(JSON.stringify(transport.mock.calls)).not.toContain(OPENAI_KEY);
+    expect(await AiSettingsService.storedRow(db as never)).toMatchObject({ apiKeyCiphertext: null });
+  });
+
+  it("does not revive a same-provider legacy key when its registry row was cleared", async () => {
+    const db = await setup(openAiRow({ provider: "anthropic", model: "claude-example-sonnet", apiKeyCiphertext: AiKeyCipher.encrypt(ANTHROPIC_KEY, cipherKey()), apiKeyLast4: "g7H8" }));
+    await AiProviderKeyService.save(db, ADMIN, "anthropic", { apiKey: ANTHROPIC_KEY }, ENV, NOW);
+    await db.aiProviderKey.update({ where: { provider: "anthropic" }, data: { ciphertext: null, last4: null } });
+    expect(AiSettingsService.runtime(await AiSettingsService.row(db as never, ENV), ENV)).toBeNull();
+    expect(await saveAnthropicOn(db)).toMatchObject({ ok: false, fieldErrors: { apiKey: AiCopy.REQUIRED_KEY } });
+  });
+});
 
 describe("switching the writing assistant to Anthropic and turning it on in one save", () => {
   it("saves when the old company had no key and Anthropic's key is under Provider keys", async () => {
