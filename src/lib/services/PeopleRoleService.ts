@@ -9,6 +9,8 @@ import { RoleAssignment, type RoleCheck, type RoleOption } from "@/lib/people/Ro
 import { OwnerLock } from "@/lib/permissions/OwnerLock";
 import { Permissions, type PermissionUser } from "@/lib/permissions/Permissions";
 import { ROLE_DEFAULTS, roleSeed } from "@/lib/permissions/RoleDefaults";
+import { AiSpendCap } from "@/lib/ai/AiSpendCap";
+import { AiSpendCapService, type AiSpendCapRow } from "@/lib/services/AiSpendCapService";
 
 type Env = Record<string, string | undefined>;
 
@@ -42,6 +44,8 @@ export interface PeopleRoleStore {
   revoke(email: string, fromRoleId: string | null, actor: string, id: string): Promise<boolean>;
   /** AI cost per email since the date (the People AI usage column). */
   aiCost(since: Date): Promise<Record<string, number>>;
+  /** The monthly spend cap rows (0074): own caps plus "default". Optional: stores without it show no cap. */
+  aiCaps?(): Promise<Pick<AiSpendCapRow, "email" | "monthlyCapUsd">[]>;
 }
 
 export interface PersonRow {
@@ -59,6 +63,8 @@ export interface PersonRow {
   canChange: boolean;
   canRevoke: boolean;
   aiCostUsd: number;
+  /** The monthly cap that applies (own or default), or null for no cap. */
+  aiCapUsd: number | null;
 }
 
 export interface PeopleDirectoryData {
@@ -79,7 +85,6 @@ export class PeopleRoleService {
   static readonly DUPLICATE = "That person is already listed.";
   static readonly NOT_PENDING = "Only pending invites with no line access can be revoked.";
   static readonly NOT_FOUND = "Not found.";
-  static readonly AI_CAP_EXAMPLE_USD = 10;
 
   static normalize(email: unknown): string {
     return typeof email === "string" ? email.trim().toLowerCase() : "";
@@ -124,8 +129,10 @@ export class PeopleRoleService {
     for (const email of [...OwnerPolicy.ownerEmails(env), ...AdminPolicy.fromEnv(env).exactEmails()]) {
       if (!byEmail.has(email) && AdminPolicy.isAdmin(email, env)) byEmail.set(email, { email, name: null, roleId: null, firstSignInAt: null, createdAt: now, lineIds: [], departmentLabel: null, hasPassword: false });
     }
-    const since = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), 1));
+    // The same calendar month (Eastern time) the spend cap counts.
+    const since = AiSpendCap.monthStart(now);
     const cost = await store.aiCost(since).catch(() => ({}) as Record<string, number>);
+    const caps = (await store.aiCaps?.().catch(() => [])) ?? [];
     const me = PeopleRoleService.normalize(viewer.email);
     const rows: PersonRow[] = [];
     for (const p of byEmail.values()) {
@@ -151,6 +158,7 @@ export class PeopleRoleService {
         canChange: !owner && RoleAssignment.canActOn(actor, target, roles, env),
         canRevoke: pending && !owner && !p.hasPassword && p.lineIds.length === 0 && Permissions.can(actor, "people.user.add", env) && RoleAssignment.canActOn(actor, target, roles, env),
         aiCostUsd: cost[p.email] ?? 0,
+        aiCapUsd: AiSpendCapService.effectiveOf(caps, p.email).capUsd,
       });
     }
     const rank = (r: PersonRow) => (r.owner ? 1000 : roles.find((x) => x.id === r.roleId)?.rank ?? 0);
@@ -223,7 +231,7 @@ export class PeopleRoleService {
   }
 }
 
-type PrismaPeople = Pick<PrismaClient, "appUser" | "role" | "rolePermission" | "userRoleHistory" | "aiUsageLog" | "$transaction">;
+type PrismaPeople = Pick<PrismaClient, "appUser" | "role" | "rolePermission" | "userRoleHistory" | "aiUsageLog" | "aiSpendCap" | "$transaction">;
 
 /** The Prisma-backed store. */
 export class PrismaPeopleRoleStore implements PeopleRoleStore {
@@ -298,5 +306,9 @@ export class PrismaPeopleRoleStore implements PeopleRoleStore {
     const out: Record<string, number> = {};
     for (const r of rows) out[r.userEmail] = Number(r._sum.costUsd ?? 0);
     return out;
+  }
+
+  async aiCaps() {
+    return AiSpendCapService.rows(this.db);
   }
 }

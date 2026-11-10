@@ -300,7 +300,7 @@ export function PeoplePanel(props: {
           </thead>
           <tbody>
             {shown.map((p) => {
-              const pct = Math.min(100, Math.round((p.aiCostUsd / 10) * 100));
+              const pct = p.aiCapUsd ? Math.min(100, Math.round((p.aiCostUsd / p.aiCapUsd) * 100)) : p.aiCapUsd === 0 ? 100 : 0;
               return (
                 <tr key={p.email} className={p.pending ? s.pendingRow : undefined} data-testid={`person-${p.email}`}>
                   <td>
@@ -324,18 +324,19 @@ export function PeoplePanel(props: {
                   <td className={p.pending ? s.muted : undefined} title={p.department} style={{ maxWidth: 190, overflow: "hidden", textOverflow: "ellipsis" }}>{p.department}</td>
                   <td className={s.muted}>{p.pending ? `Sent ${new Date(p.invitedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", timeZone: "America/New_York" })}` : relativeTime(p.firstSignInAt, now) || "Not yet"}</td>
                   <td>
-                    {p.owner ? (
-                      <span className={s.dim}>No cap</span>
-                    ) : p.pending ? (
+                    {p.pending ? (
                       <span className={s.dim}>Not yet</span>
                     ) : (
                       <div style={{ width: 150 }}>
                         <div style={{ fontSize: 12 }}>
-                          <span style={{ fontWeight: 500 }}>${p.aiCostUsd.toFixed(2)}</span> <span className={s.dim}>of $10.00 this month</span>
+                          <span style={{ fontWeight: 500 }}>${p.aiCostUsd.toFixed(2)}</span>{" "}
+                          <span className={s.dim}>{p.aiCapUsd === null ? "this month, no cap" : `of $${p.aiCapUsd.toFixed(2)} this month`}</span>
                         </div>
-                        <div className={s.bar}>
-                          <div className={`${s.barFill} ${pct >= 85 ? s.barWarn : ""}`} style={{ width: `${Math.max(pct, 2)}%` }} />
-                        </div>
+                        {p.aiCapUsd !== null && (
+                          <div className={s.bar}>
+                            <div className={`${s.barFill} ${pct >= 85 ? s.barWarn : ""}`} style={{ width: `${Math.max(pct, 2)}%` }} />
+                          </div>
+                        )}
                       </div>
                     )}
                   </td>

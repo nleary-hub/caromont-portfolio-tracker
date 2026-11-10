@@ -14,6 +14,7 @@ import { AiModelService, type AiModelRow } from "@/lib/services/AiModelService";
 import { AiFeatureRuntime, AiProviderKeyAccess } from "@/lib/services/AiFeatureProviderService";
 import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsRow } from "@/lib/services/AiSettingsService";
+import { AiSpendCapService } from "@/lib/services/AiSpendCapService";
 import { AiToolsService, type AiToolsDb, type AiToolUsageRow } from "@/lib/services/AiToolsService";
 import { AiWritingService } from "@/lib/services/AiWritingService";
 import { PortfolioContextService } from "@/lib/services/PortfolioContextService";
@@ -26,7 +27,7 @@ type Env = Record<string, string | undefined>;
  * connect_failed happen in the browser and are reported back for the log. connect_failed also comes from the server's
  * forward of the SDP offer (connect). ice_failed: the WebRTC media path never came up (network blocking live audio).
  */
-export type AiVoiceErrorCode = "not_allowed" | "feature_off" | "ai_off" | "model_off" | "rate_limited" | "model_unavailable" | "token" | "mic_denied" | "no_mic" | "connect_failed" | "ice_failed";
+export type AiVoiceErrorCode = "not_allowed" | "feature_off" | "ai_off" | "model_off" | "rate_limited" | "spend_cap" | "model_unavailable" | "token" | "mic_denied" | "no_mic" | "connect_failed" | "ice_failed";
 
 export type AiVoiceConnectResult = { ok: true; sdp: string } | { ok: false; httpStatus: number; error: { type: string | null; code: string | null; message: string; modelUnavailable: boolean } };
 
@@ -102,6 +103,9 @@ export class AiVoiceChatService {
     const user = viewer.email;
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: ["suggested", "failed", "proposed", "session_started"] }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, code: "rate_limited", message: AiCopy.RATE_LIMITED };
+    // 0074: the monthly spend cap (no cap rows = no cap). A voice session's cost lands when it ends.
+    const spend = await AiSpendCapService.check({ db, email: user, env, now });
+    if (!spend.ok) return { ok: false, code: "spend_cap", message: spend.message };
 
     const projects = await AiToolsService.projects(db, args.scope);
     const sessionId = randomUUID();
