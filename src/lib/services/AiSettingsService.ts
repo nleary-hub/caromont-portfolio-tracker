@@ -104,8 +104,17 @@ export class AiSettingsService {
    */
   static async row(db: AiSettingsDb, env: Env = process.env): Promise<AiSettingsRow | null> {
     const row = await AiSettingsService.storedRow(db);
-    if (!row || AiKeyCipher.isPreview(env)) return row;
-    const provider = AiProviders.parse(row.provider);
+    if (!row) return row;
+    return AiSettingsService.withProviderKey(db, row, AiProviders.parse(row.provider), env);
+  }
+
+  /**
+   * The key `provider` would use once saved, resolved onto `row` the way row() resolves the saved provider. save()
+   * validates with this, so switching company and turning the switch on in one save checks the new company's key, not
+   * the old one's. On a preview the row comes back as given.
+   */
+  private static async withProviderKey(db: AiSettingsDb, row: AiSettingsRow, provider: AiProviderId | null, env: Env): Promise<AiSettingsRow> {
+    if (AiKeyCipher.isPreview(env)) return row;
     const kdb = db as unknown as Partial<AiProviderKeyDb>;
     if (typeof kdb.aiProviderKey?.findUnique !== "function" || typeof kdb.$transaction !== "function") return row;
     if (provider === "openai") {
@@ -128,6 +137,11 @@ export class AiSettingsService {
       }
     }
     return row;
+  }
+
+  /** An ai_settings row with nothing saved yet (the first save). */
+  private static blankRow(): AiSettingsRow {
+    return { id: AiSettingsService.ID, enabled: false, provider: null, model: null, baseUrl: null, azureEndpoint: null, azureDeployment: null, apiKeyCiphertext: null, apiKeyLast4: null, apiKeySetAt: null, apiKeySetBy: null, updatedAt: new Date(0), updatedBy: "" };
   }
 
   /** ai_settings exactly as stored (no key resolution). */
@@ -262,11 +276,12 @@ export class AiSettingsService {
   /** Saves the settings and appends one change-log row per changed field (key rows carry no value). Admin only. */
   static async save(db: AiSettingsDb, admin: Viewer, input: AiSettingsInput, env: Env = process.env, now: Date = new Date()): Promise<AiSettingsSaveResult> {
     AdminPolicy.assertAdmin(admin);
-    // The key as runtime() sees it (ai_provider_keys for OpenAI), resolved before the transaction.
-    const resolved = await AiSettingsService.row(db, env);
+    // The key runtime() will use for the company being saved (Provider keys for OpenAI and Anthropic), resolved before
+    // the transaction. Resolving the saved company's key instead refused "switch to Anthropic and turn on" in one save.
+    const resolved = await AiSettingsService.withProviderKey(db, (await AiSettingsService.storedRow(db)) ?? AiSettingsService.blankRow(), input.fields.provider, env);
     return db.$transaction(async (tx) => {
       const stored = await AiSettingsService.storedRow(tx);
-      const current = stored && resolved?.providerKey ? { ...stored, providerKey: resolved.providerKey } : stored;
+      const current = resolved.providerKey ? { ...(stored ?? AiSettingsService.blankRow()), providerKey: resolved.providerKey } : stored;
       const check = AiSettingsService.validate(input, current, env);
       if (!check.ok) return check;
       const before = AiSettingsService.fieldsOf(current);
