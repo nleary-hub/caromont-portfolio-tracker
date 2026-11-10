@@ -66,7 +66,7 @@ export interface AiSettingsDb {
     createMany(args: { data: AiSettingsHistoryRow[] }): Promise<unknown>;
     findMany(args: { orderBy: { changedAt: "desc" }; take: number }): Promise<AiSettingsHistoryRow[]>;
   };
-  $transaction<T>(fn: (tx: AiSettingsDb) => Promise<T>): Promise<T>;
+  $transaction<T>(fn: (tx: AiSettingsDb) => Promise<T>, options?: { isolationLevel: "Serializable" }): Promise<T>;
 }
 
 /** The transaction slice clearKey writes through (the provider key action's open transaction). */
@@ -98,8 +98,8 @@ export class AiSettingsService {
 
   /**
    * The settings row, with the OpenAI key resolved from ai_provider_keys when the provider is OpenAI (copying the legacy
-   * key there on first read, once). Reads prefer the new table and fall back to the legacy column when it can't be used
-   * (table not migrated yet, or a fake db in tests). On a preview the row comes back as stored: nothing is decrypted,
+   * key there on first read, once). Reads prefer the new table. A missing row permits a same-provider legacy key; an empty row or
+   * failed lookup does not. Legacy-only database adapters remain supported. On a preview the row comes back as stored: nothing is decrypted,
    * copied or written, and runtime() refuses anyway.
    */
   static async row(db: AiSettingsDb, env: Env = process.env): Promise<AiSettingsRow | null> {
@@ -114,7 +114,10 @@ export class AiSettingsService {
    * the old one's. On a preview the row comes back as given.
    */
   private static async withProviderKey(db: AiSettingsDb, row: AiSettingsRow, provider: AiProviderId | null, env: Env): Promise<AiSettingsRow> {
+    // A legacy key belongs only to the provider recorded with it, never the requested destination.
+    row = AiSettingsService.forProvider(row, provider);
     if (AiKeyCipher.isPreview(env)) return row;
+    const unavailable = (): AiSettingsRow => ({ ...row, providerKey: { ciphertext: null, last4: null, setAt: null, setBy: null, bindingProvider: provider === "anthropic" ? "anthropic" : "openai" } });
     const kdb = db as unknown as Partial<AiProviderKeyDb>;
     if (typeof kdb.aiProviderKey?.findUnique !== "function" || typeof kdb.$transaction !== "function") return row;
     if (provider === "openai") {
@@ -122,7 +125,7 @@ export class AiSettingsService {
         const key = await AiProviderKeyService.ensureOpenAiCopied(kdb as AiProviderKeyDb, env);
         return key ? { ...row, providerKey: { ciphertext: key.ciphertext, last4: key.last4, setAt: key.setAt, setBy: key.setBy, bindingProvider: "openai" } } : row;
       } catch {
-        return row;
+        return unavailable();
       }
     }
     // Anthropic uses the Provider keys row, never a leftover OpenAI key in the legacy column.
@@ -130,13 +133,19 @@ export class AiSettingsService {
       try {
         const key = await kdb.aiProviderKey!.findUnique({ where: { provider: "anthropic" } });
         // No Provider keys row: keep the legacy ai_settings key (a setup from before Provider keys).
-        if (!key?.ciphertext) return row;
+        if (!key) return row;
         return { ...row, providerKey: { ciphertext: key.ciphertext, last4: key.last4, setAt: key.setAt, setBy: key.setBy, bindingProvider: "anthropic" } };
       } catch {
-        return row;
+        return unavailable();
       }
     }
     return row;
+  }
+
+  /** Disqualify the old provider's legacy key without changing the saved fields used for history. */
+  private static forProvider(row: AiSettingsRow, provider: AiProviderId | null): AiSettingsRow {
+    if (row.provider === provider || (row.provider === null && provider === "openai")) return row;
+    return { ...row, apiKeyCiphertext: null, apiKeyLast4: null, apiKeySetAt: null, apiKeySetBy: null, providerKey: undefined };
   }
 
   /** An ai_settings row with nothing saved yet (the first save). */
@@ -281,7 +290,8 @@ export class AiSettingsService {
     const resolved = await AiSettingsService.withProviderKey(db, (await AiSettingsService.storedRow(db)) ?? AiSettingsService.blankRow(), input.fields.provider, env);
     return db.$transaction(async (tx) => {
       const stored = await AiSettingsService.storedRow(tx);
-      const current = resolved.providerKey ? { ...(stored ?? AiSettingsService.blankRow()), providerKey: resolved.providerKey } : stored;
+      const eligible = AiSettingsService.forProvider(stored ?? AiSettingsService.blankRow(), input.fields.provider);
+      const current = resolved.providerKey ? { ...eligible, providerKey: resolved.providerKey } : eligible;
       const check = AiSettingsService.validate(input, current, env);
       if (!check.ok) return check;
       const before = AiSettingsService.fieldsOf(current);
@@ -309,7 +319,12 @@ export class AiSettingsService {
       for (const [field, old] of pairs) if (text(old) !== text(next[field])) log(field, "changed", text(old), text(next[field]));
 
       const newKey = (input.newKey ?? "").trim();
-      let keyPatch: Partial<AiSettingsRow> = {};
+      // Clear on disabled switches too; otherwise the next save would relabel the old key as the new company's.
+      const providerChanged = stored && stored.provider !== f.provider && !(stored.provider === null && f.provider === "openai");
+      let keyPatch: Partial<AiSettingsRow> = providerChanged
+        ? { apiKeyCiphertext: null, apiKeyLast4: null, apiKeySetAt: null, apiKeySetBy: null }
+        : {};
+      if (providerChanged && stored.apiKeyCiphertext && !newKey) log("apiKey", "key_cleared", null, null);
       if (newKey) {
         const cipher = AiKeyCipher.fromEnv(env);
         if (!cipher.ok) return { ok: false, error: AiCopy.ENCRYPTION_MISSING };
@@ -325,7 +340,9 @@ export class AiSettingsService {
       });
       await tx.aiSettingsHistory.createMany({ data: history });
       return { ok: true };
-    });
+    // A concurrent provider switch or key rotation must not combine this save's provider with a different legacy key.
+    // PostgreSQL aborts the conflicting save rather than relabeling or resurrecting ciphertext.
+    }, { isolationLevel: "Serializable" });
   }
 
   /**
