@@ -88,7 +88,7 @@ class RegistryDb extends Db {
   }
   aiFeatureOverride = { findUnique: async (a: { where: { feature: string } }) => this.read(this.overrides.find((o) => o.feature === a.where.feature) ?? null) };
   aiCategorySetting = { findUnique: async (a: { where: { category: string } }) => this.read(this.categories.find((c) => c.category === a.where.category) ?? null) };
-  aiModelRegistry = { findMany: async (a: { where: { provider: string } }) => this.read(this.reg.filter((r) => r.provider === a.where.provider).map((r) => ({ ...r }))) };
+  aiModelRegistry = { findMany: async (a: { where: { provider?: string; model?: string } }) => this.read(this.reg.filter((r) => (a.where.provider === undefined || r.provider === a.where.provider) && (a.where.model === undefined || r.model === a.where.model)).map((r) => ({ ...r }))) };
   aiModelPrice = { findMany: async (a: { where: { provider: string; model: string } }) => this.read(this.regPrices.filter((p) => p.provider === a.where.provider && p.model === a.where.model).map((p) => ({ ...p }))) };
 
   /** A registry that disagrees with ai_models on everything: model, reply limit and price. */
@@ -285,6 +285,27 @@ describe("switch on: calls follow the registry", () => {
     expect(on.calls[0].headers["api-key"]).toBe(SETTINGS_KEY);
     expect(on.calls[0].body.max_completion_tokens).toBe(900);
     expect(on.row?.costUsd).toBe(AiRunMetrics.cost(1000, 500, { priceUnit: "per_1m_tokens", inputPrice: 7, outputPrice: 70 }));
+  });
+
+  it("a feature whose model today isn't in the registry keeps today's path, not its category's model (Codex, PR 137)", async () => {
+    // Draft follows the main Azure deployment, which the Models list doesn't have, so Phase 1 shows it as not mapped and
+    // gives it no own-model row. The Drafting category holds another feature's OpenAI model. Draft must stay on Azure.
+    const azure = { ...MAIN, provider: "azure_openai", model: "azure-example-deploy", azureEndpoint: "https://example-tenant.openai.azure.com", azureDeployment: "example-deploy" };
+    // It is on the Models list (so it runs today) but the registry doesn't hold it, as when Phase 1 couldn't copy it.
+    const withDeploy = <T extends Db>(d: T): T => {
+      d.models = [...d.models, model("azure-example-deploy", "openai", [1, 4])];
+      return d;
+    };
+    const today = await run("writing", await setup(withDeploy(new Db()), azure), ENV);
+    expect(today.r.ok).toBe(true);
+    const db = (await setup(withDeploy(new RegistryDb()), azure)).disagree();
+    const on = await run("writing", db, ON);
+    expect(on.calls).toEqual(today.calls);
+    expect(on.calls[0].headers["api-key"]).toBe(SETTINGS_KEY);
+    expect(on.row).toEqual(today.row);
+    // Once that model is in the registry (and so mapped), the category applies again.
+    db.reg.push({ provider: "openai", model: "azure-example-deploy", kind: "chat", enabled: true, archivedAt: null, maxOutputTokens: null });
+    expect((await run("writing", db, ON)).calls[0].body.model).toBe("gpt-example-mini");
   });
 
   it("no reply limit in the registry keeps the built-in budget; a limit above the provider's ceiling is held to it", async () => {

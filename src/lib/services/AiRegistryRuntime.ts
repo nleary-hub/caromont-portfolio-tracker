@@ -39,7 +39,7 @@ interface RegPriceRow {
 interface RegistryReads {
   aiFeatureOverride: { findUnique(a: { where: { feature: string } }): Promise<{ provider: string; model: string } | null> };
   aiCategorySetting: { findUnique(a: { where: { category: string } }): Promise<{ provider: string | null; model: string | null } | null> };
-  aiModelRegistry: { findMany(a: { where: { provider: string } }): Promise<RegModelRow[]> };
+  aiModelRegistry: { findMany(a: { where: { provider: string } | { model: string } }): Promise<RegModelRow[]> };
   aiModelPrice: { findMany(a: { where: { provider: string; model: string } }): Promise<RegPriceRow[]> };
 }
 
@@ -57,7 +57,8 @@ interface RegistryReads {
  * The allowlist is the registry models of that provider that are on, not archived and text (chat) models. The model's
  * reply-length limit replaces the built-in budget, held to the provider's ceiling. The run is priced from the registry's
  * input and output prices; a model with no registry price is priced from ai_models, so spend caps never stop counting.
- * With no registry tables, no model for the feature, or a registry read error, the call takes today's path.
+ * With no registry tables, no model for the feature, a feature whose model today isn't in the registry (Phase 1 shows it
+ * as not mapped, for example an Azure deployment), or a registry read error, the call takes today's path.
  *
  * Dictation and Voice chat are not resolved here (they stay on their own path). Nothing here switches to a fallback
  * model, writes anything, or ever logs a key.
@@ -80,14 +81,14 @@ export class AiRegistryRuntime {
     return ok ? (db as RegistryReads) : null;
   }
 
-  /** The registry's pick for a text feature: its own model, else its category's. Null when neither is set. */
-  static async pairOf(reads: RegistryReads, feature: AiToggleFeature): Promise<{ provider: string; model: string } | null> {
+  /** The registry's pick for a text feature: its own model (`own`), else its category's. Null when neither is set. */
+  static async pairOf(reads: RegistryReads, feature: AiToggleFeature): Promise<{ provider: string; model: string; own: boolean } | null> {
     const category = AiRegistry.categoryOf(feature);
     if (!category) return null;
     const own = await reads.aiFeatureOverride.findUnique({ where: { feature } });
-    if (own?.provider && own.model) return { provider: own.provider, model: own.model };
+    if (own?.provider && own.model) return { provider: own.provider, model: own.model, own: true };
     const cat = await reads.aiCategorySetting.findUnique({ where: { category } });
-    return cat?.provider && cat.model ? { provider: cat.provider, model: cat.model } : null;
+    return cat?.provider && cat.model ? { provider: cat.provider, model: cat.model, own: false } : null;
   }
 
   /** The registry's reply-length limit, held to 1..the provider's ceiling (the save checks it too; this is the call-time check). */
@@ -117,12 +118,20 @@ export class AiRegistryRuntime {
     const reads = AiRegistryRuntime.reads(args.db);
     if (!reads) return AiRegistryRuntime.legacy(base);
 
-    let pair: { provider: string; model: string } | null;
+    let pair: { provider: string; model: string; own: boolean } | null;
+    const today = await AiFeatureRuntime.config(base);
     let models: RegModelRow[];
     let prices: RegPriceRow[];
     try {
       pair = await AiRegistryRuntime.pairOf(reads, args.feature);
       if (!pair) return AiRegistryRuntime.legacy(base);
+      // A feature whose model today can't be put in the registry (the Models list doesn't have it, for example an Azure
+      // deployment name) has no own-model row there, so it would wrongly take its category's model. Phase 1 lists it as
+      // not mapped; it keeps today's path until it can be represented.
+      if (!pair.own && today && today.model !== pair.model) {
+        const listed = await reads.aiModelRegistry.findMany({ where: { model: today.model } });
+        if (!listed.some((m) => m.archivedAt === null)) return AiRegistryRuntime.legacy(base);
+      }
       models = await reads.aiModelRegistry.findMany({ where: { provider: pair.provider } });
       prices = await reads.aiModelPrice.findMany({ where: { provider: pair.provider, model: pair.model } });
     } catch (e) {
@@ -131,7 +140,6 @@ export class AiRegistryRuntime {
       return AiRegistryRuntime.legacy(base);
     }
 
-    const today = await AiFeatureRuntime.config(base);
     let connection: AiRuntimeConfig | null;
     if (today && today.model === pair.model) {
       // The registry agrees with what runs today: keep today's connection exactly (key, endpoint, Azure deployment).
