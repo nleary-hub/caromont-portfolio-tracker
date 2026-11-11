@@ -179,6 +179,77 @@ export class AiCopy {
     return feature === "revise_note" ? AiCopy.FEATURE_REVISE_NOTE : (AiToolsCopy.FEATURE_LABELS[feature] ?? feature);
   }
 
+  // ---- Model registry (Phase 1 of the Admin AI page spec) ------------------------------------------------------
+  static readonly CATEGORY_LABELS: Readonly<Record<string, string>> = { drafting: "Drafting", extraction: "Extraction", analysis: "Analysis", dictation: "Dictation", voice_chat: "Voice chat" };
+  static categoryLabel(category: string): string {
+    return AiCopy.CATEGORY_LABELS[category] ?? category;
+  }
+  static categoryModelLabel(category: string): string {
+    return `${AiCopy.categoryLabel(category)} model`;
+  }
+  static categoryHelp(category: string): string {
+    return `Every ${AiCopy.categoryLabel(category)} feature without a model of its own uses this one.`;
+  }
+  static readonly CATEGORY_NONE = "Uses the AI settings model (the default)";
+  static readonly CATEGORY_SAVED = "Saved. Features without a model of their own now use it.";
+  static readonly OWN_MODEL_BADGE = "Own model";
+  static readonly OWN_MODEL_HELP = "Uses a model of its own, not the category's. Pick the category's model to follow it again.";
+  static followCategory(category: string): string {
+    return `Use the ${AiCopy.categoryLabel(category)} model`;
+  }
+  static readonly MAIN_MODEL_DEFAULT_NOTE = "This is the default. Any feature whose category has no model, and that has no model of its own, uses it.";
+  static readonly REGISTRY_TITLE = "Model registry";
+  static readonly REGISTRY_IN_STEP = "In step. The registry records exactly what the app runs.";
+  static registryOutOfStep(n: number): string {
+    return n === 1 ? "1 difference between what the app runs and what the registry records." : `${n.toLocaleString("en-US")} differences between what the app runs and what the registry records.`;
+  }
+  static readonly REGISTRY_OUT_OF_STEP_HELP = "AI calls, costs and spend caps don't use the registry yet, so nothing runs differently. Bring it up to date before the next phase switches them over.";
+  static readonly REGISTRY_SYNC = "Bring the registry up to date";
+  static readonly REGISTRY_SYNCING = "Updating…";
+  static readonly REGISTRY_SYNCED = "The registry is up to date.";
+  static readonly REGISTRY_SYNC_PARTLY = "Updated what could be. The rest needs a fix on this page first.";
+  static readonly REGISTRY_PREVIEW = "Read-only on a preview. Nothing is written to the registry here.";
+  static readonly REGISTRY_UNAVAILABLE = "The model registry can't be read here, so this can't be saved.";
+  static readonly REGISTRY_MORE = "and more";
+  static registryKeyShaped(n: number): string {
+    return n === 1 ? "1 model id on the Models list looks like a secret key, so the registry won't hold it." : `${n} model ids on the Models list look like secret keys, so the registry won't hold them.`;
+  }
+  static registryUnmapped(feature: string, model: string | null): string {
+    return model ? `${feature} uses ${model}, which isn't on the Models list under that company, so the registry can't record it.` : `${feature} uses a model the registry can't record.`;
+  }
+  static registryMissingModel(id: string): string {
+    return `${id} is on the Models list but not in the registry.`;
+  }
+  static registryExtraModel(id: string): string {
+    return `${id} is in the registry but not on the Models list.`;
+  }
+  static registryModelDiffers(id: string): string {
+    return `${id} is on or off differently in the registry.`;
+  }
+  static registryPriceDiffers(id: string): string {
+    return `${id} has different prices in the registry.`;
+  }
+  static registryCategoryDiffers(category: string, model: string): string {
+    return `The registry's ${category} model should be ${model}.`;
+  }
+  static registryOwnModelDiffers(feature: string): string {
+    return `${feature}'s own model differs in the registry.`;
+  }
+  // Price source (spec pick 4: a typed price needs the page it was read on and the date).
+  static readonly PRICE_SOURCE_LABEL = "Price source link";
+  static readonly PRICE_READ_ON_LABEL = "Date read";
+  static readonly PRICE_SOURCE_PLACEHOLDER = "https://…";
+  static readonly PRICE_SOURCE_HELP = "The page you read these prices on, and the day you read them. Both are saved with the price.";
+  static readonly PRICE_SOURCE_REQUIRED = "Add the link to the page you read the price on, and the date you read it.";
+  static readonly PRICE_SOURCE_INVALID = "The price source must be an https page link of 500 characters or fewer, with no ?, #, @ or spaces.";
+  static readonly PRICE_SOURCE_KEY_SHAPED = "That link looks like it holds a secret key, so it was not saved.";
+  static readonly PRICE_READ_ON_INVALID = "Enter the date you read the price, today or earlier.";
+  static readonly MODEL_ID_KEY_SHAPED = "That model id looks like a secret key, so it was not saved. Model ids never hold keys.";
+  static priceChecked(date: string, host: string): string {
+    return `Price checked ${date} on ${host}`;
+  }
+  static readonly PRICE_NOT_VERIFIED = "Price not checked yet: copied from the old list with no source";
+
   // ---- Per-feature provider and model (PR B) -------------------------------------------------------------------
   static readonly FEATURE_PROVIDER_LABEL = "Provider";
   static readonly FEATURE_MODEL_LABEL = "Model";
@@ -339,6 +410,10 @@ export class AiCopy {
         return AiCopy.FEATURE_MODEL_LABEL;
       case "aiPriceRefresh":
         return AiCopy.PRICE_REFRESH_FIELD;
+      case "aiCategory":
+        return "Category model";
+      case "aiModelRegistry":
+        return AiCopy.REGISTRY_TITLE;
       case "apiKey":
         return AiCopy.KEY_LABEL;
       default:
@@ -356,6 +431,16 @@ export class AiCopy {
     if (action === "model_disabled") return `${newValue ?? ""} turned off`;
     if (action === "prices_refreshed") return newValue ? `Saved from OpenAI's pricing page. ${newValue}` : "Saved from OpenAI's pricing page.";
     if (action === "price_refresh_failed") return `Refresh failed, nothing changed (${newValue === "fetch_failed" ? "page couldn't be read" : newValue === "no_match" ? "no models matched" : "format changed"})`;
+    if (field === "aiCategory") {
+      const show = (v: string | null) => {
+        const at = (v ?? "").indexOf("=");
+        return at < 0 ? { category: "", model: v ? v : "(none)" } : { category: (v ?? "").slice(0, at), model: (v ?? "").slice(at + 1).replace(/^[a-z]+:/, "") || "(none)" };
+      };
+      const o = show(oldValue);
+      const n = show(newValue);
+      return `${AiCopy.categoryLabel(n.category || o.category)}: ${o.model} to ${n.model}`;
+    }
+    if (field === "aiModelRegistry" && action === "migrated") return newValue ? `Brought up to date (${newValue})` : "Brought up to date";
     if (action === "feature_on") return `${AiCopy.featureLabel(newValue ?? "")} turned on`;
     if (action === "feature_off") return `${AiCopy.featureLabel(newValue ?? "")} turned off`;
     // PR B: "<feature>:<value>" on both sides; an empty model means the model chosen above.

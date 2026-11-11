@@ -74,8 +74,19 @@ export async function setAiModelEnabled(id: string, enabled: boolean, confirmed:
   return run("setAiModelEnabled", (db, v) => AiModelService.setEnabled(db, v, id, Boolean(enabled), Boolean(confirmed)));
 }
 
-export async function setAiModelPrices(id: string, unit: string, input: string, output: string): Promise<AiAdminResult> {
-  return run("setAiModelPrices", (db, v) => AiModelService.setPrices(db, v, id, unit, input, output));
+/** `sourceUrl` and `readOn` (YYYY-MM-DD): where and when the price was read. Required when a price is set. */
+export async function setAiModelPrices(id: string, unit: string, input: string, output: string, sourceUrl?: string, readOn?: string): Promise<AiAdminResult> {
+  return run("setAiModelPrices", (db, v) => AiModelService.setPrices(db, v, id, unit, input, output, new Date(), { sourceUrl, readOn }));
+}
+
+/** A text category's model (Drafting, Extraction, Analysis): every feature of it without a model of its own gets it. */
+export async function setAiCategoryModel(category: string, provider: string, model: string): Promise<AiAdminResult> {
+  return run("setAiCategoryModel", (db, v) => AiModelService.setCategoryModel(db, v, category, provider, model));
+}
+
+/** "Bring the registry up to date": copies what the app runs into the model registry. Refused on a preview. */
+export async function syncAiRegistry(): Promise<AiAdminResult> {
+  return run("syncAiRegistry", (db, v) => AiModelService.syncRegistry(db, v));
 }
 
 export async function setAiFeatureModel(feature: string, model: string): Promise<AiAdminResult> {

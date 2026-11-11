@@ -4,6 +4,7 @@ import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { OpenAiPricingParser, type ParsedPrice } from "@/lib/ai/OpenAiPricingParser";
 import { AiModelService, type AiModelDb, type AiModelRow, type AiPriceUnit } from "@/lib/services/AiModelService";
+import { AiRegistrySync } from "@/lib/services/AiRegistrySync";
 import { AiSettingsService, type AiSettingsHistoryRow } from "@/lib/services/AiSettingsService";
 
 type Env = Record<string, string | undefined>;
@@ -140,6 +141,8 @@ export class AiPriceRefreshService {
       }
       const summary = (pick: (c: AiPriceChange) => AiPriceSet) => list.map((c) => `${c.id}: ${AiCopy.priceSummary(pick(c).unit, pick(c).input, pick(c).output)}`).join("; ");
       await tx.aiSettingsHistory.createMany({ data: [AiPriceRefreshService.hist("prices_refreshed", summary((c) => c.current), summary((c) => c.proposed), admin, now)] });
+      // The registry gets the same prices, marked checked on the pricing page today, in this transaction.
+      await AiRegistrySync.mirror(tx, admin, now, env, { prices: { ids: new Set(list.map((c) => c.id)), sourceUrl: OpenAiPricingParser.SOURCE_URL, readOn: AiRegistrySync.today(now), action: "refreshed" } });
       return { ok: true, message: AiCopy.pricesRefreshed(list.length) };
     });
   }

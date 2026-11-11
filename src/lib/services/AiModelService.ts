@@ -12,6 +12,9 @@ import { AiSettingsService } from "@/lib/services/AiSettingsService";
 import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 import { AiFeatureProviders, type AiFeatureProvider } from "@/lib/ai/AiFeatureProviders";
 import { AiFeatureRuntime, AiProviderKeyAccess, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
+import { AiKeyShape } from "@/lib/ai/AiKeyShape";
+import { AiRegistry, type AiTextCategory } from "@/lib/ai/AiRegistry";
+import { AiRegistrySync } from "@/lib/services/AiRegistrySync";
 
 type Env = Record<string, string | undefined>;
 type Price = number | string | { toString(): string } | null;
@@ -120,7 +123,13 @@ export interface AiModelDb {
 export type AiAdminResult = { ok: true; message?: string } | { ok: false; error: string; needsConfirm?: boolean; field?: AiPriceField };
 
 /** The price control an error belongs to (red border, aria-invalid, aria-describedby on that control). */
-export type AiPriceField = "input" | "output" | "unit";
+export type AiPriceField = "input" | "output" | "unit" | "source" | "readOn";
+
+/** Where a typed price was read (spec pick 4): the page link and the day. Required when a save sets a price. */
+export interface AiPriceSourceInput {
+  sourceUrl?: unknown;
+  readOn?: unknown;
+}
 
 /**
  * Admin > AI settings: the OpenAI model list (add, enable, disable, prices) and the per-feature toggles. Selection is
@@ -170,6 +179,24 @@ export class AiModelService {
 
   static parseUnit(v: unknown): AiPriceUnit | null {
     return AiModelService.UNITS.includes(v as AiPriceUnit) ? (v as AiPriceUnit) : null;
+  }
+
+  /** The earliest day a price can say it was read on. Anything before it is a typo. */
+  static readonly READ_ON_FIRST = "2020-01-01";
+
+  /** A typed price source: an https page (the registry's link rule, key shape checked first) and a YYYY-MM-DD day, today or earlier. */
+  static parseSource(source: AiPriceSourceInput, now: Date): { ok: true; sourceUrl: string; readOn: Date } | { ok: false; error: string; field: AiPriceField } {
+    const url = typeof source.sourceUrl === "string" ? source.sourceUrl.trim() : "";
+    const day = typeof source.readOn === "string" ? source.readOn.trim() : "";
+    if (!url) return { ok: false, error: AiCopy.PRICE_SOURCE_REQUIRED, field: "source" };
+    const problem = AiKeyShape.sourceUrlProblem(url);
+    if (problem) return { ok: false, error: problem === "key_shaped" ? AiCopy.PRICE_SOURCE_KEY_SHAPED : AiCopy.PRICE_SOURCE_INVALID, field: "source" };
+    if (!day) return { ok: false, error: AiCopy.PRICE_SOURCE_REQUIRED, field: "readOn" };
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(day)) return { ok: false, error: AiCopy.PRICE_READ_ON_INVALID, field: "readOn" };
+    const readOn = new Date(`${day}T00:00:00.000Z`);
+    const today = AiRegistrySync.today(now);
+    if (Number.isNaN(readOn.getTime()) || readOn.toISOString().slice(0, 10) !== day || day < AiModelService.READ_ON_FIRST || readOn.getTime() > today.getTime()) return { ok: false, error: AiCopy.PRICE_READ_ON_INVALID, field: "readOn" };
+    return { ok: true, sourceUrl: url, readOn };
   }
 
   static priceText(p: Price): string {
@@ -304,6 +331,8 @@ export class AiModelService {
     AdminPolicy.assertAdmin(admin);
     const id = AiModelService.cleanId(rawId);
     if (!id) return { ok: false, error: AiCopy.MODEL_ID_INVALID };
+    // G-APP: the registry never holds a key-shaped id, so the Models list doesn't either. Checked before anything is read.
+    if (AiKeyShape.modelIdProblem(id) === "key_shaped") return { ok: false, error: AiCopy.MODEL_ID_KEY_SHAPED };
     // PR B: a model of another provider is checked against that provider's own list, with that provider's key.
     const provider = opts.provider === undefined ? "openai" : AiFeatureProviders.parse(opts.provider);
     if (!provider) return { ok: false, error: AiCopy.SAVE_FAILED };
@@ -317,6 +346,7 @@ export class AiModelService {
     return db.$transaction(async (tx) => {
       await tx.aiModel.create({ data: { id, provider, enabled: false, priceUnit: null, inputPrice: null, outputPrice: null, addedAt: now, addedBy: admin.email, updatedAt: now, updatedBy: admin.email, ...(kind ? { kind } : {}) } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", "model_added", null, id, admin, now)] });
+      await AiRegistrySync.mirror(tx, admin, now, env);
       return { ok: true, message: AiCopy.modelAdded(id) };
     });
   }
@@ -418,11 +448,16 @@ export class AiModelService {
       }
       await tx.aiModel.update({ where: { id }, data: { enabled, updatedAt: now, updatedBy: admin.email } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", enabled ? "model_enabled" : "model_disabled", null, id, admin, now)] });
+      await AiRegistrySync.mirror(tx, admin, now, env);
       return { ok: true };
     });
   }
 
-  static async setPrices(db: AiModelDb, admin: Viewer, rawId: unknown, unit: unknown, input: unknown, output: unknown, now: Date = new Date()): Promise<AiAdminResult> {
+  /**
+   * A model's prices. A save that sets a price needs the page it was read on and the date (spec pick 4); clearing the
+   * prices needs neither. The registry gets the same prices, marked checked with that source, in the same transaction.
+   */
+  static async setPrices(db: AiModelDb, admin: Viewer, rawId: unknown, unit: unknown, input: unknown, output: unknown, now: Date = new Date(), source: AiPriceSourceInput = {}, env: Env = process.env): Promise<AiAdminResult> {
     AdminPolicy.assertAdmin(admin);
     const id = AiModelService.cleanId(rawId);
     const inP = AiModelService.parsePrice(input);
@@ -439,8 +474,12 @@ export class AiModelService {
       const before = fmt(row.priceUnit, row.inputPrice, row.outputPrice);
       const after = fmt(next.priceUnit, next.inputPrice, next.outputPrice);
       if (before === after) return { ok: true };
+      const setsPrice = next.inputPrice !== null || next.outputPrice !== null;
+      const src = setsPrice ? AiModelService.parseSource(source, now) : null;
+      if (src && !src.ok) return { ok: false, error: src.error, field: src.field };
       await tx.aiModel.update({ where: { id }, data: { ...next, priceSource: "manual", pricesUpdatedAt: now, pricesUpdatedBy: admin.email, updatedAt: now, updatedBy: admin.email } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", "price_changed", `${id}: ${before}`, `${id}: ${after}`, admin, now)] });
+      await AiRegistrySync.mirror(tx, admin, now, env, src?.ok ? { prices: { ids: new Set([id]), sourceUrl: src.sourceUrl, readOn: src.readOn, action: "price_changed" } } : {});
       return { ok: true, message: AiCopy.PRICES_SAVED };
     });
   }
@@ -471,7 +510,7 @@ export class AiModelService {
    * Step 6: picks the model of a feature that has its own (dictation). It must be a model an admin turned on; ""
    * clears it. One history row (aiFeatureModel). Never chosen automatically.
    */
-  static async setFeatureModel(db: AiModelDb, admin: Viewer, rawFeature: unknown, rawModel: unknown, now: Date = new Date()): Promise<AiAdminResult> {
+  static async setFeatureModel(db: AiModelDb, admin: Viewer, rawFeature: unknown, rawModel: unknown, now: Date = new Date(), env: Env = process.env): Promise<AiAdminResult> {
     AdminPolicy.assertAdmin(admin);
     const feature = AiFeatureFlags.parseToggle(rawFeature);
     if (!feature || !AiFeatureFlags.OWN_MODEL.includes(feature)) return { ok: false, error: AiCopy.SAVE_FAILED };
@@ -488,6 +527,7 @@ export class AiModelService {
       if ((before ?? "") === model) return { ok: true };
       await tx.aiFeatureSetting.upsert({ where: { feature }, create: { feature, enabled: true, model: model || null, updatedAt: now, updatedBy: admin.email }, update: { model: model || null, updatedAt: now, updatedBy: admin.email } });
       await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiFeatureModel", "changed", before, model || null, admin, now)] });
+      await AiRegistrySync.mirror(tx, admin, now, env);
       return { ok: true };
     });
   }
@@ -524,7 +564,73 @@ export class AiModelService {
       if (before.provider !== provider) hist.push(AiModelService.hist("aiFeatureProvider", "changed", `${feature}:${before.provider}`, `${feature}:${provider}`, admin, now));
       if (before.model !== model) hist.push(AiModelService.hist("aiFeatureTextModel", "changed", `${feature}:${before.model}`, `${feature}:${model}`, admin, now));
       await tx.aiSettingsHistory.createMany({ data: hist });
+      await AiRegistrySync.mirror(tx, admin, now, env);
       return { ok: true };
+    });
+  }
+
+  /**
+   * Spec pick 3: a text category's model (Drafting, Extraction or Analysis). Every feature of the category that has no
+   * model of its own (by the registry's rule: it runs on the category's model today) gets this provider and model in
+   * ai_feature_settings, which is what AI calls read, so the change runs exactly as if each feature had been picked by
+   * hand. Features with a model of their own keep it. The same checks as a feature pick: the model is on under Models, a
+   * chat model, of that provider, and a provider the category's features don't use yet needs a working key. One
+   * history row. Needs the registry (refused where it can't be read, and on a preview).
+   */
+  static async setCategoryModel(db: AiModelDb, admin: Viewer, rawCategory: unknown, rawProvider: unknown, rawModel: unknown, env: Env = process.env, now: Date = new Date(), keys?: AiProviderKeySource): Promise<AiAdminResult> {
+    AdminPolicy.assertAdmin(admin);
+    const category = typeof rawCategory === "string" && (Object.keys(AiRegistry.TEXT_FEATURES) as string[]).includes(rawCategory) ? (rawCategory as AiTextCategory) : null;
+    if (!category) return { ok: false, error: AiCopy.SAVE_FAILED };
+    const provider = AiFeatureProviders.parse(rawProvider);
+    if (!provider) return { ok: false, error: AiCopy.SAVE_FAILED };
+    const model = AiModelService.cleanId(rawModel);
+    if (!model) return { ok: false, error: AiCopy.PICK_A_MODEL };
+    if (AiProviderKeyAccess.isPreview(env) || !AiRegistrySync.has(db)) return { ok: false, error: AiCopy.REGISTRY_UNAVAILABLE };
+    return db.$transaction(async (tx) => {
+      const row = await tx.aiModel.findUnique({ where: { id: model } });
+      if (!row?.enabled) return { ok: false, error: AiCopy.MODEL_NOT_ALLOWED };
+      if (!AiModelKinds.fits(row, "chat")) return { ok: false, error: AiCopy.MODEL_WRONG_KIND };
+      if (AiFeatureProviders.stored(row.provider) !== provider) return { ok: false, error: AiCopy.modelOtherProvider(model, AiFeatureProviders.label(AiFeatureProviders.stored(row.provider))) };
+      const snap = await AiRegistrySync.read(tx);
+      const plan = AiRegistrySync.plan(snap);
+      const before = plan.view.categories[category] ?? null;
+      // A feature on a model of its own keeps it; so does one on a model the registry can't record (it is never guessed).
+      const own = new Set([...plan.view.ownModel, ...plan.view.unmappedFeatures]);
+      const rows = await tx.aiFeatureSetting.findMany();
+      const follow = AiRegistry.TEXT_FEATURES[category].filter((f) => !own.has(f));
+      const change = follow.filter((f) => {
+        const c = AiFeatureRuntime.choiceOf(f, rows);
+        return c.provider !== provider || c.model !== model;
+      });
+      if (change.some((f) => AiFeatureRuntime.choiceOf(f, rows).provider !== provider)) {
+        const states = await (keys ?? AiProviderKeyAccess.source(tx, env)).states().catch(() => AiFeatureProviders.noKeys());
+        if (states[provider] !== "ok") return { ok: false, error: states[provider] === "failing" ? AiCopy.PROVIDER_KEY_FAILING : AiCopy.PROVIDER_NO_KEY };
+      }
+      if (before?.provider === provider && before.model === model && change.length === 0) return { ok: true, message: AiCopy.CATEGORY_SAVED };
+      for (const f of change) {
+        await tx.aiFeatureSetting.upsert({ where: { feature: f }, create: { feature: f, enabled: true, provider, model, updatedAt: now, updatedBy: admin.email }, update: { provider, model, updatedAt: now, updatedBy: admin.email } });
+      }
+      const pair = (p: { provider: string; model: string } | null) => (p ? `${category}=${p.provider}:${p.model}` : null);
+      await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiCategory", "category_set", pair(before), pair({ provider, model }), admin, now)] });
+      await AiRegistrySync.mirror(tx, admin, now, env, { prefer: { [category]: { provider, model } } });
+      return { ok: true, message: AiCopy.CATEGORY_SAVED };
+    });
+  }
+
+  /**
+   * "Bring the registry up to date": writes whatever the in-step check lists, from the tables the app runs on. Owner
+   * only through its Server Function; refused on a preview. Prices copied this way are marked unverified (they carry no
+   * source). One history row with the count.
+   */
+  static async syncRegistry(db: AiModelDb, admin: Viewer, env: Env = process.env, now: Date = new Date()): Promise<AiAdminResult> {
+    AdminPolicy.assertAdmin(admin);
+    if (AiProviderKeyAccess.isPreview(env) || !AiRegistrySync.has(db)) return { ok: false, error: AiCopy.REGISTRY_UNAVAILABLE };
+    return db.$transaction(async (tx) => {
+      const plan = await AiRegistrySync.mirror(tx, admin, now, env);
+      if (!plan) return { ok: false, error: AiCopy.REGISTRY_UNAVAILABLE };
+      const n = plan.models.length + plan.prices.length + plan.categories.length + plan.overrides.length;
+      if (n > 0) await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModelRegistry", "migrated", null, `${n} ${n === 1 ? "change" : "changes"}`, admin, now)] });
+      return { ok: true, message: plan.unmapped.length ? AiCopy.REGISTRY_SYNC_PARTLY : AiCopy.REGISTRY_SYNCED };
     });
   }
 

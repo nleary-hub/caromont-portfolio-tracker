@@ -8,6 +8,7 @@ import { AiProviders } from "@/lib/ai/AiProviders";
 import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiModelService } from "@/lib/services/AiModelService";
+import { AiRegistrySync } from "@/lib/services/AiRegistrySync";
 import { AiProviderKeyService, type AiProviderKeyDb } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsDb } from "@/lib/services/AiSettingsService";
 import { AiWritingService, type AiOutcome, type AiSuggestResult, type AiWritingDb } from "@/lib/services/AiWritingService";
@@ -93,6 +94,8 @@ export async function saveAiSettings(_prev: AiSettingsFormState, form: FormData)
     const modelOwners = Object.fromEntries(AiModelService.views(models, null).map((m) => [m.id, m.provider ?? "openai"]));
     const r = await AiSettingsService.save(Db.client as unknown as AiSettingsDb, viewer, { ...AiSettingsService.parseForm(form), allowedModels: await AiModelService.enabledIds(Db.client, "chat"), modelOwners });
     if (!r.ok) return { ok: false, message: r.error, ...(r.fieldErrors ? { fieldErrors: r.fieldErrors as Record<string, string> } : {}) };
+    // Features with no model of their own follow this model, so the registry's categories follow it too (best effort).
+    await AiRegistrySync.afterSave(Db.client, viewer);
     revalidatePath("/admin/ai");
     revalidatePath("/");
     return { ok: true, message: AiCopy.SAVED };

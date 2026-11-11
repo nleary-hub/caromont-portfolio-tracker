@@ -3,6 +3,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { AdminMenuSlot } from "@/components/AdminMenuSlot";
 import { AiFeaturesPanel, AiModelsPanel, type AiModelFallback } from "@/components/AiModelsPanel";
+import { AiRegistryCard } from "@/components/AiRegistryCard";
 import { AiPriceRefresh } from "@/components/AiPriceRefresh";
 import { AiProviderKeysCard } from "@/components/AiProviderKeysCard";
 import { AiContextCard } from "@/components/AiContextCard";
@@ -27,6 +28,7 @@ import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiModelService, type AiFeatureChoice, type AiFeatureView, type AiModelDb, type AiModelView } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb, type AiSettingsHistoryRow, type AiSettingsView } from "@/lib/services/AiSettingsService";
+import { AiRegistrySync, type AiRegistryPageView } from "@/lib/services/AiRegistrySync";
 
 /** AI Draft/Fit/Test connection server actions run on this page; the provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
 export const maxDuration = 90;
@@ -89,6 +91,8 @@ export default async function AiSettingsPage() {
   // 0074: monthly spend caps and this month's spend per person.
   let spendCaps: AiSpendCapView = { ready: false, defaultCapUsd: null, people: [] };
   const spendNames: Record<string, string> = {};
+  // Phase 1: what the model registry records, compared with what the app runs. Read-only; never blocks the page.
+  let registry: AiRegistryPageView = { ready: false, differences: [], categories: {}, ownModel: [], prices: {} };
   if (dbReady) {
     try {
       glossary = await AiGlossaryService.view(Db.client as unknown as GlossaryDb);
@@ -127,6 +131,7 @@ export default async function AiSettingsPage() {
       // Tables not migrated yet (Vercel previews skip migrations): show the defaults, saving is disabled.
       dbReady = false;
     }
+    if (dbReady) registry = await AiRegistrySync.pageView(Db.client);
     try {
       usage = await AiUsageReader.recent(Db.client as unknown as AiUsageReadDb, new Date());
     } catch {
@@ -181,6 +186,9 @@ export default async function AiSettingsPage() {
         <h2 id="ai-settings-heading" className="type-heading">
           {AiCopy.SWITCH_LABEL}
         </h2>
+        <p className="text-muted type-caption" data-testid="ai-main-model-default">
+          {AiCopy.MAIN_MODEL_DEFAULT_NOTE}
+        </p>
         <AiSettingsForm view={view} keySavedLine={keySavedLine} dbReady={dbReady} modelOptions={AiModelService.optionsOf(models, "chat")} modelsByProvider={chatModels} keyStates={keyStates} />
       </section>
 
@@ -196,10 +204,10 @@ export default async function AiSettingsPage() {
         <p className="text-muted type-caption">{AiCopy.MODELS_INTRO}</p>
         {AiFeatureFlags.isPriceRefreshOn() ? (
           <AiPriceRefresh dbReady={dbReady && models.length > 0}>
-            <AiModelsPanel models={models} dbReady={dbReady} keyStates={keyStates} />
+            <AiModelsPanel models={models} dbReady={dbReady} keyStates={keyStates} priceChecks={registry.ready ? registry.prices : {}} />
           </AiPriceRefresh>
         ) : (
-          <AiModelsPanel models={models} dbReady={dbReady} keyStates={keyStates} />
+          <AiModelsPanel models={models} dbReady={dbReady} keyStates={keyStates} priceChecks={registry.ready ? registry.prices : {}} />
         )}
       </section>
 
@@ -208,8 +216,13 @@ export default async function AiSettingsPage() {
           {AiCopy.FEATURES_TITLE}
         </h2>
         <p className="text-muted type-caption">{AiCopy.FEATURES_INTRO}</p>
-        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} choices={choices} keyStates={keyStates} chatModels={chatModels} mainModel={view.model} fallbacks={fallbacks} defaults={defaults} />
+        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} choices={choices} keyStates={keyStates} chatModels={chatModels} mainModel={view.model} fallbacks={fallbacks} defaults={defaults} registry={{ ready: registry.ready, preview, categories: registry.categories, ownModel: registry.ownModel }} />
       </section>
+      {registry.ready && (
+        <section className={section} aria-labelledby="ai-registry-heading">
+          <AiRegistryCard differences={registry.differences} dbReady={dbReady} preview={preview} />
+        </section>
+      )}
       </ProviderModelListsProvider>
       </OpenAiModelListProvider>
 

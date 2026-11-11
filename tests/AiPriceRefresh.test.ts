@@ -159,7 +159,7 @@ describe("AiPriceRefreshService.apply", () => {
   it("manual price saves are marked manual with the date", async () => {
     const d = new FakePriceDb();
     d.add("gpt-6-luna", null, null, null);
-    await AiModelService.setPrices(asDb(d), ADMIN, "gpt-6-luna", "per_1m_tokens", "0.1", "0.5", NOW);
+    await AiModelService.setPrices(asDb(d), ADMIN, "gpt-6-luna", "per_1m_tokens", "0.1", "0.5", NOW, { sourceUrl: "https://example.org/pricing", readOn: "2026-10-15" });
     expect(d.models[0]).toMatchObject({ priceSource: "manual", pricesUpdatedAt: NOW, pricesUpdatedBy: ADMIN.email });
   });
 });
