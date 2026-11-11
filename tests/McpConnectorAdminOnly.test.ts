@@ -73,6 +73,7 @@ const { McpOAuth } = await import("@/lib/mcp/McpOAuth");
 const { McpTokens } = await import("@/lib/mcp/McpTokens");
 const { McpViewer } = await import("@/lib/mcp/McpViewer");
 const { POST } = await import("@/app/api/mcp/route");
+const { POST: postToken } = await import("@/app/oauth/token/route");
 const { default: ConnectorAuthorizePage } = await import("@/app/oauth/authorize/page");
 const { decideConnectorAccess } = await import("@/app/oauth/authorize/actions");
 
@@ -116,6 +117,43 @@ function authorizeParams(clientId: string, v: string) {
 
 function tokenFor(email: string) {
   return McpTokens.sign("access", { e: email, c: "client", s: ["projects", "admin"], exp: McpTokens.nowS() + 3600, jti: randomBytes(8).toString("hex") }, McpTokens.key()!);
+}
+
+function signedCode(email: string, clientId: string, codeChallenge: string) {
+  return McpTokens.sign(
+    "code",
+    { e: email, c: McpTokens.clientHash(clientId), r: CLAUDE, cc: codeChallenge, s: ["projects", "admin"], exp: McpTokens.nowS() + 60, jti: randomBytes(8).toString("hex") },
+    McpTokens.key()!,
+  );
+}
+
+function signedRefresh(email: string, clientId: string) {
+  return McpTokens.sign(
+    "refresh",
+    { e: email, c: McpTokens.clientHash(clientId), s: ["projects", "admin"], exp: McpTokens.nowS() + 3600, jti: randomBytes(8).toString("hex") },
+    McpTokens.key()!,
+  );
+}
+
+async function tokenEndpoint(fields: Record<string, string>) {
+  const res = await postToken(
+    new Request(`${ORIGIN}/oauth/token`, {
+      method: "POST",
+      headers: { "content-type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams(fields),
+    }),
+  );
+  const body = (await res.json()) as { error?: string; error_description?: string; access_token?: string; refresh_token?: string };
+  return { status: res.status, body };
+}
+
+async function approveCode(clientId: string, v: string) {
+  const params = authorizeParams(clientId, v);
+  const form = new FormData();
+  for (const [k, value] of Object.entries(params)) form.set(k, value);
+  form.set("decision", "approve");
+  const url = redirectUrl(await decideConnectorAccess(form).then(() => null, (e) => e));
+  return { params, url, code: new URL(url).searchParams.get("code") };
 }
 
 async function tool(token: string, name: string, args: Record<string, unknown> = {}) {
@@ -226,6 +264,148 @@ describe("Claude connector is limited to ADMIN_EMAILS", () => {
     const res = await tool(token, "list_projects");
     expect(res.status).toBe(401);
     expect(h.listProjects).not.toHaveBeenCalled();
+  });
+
+  it.each(["empty", "unset"] as const)("%s ADMIN_EMAILS refuses every allowlisted account at authorize, token and /api/mcp", async (mode) => {
+    if (mode === "empty") vi.stubEnv("ADMIN_EMAILS", "");
+    else vi.stubEnv("ADMIN_EMAILS", undefined);
+    expect(process.env.ADMIN_EMAILS).toBe(mode === "empty" ? "" : undefined);
+
+    for (const email of [ADMIN, MEMBER]) {
+      h.viewer = { ...h.viewer, email, isAdmin: true };
+      const v = verifier();
+      const client = McpOAuth.register({ redirect_uris: [CLAUDE], client_name: "Claude" }, McpTokens.key()!);
+      const params = authorizeParams(client.client_id, v);
+      const page = await ConnectorAuthorizePage({ searchParams: Promise.resolve(params) });
+      expect(hasTestId(page, "connector-admin-only")).toBe(true);
+      expect(textOf(page)).toContain(McpViewer.NOT_ADMIN_MESSAGE);
+      expect(hasTestId(page, "connector-approve")).toBe(false);
+      expect(hasTestId(page, "connector-consent")).toBe(false);
+
+      const form = new FormData();
+      for (const [k, value] of Object.entries(params)) form.set(k, value);
+      form.set("decision", "approve");
+      const url = redirectUrl(await decideConnectorAccess(form).then(() => null, (e) => e));
+      expect(url.startsWith("/oauth/authorize")).toBe(true);
+      expect(new URL(url, ORIGIN).searchParams.has("code")).toBe(false);
+
+      const exchanged = await tokenEndpoint({
+        grant_type: "authorization_code",
+        code: signedCode(email, client.client_id, params.code_challenge),
+        code_verifier: v,
+        client_id: client.client_id,
+        redirect_uri: CLAUDE,
+      });
+      expect(exchanged.status).toBe(400);
+      expect(exchanged.body.error).toBe("invalid_grant");
+      expect(exchanged.body.access_token).toBeUndefined();
+
+      const refreshed = await tokenEndpoint({
+        grant_type: "refresh_token",
+        refresh_token: signedRefresh(email, client.client_id),
+        client_id: client.client_id,
+      });
+      expect(refreshed.status).toBe(400);
+      expect(refreshed.body.error).toBe("invalid_grant");
+      expect(refreshed.body.access_token).toBeUndefined();
+
+      const mcp = await tool(tokenFor(email), "list_projects");
+      expect(mcp.status).toBe(403);
+      expect(mcp.body.error).toBe("forbidden");
+    }
+    expect(h.listProjects).not.toHaveBeenCalled();
+  });
+
+  it("matches an admin email with different capitalization and surrounding whitespace", async () => {
+    const account = "  ADMIN.ONE@example.org  ";
+    vi.stubEnv("ADMIN_EMAILS", "  Admin.One@Example.Org  ");
+    h.viewer = { ...h.viewer, email: account, isAdmin: false };
+    const v = verifier();
+    const client = McpOAuth.register({ redirect_uris: [CLAUDE], client_name: "Claude" }, McpTokens.key()!);
+    const params = authorizeParams(client.client_id, v);
+    const page = await ConnectorAuthorizePage({ searchParams: Promise.resolve(params) });
+    expect(hasTestId(page, "connector-approve")).toBe(true);
+    expect(hasTestId(page, "connector-admin-only")).toBe(false);
+
+    const { code } = await approveCode(client.client_id, v);
+    expect(code).toBeTruthy();
+    expect(McpTokens.verify("code", code, McpTokens.key())?.e).toBe(account);
+
+    const exchanged = await tokenEndpoint({
+      grant_type: "authorization_code",
+      code: code!,
+      code_verifier: v,
+      client_id: client.client_id,
+      redirect_uri: CLAUDE,
+    });
+    expect(exchanged.status).toBe(200);
+    expect(McpTokens.verify("access", exchanged.body.access_token, McpTokens.key())?.e).toBe(account);
+
+    const read = await tool(exchanged.body.access_token!, "list_projects");
+    expect(read.status).toBe(200);
+    expect(read.isError).toBe(false);
+    expect(read.text).toContain("Valve Clinic");
+    expect(h.listProjects).toHaveBeenCalledOnce();
+
+    const refreshed = await tokenEndpoint({
+      grant_type: "refresh_token",
+      refresh_token: exchanged.body.refresh_token!,
+      client_id: client.client_id,
+    });
+    expect(refreshed.status).toBe(200);
+    expect(refreshed.body.access_token).toBeTruthy();
+  });
+
+  it("refuses a refresh_token grant after the account is removed from ADMIN_EMAILS", async () => {
+    h.viewer = { ...h.viewer, email: ADMIN, isAdmin: true };
+    const v = verifier();
+    const client = McpOAuth.register({ redirect_uris: [CLAUDE], client_name: "Claude" }, McpTokens.key()!);
+    const { code } = await approveCode(client.client_id, v);
+    const issued = await tokenEndpoint({
+      grant_type: "authorization_code",
+      code: code!,
+      code_verifier: v,
+      client_id: client.client_id,
+      redirect_uri: CLAUDE,
+    });
+    expect(issued.status).toBe(200);
+
+    vi.stubEnv("ADMIN_EMAILS", "other.admin@example.org");
+    const again = await tokenEndpoint({
+      grant_type: "refresh_token",
+      refresh_token: issued.body.refresh_token!,
+      client_id: client.client_id,
+    });
+    expect(again.status).toBe(400);
+    expect(again.body.error).toBe("invalid_grant");
+    expect(again.body.error_description).toContain("cannot use the Claude connector");
+    expect(again.body.access_token).toBeUndefined();
+  });
+
+  it("refuses a refresh_token grant after the account is blocked", async () => {
+    h.viewer = { ...h.viewer, email: ADMIN, isAdmin: true };
+    const v = verifier();
+    const client = McpOAuth.register({ redirect_uris: [CLAUDE], client_name: "Claude" }, McpTokens.key()!);
+    const { code } = await approveCode(client.client_id, v);
+    const issued = await tokenEndpoint({
+      grant_type: "authorization_code",
+      code: code!,
+      code_verifier: v,
+      client_id: client.client_id,
+      redirect_uri: CLAUDE,
+    });
+    expect(issued.status).toBe(200);
+
+    h.blocked.add(ADMIN);
+    const again = await tokenEndpoint({
+      grant_type: "refresh_token",
+      refresh_token: issued.body.refresh_token!,
+      client_id: client.client_id,
+    });
+    expect(again.status).toBe(400);
+    expect(again.body.error).toBe("invalid_grant");
+    expect(again.body.error_description).toContain("cannot use the Claude connector");
+    expect(again.body.access_token).toBeUndefined();
   });
 
   it("treats a password admin the same way McpViewer already treats admin rights", async () => {
