@@ -1,9 +1,11 @@
+import { randomBytes } from "node:crypto";
 import { afterEach, beforeAll, beforeEach, describe, expect, it, vi } from "vitest";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureProviders } from "@/lib/ai/AiFeatureProviders";
 import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiModelService, type AiModelDb } from "@/lib/services/AiModelService";
+import { AiProviderKeyService, type AiProviderKeyDb } from "@/lib/services/AiProviderKeyService";
 import { AiPriceRefreshService } from "@/lib/services/AiPriceRefreshService";
 import { AiRegistrySync } from "@/lib/services/AiRegistrySync";
 import { PGlite } from "@electric-sql/pglite";
@@ -261,6 +263,23 @@ describe("category models (spec pick 3)", () => {
     expect(await AiModelService.setCategoryModel(db(), ADMIN, "dictation", "openai", "gpt-6-luna", ENV, NOW, OPENAI_OK)).toEqual({ ok: false, error: AiCopy.SAVE_FAILED });
     expect(await runtimeTables()).toEqual(before);
     expect(await newHistory()).toEqual([]);
+  });
+
+  it("with the app's own key store (no key source passed in), a category and a feature can move to a company whose key is saved", async () => {
+    // Codex review on PR 134: the key check ran on the transaction client, which can't read the key store, so only OpenAI passed.
+    const keyEnv = { AI_SETTINGS_ENCRYPTION_KEY: randomBytes(32).toString("base64") };
+    expect(await AiProviderKeyService.save(h.prisma as unknown as AiProviderKeyDb, ADMIN, "anthropic", { apiKey: j("sk-ant-test-", "FictionalCategoryKey00Ca01") }, keyEnv, NOW)).toMatchObject({ ok: true });
+    await addAiModel(h.pg, "fiction-anthropic-chat", { provider: "anthropic", kind: "chat" });
+    await addAiModel(h.pg, "fiction-xai-chat", { provider: "xai", kind: "chat" });
+    expect(await AiModelService.setCategoryModel(db(), ADMIN, "drafting", "anthropic", "fiction-anthropic-chat", keyEnv, NOW)).toEqual({ ok: true, message: AiCopy.CATEGORY_SAVED });
+    expect(await rows(`select distinct provider, model from ai_feature_settings where feature in ('draft_from_bullets', 'fit_for_report', 'revise_note', 'template_ai')`)).toEqual([{ provider: "anthropic", model: "fiction-anthropic-chat" }]);
+    expect(await AiModelService.setFeatureProviderModel(db(), ADMIN, "next_step", "anthropic", "fiction-anthropic-chat", keyEnv, NOW)).toMatchObject({ ok: true });
+    expect(await rows(`select provider, model from ai_feature_settings where feature = 'next_step'`)).toEqual([{ provider: "anthropic", model: "fiction-anthropic-chat" }]);
+    // A company with no saved key is still refused, and nothing changes.
+    const before = await runtimeTables();
+    expect(await AiModelService.setCategoryModel(db(), ADMIN, "extraction", "xai", "fiction-xai-chat", keyEnv, NOW)).toEqual({ ok: false, error: AiCopy.PROVIDER_NO_KEY });
+    expect(await AiModelService.setFeatureProviderModel(db(), ADMIN, "meeting_notes", "xai", "fiction-xai-chat", keyEnv, NOW)).toEqual({ ok: false, error: AiCopy.PROVIDER_NO_KEY });
+    expect(await runtimeTables()).toEqual(before);
   });
 
   it("a non-admin is refused", async () => {

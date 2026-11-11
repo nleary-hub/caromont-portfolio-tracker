@@ -54,6 +54,17 @@ describe("Features card, grouped by category (spec pick 3)", () => {
     expect(html).not.toContain("ai-feature-bulk_edit-own-model");
   });
 
+  it("the category models come from the page's props each render, never a copy kept from the first one", () => {
+    // Codex review on PR 134: a copy in state kept showing the old model after a save elsewhere on the page refreshed it.
+    const sol = { provider: "openai", model: "gpt-6.1-sol" };
+    const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features, dbReady: true, registry: { ...registry, categories: { ...registry.categories, extraction: sol } } }));
+    const heading = html.slice(html.indexOf('data-testid="ai-category-extraction"'), html.indexOf('data-testid="ai-category-analysis"'));
+    expect(heading).toContain("gpt-6.1-sol");
+    const src = SRC("src/components/AiModelsPanel.tsx");
+    expect(src).toContain("const categories: Partial<Record<AiTextCategory, AiRegistryPair | null>> = registry?.categories ?? {};");
+    expect(src).not.toMatch(/useState<[^>]*AiRegistryPair/);
+  });
+
   it("on a preview the category pickers say so and offer no way back", () => {
     const html = renderToStaticMarkup(createElement(AiFeaturesPanel, { features, dbReady: true, registry: { ...registry, preview: true } }));
     expect(html).toContain(AiCopy.REGISTRY_PREVIEW);

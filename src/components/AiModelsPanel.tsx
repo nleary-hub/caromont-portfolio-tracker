@@ -637,7 +637,10 @@ export function AiFeaturesPanel({
       } else setError(r?.error ?? C.SAVE_FAILED);
     });
   const grouped = registry?.ready === true;
-  const [categories, setCategories] = useState<Partial<Record<AiTextCategory, AiRegistryPair | null>>>(registry?.categories ?? {});
+  // Read from the page's props, never copied into state: a save anywhere on the page (the main model, one feature, a
+  // category) recomputes the categories on the server and refreshes these props, so the heading and each feature's
+  // "Use the ... model" button always carry the category's current model.
+  const categories: Partial<Record<AiTextCategory, AiRegistryPair | null>> = registry?.categories ?? {};
   const [catDraft, setCatDraft] = useState<Partial<Record<AiTextCategory, AiFeatureProvider>>>({});
   const [catMsg, setCatMsg] = useState<{ category: AiTextCategory; ok: boolean; text: string } | null>(null);
   const ownModel = new Set(registry?.ownModel ?? []);
@@ -645,7 +648,6 @@ export function AiFeaturesPanel({
     start(async () => {
       const r = await setAiCategoryModel(category, provider, model);
       if (r?.ok) {
-        setCategories((c) => ({ ...c, [category]: { provider, model } }));
         setCatDraft((d) => without(d, category) as Partial<Record<AiTextCategory, AiFeatureProvider>>);
         // Features that followed the category now run its model (what the server saved for them).
         setSaved((s) => {
