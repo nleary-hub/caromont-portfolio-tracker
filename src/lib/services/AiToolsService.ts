@@ -172,6 +172,8 @@ export class AiToolsService {
     now?: () => Date;
     /** PR B: the provider keys (tests inject a fake; the app reads the Provider keys card's storage). */
     keys?: AiProviderKeySource;
+    /** How long to wait for the provider. Default AiProviderClient.TIMEOUT_MS (60 s); the Meeting Playbook waits longer. */
+    timeoutMs?: number;
   }): Promise<{ ok: true; text: string; log: (event: string, extra?: Partial<AiToolUsageRow>) => Promise<unknown>; proposalId: string; run: Partial<AiToolUsageRow> } | AiToolFailure> {
     const { db, viewer, feature } = args;
     const env = args.env ?? process.env;
@@ -208,7 +210,7 @@ export class AiToolsService {
       });
     AiToolsService.inFlight.add(user);
     try {
-      const result = await AiProviderClient.complete(config, AiRegistryRuntime.prompt(args.build(input), plan), args.fetchImpl);
+      const result = await AiProviderClient.complete(config, AiRegistryRuntime.prompt(args.build(input), plan), args.fetchImpl, args.timeoutMs);
       run = AiRunMetrics.of(result, await AiRegistryRuntime.price(db, plan));
       if (!result.ok) {
         await log("failed");
