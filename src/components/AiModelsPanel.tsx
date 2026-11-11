@@ -2,18 +2,23 @@
 
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
-import { addAiModel, setAiFeatureEnabled, setAiFeatureModel, setAiFeatureProvider, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions, setAiVoiceSessionCap } from "@/app/actions/aiAdmin";
+import { addAiModel, setAiCategoryModel, setAiFeatureEnabled, setAiFeatureModel, setAiFeatureProvider, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions, setAiVoiceSessionCap } from "@/app/actions/aiAdmin";
 import { LockedProviderChip, ProviderPickerCell, TextModelCell, textModelCaption, useProviderModelLists } from "@/components/AiFeatureProviderPicker";
 import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyStates } from "@/lib/ai/AiFeatureProviders";
 import { ModelField } from "@/components/AiModelPicker";
 import { AiAlert } from "@/components/AiNoteAssistant";
 import { AiCopy as C } from "@/lib/ai/AiCopy";
 import { AiModelDefaults } from "@/lib/ai/AiModelDefaults";
+import { AiRegistry, type AiTextCategory } from "@/lib/ai/AiRegistry";
 import { AiModelKinds, type AiModelKind } from "@/lib/ai/AiModelKinds";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiVoiceChat } from "@/lib/ai/AiVoiceChat";
 import { useOpenAiModelList, type OpenAiListState } from "@/components/useOpenAiModelList";
 import type { AiAdminResult, AiFeatureChoice, AiFeatureView, AiModelView } from "@/lib/services/AiModelService";
+import type { AiPriceCheckView, AiRegistryPair } from "@/lib/services/AiRegistrySync";
+
+/** The model registry parts of the Features card (Phase 1). Absent or not ready: the card is as before. */
+export type AiFeatureRegistryView = { ready: boolean; preview: boolean; categories: Partial<Record<AiTextCategory, AiRegistryPair | null>>; ownModel: readonly string[] };
 
 /** Item D: a seeded default that is not running, and the AI settings model used instead. */
 export type AiModelFallback = { seeded: string; using: string; reason: "model_off" | "no_key" };
@@ -40,7 +45,7 @@ export function AiToggle({ checked, onChange, labelledBy, describedBy, disabled,
 }
 
 /** Admin > AI settings: the model list (add, on/off with the in-use warning, prices). */
-export function AiModelsPanel({ models, dbReady, initialList = null, keyStates, initialAddProvider = "openai" }: { models: AiModelView[]; dbReady: boolean; initialList?: OpenAiListState; keyStates?: AiProviderKeyStates; initialAddProvider?: AiFeatureProvider }) {
+export function AiModelsPanel({ models, dbReady, initialList = null, keyStates, initialAddProvider = "openai", priceChecks = {} }: { models: AiModelView[]; dbReady: boolean; initialList?: OpenAiListState; keyStates?: AiProviderKeyStates; initialAddProvider?: AiFeatureProvider; /** How each model's registry prices were checked (Phase 1). */ priceChecks?: Partial<Record<string, AiPriceCheckView>> }) {
   const [newId, setNewId] = useState("");
   /** The company a model is browsed and added under. OpenAI by default, so today's list is unchanged until this changes. */
   const [addProvider, setAddProvider] = useState<AiFeatureProvider>(initialAddProvider);
@@ -90,7 +95,7 @@ export function AiModelsPanel({ models, dbReady, initialList = null, keyStates, 
               </tr>
             )}
             {models.map((m) => (
-              <ModelRow key={m.id} m={m} locked={locked} dbReady={dbReady} pending={pending} onToggle={(v) => toggle(m.id, v, false)} confirm={confirm?.id === m.id ? confirm.message : null} error={rowError?.id === m.id ? rowError.message : null} onConfirm={() => toggle(m.id, false, true)} onCancel={() => setConfirm(null)} />
+              <ModelRow key={m.id} m={m} check={priceChecks[m.id]} locked={locked} dbReady={dbReady} pending={pending} onToggle={(v) => toggle(m.id, v, false)} confirm={confirm?.id === m.id ? confirm.message : null} error={rowError?.id === m.id ? rowError.message : null} onConfirm={() => toggle(m.id, false, true)} onCancel={() => setConfirm(null)} />
             ))}
           </tbody>
         </table>
@@ -204,12 +209,18 @@ export function OpenAiModelList({ state, loading, disabled, have, onLoad, onAdd,
   );
 }
 
-function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onConfirm, onCancel }: { m: AiModelView; locked: boolean; dbReady: boolean; pending: boolean; onToggle: (v: boolean) => void; confirm: string | null; error: string | null; onConfirm: () => void; onCancel: () => void }) {
+function ModelRow({ m, check, locked, dbReady, pending, onToggle, confirm, error, onConfirm, onCancel }: { m: AiModelView; check?: AiPriceCheckView; locked: boolean; dbReady: boolean; pending: boolean; onToggle: (v: boolean) => void; confirm: string | null; error: string | null; onConfirm: () => void; onCancel: () => void }) {
   const [unit, setUnit] = useState(m.priceUnit ?? "");
   const [input, setInput] = useState(m.inputPrice);
   const [output, setOutput] = useState(m.outputPrice);
   const [saved, setSaved] = useState<AiAdminResult | null>(null);
   const [saving, startSave] = useTransition();
+  // Spec pick 4: a typed price needs the page it was read on and the day. Asked for only once a price is edited.
+  const [sourceUrl, setSourceUrl] = useState("");
+  const [readOn, setReadOn] = useState(() => ModelPriceSource.today());
+  const savedSet = { unit: m.priceUnit ?? "", input: m.inputPrice, output: m.outputPrice };
+  const edited = unit !== savedSet.unit || input !== savedSet.input || (unit !== "per_minute" && output !== savedSet.output);
+  const needsSource = edited && unit !== "" && (input.trim() !== "" || output.trim() !== "");
   const slug = m.id.replace(/[^A-Za-z0-9_-]/g, "_");
   const nameId = `ai-model-${slug}-name`;
   const priceErrorId = `ai-model-${slug}-price-error`;
@@ -223,7 +234,7 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
   const tidy = (v: string, set: (v: string) => void) => () => {
     if (!locked && /^\$?\d+(\.\d{1,4})?$/.test(v.trim())) set(Number(v.trim().replace(/^\$/, "")).toFixed(4));
   };
-  const invalid = (f: "input" | "output" | "unit") => (bad === f ? { "aria-invalid": true as const, "aria-describedby": priceErrorId } : {});
+  const invalid = (f: "input" | "output" | "unit" | "source" | "readOn") => (bad === f ? { "aria-invalid": true as const, "aria-describedby": priceErrorId } : {});
   return (
     <>
       <tr className="border-t border-line" data-testid={`ai-model-row-${m.id}`}>
@@ -248,6 +259,11 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
           <span className="block whitespace-normal text-muted type-caption" data-testid={`ai-model-price-updated-${m.id}`}>
             {m.pricesUpdatedAt ? C.priceUpdated(PRICE_DATE.format(new Date(m.pricesUpdatedAt)), m.priceSource) : C.PRICE_NEVER_UPDATED}
           </span>
+          {check && check.status !== "none" && (
+            <span className={`block whitespace-normal type-caption ${check.status === "checked" ? "text-muted" : "text-(--status-at-risk-dark-fg)"}`} data-testid={`ai-model-price-check-${m.id}`} data-status={check.status}>
+              {check.status === "checked" && check.readOn ? C.priceChecked(PRICE_DATE.format(new Date(`${check.readOn}T12:00:00Z`)), ModelPriceSource.host(check.sourceUrl)) : C.PRICE_NOT_VERIFIED}
+            </span>
+          )}
         </td>
         <td className="px-3 py-2">
           <AiToggle checked={m.enabled} onChange={onToggle} labelledBy={nameId} disabled={!dbReady || pending} locked={locked} testId={`ai-model-toggle-${m.id}`} />
@@ -266,11 +282,32 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
           <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${PRICE_INPUT}`} value={output} onChange={edit(setOutput)} onBlur={tidy(output, setOutput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.0000" disabled={!dbReady || unit === "per_minute"} {...invalid("output")} data-testid={`ai-model-output-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
-          <button type="button" className={GHOST} disabled={!dbReady || saving} {...lock} data-testid={`ai-model-save-${m.id}`} onClick={() => !locked && startSave(async () => setSaved(await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output)))}>
+          <button type="button" className={GHOST} disabled={!dbReady || saving} {...lock} data-testid={`ai-model-save-${m.id}`} onClick={() => !locked && startSave(async () => {
+            const r = needsSource ? await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output, sourceUrl, readOn) : await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output);
+            setSaved(r);
+            if (r.ok) setSourceUrl("");
+          })}>
             {C.PRICE_SAVE}
           </button>
         </td>
       </tr>
+      {needsSource && !locked && (
+        <tr data-testid={`ai-model-source-${m.id}`}>
+          <td colSpan={6} className="px-3 pb-2">
+            <div className="flex flex-wrap items-end gap-2">
+              <label className="flex min-w-[16rem] flex-1 flex-col gap-1">
+                <span className="text-muted type-caption">{C.PRICE_SOURCE_LABEL}</span>
+                <input className={INPUT} type="url" inputMode="url" value={sourceUrl} onChange={(e) => setSourceUrl(e.target.value)} placeholder={C.PRICE_SOURCE_PLACEHOLDER} maxLength={500} autoComplete="off" spellCheck={false} disabled={!dbReady} {...invalid("source")} data-testid={`ai-model-source-url-${m.id}`} />
+              </label>
+              <label className="flex flex-col gap-1">
+                <span className="text-muted type-caption">{C.PRICE_READ_ON_LABEL}</span>
+                <input className={`${INPUT} w-[10rem]`} type="date" value={readOn} max={ModelPriceSource.today()} onChange={(e) => setReadOn(e.target.value)} disabled={!dbReady} {...invalid("readOn")} data-testid={`ai-model-source-date-${m.id}`} />
+              </label>
+            </div>
+            <p className="pt-1 text-muted type-caption">{C.PRICE_SOURCE_HELP}</p>
+          </td>
+        </tr>
+      )}
       {(confirm || error || saved) && (
         <tr>
           <td colSpan={6} className="px-3 pb-2">
@@ -304,6 +341,25 @@ function ModelRow({ m, locked, dbReady, pending, onToggle, confirm, error, onCon
       )}
     </>
   );
+}
+
+/** The price source row's helpers (client-side; the server checks the link and the date again). */
+class ModelPriceSource {
+  private static readonly DAY = new Intl.DateTimeFormat("en-CA", { timeZone: "America/New_York", year: "numeric", month: "2-digit", day: "2-digit" });
+
+  /** Today in ET as YYYY-MM-DD, the date input's default and latest day. */
+  static today(): string {
+    return ModelPriceSource.DAY.format(new Date());
+  }
+
+  /** The page's host, for "Price checked … on host". */
+  static host(url: string | undefined): string {
+    try {
+      return url ? new URL(url).host : "";
+    } catch {
+      return "";
+    }
+  }
 }
 
 /** Voice and command bar item: the voice chat session limit in minutes (admin only; checked on the server, 0060). */
@@ -437,6 +493,83 @@ function VoiceInstructionsField({ initial, disabled }: { initial: string; disabl
   );
 }
 
+/**
+ * Spec pick 3: the heading row of a text category, with its model. Picking one saves it for every feature of the
+ * category that has no model of its own. Dictation and Voice chat get a plain heading (OpenAI only, a model each).
+ */
+function CategoryHeading({
+  category,
+  first,
+  pair,
+  draft,
+  keyStates,
+  chatModels,
+  mainModel,
+  lists,
+  disabled,
+  preview,
+  msg,
+  onProvider,
+  onPick,
+}: {
+  category: AiTextCategory | null;
+  first: boolean;
+  pair: AiRegistryPair | null;
+  draft: AiFeatureProvider | undefined;
+  keyStates?: AiProviderKeyStates;
+  chatModels: Partial<Record<AiFeatureProvider, readonly string[]>>;
+  mainModel: string;
+  lists: ReturnType<typeof useProviderModelLists>;
+  disabled: boolean;
+  preview: boolean;
+  msg: { ok: boolean; text: string } | null;
+  onProvider: (p: AiFeatureProvider) => void;
+  onPick: (p: AiFeatureProvider, m: string) => void;
+}) {
+  const ROW = "grid grid-cols-[minmax(0,1fr)_140px_220px_32px] items-center gap-x-3 px-3";
+  const top = first ? "" : "border-t border-line";
+  if (!category) {
+    return (
+      <div className={`${ROW} ${top} bg-card/60 py-1.5`} data-testid="ai-category-heading-audio">
+        <span className="col-span-4 text-muted type-label">{`${C.categoryLabel("dictation")} and ${C.categoryLabel("voice_chat")}`}</span>
+      </div>
+    );
+  }
+  const savedProvider = AiFeatureProviders.stored(pair?.provider ?? AiFeatureProviders.DEFAULT);
+  const provider = draft ?? savedProvider;
+  const picking = draft !== undefined;
+  const id = `category-${category}`;
+  return (
+    <div className={`${ROW} ${top} bg-card/60 py-1.5`} data-testid={`ai-category-${category}`} data-model={pair?.model ?? ""}>
+      <div className="col-start-1 row-start-1 flex min-w-0 flex-col justify-center">
+        <span className="type-table-strong text-fg">{C.categoryModelLabel(category)}</span>
+        <p className="type-caption text-muted" data-testid={`ai-category-${category}-help`}>
+          {preview ? C.REGISTRY_PREVIEW : pair ? C.categoryHelp(category) : C.CATEGORY_NONE}
+        </p>
+      </div>
+      <ProviderPickerCell className="col-start-2 row-start-1" feature={id} value={provider} keyStates={keyStates} onChange={onProvider} />
+      <TextModelCell
+        key={`${id}-${provider}`}
+        className="col-start-3 row-start-1"
+        feature={id}
+        provider={provider}
+        value={picking ? "" : (pair?.model ?? "")}
+        mainModel={provider === "openai" ? mainModel : ""}
+        pending={picking}
+        options={chatModels[provider] ?? []}
+        lists={lists}
+        disabled={disabled}
+        onPick={(m) => onPick(provider, m)}
+      />
+      {msg && (
+        <p role={msg.ok ? "status" : "alert"} className={`col-span-4 row-start-2 pb-1 type-caption ${msg.ok ? "text-(--status-on-track-dark-fg)" : "text-danger"}`} data-testid={`ai-category-${category}-msg`}>
+          {msg.text}
+        </p>
+      )}
+    </div>
+  );
+}
+
 /** A copy of `o` without `key`. */
 function without<T>(o: Partial<Record<string, T>>, key: string): Partial<Record<string, T>> {
   return Object.fromEntries(Object.entries(o).filter(([k]) => k !== key)) as Partial<Record<string, T>>;
@@ -465,6 +598,7 @@ export function AiFeaturesPanel({
   mainModel = "",
   fallbacks = {},
   defaults = {},
+  registry,
 }: {
   features: AiFeatureView[];
   dbReady: boolean;
@@ -478,6 +612,8 @@ export function AiFeaturesPanel({
   fallbacks?: Partial<Record<string, AiModelFallback>>;
   /** Item D: each feature's seeded default model (0059 defaultModel), for the "Recommended default" caption. */
   defaults?: Partial<Record<string, string>>;
+  /** Phase 1: category models and which features use a model of their own. Absent or not ready: no category parts. */
+  registry?: AiFeatureRegistryView;
 }) {
   const [error, setError] = useState<string | null>(null);
   const [pending, start] = useTransition();
@@ -500,6 +636,32 @@ export function AiFeaturesPanel({
         setError(null);
       } else setError(r?.error ?? C.SAVE_FAILED);
     });
+  const grouped = registry?.ready === true;
+  const [categories, setCategories] = useState<Partial<Record<AiTextCategory, AiRegistryPair | null>>>(registry?.categories ?? {});
+  const [catDraft, setCatDraft] = useState<Partial<Record<AiTextCategory, AiFeatureProvider>>>({});
+  const [catMsg, setCatMsg] = useState<{ category: AiTextCategory; ok: boolean; text: string } | null>(null);
+  const ownModel = new Set(registry?.ownModel ?? []);
+  const saveCategory = (category: AiTextCategory, provider: AiFeatureProvider, model: string) =>
+    start(async () => {
+      const r = await setAiCategoryModel(category, provider, model);
+      if (r?.ok) {
+        setCategories((c) => ({ ...c, [category]: { provider, model } }));
+        setCatDraft((d) => without(d, category) as Partial<Record<AiTextCategory, AiFeatureProvider>>);
+        // Features that followed the category now run its model (what the server saved for them).
+        setSaved((s) => {
+          const next = { ...s };
+          for (const f of AiRegistry.TEXT_FEATURES[category]) if (!ownModel.has(f)) next[f] = { provider, model };
+          return next;
+        });
+        setCatMsg({ category, ok: true, text: r.message ?? C.CATEGORY_SAVED });
+      } else setCatMsg({ category, ok: false, text: r?.error ?? C.SAVE_FAILED });
+    });
+  // Grouped by category (spec pick 3): Drafting, Extraction, Analysis, then Dictation and Voice chat as before.
+  const order = (f: AiFeatureView) => {
+    const c = AiRegistry.categoryOf(f.feature);
+    return c ? (Object.keys(AiRegistry.TEXT_FEATURES) as AiTextCategory[]).indexOf(c) : 3;
+  };
+  const shown = grouped ? features.map((f, i) => ({ f, i })).sort((a, b) => order(a.f) - order(b.f) || a.i - b.i).map((x) => x.f) : features;
   // Each list that failed is said once, above the grid (OpenAI's is said at the top of the AI settings card).
   const failed = AiFeatureProviders.ALL.filter((p) => p !== "openai" && lists.list(p)?.ok === false);
   // Fixed Provider, Model and toggle tracks, so every row lines up as one grid and the wide help or instructions under
@@ -513,7 +675,12 @@ export function AiFeaturesPanel({
         </AiAlert>
       ))}
       <div className="flex flex-col rounded-control border border-line bg-input/60" data-testid="ai-features-grid">
-      {features.map((f, i) => {
+      {shown.map((f, i) => {
+        const category = grouped ? AiRegistry.categoryOf(f.feature) : null;
+        const prev = i > 0 ? shown[i - 1] : null;
+        const heading = grouped && (category ?? "other") !== (prev ? (AiRegistry.categoryOf(prev.feature) ?? "other") : null);
+        const catPair = category ? (categories[category] ?? null) : null;
+        const own = category !== null && ownModel.has(f.feature);
         const labelId = `ai-feature-${f.feature}-label`;
         const helpId = `ai-feature-${f.feature}-help`;
         const text = AiFeatureProviders.isText(f.feature);
@@ -523,12 +690,40 @@ export function AiFeaturesPanel({
         const keyMissing = text && !picking && keyStates !== undefined && keyStates[choice.provider] !== "ok";
         const caption = f.killedByEnv ? C.featureKilled(f.envName) : picking ? C.PICK_A_MODEL : !text ? C.VOICE_OPENAI_ONLY : f.enabled ? C.FEATURE_ON_HELP : C.FEATURE_OFF_HELP;
         return (
-          <div key={f.feature} className={`${ROW} ${i > 0 ? "border-t border-line" : ""} ${f.ownModel ? "pb-2.5" : ""}`} data-testid={`ai-feature-row-${f.feature}`} data-provider={text ? shownProvider : "openai"}>
+          <div key={f.feature} className="contents">
+          {heading && (
+            <CategoryHeading
+              category={category}
+              first={i === 0}
+              pair={catPair}
+              draft={category ? catDraft[category] : undefined}
+              keyStates={keyStates}
+              chatModels={chatModels}
+              mainModel={mainModel}
+              lists={lists}
+              disabled={!dbReady || pending || registry?.preview === true}
+              preview={registry?.preview === true}
+              msg={category && catMsg?.category === category ? catMsg : null}
+              onProvider={(p) => category && setCatDraft((d) => (catPair && p === catPair.provider ? (without(d, category) as Partial<Record<AiTextCategory, AiFeatureProvider>>) : { ...d, [category]: p }))}
+              onPick={(p, m) => category && saveCategory(category, p, m)}
+            />
+          )}
+          <div className={`${ROW} ${i > 0 || heading ? "border-t border-line" : ""} ${f.ownModel ? "pb-2.5" : ""}`} data-testid={`ai-feature-row-${f.feature}`} data-provider={text ? shownProvider : "openai"}>
             <div className="col-start-1 row-start-1 flex h-11 min-w-0 flex-col justify-center">
               <div className="flex min-w-0 items-center gap-2">
                 <span id={labelId} className="min-w-0 truncate type-table-strong text-fg">
                   {f.label}
                 </span>
+                {own && (
+                  <span className="shrink-0 rounded-pill bg-(--status-not-started-dark-bg) px-1.5 text-(--status-not-started-dark-fg) type-caption" title={C.OWN_MODEL_HELP} data-testid={`ai-feature-${f.feature}-own-model`}>
+                    {C.OWN_MODEL_BADGE}
+                  </span>
+                )}
+                {own && catPair && !registry?.preview && (
+                  <button type="button" className={`${GHOST} h-6 px-2 type-caption`} disabled={!dbReady || pending} onClick={() => saveText(f.feature, AiFeatureProviders.stored(catPair.provider), catPair.model)} data-testid={`ai-feature-${f.feature}-follow`}>
+                    {C.followCategory(category!)}
+                  </button>
+                )}
                 {keyMissing && (
                   <span className="shrink-0 rounded-pill bg-(--status-at-risk-dark-bg) px-1.5 text-(--status-at-risk-dark-fg) type-caption" title={C.PROVIDER_KEY_MISSING_HELP} data-testid={`ai-feature-${f.feature}-key-missing`}>
                     {C.PROVIDER_KEY_MISSING}
@@ -619,6 +814,7 @@ export function AiFeaturesPanel({
                 </div>
               </details>
             )}
+          </div>
           </div>
         );
       })}

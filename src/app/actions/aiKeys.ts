@@ -5,6 +5,7 @@ import { AiKeyCopy, type AiKeyActionResult } from "@/lib/ai/AiKeyProviders";
 import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiProviderKeyService, type AiProviderKeyDb } from "@/lib/services/AiProviderKeyService";
+import { AiRegistrySync } from "@/lib/services/AiRegistrySync";
 
 /**
  * Server Functions for Admin > AI settings > Provider keys. Each one resolves the viewer from the session and re-checks
@@ -17,6 +18,8 @@ async function run(name: string, fn: (db: AiProviderKeyDb, viewer: { email: stri
   if (!Db.isConfigured()) return { ok: false, error: AiKeyCopy.SAVE_FAILED };
   try {
     const r = await fn(Db.client as unknown as AiProviderKeyDb, viewer);
+    // Whether OpenAI has a key decides where a seeded default runs, so the registry follows a key change (best effort).
+    if (r.ok) await AiRegistrySync.afterSave(Db.client, viewer);
     revalidatePath("/admin/ai");
     revalidatePath("/");
     return r;

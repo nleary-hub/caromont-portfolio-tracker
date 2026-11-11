@@ -166,14 +166,20 @@ describe("adding models", () => {
 
   it("prices are admin-entered with a unit; bad prices are refused", async () => {
     const db = new FakeAiAdminDb().seed();
-    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_1m_tokens", "1.25", "$10")).toMatchObject({ ok: true });
+    // Spec pick 4: a typed price needs the page it was read on and the date read; without them nothing is saved.
+    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_1m_tokens", "1.25", "$10")).toEqual({ ok: false, error: AiCopy.PRICE_SOURCE_REQUIRED, field: "source" });
+    expect(db.models[0].inputPrice ?? null).toBeNull();
+    const NOW = new Date("2026-11-11T15:00:00Z");
+    const SRC = { sourceUrl: "https://example.org/pricing", readOn: "2026-11-10" };
+    const setPrices = (unit: string, input: string, output: string) => AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", unit, input, output, NOW, SRC);
+    expect(await setPrices("per_1m_tokens", "1.25", "$10")).toMatchObject({ ok: true });
     expect(db.models[0]).toMatchObject({ priceUnit: "per_1m_tokens", inputPrice: 1.25, outputPrice: 10 });
-    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_1m_tokens", "-1", "")).toEqual({ ok: false, error: AiCopy.PRICE_INVALID, field: "input" });
-    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_1m_tokens", "1", "abc")).toEqual({ ok: false, error: AiCopy.PRICE_INVALID, field: "output" });
-    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "", "0.5", "")).toEqual({ ok: false, error: AiCopy.PRICE_UNIT_REQUIRED, field: "unit" });
+    expect(await setPrices("per_1m_tokens", "-1", "")).toEqual({ ok: false, error: AiCopy.PRICE_INVALID, field: "input" });
+    expect(await setPrices("per_1m_tokens", "1", "abc")).toEqual({ ok: false, error: AiCopy.PRICE_INVALID, field: "output" });
+    expect(await setPrices("", "0.5", "")).toEqual({ ok: false, error: AiCopy.PRICE_UNIT_REQUIRED, field: "unit" });
     // Per minute: one price; the output price is ignored (its field is disabled).
-    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_minute", "0.006", "abc")).toMatchObject({ ok: true });
-    expect(await AiModelService.setPrices(db.m, ADMIN, "gpt-6-luna", "per_minute", "0.006", "")).toMatchObject({ ok: true });
+    expect(await setPrices("per_minute", "0.006", "abc")).toMatchObject({ ok: true });
+    expect(await setPrices("per_minute", "0.006", "")).toMatchObject({ ok: true });
     expect(AiModelService.views(db.models, null)[0]).toMatchObject({ priceUnit: "per_minute", inputPrice: "0.0060", outputPrice: "" });
   });
 });
