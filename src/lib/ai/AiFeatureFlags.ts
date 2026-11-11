@@ -89,6 +89,20 @@ export class AiFeatureFlags {
     return !["off", "false", "0", "no"].includes(raw.trim().toLowerCase());
   }
 
+  /**
+   * Phase 2 of the Admin AI page spec: text AI calls read their model, reply-length limit and price from the model
+   * registry (0071) instead of the older tables. Unlike every switch above, this one is OFF unless set to on, true, 1 or
+   * yes (any case): unset, empty or any other value keeps today's path exactly. Set it in the Vercel project's
+   * environment variables and redeploy to turn it on; remove it (or set off) and redeploy to turn it back off.
+   */
+  static readonly REGISTRY_RUNTIME_FLAG = "AI_REGISTRY_RUNTIME";
+
+  static isRegistryRuntimeOn(env: Env = process.env): boolean {
+    const raw = env[AiFeatureFlags.REGISTRY_RUNTIME_FLAG];
+    if (raw === undefined) return false;
+    return ["on", "true", "1", "yes"].includes(raw.trim().toLowerCase());
+  }
+
   static parseFeature(v: unknown): AiReviewFeature | null {
     return AiFeatureFlags.FEATURES.includes(v as AiReviewFeature) ? (v as AiReviewFeature) : null;
   }

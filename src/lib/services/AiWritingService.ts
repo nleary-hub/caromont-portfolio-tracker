@@ -11,7 +11,8 @@ import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai
 import { AiProviders } from "@/lib/ai/AiProviders";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
-import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
+import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
+import { AiRegistryRuntime } from "@/lib/services/AiRegistryRuntime";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 import { AiSpendCapService } from "./AiSpendCapService";
@@ -121,10 +122,12 @@ export class AiWritingService {
     if (!(await AiModelService.featureOn(db, feature, env))) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
     const row = await AiSettingsService.row(db, env).catch(() => null);
     // PR B: the feature's own provider and model when an admin picked them; otherwise the AI settings, exactly as before.
-    const saved = row?.enabled ? await AiFeatureRuntime.config({ db, feature, settings: row, env, keys: args.keys }) : null;
-    if (!saved) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
+    // Phase 2: the call plan (model, allowlist, reply-length limit, price). With the registry switch off (the default)
+    // it is today's path exactly: AiFeatureRuntime.config plus the models turned on under Models (ai_models).
+    const plan = row?.enabled ? await AiRegistryRuntime.plan({ db, feature, settings: row, env, keys: args.keys }) : null;
+    if (!plan) return { ok: false, kind: "off", message: AiCopy.unavailable(env) };
     // Allowlist = the models an admin turned on (ai_models). Never switched automatically.
-    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
+    const config = plan.config;
     // Allowlist at call time: a saved model outside the list (for example from before the allowlist) is never called.
     if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
 
@@ -155,8 +158,8 @@ export class AiWritingService {
     try {
       // Item 9: the project's facts and last 3 updates keep names, dates and terms consistent (null = text alone).
       const facts = await AiWritingContext.load({ db, scope, viewer, projectId, now });
-      const result = await AiProviderClient.complete(config, AiPrompts.build(feature, text, facts), args.fetchImpl);
-      run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
+      const result = await AiProviderClient.complete(config, AiRegistryRuntime.prompt(AiPrompts.build(feature, text, facts), plan), args.fetchImpl);
+      run = AiRunMetrics.of(result, await AiRegistryRuntime.price(db, plan));
       if (!result.ok) {
         await log("failed");
         // The provider's message stays on the server (scrubbed of the key); the editor gets a friendly one.

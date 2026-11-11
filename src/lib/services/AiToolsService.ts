@@ -15,7 +15,8 @@ import { AiTranscriptionClient, type AiTranscribeFetch } from "@/lib/ai/AiTransc
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
-import { AiFeatureRuntime, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
+import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
+import { AiRegistryRuntime } from "@/lib/services/AiRegistryRuntime";
 import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 import { AiSpendCapService } from "./AiSpendCapService";
@@ -182,10 +183,12 @@ export class AiToolsService {
 
     const row = await AiSettingsService.row(db, env).catch(() => null);
     // PR B: the feature's own provider and model when an admin picked them; otherwise the AI settings, as before.
-    const saved = row?.enabled ? await AiFeatureRuntime.config({ db, feature, settings: row, env, keys: args.keys }) : null;
-    if (!saved) return { ok: false, kind: "off", message: AiToolsCopy.aiOff(env) };
+    // Phase 2: the call plan (model, allowlist, reply-length limit, price). With the registry switch off (the default)
+    // it is today's path exactly: AiFeatureRuntime.config plus the models turned on under Models (ai_models).
+    const plan = row?.enabled ? await AiRegistryRuntime.plan({ db, feature, settings: row, env, keys: args.keys }) : null;
+    if (!plan) return { ok: false, kind: "off", message: AiToolsCopy.aiOff(env) };
     // Only models an admin turned on (ai_models). Never switched automatically.
-    const config = { ...saved, allowedModels: await AiModelService.enabledIds(db, "chat") };
+    const config = plan.config;
     if (!AiProviders.modelAllowed(config.model, config.allowedModels)) return { ok: false, kind: "provider", message: AiCopy.MODEL_NOT_ALLOWED };
 
     const user = viewer.email;
@@ -205,8 +208,8 @@ export class AiToolsService {
       });
     AiToolsService.inFlight.add(user);
     try {
-      const result = await AiProviderClient.complete(config, args.build(input), args.fetchImpl);
-      run = AiRunMetrics.of(result, await AiModelService.priceOf(db, config.model));
+      const result = await AiProviderClient.complete(config, AiRegistryRuntime.prompt(args.build(input), plan), args.fetchImpl);
+      run = AiRunMetrics.of(result, await AiRegistryRuntime.price(db, plan));
       if (!result.ok) {
         await log("failed");
         console.error("AI tools: provider call failed", { feature, kind: result.kind, status: result.status });
