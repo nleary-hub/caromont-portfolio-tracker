@@ -58,6 +58,12 @@ export class AiPlaybookModel {
   ];
   static readonly LENGTHS: readonly AiPlaybookLength[] = [15, 30, 60];
   static readonly MAX_TOKENS = 6000;
+  /**
+   * How long the playbook waits for the model. A whole playbook is a long structured reply on the meeting_brief model,
+   * which is a slow reasoning model: 5 of its first 6 runs (Oct 21, Nov 5) hit the shared 60 s limit while the one that
+   * finished took 16 s, so the wait varies a lot. 150 s fits inside the playbook page's maxDuration (180 s).
+   */
+  static readonly TIMEOUT_MS = 150_000;
   static readonly FOCUS_MAX = 500;
 
   static meetingType(raw: unknown): AiMeetingType | null {

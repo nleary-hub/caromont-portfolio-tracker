@@ -14,8 +14,8 @@ import { AiPlaybookService, type AiPlaybookDb } from "@/lib/services/AiPlaybookS
 import type { AiSettingsDb } from "@/lib/services/AiSettingsService";
 import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
 
-/** The provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
-export const maxDuration = 90;
+/** The playbook's provider call can take up to AiPlaybookModel.TIMEOUT_MS (150 s); 30 s more covers loading and saving. */
+export const maxDuration = 180;
 
 export const metadata: Metadata = { title: C.PLAYBOOK_TITLE };
 

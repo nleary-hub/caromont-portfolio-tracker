@@ -91,6 +91,7 @@ export class AiPlaybookService {
       fetchImpl: args.fetchImpl,
       keys: args.keys,
       now: args.now,
+      timeoutMs: AiPlaybookModel.TIMEOUT_MS,
     });
     if (!r.ok) return { ok: false, message: r.message };
     const content = AiPlaybookModel.parse(r.text, scoped, length);
