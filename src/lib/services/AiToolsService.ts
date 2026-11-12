@@ -20,6 +20,8 @@ import { AiRegistryRuntime } from "@/lib/services/AiRegistryRuntime";
 import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
 import { AiSpendCapService } from "./AiSpendCapService";
+import { AiFailureAlertService } from "./AiFailureAlertService";
+import { AiFailureCopy } from "@/lib/ai/AiFailureAlert";
 import { AiWritingService, type AiUsageRow } from "./AiWritingService";
 import { PortfolioContextService } from "./PortfolioContextService";
 
@@ -215,7 +217,9 @@ export class AiToolsService {
       if (!result.ok) {
         await log("failed");
         console.error("AI tools: provider call failed", { feature, kind: result.kind, status: result.status });
-        return { ok: false, kind: result.kind === "timeout" ? "timeout" : "provider", message: result.kind === "timeout" ? AiToolsCopy.TIMEOUT : AiToolsCopy.PROVIDER_ERROR };
+        // Alert only (switch on): admins see the failure on Admin > AI settings; no other model is tried.
+        const cls = await AiFailureAlertService.record({ db, feature, config, result, env, now: now() });
+        return { ok: false, kind: result.kind === "timeout" ? "timeout" : "provider", message: AiFailureAlertService.message(cls, result.kind === "timeout" ? AiToolsCopy.TIMEOUT : AiToolsCopy.PROVIDER_ERROR, AiFailureCopy.NOT_USABLE_TOOL) };
       }
       return { ok: true, text: result.text, log, proposalId, run };
     } finally {

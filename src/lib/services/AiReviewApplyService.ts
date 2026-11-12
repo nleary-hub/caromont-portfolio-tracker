@@ -19,6 +19,8 @@ import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderServic
 import { AiRegistryRuntime } from "@/lib/services/AiRegistryRuntime";
 import { AiSettingsService } from "./AiSettingsService";
 import { AiSpendCapService } from "./AiSpendCapService";
+import { AiFailureAlertService } from "./AiFailureAlertService";
+import { AiFailureCopy } from "@/lib/ai/AiFailureAlert";
 import { AiWritingContext } from "./AiWritingContext";
 import { AiWritingService, type AiUsageRow, type AiWritingDb } from "./AiWritingService";
 
@@ -137,10 +139,12 @@ export class AiReviewApplyService {
       if (!result.ok) {
         await log("failed");
         console.error("AI review layer: provider call failed", { kind: result.kind, status: result.status, message: result.message });
+        // Alert only (switch on): admins see the failure on Admin > AI settings; no other model is tried.
+        const cls = await AiFailureAlertService.record({ db, feature, config, result, env, now: now() });
         return {
           ok: false,
           kind: result.kind === "timeout" ? "timeout" : "provider",
-          message: result.kind === "timeout" ? AiCopy.TIMEOUT : result.kind === "length" ? AiCopy.OUT_OF_REPLY_LENGTH : AiCopy.PROVIDER_ERROR,
+          message: AiFailureAlertService.message(cls, result.kind === "timeout" ? AiCopy.TIMEOUT : result.kind === "length" ? AiCopy.OUT_OF_REPLY_LENGTH : AiCopy.PROVIDER_ERROR, AiFailureCopy.NOT_USABLE_NOTE),
         };
       }
       const after = AiPrompts.clean(result.text);

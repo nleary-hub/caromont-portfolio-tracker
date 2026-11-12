@@ -6,6 +6,7 @@ import type { AiListedModel } from "@/lib/ai/AiModelKinds";
 import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
 import { AiModelService, type AiAdminResult, type AiModelDb } from "@/lib/services/AiModelService";
+import { AiFailureAlertService } from "@/lib/services/AiFailureAlertService";
 
 /**
  * Server Functions for Admin > AI settings: Models and Features. Each one resolves the viewer from the session and
@@ -105,4 +106,9 @@ export async function setAiVoiceSessionCap(minutes: string): Promise<AiAdminResu
 
 export async function setAiFeatureEnabled(feature: string, enabled: boolean): Promise<AiAdminResult> {
   return run("setAiFeatureEnabled", (db, v) => AiModelService.setFeature(db, v, feature, Boolean(enabled)));
+}
+
+/** Alert only (Nov 12): marks the AI failures listed at the top of Admin > AI settings as seen, up to the newest one shown. Admin only. */
+export async function acknowledgeAiFailures(upToAt: string): Promise<AiAdminResult> {
+  return run("acknowledgeAiFailures", (db, v) => AiFailureAlertService.acknowledge(db, v.email, upToAt));
 }
