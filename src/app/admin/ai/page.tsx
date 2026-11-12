@@ -29,6 +29,8 @@ import { Db } from "@/lib/db/Db";
 import { AiModelService, type AiFeatureChoice, type AiFeatureView, type AiModelDb, type AiModelView } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb, type AiSettingsHistoryRow, type AiSettingsView } from "@/lib/services/AiSettingsService";
 import { AiRegistrySync, type AiRegistryPageView } from "@/lib/services/AiRegistrySync";
+import { AiFailureBanner } from "@/components/AiFailureBanner";
+import { AiFailureAlertService, type AiFailureAlertView } from "@/lib/services/AiFailureAlertService";
 
 /** AI Draft/Fit/Test connection server actions run on this page; the provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
 export const maxDuration = 90;
@@ -93,6 +95,8 @@ export default async function AiSettingsPage() {
   const spendNames: Record<string, string> = {};
   // Phase 1: what the model registry records, compared with what the app runs. Read-only; never blocks the page.
   let registry: AiRegistryPageView = { ready: false, differences: [], categories: {}, ownModel: [], prices: {} };
+  // Alert only (Nov 12): AI calls that failed since an admin last marked them as seen. Switch on only; never blocks the page.
+  let failures: AiFailureAlertView = { ready: false, total: 0, groups: [] };
   if (dbReady) {
     try {
       glossary = await AiGlossaryService.view(Db.client as unknown as GlossaryDb);
@@ -132,6 +136,7 @@ export default async function AiSettingsPage() {
       dbReady = false;
     }
     if (dbReady) registry = await AiRegistrySync.pageView(Db.client);
+    if (dbReady) failures = await AiFailureAlertService.view(Db.client, (d) => AiPageFormat.when(d));
     try {
       usage = await AiUsageReader.recent(Db.client as unknown as AiUsageReadDb, new Date());
     } catch {
@@ -173,6 +178,7 @@ export default async function AiSettingsPage() {
         </div>
       </div>
       <p className="text-muted type-caption">{AiCopy.PAGE_INTRO}</p>
+      <AiFailureBanner view={failures} preview={preview} />
       {!dbReady && (
         <p className="rounded-control bg-(--status-at-risk-dark-bg) px-3 py-2 text-(--status-at-risk-dark-fg) type-table" role="status" data-testid="ai-db-missing">
           {Db.isConfigured() ? AiCopy.DB_MISSING : "DATABASE_URL is not configured; showing the defaults."}

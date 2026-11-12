@@ -1,5 +1,7 @@
 import { randomUUID } from "node:crypto";
 import { AiRunMetrics } from "@/lib/ai/AiRunMetrics";
+import { AiFailureCopy } from "@/lib/ai/AiFailureAlert";
+import { AiFailureAlertService } from "@/lib/services/AiFailureAlertService";
 import { DepartmentAccess } from "@/lib/access/DepartmentAccess";
 import { ServiceLineAccess } from "@/lib/access/ServiceLineAccess";
 import type { Viewer } from "@/lib/auth/AdminPolicy";
@@ -164,10 +166,12 @@ export class AiWritingService {
         await log("failed");
         // The provider's message stays on the server (scrubbed of the key); the editor gets a friendly one.
         console.error("AI writing assistant: provider call failed", { kind: result.kind, status: result.status, message: result.message });
+        // Alert only (switch on): admins see the failure on Admin > AI settings; no other model is tried.
+        const cls = await AiFailureAlertService.record({ db, feature, config, result, env, now: now() });
         return {
           ok: false,
           kind: result.kind === "timeout" ? "timeout" : "provider",
-          message: result.kind === "timeout" ? AiCopy.TIMEOUT : result.kind === "length" ? AiCopy.OUT_OF_REPLY_LENGTH : AiCopy.PROVIDER_ERROR,
+          message: AiFailureAlertService.message(cls, result.kind === "timeout" ? AiCopy.TIMEOUT : result.kind === "length" ? AiCopy.OUT_OF_REPLY_LENGTH : AiCopy.PROVIDER_ERROR, AiFailureCopy.NOT_USABLE_NOTE),
         };
       }
       const suggestion = AiPrompts.clean(result.text);
