@@ -174,8 +174,8 @@ describe("switch off: nothing is recorded and every message is today's", () => {
   it("the banner reads nothing and marking as seen is refused", async () => {
     const db = await setup();
     db.events.push({ at: T0, category: "drafting", primaryProvider: "openai", primaryModel: "gpt-example-main", triggerClass: "timeout", outcome: "no_fallback", noFallbackReason: "none_set", fallbackModel: null, httpStatus: null });
-    expect(await AiFailureAlertService.view(db, (d) => d.toISOString(), ENV, T0)).toEqual({ ready: false, total: 0, groups: [] });
-    expect((await AiFailureAlertService.acknowledge(db, "admin@example.org", ENV, T0)).ok).toBe(false);
+    expect(await AiFailureAlertService.view(db, (d) => d.toISOString(), ENV, T0)).toEqual({ ready: false, total: 0, groups: [], upToAt: null });
+    expect((await AiFailureAlertService.acknowledge(db, "admin@example.org", T0.toISOString(), ENV, T0)).ok).toBe(false);
     expect(db.acks).toEqual([]);
   });
 });
@@ -260,28 +260,50 @@ describe("the Admin AI banner", () => {
     expect(AiFailureCopy.title(3)).toBe("AI calls failed 3 times since this was last marked as seen");
   });
 
-  it("'Mark as seen' hides everything up to now; a later failure brings the banner back", async () => {
+  it("'Mark as seen' hides what was shown; a later failure brings the banner back", async () => {
     const db = await setup();
     db.events.push(ev(10, "http_5xx"));
-    expect(await AiFailureAlertService.acknowledge(db, "admin@example.org", ON, T0)).toEqual({ ok: true });
-    expect(db.acks).toEqual([{ id: expect.any(String), at: T0, by: "admin@example.org", upToAt: T0 } as never]);
+    const shown = await AiFailureAlertService.view(db, when, ON, T0);
+    expect(shown.upToAt).toBe(ev(10, "x").at.toISOString());
+    expect(await AiFailureAlertService.acknowledge(db, "admin@example.org", shown.upToAt, ON, T0)).toEqual({ ok: true });
+    expect(db.acks).toEqual([{ id: expect.any(String), at: T0, by: "admin@example.org", upToAt: ev(10, "x").at } as never]);
     expect((await AiFailureAlertService.view(db, when, ON, T0)).total).toBe(0);
     db.events.push(ev(-5, "http_429"));
     const later = new Date(T0.getTime() + 10 * 60_000);
     expect((await AiFailureAlertService.view(db, when, ON, later)).groups.map((g) => g.reason)).toEqual(["http_429"]);
   });
 
+  it("a failure that lands after the page loaded is not marked as seen unshown", async () => {
+    const db = await setup();
+    db.events.push(ev(10, "timeout"));
+    const shown = await AiFailureAlertService.view(db, when, ON, T0);
+    db.events.push(ev(2, "model_gone"));
+    expect(await AiFailureAlertService.acknowledge(db, "admin@example.org", shown.upToAt, ON, T0)).toEqual({ ok: true });
+    expect((await AiFailureAlertService.view(db, when, ON, T0)).groups.map((g) => g.reason)).toEqual(["model_gone"]);
+  });
+
+  it("'Mark as seen' never acks past now and refuses a missing or bad time", async () => {
+    const db = await setup();
+    const future = new Date(T0.getTime() + 60 * 60_000).toISOString();
+    expect(await AiFailureAlertService.acknowledge(db, "admin@example.org", future, ON, T0)).toEqual({ ok: true });
+    expect((db.acks[0] as unknown as { upToAt: Date }).upToAt).toEqual(T0);
+    for (const bad of [undefined, null, "", "not a date", 12345, "x".repeat(41)]) {
+      expect(await AiFailureAlertService.acknowledge(db, "admin@example.org", bad, ON, T0)).toEqual({ ok: false, error: AiFailureCopy.ACK_FAILED });
+    }
+    expect(db.acks).toHaveLength(1);
+  });
+
   it("looks back 30 days at most, and is read-only on a preview", async () => {
     const db = await setup();
     db.events.push(ev(31 * 24 * 60, "timeout"), ev(60, "network"));
     expect((await AiFailureAlertService.view(db, when, ON, T0)).groups.map((g) => g.reason)).toEqual(["network"]);
-    expect(await AiFailureAlertService.acknowledge(db, "admin@example.org", { ...ON, VERCEL_ENV: "preview" }, T0)).toEqual({ ok: false, error: AiFailureCopy.PREVIEW });
+    expect(await AiFailureAlertService.acknowledge(db, "admin@example.org", T0.toISOString(), { ...ON, VERCEL_ENV: "preview" }, T0)).toEqual({ ok: false, error: AiFailureCopy.PREVIEW });
     expect(db.acks).toEqual([]);
   });
 
   it("tables that can't be read show no banner and never break the page", async () => {
-    expect(await AiFailureAlertService.view({}, when, ON, T0)).toEqual({ ready: false, total: 0, groups: [] });
+    expect(await AiFailureAlertService.view({}, when, ON, T0)).toEqual({ ready: false, total: 0, groups: [], upToAt: null });
     const broken = { aiFallbackEvent: { create: async () => null, findMany: async () => Promise.reject(new Error("no table")) }, aiFallbackAck: { create: async () => null, findFirst: async () => null } };
-    expect(await AiFailureAlertService.view(broken, when, ON, T0)).toEqual({ ready: false, total: 0, groups: [] });
+    expect(await AiFailureAlertService.view(broken, when, ON, T0)).toEqual({ ready: false, total: 0, groups: [], upToAt: null });
   });
 });

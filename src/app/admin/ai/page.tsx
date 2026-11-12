@@ -96,7 +96,7 @@ export default async function AiSettingsPage() {
   // Phase 1: what the model registry records, compared with what the app runs. Read-only; never blocks the page.
   let registry: AiRegistryPageView = { ready: false, differences: [], categories: {}, ownModel: [], prices: {} };
   // Alert only (Nov 12): AI calls that failed since an admin last marked them as seen. Switch on only; never blocks the page.
-  let failures: AiFailureAlertView = { ready: false, total: 0, groups: [] };
+  let failures: AiFailureAlertView = { ready: false, total: 0, groups: [], upToAt: null };
   if (dbReady) {
     try {
       glossary = await AiGlossaryService.view(Db.client as unknown as GlossaryDb);

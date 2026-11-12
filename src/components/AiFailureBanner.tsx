@@ -18,7 +18,8 @@ export function AiFailureBanner({ view, preview }: { view: AiFailureAlertView; p
   const router = useRouter();
   const [pending, start] = useTransition();
   const [error, setError] = useState<string | null>(null);
-  if (!view.ready || view.total === 0) return null;
+  if (!view.ready || view.total === 0 || !view.upToAt) return null;
+  const upToAt = view.upToAt;
   return (
     <section className="flex flex-col gap-2 rounded-card border border-line bg-(--status-at-risk-dark-bg) p-4 text-(--status-at-risk-dark-fg)" role="status" aria-labelledby="ai-failures-heading" data-testid="ai-failures">
       <h2 id="ai-failures-heading" className="type-heading">
@@ -44,7 +45,7 @@ export function AiFailureBanner({ view, preview }: { view: AiFailureAlertView; p
             onClick={() =>
               start(async () => {
                 setError(null);
-                const r = await acknowledgeAiFailures();
+                const r = await acknowledgeAiFailures(upToAt);
                 if (r.ok) start(() => router.refresh());
                 else setError(r.error);
               })

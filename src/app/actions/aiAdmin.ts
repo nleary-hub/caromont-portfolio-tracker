@@ -108,7 +108,7 @@ export async function setAiFeatureEnabled(feature: string, enabled: boolean): Pr
   return run("setAiFeatureEnabled", (db, v) => AiModelService.setFeature(db, v, feature, Boolean(enabled)));
 }
 
-/** Alert only (Nov 12): marks the AI failures listed at the top of Admin > AI settings as seen. Admin only. */
-export async function acknowledgeAiFailures(): Promise<AiAdminResult> {
-  return run("acknowledgeAiFailures", (db, v) => AiFailureAlertService.acknowledge(db, v.email));
+/** Alert only (Nov 12): marks the AI failures listed at the top of Admin > AI settings as seen, up to the newest one shown. Admin only. */
+export async function acknowledgeAiFailures(upToAt: string): Promise<AiAdminResult> {
+  return run("acknowledgeAiFailures", (db, v) => AiFailureAlertService.acknowledge(db, v.email, upToAt));
 }

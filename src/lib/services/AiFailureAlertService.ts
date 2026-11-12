@@ -37,11 +37,16 @@ export interface AiFailureGroup {
   lastAt: string;
 }
 
-/** What the Admin AI page shows. `ready` false = the tables can't be read (or the switch is off): no banner. */
+/**
+ * What the Admin AI page shows. `ready` false = the tables can't be read (or the switch is off): no banner. `upToAt` is
+ * the newest failure shown (ISO time), which "Mark as seen" sends back, so a failure that lands after the page loaded
+ * is never marked as seen unshown (0071: send the newest event shown, not "now").
+ */
 export interface AiFailureAlertView {
   ready: boolean;
   total: number;
   groups: AiFailureGroup[];
+  upToAt: string | null;
 }
 
 const REASONS = Object.keys(AiFailureCopy.REASONS) as AiFailureClass[];
@@ -113,7 +118,7 @@ export class AiFailureAlertService {
 
   /** The failures since an admin last marked them as seen (at most the last DAYS days), grouped for the banner. */
   static async view(db: unknown, when: (d: Date) => string, env: Env = process.env, now: Date = new Date()): Promise<AiFailureAlertView> {
-    const none: AiFailureAlertView = { ready: false, total: 0, groups: [] };
+    const none: AiFailureAlertView = { ready: false, total: 0, groups: [], upToAt: null };
     if (!AiFailureAlertService.isOn(env)) return none;
     const t = AiFailureAlertService.tables(db);
     if (!t) return none;
@@ -127,7 +132,8 @@ export class AiFailureAlertService {
         orderBy: { at: "desc" },
         take: AiFailureAlertService.MAX_ROWS,
       });
-      return { ready: true, total: rows.length, groups: AiFailureAlertService.group(rows, when) };
+      const newest = rows.reduce<Date | null>((m, r) => (!m || r.at > m ? r.at : m), null);
+      return { ready: true, total: rows.length, groups: AiFailureAlertService.group(rows, when), upToAt: newest ? newest.toISOString() : null };
     } catch (e) {
       console.error("AI failure alert: could not read failures", (e as Error)?.name);
       return none;
@@ -149,14 +155,19 @@ export class AiFailureAlertService {
     return [...out.values()].sort((a, b) => b.last.getTime() - a.last.getTime()).map(({ last, ...g }) => ({ ...g, lastAt: when(last) }));
   }
 
-  /** Marks every failure up to now as seen (one append-only ack row). Admin only; the action checks that. */
-  static async acknowledge(db: unknown, by: string, env: Env = process.env, now: Date = new Date()): Promise<{ ok: true } | { ok: false; error: string }> {
+  /**
+   * Marks the failures the admin was shown as seen: everything up to `upTo`, the newest failure on their page (never
+   * later than now). One append-only ack row. Admin only; the action checks that.
+   */
+  static async acknowledge(db: unknown, by: string, upTo: unknown, env: Env = process.env, now: Date = new Date()): Promise<{ ok: true } | { ok: false; error: string }> {
     const t = AiFailureAlertService.tables(db);
     if (!AiFailureAlertService.isOn(env) || !t) return { ok: false, error: AiFailureCopy.ACK_FAILED };
     if (env.VERCEL_ENV === "preview") return { ok: false, error: AiFailureCopy.PREVIEW };
     const email = by.trim().slice(0, 254);
-    if (!email) return { ok: false, error: AiFailureCopy.ACK_FAILED };
-    await t.aiFallbackAck.create({ data: { id: randomUUID(), at: now, by: email, upToAt: now } });
+    const shown = typeof upTo === "string" && upTo.length <= 40 ? new Date(upTo) : null;
+    if (!email || !shown || Number.isNaN(shown.getTime())) return { ok: false, error: AiFailureCopy.ACK_FAILED };
+    const upToAt = shown > now ? now : shown;
+    await t.aiFallbackAck.create({ data: { id: randomUUID(), at: now, by: email, upToAt } });
     return { ok: true };
   }
 }
