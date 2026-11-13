@@ -1,15 +1,19 @@
 import type * as Sentry from "@sentry/nextjs";
 import type { Breadcrumb, ErrorEvent } from "@sentry/nextjs";
-import { ClientErrorScrub } from "@/lib/errors/ClientErrorScrub";
+import { ClientErrorRateLimit, ClientErrorScrub } from "@/lib/errors/ClientErrorScrub";
 
 type Options = NonNullable<Parameters<typeof Sentry.init>[0]>;
 type StreamedSpanJSON = Parameters<NonNullable<Options["beforeSendSpan"]>>[0];
+type Integration = NonNullable<Extract<Options["integrations"], unknown[]>>[number];
+type Log = Parameters<NonNullable<Options["beforeSendLog"]>>[0];
 
 /**
  * Sentry settings shared by the browser, server and edge setups (instrumentation-client.ts, sentry.server.config.ts,
  * sentry.edge.config.ts). Sentry SDK v11 collects everything by default (user, cookies, headers, request and response
  * bodies, AI prompts, database values), so every category is turned off here, and each error is scrubbed again with
- * the same rules as the app's own client error reports before it leaves: message, stack and route path only.
+ * the same rules as the app's own client error reports before it leaves: message, stack and route path only. Server and
+ * edge also send warning and error logs from production (console.warn, console.error, Sentry.logger.warn/error), scrubbed
+ * the same way, because Vercel's runtime logs reach back only one hour.
  */
 export class SentryScrub {
   static readonly TRACES_SAMPLE_RATE = 0.05;
@@ -35,23 +39,118 @@ export class SentryScrub {
     return v && v.trim() ? v.trim() : undefined;
   }
 
-  /** Options every runtime passes to Sentry.init. */
-  static options(): Options {
+  /** Only these log levels are kept (Vercel's runtime logs reach back one hour; Sentry keeps them longer). */
+  static readonly LOG_LEVELS = ["warn", "error"] as const;
+  /** Most logs one server instance sends per minute, so a loop can't use up the monthly log allowance. */
+  static readonly LOGS_PER_MINUTE = 60;
+  /** Most attributes kept per log besides the SDK's own, and the longest text kept in one attribute. */
+  static readonly LOG_ATTRIBUTES_MAX = 20;
+  static readonly LOG_VALUE_MAX = ClientErrorScrub.MESSAGE_MAX;
+  /** A log message can hold an error's stack, so it gets the stack's length. */
+  static readonly LOG_MESSAGE_MAX = ClientErrorScrub.STACK_MAX;
+  /** Attributes the SDK adds that say nothing about people or data; kept as they are. */
+  static readonly LOG_SDK_KEYS: ReadonlySet<string> = new Set([
+    "sentry.environment",
+    "sentry.release",
+    "sentry.sdk.name",
+    "sentry.sdk.version",
+    "sentry.origin",
+    "sentry.trace.parent_span_id",
+  ]);
+  /** A key whose value is replaced outright: credentials, contact details and anything naming a person or patient. */
+  static readonly SENSITIVE_KEY = /pass|secret|token|key|auth|cookie|session|e-?mail|phone|mrn|ssn|dob|birth|name|note|body|prompt/i;
+  private static logLimit = new ClientErrorRateLimit(SentryScrub.LOGS_PER_MINUTE, 60_000);
+
+  /**
+   * Options every runtime passes to Sentry.init. Pass `logs` (the console logging integration) from the server and
+   * edge setups to send warning and error logs; they leave only from production, scrubbed by SentryScrub.log. The
+   * browser passes nothing and sends no logs. Metrics never leave the app.
+   */
+  static options(opts: { logs?: Integration } = {}): Options {
     const dsn = SentryScrub.dsn();
+    const environment = process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV || process.env.NODE_ENV;
+    const logs = opts.logs && environment === "production" ? opts.logs : undefined;
     return {
       dsn,
       enabled: Boolean(dsn),
-      environment: process.env.NEXT_PUBLIC_VERCEL_ENV || process.env.VERCEL_ENV || process.env.NODE_ENV,
+      environment,
       tracesSampleRate: SentryScrub.TRACES_SAMPLE_RATE,
       dataCollection: SentryScrub.DATA_COLLECTION,
       maxBreadcrumbs: 30,
+      ...(logs ? { integrations: [logs] } : {}),
       beforeSend: (event) => SentryScrub.event(event),
       beforeBreadcrumb: (crumb) => SentryScrub.breadcrumb(crumb),
       beforeSendSpan: (span) => SentryScrub.span(span),
-      // Errors only: no logs or metrics leave the app.
-      beforeSendLog: () => null,
+      beforeSendLog: logs ? (log) => SentryScrub.log(log) : () => null,
       beforeSendMetric: () => null,
     };
+  }
+
+  /** Starts a fresh per-minute log allowance (tests). */
+  static resetLogLimit(): void {
+    SentryScrub.logLimit = new ClientErrorRateLimit(SentryScrub.LOGS_PER_MINUTE, 60_000);
+  }
+
+  /**
+   * A warning or error log scrubbed with the same rules as error events, or null to drop it: any other level, over the
+   * per-minute allowance, or empty. User attributes and SDK internals are dropped; every other attribute is scrubbed.
+   */
+  static log(log: Log, now = Date.now()): Log | null {
+    if (!(SentryScrub.LOG_LEVELS as readonly string[]).includes(log.level)) return null;
+    const message = SentryScrub.logText(String(log.message ?? ""), SentryScrub.LOG_MESSAGE_MAX);
+    if (!message.trim()) return null;
+    if (!SentryScrub.logLimit.allow("logs", now)) return null;
+    const attributes: Record<string, unknown> = {};
+    let kept = 0;
+    for (const [k, v] of Object.entries(log.attributes ?? {})) {
+      if (SentryScrub.LOG_SDK_KEYS.has(k)) {
+        attributes[k] = v;
+        continue;
+      }
+      if (k.startsWith("user.") || (k.startsWith("sentry.") && !k.startsWith("sentry.message."))) continue;
+      if (kept >= SentryScrub.LOG_ATTRIBUTES_MAX) continue;
+      const value = !k.startsWith("sentry.message.") && SentryScrub.SENSITIVE_KEY.test(k) ? "[filtered]" : SentryScrub.logValue(v, 0);
+      if (value === undefined) continue;
+      attributes[k] = value;
+      kept += 1;
+    }
+    return { level: log.level, message, attributes, severityNumber: log.severityNumber };
+  }
+
+  /** Log text: a JSON object (ReportLog's one-line logs) keeps its keys with each value scrubbed; other text is scrubbed whole. */
+  static logText(raw: string, max: number): string {
+    const t = raw.trim();
+    if (t.startsWith("{") && t.endsWith("}")) {
+      try {
+        const parsed: unknown = JSON.parse(t);
+        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
+          return JSON.stringify(SentryScrub.logValue(parsed, 0)).slice(0, max);
+        }
+      } catch {
+        // Not JSON after all: scrub it as text.
+      }
+    }
+    return ClientErrorScrub.text(raw, max);
+  }
+
+  /** One log value scrubbed: text like a message, numbers only when they can't be an identifier, objects key by key. */
+  static logValue(v: unknown, depth: number): unknown {
+    if (v === null || typeof v === "boolean") return v;
+    if (typeof v === "string") return ClientErrorScrub.text(v, SentryScrub.LOG_VALUE_MAX);
+    if (typeof v === "number" || typeof v === "bigint") {
+      const s = String(v);
+      return ClientErrorScrub.text(s, SentryScrub.LOG_VALUE_MAX) === s ? v : "[number]";
+    }
+    if (typeof v === "object") {
+      if (depth >= 3) return "[object]";
+      if (Array.isArray(v)) return v.slice(0, SentryScrub.LOG_ATTRIBUTES_MAX).map((x) => SentryScrub.logValue(x, depth + 1));
+      const out: Record<string, unknown> = {};
+      for (const [k, x] of Object.entries(v as Record<string, unknown>).slice(0, SentryScrub.LOG_ATTRIBUTES_MAX)) {
+        out[k] = SentryScrub.SENSITIVE_KEY.test(k) ? "[filtered]" : SentryScrub.logValue(x, depth + 1);
+      }
+      return out;
+    }
+    return undefined;
   }
 
   /**

@@ -119,7 +119,8 @@ Errors from the browser, the server, the edge runtime and the proxy go to Sentry
 
 - Sentry SDK v11 collects user identity, cookies, headers, request and response bodies, AI prompts and database values by default. Every one of those categories is turned off (`dataCollection`), and local variables in stack frames are off.
 - Each error is scrubbed again before it is sent, with the same rules as the app's own client error reports (`ClientErrorScrub`): no user, no request body, headers, cookies or query string, quoted text, emails, long numbers and tokens replaced, ids in paths replaced. Console and input breadcrumbs are dropped. Sampled trace spans get the same URL scrubbing on their name and attributes (`beforeSendSpan`). Signed report links (`/api/share/<token>/<file>`) and any path segment of 20+ characters are replaced, because those links work without sign-in.
-- Errors only: Session Replay and user feedback are not installed, and logs and metrics are dropped. Tracing samples 5% of requests.
+- Session Replay and user feedback are not installed, metrics are dropped, and tracing samples 5% of requests.
+- Logs: warnings and errors from the server and edge runtimes in Production (`console.warn`, `console.error`, `Sentry.logger.warn/error`) go to Sentry Logs, because Vercel's runtime logs reach back only one hour. Each log is scrubbed like an error (`SentryScrub.log`): user attributes dropped, values under keys such as email, name, token or key replaced, ReportLog's JSON lines keep their keys with each value scrubbed. Info and debug, the browser, and Preview send no logs. One server instance sends at most 60 logs a minute. Sentry includes 5GB of logs a month on every plan; at this app's volume that is far more than enough.
 - The app's own `/api/client-errors` report to the Vercel log keeps working alongside Sentry.
 
 ## Deploying on Vercel
