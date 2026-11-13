@@ -60,7 +60,8 @@ export class SentryScrub {
    * 2025-11-25 or earlier answers 400 and the client falls back to initialize (spec: basic/versioning, Backward
    * Compatibility). The MCP SDK still reports that 400 through transport.onerror, which Sentry captures. Only a
    * well-formed version newer than every version the SDK lists is dropped; an older, unknown or malformed version is
-   * still reported, as is every other MCP error.
+   * still reported, as is every other MCP error. Since /api/mcp now answers the probe itself (McpHttp.newerVersionProbe)
+   * the SDK no longer sees it; this filter stays as a backstop.
    */
   static isMcpNewerVersionProbe(event: ErrorEvent): boolean {
     const values = event.exception?.values ?? [];
