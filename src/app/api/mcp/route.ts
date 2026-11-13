@@ -36,6 +36,9 @@ class McpRoute {
       return McpRoute.unauthorized(origin, "invalid_token");
     }
     const viewer = access.user;
+    // A newer client's version probe is expected: answer it here so the SDK doesn't report it to Sentry as a crash.
+    const probe = McpHttp.newerVersionProbe(request);
+    if (probe) return probe;
 
     const server = McpServerFactory.create(viewer, McpOAuth.scopesOf(grant));
     const transport = new WebStandardStreamableHTTPServerTransport({ sessionIdGenerator: undefined, enableJsonResponse: true });

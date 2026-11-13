@@ -1,3 +1,4 @@
+import { SUPPORTED_PROTOCOL_VERSIONS } from "@modelcontextprotocol/sdk/types.js";
 import { McpOAuth, McpOAuthError } from "@/lib/mcp/McpOAuth";
 
 /**
@@ -28,6 +29,27 @@ export class McpHttp {
 
   static preflight(): Response {
     return new Response(null, { status: 204, headers: McpHttp.CORS });
+  }
+
+  /**
+   * The answer to a client's protocol-version probe, or null when the request is not one. MCP 2026-07-28 clients that
+   * also speak the older handshake ("dual-era") first send a request whose MCP-Protocol-Version header is newer than
+   * anything this server speaks; the server must answer 400 with the legacy -32000 error (not the modern -32022) so the
+   * client falls back to initialize (spec: basic/versioning, Backward Compatibility). That is an expected client
+   * condition, not a bug. The MCP SDK gives the same answer but also reports it through transport.onerror, which Sentry
+   * records as an unhandled crash, so the route answers here first and the SDK never sees it. Only a well-formed
+   * YYYY-MM-DD version newer than every version the SDK supports counts: an older, unknown or malformed version still
+   * goes to the SDK and is still reported. The body matches the SDK's own byte for byte (pinned in tests).
+   */
+  static newerVersionProbe(request: Request, supported: readonly string[] = SUPPORTED_PROTOCOL_VERSIONS): Response | null {
+    const requested = request.headers.get("mcp-protocol-version");
+    if (requested === null) return null;
+    const date = /^\d{4}-\d{2}-\d{2}$/;
+    if (!date.test(requested) || !supported.length || !supported.every((v) => date.test(v))) return null;
+    // YYYY-MM-DD strings sort as dates.
+    if (!supported.every((v) => requested > v)) return null;
+    const message = `Bad Request: Unsupported protocol version: ${requested} (supported versions: ${supported.join(", ")})`;
+    return McpHttp.json({ jsonrpc: "2.0", error: { code: -32000, message }, id: null }, 400);
   }
 
   static off(): Response | null {
