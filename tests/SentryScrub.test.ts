@@ -1,8 +1,9 @@
-import { describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { ErrorEvent } from "@sentry/nextjs";
 import { SentryScrub } from "@/lib/errors/SentryScrub";
 
 type StreamedSpanJSON = Parameters<typeof SentryScrub.span>[0];
+type Log = Parameters<typeof SentryScrub.log>[0];
 
 describe("SentryScrub", () => {
   it("turns off every data category Sentry v11 collects by default", () => {
@@ -131,6 +132,116 @@ describe("SentryScrub", () => {
       const two = mcp(rejected("2026-07-28"));
       two.exception!.values!.push({ type: "Error", value: "Database down" });
       expect(SentryScrub.event(two)).not.toBeNull();
+    });
+  });
+
+  describe("warning and error logs", () => {
+    const fake = { name: "ConsoleLogs" } as never;
+    const keep = { dsn: process.env.NEXT_PUBLIC_SENTRY_DSN, env: process.env.VERCEL_ENV, pub: process.env.NEXT_PUBLIC_VERCEL_ENV };
+    const setEnv = (env: string | undefined) => {
+      delete process.env.NEXT_PUBLIC_VERCEL_ENV;
+      if (env === undefined) delete process.env.VERCEL_ENV;
+      else process.env.VERCEL_ENV = env;
+    };
+    beforeEach(() => SentryScrub.resetLogLimit());
+    afterEach(() => {
+      for (const [k, v] of [["NEXT_PUBLIC_SENTRY_DSN", keep.dsn], ["VERCEL_ENV", keep.env], ["NEXT_PUBLIC_VERCEL_ENV", keep.pub]] as const) {
+        if (v === undefined) delete process.env[k];
+        else process.env[k] = v;
+      }
+    });
+
+    it("sends logs only from production, and only when the runtime asks for them", () => {
+      const log = { level: "error", message: "boom" } as Log;
+      setEnv("production");
+      const prod = SentryScrub.options({ logs: fake });
+      expect(prod.integrations).toEqual([fake]);
+      expect(prod.beforeSendLog?.(log)).toMatchObject({ level: "error", message: "boom" });
+      expect(SentryScrub.options().beforeSendLog?.(log)).toBeNull();
+      expect("integrations" in SentryScrub.options()).toBe(false);
+      for (const env of ["preview", "development", undefined]) {
+        setEnv(env);
+        const o = SentryScrub.options({ logs: fake });
+        expect("integrations" in o, String(env)).toBe(false);
+        expect(o.beforeSendLog?.(log), String(env)).toBeNull();
+      }
+    });
+
+    it("keeps warn and error only", () => {
+      for (const level of ["trace", "debug", "info", "fatal"] as const) expect(SentryScrub.log({ level, message: "x" } as Log), level).toBeNull();
+      expect(SentryScrub.log({ level: "warn", message: "x" } as Log)?.level).toBe("warn");
+      expect(SentryScrub.log({ level: "error", message: "x" } as Log)?.level).toBe("error");
+      expect(SentryScrub.log({ level: "error", message: "  " } as Log)).toBeNull();
+    });
+
+    it("scrubs the message and attributes like error events, and drops user and SDK internals", () => {
+      const out = SentryScrub.log({
+        level: "error",
+        message: 'Save failed for "Pat Lee" pat.lee@example.org MRN 12345678 at https://app.example.org/x?name=Pat',
+        attributes: {
+          "sentry.environment": "production",
+          "sentry.release": "abc123",
+          "sentry.origin": "auto.log.console",
+          "sentry.replay_id": "r1",
+          "user.email": "pat.lee@example.org",
+          "user.id": "u1",
+          "sentry.message.template": "Save failed for {}",
+          "sentry.message.parameter.0": "pat.lee@example.org",
+          patientName: "Pat Lee",
+          apiKey: "sk-live-abc",
+          step: "save",
+          count: 3,
+          visits: 12345678,
+          ok: false,
+          nested: { email: "pat@example.org", reason: 'quoted "Valve Clinic"', deep: { deeper: { deepest: { x: 1 } } } },
+        },
+      } as Log)!;
+      expect(out.message).toBe('Save failed for "[value]" [email] MRN [number] at https://app.example.org/x');
+      const a = out.attributes!;
+      expect(a["sentry.environment"]).toBe("production");
+      expect(a["sentry.release"]).toBe("abc123");
+      expect(a["sentry.origin"]).toBe("auto.log.console");
+      expect(a["sentry.replay_id"]).toBeUndefined();
+      expect(a["user.email"]).toBeUndefined();
+      expect(a["user.id"]).toBeUndefined();
+      expect(a["sentry.message.template"]).toBe("Save failed for {}");
+      expect(a["sentry.message.parameter.0"]).toBe("[email]");
+      expect(a.patientName).toBe("[filtered]");
+      expect(a.apiKey).toBe("[filtered]");
+      expect(a.step).toBe("save");
+      expect(a.count).toBe(3);
+      expect(a.visits).toBe("[number]");
+      expect(a.ok).toBe(false);
+      expect(a.nested).toEqual({ email: "[filtered]", reason: 'quoted "[value]"', deep: { deeper: { deepest: "[object]" } } });
+      expect(JSON.stringify(out)).not.toMatch(/Pat|pat\.lee|12345678|sk-live/);
+    });
+
+    it("keeps the keys of ReportLog's JSON lines and scrubs their values", () => {
+      const line = JSON.stringify({ scope: "report", level: "error", event: "drive.check.failed", folderId: "1AbCdEfGhIjKlMnOpQrStUvWxYz", cookie: "present", error: 'File "Q3 Pat Lee.pdf" not found' });
+      expect(JSON.parse(SentryScrub.log({ level: "error", message: line } as Log)!.message as string)).toEqual({
+        scope: "report",
+        level: "error",
+        event: "drive.check.failed",
+        folderId: "[token]",
+        cookie: "[filtered]",
+        error: 'File "[value]" not found',
+      });
+      expect(SentryScrub.logText("{not json", 300)).toBe("{not json");
+    });
+
+    it("caps long messages and the number of attributes", () => {
+      const attributes = Object.fromEntries(Array.from({ length: 50 }, (_, i) => [`a${i}`, i]));
+      const out = SentryScrub.log({ level: "warn", message: "word ".repeat(2_000), attributes } as Log)!;
+      expect(String(out.message).length).toBe(SentryScrub.LOG_MESSAGE_MAX);
+      expect(Object.keys(out.attributes!)).toHaveLength(SentryScrub.LOG_ATTRIBUTES_MAX);
+    });
+
+    it("sends at most LOGS_PER_MINUTE logs a minute from one instance", () => {
+      const log = () => ({ level: "error", message: "loop" }) as Log;
+      const t = 1_000_000;
+      for (let i = 0; i < SentryScrub.LOGS_PER_MINUTE; i++) expect(SentryScrub.log(log(), t)).not.toBeNull();
+      expect(SentryScrub.log(log(), t + 1)).toBeNull();
+      expect(SentryScrub.log(log(), t + 60_000)).not.toBeNull();
     });
   });
 

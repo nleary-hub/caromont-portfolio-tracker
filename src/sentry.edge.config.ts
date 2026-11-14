@@ -2,4 +2,5 @@
 import * as Sentry from "@sentry/nextjs";
 import { SentryScrub } from "@/lib/errors/SentryScrub";
 
-Sentry.init(SentryScrub.options());
+// Production warnings and errors (console.warn / console.error) also go to Sentry Logs, scrubbed by SentryScrub.log.
+Sentry.init(SentryScrub.options({ logs: Sentry.consoleLoggingIntegration({ levels: [...SentryScrub.LOG_LEVELS] }) }));
