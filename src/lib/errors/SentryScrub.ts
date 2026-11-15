@@ -41,6 +41,8 @@ export class SentryScrub {
 
   /** Only these log levels are kept (Vercel's runtime logs reach back one hour; Sentry keeps them longer). */
   static readonly LOG_LEVELS = ["warn", "error"] as const;
+  /** Sentry's severity number for warn (OpenTelemetry's WARN). */
+  static readonly WARN_SEVERITY = 13;
   /** Most logs one server instance sends per minute, so a loop can't use up the monthly log allowance. */
   static readonly LOGS_PER_MINUTE = 60;
   /** Most attributes kept per log besides the SDK's own, and the longest text kept in one attribute. */
@@ -60,6 +62,19 @@ export class SentryScrub {
   /** A key whose value is replaced outright: credentials, contact details and anything naming a person or patient. */
   static readonly SENSITIVE_KEY = /pass|secret|token|key|auth|cookie|session|e-?mail|phone|mrn|ssn|dob|birth|name|note|body|prompt/i;
   private static logLimit = new ClientErrorRateLimit(SentryScrub.LOGS_PER_MINUTE, 60_000);
+  /**
+   * One of Node's own process warnings ("(node:7) DeprecationWarning: ..."). Node prints these through console.error,
+   * so the console integration would file them as errors; they are sent as warnings instead.
+   */
+  static readonly NODE_WARNING = /^\(node:\d+\) (?:\[[A-Z]+\d+\] )?[A-Za-z]*Warning: /;
+  /**
+   * The one Node warning that is dropped: on Vercel's Node 24 servers, Node reports several times a day that a vm
+   * constant (such as vm.USE_MAIN_CONTEXT_DEFAULT_LOADER) is experimental. Nothing in the app or its packages uses those
+   * constants, so it comes from outside the app's code and there is nothing to fix. Only that exact warning, with
+   * nothing else in the message, matches; every other warning is still sent.
+   */
+  static readonly NODE_VM_EXPERIMENTAL_WARNING =
+    /^\(node:\d+\) ExperimentalWarning: vm\.[A-Z][A-Z0-9_]* is an experimental feature and might change at any time(?:\n\(Use `[^`\n]+ --trace-warnings \.\.\.` to show where the warning was created\))?$/;
 
   /**
    * Options every runtime passes to Sentry.init. Pass `logs` (the console logging integration) from the server and
@@ -93,11 +108,15 @@ export class SentryScrub {
 
   /**
    * A warning or error log scrubbed with the same rules as error events, or null to drop it: any other level, over the
-   * per-minute allowance, or empty. User attributes and SDK internals are dropped; every other attribute is scrubbed.
+   * per-minute allowance, empty, or Node's harmless vm ExperimentalWarning. Node's own process warnings go as warn, not
+   * error. User attributes and SDK internals are dropped; every other attribute is scrubbed.
    */
   static log(log: Log, now = Date.now()): Log | null {
     if (!(SentryScrub.LOG_LEVELS as readonly string[]).includes(log.level)) return null;
-    const message = SentryScrub.logText(String(log.message ?? ""), SentryScrub.LOG_MESSAGE_MAX);
+    const raw = String(log.message ?? "");
+    if (SentryScrub.NODE_VM_EXPERIMENTAL_WARNING.test(raw.trim())) return null;
+    const nodeWarning = SentryScrub.NODE_WARNING.test(raw.trimStart());
+    const message = SentryScrub.logText(raw, SentryScrub.LOG_MESSAGE_MAX);
     if (!message.trim()) return null;
     if (!SentryScrub.logLimit.allow("logs", now)) return null;
     const attributes: Record<string, unknown> = {};
@@ -114,6 +133,7 @@ export class SentryScrub {
       attributes[k] = value;
       kept += 1;
     }
+    if (nodeWarning) return { level: "warn", message, attributes, severityNumber: SentryScrub.WARN_SEVERITY };
     return { level: log.level, message, attributes, severityNumber: log.severityNumber };
   }
 

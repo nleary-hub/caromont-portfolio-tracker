@@ -1,3 +1,4 @@
+import { execFileSync } from "node:child_process";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import * as Sentry from "@sentry/nextjs";
 import { SentryScrub } from "@/lib/errors/SentryScrub";
@@ -55,5 +56,38 @@ describe("Sentry warning and error logs (server setup)", () => {
     // Only the two log lines left, at their own levels.
     expect(all.match(/"level":"(warn|error)"/g)).toEqual(['"level":"warn"', '"level":"error"']);
     expect(all).not.toMatch(/"level":"info"/);
+  });
+
+  it("drops Node's vm ExperimentalWarning and sends other Node warnings as warn", async () => {
+    sent.length = 0;
+    const trace = "\n(Use `node --trace-warnings ...` to show where the warning was created)";
+    const keep = process.stderr.write;
+    process.stderr.write = (() => true) as never;
+    try {
+      // Exactly what Node's warning handler prints, through the console.error the integration wrapped (see below).
+      console.error(`(node:7) ExperimentalWarning: vm.USE_MAIN_CONTEXT_DEFAULT_LOADER is an experimental feature and might change at any time${trace}`);
+      console.error(`(node:7) MaxListenersExceededWarning: Possible EventEmitter memory leak detected.${trace}`);
+    } finally {
+      process.stderr.write = keep;
+    }
+    await Sentry.flush(2000);
+    const all = sent.join("\n");
+    expect(all).not.toContain("is an experimental feature");
+    expect(all).toContain("Possible EventEmitter memory leak detected.");
+    expect(all.match(/"level":"(warn|error)"/g)).toEqual(['"level":"warn"']);
+  });
+
+  it("Node still prints its process warnings through console.error, in the form the filter expects", () => {
+    // A plain Node process (the test runner silences warnings in its own): if Node ever stops using console.error, or
+    // changes the wording, this fails and the filter needs another look.
+    const script = [
+      "const seen = [];",
+      "console.error = (...a) => seen.push(a.join(' '));",
+      "process.emitWarning('vm.USE_MAIN_CONTEXT_DEFAULT_LOADER is an experimental feature and might change at any time', 'ExperimentalWarning');",
+      "setImmediate(() => process.stdout.write(JSON.stringify(seen)));",
+    ].join("\n");
+    const seen = JSON.parse(execFileSync(process.execPath, ["-e", script], { encoding: "utf8" })) as string[];
+    expect(seen).toHaveLength(1);
+    expect(SentryScrub.NODE_VM_EXPERIMENTAL_WARNING.test(seen[0].trim())).toBe(true);
   });
 });

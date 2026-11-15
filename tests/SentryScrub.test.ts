@@ -174,6 +174,45 @@ describe("SentryScrub", () => {
       expect(SentryScrub.log({ level: "error", message: "  " } as Log)).toBeNull();
     });
 
+    describe("Node's own process warnings, which Node prints through console.error", () => {
+      const trace = "\n(Use `node --trace-warnings ...` to show where the warning was created)";
+      const vmWarning = (pid: number, name = "USE_MAIN_CONTEXT_DEFAULT_LOADER") =>
+        `(node:${pid}) ExperimentalWarning: vm.${name} is an experimental feature and might change at any time`;
+
+      it("drops the harmless vm ExperimentalWarning, with or without the trace hint", () => {
+        for (const message of [vmWarning(7) + trace, vmWarning(8) + trace, vmWarning(7), vmWarning(12, "DONT_CONTEXTIFY") + trace, `${vmWarning(7)}${trace}\n`]) {
+          expect(SentryScrub.log({ level: "error", message } as Log), message).toBeNull();
+          expect(SentryScrub.log({ level: "warn", message } as Log), message).toBeNull();
+        }
+        // The hint names whatever started Node, not always "node".
+        expect(SentryScrub.log({ level: "error", message: vmWarning(7) + trace.replace("node --", "node24 --") } as Log)).toBeNull();
+      });
+
+      it("keeps every other Node warning, sent as warn rather than error", () => {
+        for (const message of [
+          "(node:7) ExperimentalWarning: The Fetch API is an experimental feature. This feature could change at any time" + trace,
+          "(node:7) ExperimentalWarning: vm.SourceTextModule is an experimental feature and might change at any time" + trace,
+          "(node:7) [DEP0040] DeprecationWarning: The `punycode` module is deprecated." + trace,
+          "(node:7) MaxListenersExceededWarning: Possible EventEmitter memory leak detected." + trace,
+          "(node:7) Warning: Closing file descriptor 21 on garbage collection",
+        ]) {
+          const out = SentryScrub.log({ level: "error", message } as Log);
+          expect(out, message).not.toBeNull();
+          expect(out!.level, message).toBe("warn");
+          expect(out!.severityNumber, message).toBe(13);
+        }
+      });
+
+      it("does not drop a vm warning that carries anything else, and leaves app errors at error", () => {
+        const extra = SentryScrub.log({ level: "error", message: `${vmWarning(7)}${trace}\nError: save failed` } as Log);
+        expect(extra?.level).toBe("warn");
+        const quoted = SentryScrub.log({ level: "error", message: `Import failed: ${vmWarning(7)}` } as Log);
+        expect(quoted).toMatchObject({ level: "error" });
+        expect(SentryScrub.log({ level: "error", message: "ExperimentalWarning: vm.X is an experimental feature and might change at any time" } as Log)?.level).toBe("error");
+        expect(SentryScrub.log({ level: "error", message: "Save failed" } as Log)).toMatchObject({ level: "error", severityNumber: undefined });
+      });
+    });
+
     it("scrubs the message and attributes like error events, and drops user and SDK internals", () => {
       const out = SentryScrub.log({
         level: "error",
