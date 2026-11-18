@@ -228,7 +228,10 @@ export class AiVoiceErrors {
   static connect(e: unknown): { code: "model_unavailable" | "connect_failed"; message: string; status: number | null; type: string | null; detail: string | null } {
     const info = (e as { info?: { status?: number; type?: string; code?: string; message?: string; modelUnavailable?: boolean } })?.info ?? {};
     const unavailable = info.modelUnavailable === true;
-    return { code: unavailable ? "model_unavailable" : "connect_failed", message: unavailable ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED, status: typeof info.status === "number" ? info.status : null, type: info.type ?? info.code ?? (e as Error)?.name ?? null, detail: info.message ?? null };
+    // OpenAI refused the session for oversized instructions (the server sends VOICE_INSTRUCTIONS_TOO_LONG, or OpenAI's
+    // own words on the Realtime path): say so, rather than the network message.
+    const tooLong = !unavailable && (info.message === AiToolsCopy.VOICE_INSTRUCTIONS_TOO_LONG || AiVoiceChat.instructionsTooLong(info));
+    return { code: unavailable ? "model_unavailable" : "connect_failed", message: unavailable ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : tooLong ? AiToolsCopy.VOICE_INSTRUCTIONS_TOO_LONG : AiToolsCopy.VOICE_CONNECT_FAILED, status: typeof info.status === "number" ? info.status : null, type: info.type ?? info.code ?? (e as Error)?.name ?? null, detail: info.message ?? null };
   }
 
   /** ICE failed, or dropped before any media flowed: shown as the network message and logged as ice_failed. */

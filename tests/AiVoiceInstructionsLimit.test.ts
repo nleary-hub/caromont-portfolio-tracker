@@ -138,3 +138,16 @@ describe("voice sessions on a big service line stay under the cap", () => {
     expect(err.mock.calls.some((c) => (c[1] as { message?: string })?.message === "Instructions must not exceed 16384 tokens.")).toBe(true);
   });
 });
+
+describe("the browser shows the length refusal, not the network message", () => {
+  it("maps the server's message and OpenAI's own words to VOICE_INSTRUCTIONS_TOO_LONG", async () => {
+    const { AiVoiceErrors } = await import("@/lib/ai/AiVoiceChat");
+    const live = AiVoiceErrors.connect({ info: { status: 400, type: "invalid_request_error", message: AiToolsCopy.VOICE_INSTRUCTIONS_TOO_LONG, modelUnavailable: false } });
+    expect(live).toMatchObject({ code: "connect_failed", message: AiToolsCopy.VOICE_INSTRUCTIONS_TOO_LONG, status: 400 });
+    const realtime = AiVoiceErrors.connect({ info: { status: 400, message: "Instructions must not exceed 16384 tokens.", modelUnavailable: false } });
+    expect(realtime.message).toBe(AiToolsCopy.VOICE_INSTRUCTIONS_TOO_LONG);
+    // Other failures keep their messages.
+    expect(AiVoiceErrors.connect({ info: { status: 502, message: "upstream down" } }).message).toBe(AiToolsCopy.VOICE_CONNECT_FAILED);
+    expect(AiVoiceErrors.connect({ info: { status: 404, modelUnavailable: true } }).message).toBe(AiToolsCopy.VOICE_MODEL_UNAVAILABLE);
+  });
+});
