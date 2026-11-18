@@ -59,6 +59,67 @@ export class AiVoiceChat {
 
   /** Admin voice chat instructions are capped here (validated on the server). */
   static readonly INSTRUCTIONS_MAX = 4000;
+  /**
+   * OpenAI's cap on a voice session's instructions: the GPT-Live guide says "up to 16,384 tokens" and the API refuses
+   * more ("Instructions must not exceed 16384 tokens."). Realtime models are held to the same cap, the safe choice.
+   * Fixed by OpenAI, not a setting here, and the same for every voice model the app offers.
+   */
+  static readonly INSTRUCTIONS_TOKEN_LIMIT = 16_384;
+  /** What the voice prompt is built to: the cap less headroom, because the count below is an estimate. */
+  static readonly INSTRUCTIONS_TOKEN_TARGET = 14_000;
+  /**
+   * Characters per token for the voice estimate. The portfolio context is JSON lines (quotes, braces, dates, refs),
+   * which runs nearer 3 characters per token than the 4 used for prose, so 4 undercounts and let the prompt run over.
+   */
+  static readonly CHARS_PER_TOKEN = 3;
+  /** Added when the guard had to cut projects, so the model looks them up rather than saying they don't exist. */
+  static readonly TRIMMED_NOTE = "Some projects were left out of this list to keep it short. Use search_projects or get_project to look up any project not listed.";
+
+  /** Conservative token estimate for voice instructions (characters / 3, rounded up). */
+  static estimateTokens(text: string): number {
+    return Math.ceil(text.length / AiVoiceChat.CHARS_PER_TOKEN);
+  }
+
+  /**
+   * The portfolio context budget for a voice prompt, in PortfolioContext's own units (characters / 4), so that the
+   * whole prompt (rules, tool contract, patient line, optional Live line and the context) lands at the target.
+   */
+  static contextBudget(custom: string | null = null, live = false): number {
+    const fixed = AiVoiceChat.instructions("", custom) + (live ? `\n${AiVoiceChat.LIVE_LINE}` : "");
+    const chars = AiVoiceChat.INSTRUCTIONS_TOKEN_TARGET * AiVoiceChat.CHARS_PER_TOKEN - fixed.length;
+    return Math.max(0, Math.floor(chars / 4));
+  }
+
+  /**
+   * The last guard before a prompt goes to OpenAI: if it is over the target, whole lines are dropped from the end
+   * (the project lines; the rules, tool contract and patient line come first and are always kept) and TRIMMED_NOTE is
+   * added. `tail` (the Live line) always stays last. The result never exceeds the target.
+   */
+  static fit(text: string, tail: string | null = null): { text: string; trimmed: boolean; tokens: number } {
+    const max = AiVoiceChat.INSTRUCTIONS_TOKEN_TARGET * AiVoiceChat.CHARS_PER_TOKEN;
+    const join = (t: string) => (tail ? `${t}\n${tail}` : t);
+    const whole = join(text);
+    if (whole.length <= max) return { text: whole, trimmed: false, tokens: AiVoiceChat.estimateTokens(whole) };
+    const reserve = (tail ? tail.length + 1 : 0) + AiVoiceChat.TRIMMED_NOTE.length + 1;
+    const lines = text.split("\n");
+    const kept: string[] = [];
+    let used = 0;
+    for (const line of lines) {
+      const add = (kept.length ? 1 : 0) + line.length;
+      if (used + add + reserve > max) break;
+      kept.push(line);
+      used += add;
+    }
+    // A first line longer than the whole budget (not possible with the 4,000-character admin cap) is cut to fit.
+    const head = kept.length ? kept.join("\n") : text.slice(0, Math.max(0, max - reserve));
+    const out = join(`${head}\n${AiVoiceChat.TRIMMED_NOTE}`);
+    return { text: out, trimmed: true, tokens: AiVoiceChat.estimateTokens(out) };
+  }
+
+  /** OpenAI refused the session because the instructions are over its cap (400 invalid_value, "Instructions must not exceed ..."). */
+  static instructionsTooLong(e: { status?: number | null; code?: string | null; message?: string | null }): boolean {
+    return /instructions? (must not|cannot|can't) exceed|instructions? (is|are) too long/i.test(e.message ?? "");
+  }
   /** Always sent, whatever the admin instructions say. */
   static readonly TOOL_CONTRACT =
     "For any change, first call propose_changes. Then say its readBack sentence and ask if you should apply it. Call apply_changes only after the person clearly says yes, and only with that proposalId. Say a change was applied only after apply_changes returns ok with applied lines, and then say what was applied. If it returns failed or refused lines, say why in plain words. If they say no, apply nothing. When they say undo that, call undo_last_apply. Use search_projects or get_project when you need more detail about a project.";
@@ -87,8 +148,11 @@ export class AiVoiceChat {
    * run in the Responses backend (which gets the same instructions), so the voice model delegates change requests.
    */
   static liveInstructions(base: string): string {
-    return `${base}\nFor changes, delegate the request to the backend, which calls propose_changes and, after the person says yes, apply_changes.`;
+    return `${base}\n${AiVoiceChat.LIVE_LINE}`;
   }
+
+  /** The line liveInstructions adds. The backend has the fuller portfolio context, so detail questions go there too. */
+  static readonly LIVE_LINE = "For changes, delegate the request to the backend, which calls propose_changes and, after the person says yes, apply_changes. For project details not listed here, delegate the question to the backend too.";
 
   /**
    * The tool call's arguments as review lines. A line is kept only when its ref and name both point at the same

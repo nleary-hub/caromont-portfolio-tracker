@@ -174,6 +174,37 @@ describe("SentryScrub", () => {
       expect(SentryScrub.log({ level: "error", message: "  " } as Log)).toBeNull();
     });
 
+    describe("a label followed by an object (console.error(label, { ... }) through the console integration)", () => {
+      // The Nov 17, 2026 voice failure, as the integration formats it (example session id).
+      const voice = `AI tools: voice connect failed ${JSON.stringify({ code: "connect_failed", sessionId: "a1b2c3d4-0000-4000-8000-000000000001", model: "gpt-live-1", status: 400, type: "invalid_request_error", errorCode: "invalid_value", message: "Instructions must not exceed 16384 tokens.", source: "server", api: "live" })}`;
+
+      it("keeps the keys and safe values readable, where every key and value used to read [value]", () => {
+        const out = SentryScrub.log({ level: "error", message: voice } as Log)!;
+        expect(out.message.startsWith("AI tools: voice connect failed {")).toBe(true);
+        const body = JSON.parse(out.message.slice(out.message.indexOf("{")));
+        expect(body).toMatchObject({ code: "connect_failed", model: "gpt-live-1", status: 400, type: "invalid_request_error", errorCode: "invalid_value", source: "server", api: "live" });
+        expect(body.message).toBe("Instructions must not exceed [number] tokens.");
+        expect(out.message).not.toContain("[value]");
+      });
+
+      it("still filters sensitive keys and scrubs values like any other log", () => {
+        const out = SentryScrub.log({ level: "error", message: voice } as Log)!;
+        expect(out.message).toContain('"sessionId":"[filtered]"');
+        expect(out.message).not.toContain("a1b2c3d4");
+        const risky = SentryScrub.log({ level: "error", message: `Save failed ${JSON.stringify({ email: "pat@example.com", userName: "Pat Example", detail: "sent to pat@example.com", key: "sk-proj-EXAMPLEKEY-abcdefghijklmnop-WXYZ" })}` } as Log)!;
+        expect(risky.message).not.toContain("pat@example.com");
+        expect(risky.message).not.toContain("Pat Example");
+        expect(risky.message).not.toContain("sk-proj");
+        expect(risky.message).toContain('"detail":"sent to [email]"');
+      });
+
+      it("scrubs text that only looks like a label and an object as text, as before", () => {
+        const out = SentryScrub.log({ level: "error", message: 'Bad input {"name": "Pat Example"' } as Log)!;
+        expect(out.message).not.toContain("Pat Example");
+        expect(SentryScrub.log({ level: "error", message: 'Two "quoted" words {not json}' } as Log)!.message).toBe('Two "[value]" words {not json}');
+      });
+    });
+
     describe("Node's own process warnings, which Node prints through console.error", () => {
       const trace = "\n(Use `node --trace-warnings ...` to show where the warning was created)";
       const vmWarning = (pid: number, name = "USE_MAIN_CONTEXT_DEFAULT_LOADER") =>
