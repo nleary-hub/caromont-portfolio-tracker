@@ -41,7 +41,7 @@ export class AnthropicPricingParser {
    * Null when the id isn't that shape, so the caller shows the price as not listed rather than guessing.
    */
   static displayName(id: string): string | null {
-    let s = id.trim().toLowerCase().replace(/-\d{8}$/, "");
+    const s = id.trim().toLowerCase().replace(/-\d{8}$/, "");
     const legacy = /^claude-(\d+)(?:-(\d+))?-([a-z]+)$/.exec(s);
     if (legacy) {
       const ver = legacy[2] ? `${legacy[1]}.${legacy[2]}` : legacy[1];

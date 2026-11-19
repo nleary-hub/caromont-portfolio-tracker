@@ -14,7 +14,6 @@ import { migratedPglite, refusal, registryHarness, type RegistryHarness } from "
 
 // Monthly AI spend caps (0074). Fictional people and amounts only.
 const ADMIN = { email: "admin@example.test", isAdmin: true };
-const ANA = "ana@example.test";
 const NOW = new Date("2026-11-10T15:00:00Z");
 const now = () => NOW;
 

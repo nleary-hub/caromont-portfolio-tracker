@@ -32,8 +32,13 @@ export type AiVoiceReview = { proposalId: string; changes: AiToolChange[] };
  * all, or per line). "Undo that" undoes the last apply. Audio goes from the browser to the provider only, never to this
  * app, and is never recorded. Paused (model off) keeps the button greyed and focusable with the note.
  */
-export function AiVoiceChatPanel({ disabledNote, route = { provider: "openai", model: "" }, initialPhase = "idle", initialReviews = [], initialError = null, initialTranscript = [], initialWarning = false }: { disabledNote: string | null; route?: AiVoiceRoute; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[]; initialError?: string | null; /** Preview/tests. */ initialTranscript?: AiVoiceTranscriptLine[]; initialWarning?: boolean }) {
-  if (route.provider === "anthropic" || route.provider === "xai") return <AiAnthropicVoicePanel disabledNote={disabledNote} model={route.model} company={route.provider} />;
+export function AiVoiceChatPanel(props: { disabledNote: string | null; route?: AiVoiceRoute; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[]; initialError?: string | null; initialTranscript?: AiVoiceTranscriptLine[]; initialWarning?: boolean }) {
+  const route = props.route ?? { provider: "openai" as const, model: "" };
+  if (route.provider === "anthropic" || route.provider === "xai") return <AiAnthropicVoicePanel disabledNote={props.disabledNote} model={route.model} company={route.provider} />;
+  return <OpenAiVoiceChatPanel {...props} />;
+}
+
+function OpenAiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialReviews = [], initialError = null, initialTranscript = [], initialWarning = false }: { disabledNote: string | null; route?: AiVoiceRoute; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[]; initialError?: string | null; /** Preview/tests. */ initialTranscript?: AiVoiceTranscriptLine[]; initialWarning?: boolean }) {
   const [phase, setPhase] = useState<AiVoicePhaseState>(initialPhase);
   const [error, setError] = useState<string | null>(initialError);
   const [reviews] = useState<AiVoiceReview[]>(initialReviews);
