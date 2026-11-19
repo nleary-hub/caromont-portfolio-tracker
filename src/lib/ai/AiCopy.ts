@@ -44,7 +44,7 @@ export class AiCopy {
 
   // ---- Admin > AI settings: Models and Features (step 3b) -----------------------------------------------------------
   static readonly MODELS_TITLE = "Models";
-  static readonly MODELS_INTRO = "Models admins can choose, for every company. New models start off. Enter prices by hand, or refresh them from OpenAI's pricing page. Prices are for reference only.";
+  static readonly MODELS_INTRO = "Models admins can choose, for every company. New models start off. Enter prices by hand, or refresh them from each company's pricing page. Prices are for reference only. A price that page doesn't list stays blank.";
   static readonly MODELS_HEADERS = ["Model", "On", "Price unit", "Input price", "Output price", ""] as const;
   static readonly MODELS_EMPTY = "No models yet.";
   static readonly MODEL_IN_USE = "In use";
@@ -116,11 +116,12 @@ export class AiCopy {
   static readonly REFRESHING_PRICES = "Reading OpenAI's pricing page…";
   static readonly REFRESH_PRICES_HELP = "Reads OpenAI's published pricing page and shows the changes for your models. Nothing is saved until you confirm.";
   static readonly PRICE_REVIEW_TITLE = "Review price changes";
-  static readonly PRICE_REVIEW_INTRO = "Prices from OpenAI's pricing page for the models in your list. Prices are for reference only. Nothing is saved until you confirm.";
+  static readonly PRICE_REVIEW_INTRO = "Prices from each company's own pricing page. Prices are for reference only. Nothing is saved until you confirm. A company whose page can't be read is shown as unavailable, not as a guessed number.";
   static readonly PRICE_REVIEW_HEADERS = ["Model", "Current price", "New price", "Status"] as const;
   static readonly PRICE_REVIEW_CHANGED = "Changed";
   static readonly PRICE_REVIEW_SAME = "No change";
   static readonly PRICE_REVIEW_NOT_FOUND = "Not on the pricing page. Keeps the current price.";
+  static readonly PRICE_UNAVAILABLE = "Price unavailable";
   static readonly PRICE_REVIEW_NOT_LISTED = "No longer listed by OpenAI";
   static readonly PRICE_REVIEW_NEWLY_LISTED = "Listed by OpenAI but not in your list:";
   static readonly PRICE_REVIEW_LIST_UNCHECKED = "OpenAI's model list couldn't be checked, so listing changes aren't shown.";
@@ -165,7 +166,7 @@ export class AiCopy {
   static readonly DISABLE_CONFIRM_YES = "Turn off anyway";
   static readonly DISABLE_CONFIRM_NO = "Keep on";
   static readonly FEATURES_TITLE = "Features";
-  static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone, and pick the provider and model each text feature uses. Until you pick one, a feature uses the model chosen above. Voice chat and Dictation have their own models and run on OpenAI.";
+  static readonly FEATURES_INTRO = "Turn each AI feature on or off for everyone, and pick the provider and model each text feature uses. Until you pick one, a feature uses the model chosen above. Dictation is OpenAI speech-to-text. Voice chat can use OpenAI for the whole conversation, or Anthropic for the answer while OpenAI still hears and speaks.";
   static readonly FEATURE_ON_HELP = "On for everyone.";
   static readonly FEATURE_OFF_HELP = "Off for everyone. The button is hidden.";
   static readonly FEATURE_REVISE_NOTE = "Revise with AI";
@@ -258,8 +259,16 @@ export class AiCopy {
   static readonly PICK_A_MODEL = "Pick a model";
   static readonly PROVIDER_KEY_MISSING = "Provider key missing";
   static readonly PROVIDER_KEY_MISSING_HELP = "This feature's provider has no working key, so it can't run. Add or fix the key in Provider keys, or pick another provider.";
-  static readonly VOICE_OPENAI_ONLY = "Runs on OpenAI only for now.";
-  static readonly PROVIDER_LOCKED = "Voice chat and Dictation run on OpenAI only for now.";
+  static readonly VOICE_OPENAI_ONLY = "Speech-to-speech on OpenAI.";
+  static readonly DICTATION_NO_SPEECH = "Anthropic's API accepts text and images, not audio, so it can't transcribe. Dictation can use OpenAI or xAI.";
+  static readonly DICTATION_XAI = "xAI transcribes. Anthropic has no speech-to-text.";
+  static readonly VOICE_XAI = "xAI transcribes, answers, and speaks. The live Grok WebSocket is a different session; this uses xAI's speech and chat requests.";
+  static readonly VOICE_XAI_SAVED = "Voice chat will use xAI to hear, answer, and speak.";
+  static readonly VOICE_PROVIDER_LIMIT = "Voice chat can use OpenAI, Anthropic, or xAI. Anthropic writes the answer only. xAI hears, answers, and speaks.";
+  static readonly VOICE_ANTHROPIC_SPLIT = "Listening and speaking: OpenAI. The answer: Anthropic. Anthropic has no speech-to-text or text-to-speech.";
+  static readonly VOICE_ANTHROPIC_SAVED = "Voice chat will use this Anthropic model for the answer. OpenAI still transcribes and speaks.";
+  static readonly VOICE_OPENAI_SAVED = "Voice chat will use OpenAI speech-to-speech.";
+  static readonly PROVIDER_LOCKED = "Dictation runs on OpenAI speech-to-text. Anthropic has no speech-to-text.";
   static readonly PROVIDER_NO_KEY = "That provider has no key. Add one in Provider keys first.";
   static readonly PROVIDER_KEY_FAILING = "That provider's key is failing. Fix it in Provider keys first.";
   static readonly FEATURE_MODEL_SAME_AS_ABOVE = "Uses the model chosen above";
@@ -310,6 +319,12 @@ export class AiCopy {
   static modelAdded(id: string): string {
     return `${id} added. It's off until you turn it on.`;
   }
+
+  static modelRemoved(id: string): string {
+    return `${id} removed from the list. It can be added again later.`;
+  }
+
+  static readonly MODEL_REMOVE = "Remove";
 
   static disableWarning(id: string, features: readonly string[]): string {
     return `${id} is the model in use. Turning it off stops ${features.join(", ")}. Choose another model first, or turn it off anyway.`;

@@ -7,6 +7,7 @@ import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { OwnerGate } from "@/lib/auth/OwnerGate";
 import { Db } from "@/lib/db/Db";
+import { AiSpokenTurnService } from "@/lib/services/AiSpokenTurnService";
 import { AiVoiceChatService } from "@/lib/services/AiVoiceChatService";
 import { AiToolsService, type AiToolLineResult, type AiToolProposeResult, type AiToolsDb } from "@/lib/services/AiToolsService";
 import { ProjectService } from "@/lib/services/ProjectService";
@@ -158,6 +159,18 @@ export async function removeRelatedLink(id: string): Promise<AiToolLineResult> {
     return r;
   } catch {
     return { ok: false, message: AiToolsCopy.APPLY_FAILED };
+  }
+}
+
+/** One spoken turn when voice chat's answer comes from Anthropic. OpenAI hears and speaks. */
+export async function speakAiVoiceTurn(form: FormData) {
+  try {
+    const c = await context();
+    if (!c) return { ok: false as const, message: AiCopy.NOT_AUTHORIZED };
+    return await AiSpokenTurnService.turn({ db: c.db, viewer: c.viewer, scope: c.scope, audio: form.get("audio") });
+  } catch (e) {
+    console.error("AI tools failed: voice turn", (e as Error)?.name);
+    return { ok: false as const, message: AiToolsCopy.VOICE_START_FAILED };
   }
 }
 

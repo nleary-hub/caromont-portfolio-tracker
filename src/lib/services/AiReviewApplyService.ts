@@ -18,6 +18,7 @@ import { AiModelService } from "@/lib/services/AiModelService";
 import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiRegistryRuntime } from "@/lib/services/AiRegistryRuntime";
 import { AiSettingsService } from "./AiSettingsService";
+import { AiSpendCap } from "@/lib/ai/AiSpendCap";
 import { AiSpendCapService } from "./AiSpendCapService";
 import { AiFailureAlertService } from "./AiFailureAlertService";
 import { AiFailureCopy } from "@/lib/ai/AiFailureAlert";
@@ -118,7 +119,7 @@ export class AiReviewApplyService {
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
     // 0074: the monthly spend cap (no cap rows = no cap).
-    const spend = await AiSpendCapService.check({ db, email: user, env, now });
+    const spend = await AiSpendCapService.check({ db, provider: AiSpendCap.vendorOf(config), email: user, env, now });
     if (!spend.ok) return { ok: false, kind: "cap", message: spend.message };
 
     const proposalId = randomUUID();

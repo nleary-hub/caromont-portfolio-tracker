@@ -28,7 +28,10 @@ export class AiFeatureProviders {
   static readonly ALL: readonly AiFeatureProvider[] = AiKeyProviders.ALL;
   /** Every feature starts here, and an unreadable value reads as this. Today's behavior. */
   static readonly DEFAULT: AiFeatureProvider = "openai";
-  /** Voice and dictation run on OpenAI only for now (realtime, live and transcription APIs). */
+  /**
+   * Not a generic text feature. Dictation is speech-to-text and stays on OpenAI.
+   * Voice chat may use Anthropic for the conversation; hearing and speaking stay on OpenAI.
+   */
   static readonly LOCKED: readonly AiToggleFeature[] = ["voice_chat", "dictation"];
   static readonly XAI_BASE_URL = "https://api.x.ai/v1";
   static readonly OPENAI_MODELS_URL = "https://api.openai.com/v1/models";
@@ -66,9 +69,12 @@ export class AiFeatureProviders {
     return AiFeatureFlags.ALL.filter((f) => AiFeatureProviders.isText(f));
   }
 
-  /** The provider a feature runs on: the stored one for a text feature, always OpenAI for voice and dictation. */
+  /** Dictation is OpenAI or xAI. Voice chat is OpenAI, Anthropic, or xAI. Anything else falls back to OpenAI. */
   static effective(feature: AiToggleFeature, stored: unknown): AiFeatureProvider {
-    return AiFeatureProviders.isText(feature) ? AiFeatureProviders.stored(stored) : "openai";
+    const parsed = AiFeatureProviders.parse(stored);
+    if (feature === "dictation") return parsed === "xai" ? "xai" : "openai";
+    if (feature === "voice_chat") return parsed === "anthropic" || parsed === "xai" ? parsed : "openai";
+    return AiFeatureProviders.stored(stored);
   }
 
   /** The model list endpoint and headers for one provider (the key goes in a header only). Null when it can't be built. */
@@ -94,7 +100,10 @@ export class AiFeatureProviders {
    */
   static kindOf(provider: AiFeatureProvider, id: string): AiModelKind | null {
     if (provider === "openai") return null;
-    return AiFeatureProviders.NOT_CHAT.test(id.toLowerCase()) ? null : "chat";
+    const s = id.toLowerCase();
+    // xAI documents grok-voice-transcribe as speech-to-text. It is not a chat model.
+    if (provider === "xai" && /transcri/.test(s)) return "transcription";
+    return AiFeatureProviders.NOT_CHAT.test(s) ? null : "chat";
   }
 
   /**

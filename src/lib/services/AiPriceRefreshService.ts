@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 import { AdminPolicy, type Viewer } from "@/lib/auth/AdminPolicy";
 import { AiCopy } from "@/lib/ai/AiCopy";
 import { AiFeatureFlags } from "@/lib/ai/AiFeatureFlags";
+import { AnthropicPricingParser } from "@/lib/ai/AnthropicPricingParser";
 import { OpenAiPricingParser, type ParsedPrice } from "@/lib/ai/OpenAiPricingParser";
+import { XaiPricingParser } from "@/lib/ai/XaiPricingParser";
+import { AiFeatureProviders, type AiFeatureProvider } from "@/lib/ai/AiFeatureProviders";
 import { AiModelService, type AiModelDb, type AiModelRow, type AiPriceUnit } from "@/lib/services/AiModelService";
 import { AiRegistrySync } from "@/lib/services/AiRegistrySync";
 import { AiSettingsService, type AiSettingsHistoryRow } from "@/lib/services/AiSettingsService";
@@ -22,11 +25,15 @@ export interface AiPriceSet {
 export interface AiPriceReviewRow {
   id: string;
   current: AiPriceSet;
-  /** null = the model is not on the pricing page; it keeps its current (admin-entered) price. */
+  /** null = the model is not on the pricing page, or the vendor page could not be read. */
   proposed: AiPriceSet | null;
   changed: boolean;
-  /** true / false from OpenAI's models list; null when the list couldn't be checked. */
+  /** true / false from OpenAI's models list; null when the list couldn't be checked or the model isn't OpenAI's. */
   listedByOpenAi: boolean | null;
+  /** unavailable: the vendor page could not be read, so no number is shown. */
+  availability?: "priced" | "not_listed" | "unavailable";
+  /** The page this row was priced from, when one was read. */
+  sourceUrl?: string | null;
 }
 
 export interface AiPriceReview {
@@ -74,7 +81,7 @@ export class AiPriceRefreshService {
       const current = AiPriceRefreshService.set(m.priceUnit, m.inputPrice, m.outputPrice);
       const p = byModel.get(m.id);
       const proposed = p ? AiPriceRefreshService.set(p.unit, p.input, p.output) : null;
-      return { id: m.id, current, proposed, changed: proposed !== null && !AiPriceRefreshService.same(current, proposed), listedByOpenAi: listed ? listed.has(m.id) : null };
+      return { id: m.id, current, proposed, changed: proposed !== null && !AiPriceRefreshService.same(current, proposed), listedByOpenAi: listed ? listed.has(m.id) : null, availability: proposed ? ("priced" as const) : ("not_listed" as const), sourceUrl: proposed ? OpenAiPricingParser.SOURCE_URL : null };
     });
     const known = new Set(models.map((m) => m.id));
     const newlyListed = listed ? prices.map((p) => p.model).filter((id) => listed.has(id) && !known.has(id)) : null;
@@ -85,6 +92,9 @@ export class AiPriceRefreshService {
     AdminPolicy.assertAdmin(admin);
     if (!AiFeatureFlags.isPriceRefreshOn(env)) return { ok: false, error: AiCopy.PRICE_REFRESH_OFF };
     const doFetch = fetchImpl ?? (fetch as unknown as Fetcher);
+    const models = await AiModelService.list(db);
+    const vendors = new Set(models.map((m) => AiFeatureProviders.stored(m.provider)));
+    if ([...vendors].some((p) => p !== "openai")) return AiPriceRefreshService.reviewVendors(models, doFetch);
     let text: string;
     try {
       const res = await doFetch(OpenAiPricingParser.SOURCE_URL, { method: "GET", headers: { accept: "text/markdown, text/plain" }, signal: AbortSignal.timeout(AiPriceRefreshService.TIMEOUT_MS) });
@@ -96,11 +106,86 @@ export class AiPriceRefreshService {
     }
     const parsed = OpenAiPricingParser.parse(text);
     if (!parsed.ok) return AiPriceRefreshService.fail(db, admin, "format_changed", now);
-    const models = await AiModelService.list(db);
     const listed = await AiPriceRefreshService.listedIds(db, env, doFetch);
     const review = AiPriceRefreshService.compare(models, parsed.prices, listed);
     if (!review.rows.some((r) => r.proposed)) return AiPriceRefreshService.fail(db, admin, "no_match", now);
     return { ok: true, review };
+  }
+
+  /**
+   * One price page per company that has a model on the list. A company with no published page this app can read,
+   * or a page that fails, is "unavailable" on that row. No number is filled in for it.
+   */
+  static async reviewVendors(models: readonly AiModelRow[], doFetch: Fetcher): Promise<AiPriceReviewResult> {
+    const pages = await AiPriceRefreshService.vendorPages(models, doFetch);
+    const rows: AiPriceReviewRow[] = models.map((m) => {
+      const provider = AiFeatureProviders.stored(m.provider);
+      const current = AiPriceRefreshService.set(m.priceUnit, m.inputPrice, m.outputPrice);
+      const page = pages.get(provider);
+      if (!page || page.prices === null) {
+        return { id: m.id, current, proposed: null, changed: false, listedByOpenAi: null, availability: "unavailable" as const, sourceUrl: page?.source ?? null };
+      }
+      const hit = AiPriceRefreshService.priceFor(provider, m.id, page.prices);
+      const proposed = hit ? AiPriceRefreshService.set(hit.unit, hit.input, hit.output) : null;
+      return { id: m.id, current, proposed, changed: proposed !== null && !AiPriceRefreshService.same(current, proposed), listedByOpenAi: null, availability: proposed ? ("priced" as const) : ("not_listed" as const), sourceUrl: page.source };
+    });
+    const sources = [...new Set(rows.map((r) => r.sourceUrl).filter((s): s is string => Boolean(s)))];
+    return { ok: true, review: { source: sources.join(" ") || "unavailable", rows, newlyListed: null } };
+  }
+
+  /** The published price for one model, or null when that company's page doesn't list it. */
+  static priceFor(provider: AiFeatureProvider, id: string, prices: readonly ParsedPrice[]): ParsedPrice | null {
+    if (provider === "anthropic") return AnthropicPricingParser.priceFor(prices, id);
+    return prices.find((p) => p.model === id) ?? null;
+  }
+
+  private static sourceFor(provider: AiFeatureProvider): string | null {
+    switch (provider) {
+      case "openai":
+        return OpenAiPricingParser.SOURCE_URL;
+      case "anthropic":
+        return AnthropicPricingParser.SOURCE_URL;
+      case "xai":
+        return XaiPricingParser.SOURCE_URL;
+      case "other":
+        return null;
+      default: {
+        const never: never = provider;
+        return never;
+      }
+    }
+  }
+
+  private static parseVendor(provider: AiFeatureProvider, markdown: string): { ok: true; prices: ParsedPrice[] } | { ok: false } {
+    if (provider === "openai") return OpenAiPricingParser.parse(markdown);
+    if (provider === "anthropic") return AnthropicPricingParser.parse(markdown);
+    if (provider === "xai") return XaiPricingParser.parse(markdown);
+    return { ok: false };
+  }
+
+  private static async vendorPages(models: readonly AiModelRow[], doFetch: Fetcher): Promise<Map<AiFeatureProvider, { source: string | null; prices: ParsedPrice[] | null }>> {
+    const out = new Map<AiFeatureProvider, { source: string | null; prices: ParsedPrice[] | null }>();
+    const providers = [...new Set(models.map((m) => AiFeatureProviders.stored(m.provider)))];
+    for (const provider of providers) {
+      const source = AiPriceRefreshService.sourceFor(provider);
+      if (!source) {
+        out.set(provider, { source: null, prices: null });
+        continue;
+      }
+      try {
+        const res = await doFetch(source, { method: "GET", headers: { accept: "text/markdown, text/plain" }, signal: AbortSignal.timeout(AiPriceRefreshService.TIMEOUT_MS) });
+        const text = res.ok ? await res.text() : "";
+        if (!res.ok || text.length > AiPriceRefreshService.MAX_BYTES) {
+          out.set(provider, { source, prices: null });
+          continue;
+        }
+        const parsed = AiPriceRefreshService.parseVendor(provider, text);
+        out.set(provider, { source, prices: parsed.ok ? parsed.prices : null });
+      } catch {
+        out.set(provider, { source, prices: null });
+      }
+    }
+    return out;
   }
 
   /** OpenAI's models list with the saved key, or null when it can't be checked. The key goes only in the header. */

@@ -71,6 +71,11 @@ export async function listOpenAiModels(): Promise<{ ok: true; models: AiListedMo
   }
 }
 
+/** Hides a model from the list. Refused while that model is still selected somewhere. */
+export async function removeAiModel(id: string): Promise<AiAdminResult> {
+  return run("removeAiModel", (db, v) => AiModelService.remove(db, v, id));
+}
+
 export async function setAiModelEnabled(id: string, enabled: boolean, confirmed: boolean): Promise<AiAdminResult> {
   return run("setAiModelEnabled", (db, v) => AiModelService.setEnabled(db, v, id, Boolean(enabled), Boolean(confirmed)));
 }

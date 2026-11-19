@@ -2,7 +2,7 @@
 
 import { useState, useTransition } from "react";
 import { usePriceReviewLock } from "@/components/AiPriceReviewLock";
-import { addAiModel, setAiCategoryModel, setAiFeatureEnabled, setAiFeatureModel, setAiFeatureProvider, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions, setAiVoiceSessionCap } from "@/app/actions/aiAdmin";
+import { addAiModel, removeAiModel, setAiCategoryModel, setAiFeatureEnabled, setAiFeatureModel, setAiFeatureProvider, setAiModelEnabled, setAiModelPrices, setAiVoiceInstructions, setAiVoiceSessionCap } from "@/app/actions/aiAdmin";
 import { LockedProviderChip, ProviderPickerCell, TextModelCell, textModelCaption, useProviderModelLists } from "@/components/AiFeatureProviderPicker";
 import { AiFeatureProviders, type AiFeatureProvider, type AiProviderKeyStates } from "@/lib/ai/AiFeatureProviders";
 import { ModelField } from "@/components/AiModelPicker";
@@ -95,7 +95,7 @@ export function AiModelsPanel({ models, dbReady, initialList = null, keyStates, 
               </tr>
             )}
             {models.map((m) => (
-              <ModelRow key={m.id} m={m} check={priceChecks[m.id]} locked={locked} dbReady={dbReady} pending={pending} onToggle={(v) => toggle(m.id, v, false)} confirm={confirm?.id === m.id ? confirm.message : null} error={rowError?.id === m.id ? rowError.message : null} onConfirm={() => toggle(m.id, false, true)} onCancel={() => setConfirm(null)} />
+              <ModelRow key={m.id} m={m} check={priceChecks[m.id]} locked={locked} dbReady={dbReady} pending={pending} onToggle={(v) => toggle(m.id, v, false)} onRemove={() => startToggle(async () => { const r = await removeAiModel(m.id); if (!r.ok) setRowError({ id: m.id, message: r.error }); else setRowError(null); })} confirm={confirm?.id === m.id ? confirm.message : null} error={rowError?.id === m.id ? rowError.message : null} onConfirm={() => toggle(m.id, false, true)} onCancel={() => setConfirm(null)} />
             ))}
           </tbody>
         </table>
@@ -209,7 +209,7 @@ export function OpenAiModelList({ state, loading, disabled, have, onLoad, onAdd,
   );
 }
 
-function ModelRow({ m, check, locked, dbReady, pending, onToggle, confirm, error, onConfirm, onCancel }: { m: AiModelView; check?: AiPriceCheckView; locked: boolean; dbReady: boolean; pending: boolean; onToggle: (v: boolean) => void; confirm: string | null; error: string | null; onConfirm: () => void; onCancel: () => void }) {
+function ModelRow({ m, check, locked, dbReady, pending, onToggle, onRemove, confirm, error, onConfirm, onCancel }: { m: AiModelView; check?: AiPriceCheckView; locked: boolean; dbReady: boolean; pending: boolean; onToggle: (v: boolean) => void; onRemove: () => void; confirm: string | null; error: string | null; onConfirm: () => void; onCancel: () => void }) {
   const [unit, setUnit] = useState(m.priceUnit ?? "");
   const [input, setInput] = useState(m.inputPrice);
   const [output, setOutput] = useState(m.outputPrice);
@@ -282,6 +282,7 @@ function ModelRow({ m, check, locked, dbReady, pending, onToggle, confirm, error
           <input aria-label={`${C.MODELS_HEADERS[4]}, ${m.id}`} className={`${PRICE_INPUT}`} value={output} onChange={edit(setOutput)} onBlur={tidy(output, setOutput)} readOnly={locked} {...lock} inputMode="decimal" placeholder="0.0000" disabled={!dbReady || unit === "per_minute"} {...invalid("output")} data-testid={`ai-model-output-price-${m.id}`} />
         </td>
         <td className="px-3 py-2">
+          <span className="flex flex-col items-start gap-1">
           <button type="button" className={GHOST} disabled={!dbReady || saving} {...lock} data-testid={`ai-model-save-${m.id}`} onClick={() => !locked && startSave(async () => {
             const r = needsSource ? await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output, sourceUrl, readOn) : await setAiModelPrices(m.id, unit, input, unit === "per_minute" ? "" : output);
             setSaved(r);
@@ -289,6 +290,15 @@ function ModelRow({ m, check, locked, dbReady, pending, onToggle, confirm, error
           })}>
             {C.PRICE_SAVE}
           </button>
+          <button type="button" className={GHOST} disabled={!dbReady || pending || Boolean(m.removeBlock)} {...lock} title={m.removeBlock ?? C.modelRemoved(m.id)} data-testid={`ai-model-remove-${m.id}`} onClick={() => !locked && !m.removeBlock && onRemove()}>
+            {C.MODEL_REMOVE}
+          </button>
+          {m.removeBlock && (
+            <span className="block max-w-[14rem] whitespace-normal text-muted type-caption" data-testid={`ai-model-remove-note-${m.id}`}>
+              {m.removeBlock}
+            </span>
+          )}
+          </span>
         </td>
       </tr>
       {needsSource && !locked && (
@@ -591,6 +601,7 @@ export function AiFeaturesPanel({
   features,
   dbReady,
   modelOptions = {},
+  speechModels = {},
   initialList = null,
   choices = {},
   keyStates,
@@ -603,6 +614,8 @@ export function AiFeaturesPanel({
   features: AiFeatureView[];
   dbReady: boolean;
   modelOptions?: Partial<Record<AiModelKind, readonly string[]>>;
+  /** Transcription models that are on, by company. Dictation's menu follows the company. */
+  speechModels?: Partial<Record<"openai" | "xai", readonly string[]>>;
   initialList?: OpenAiListState;
   choices?: Partial<Record<string, AiFeatureChoice>>;
   keyStates?: AiProviderKeyStates;
@@ -689,8 +702,17 @@ export function AiFeaturesPanel({
         const choice = saved[f.feature] ?? { provider: AiFeatureProviders.DEFAULT, model: "" };
         const shownProvider = draft[f.feature] ?? choice.provider;
         const picking = text && draft[f.feature] !== undefined;
+        const voice = f.feature === "voice_chat";
+        const savedVoice = f.conversationProvider ?? "openai";
+        const voiceProvider = voice ? (draft.voice_chat ?? savedVoice) : null;
+        const voicePicking = voice && voiceProvider !== savedVoice;
+        const dictate = f.feature === "dictation";
+        const savedDictate = f.dictationProvider ?? "openai";
+        const dictateProvider = dictate ? (draft.dictation ?? savedDictate) : null;
+        const dictatePicking = dictate && dictateProvider !== savedDictate;
         const keyMissing = text && !picking && keyStates !== undefined && keyStates[choice.provider] !== "ok";
-        const caption = f.killedByEnv ? C.featureKilled(f.envName) : picking ? C.PICK_A_MODEL : !text ? C.VOICE_OPENAI_ONLY : f.enabled ? C.FEATURE_ON_HELP : C.FEATURE_OFF_HELP;
+        const voiceCaption = voiceProvider === "anthropic" ? C.VOICE_ANTHROPIC_SPLIT : voiceProvider === "xai" ? C.VOICE_XAI : C.VOICE_OPENAI_ONLY;
+        const caption = f.killedByEnv ? C.featureKilled(f.envName) : voice ? (voicePicking ? C.PICK_A_MODEL : voiceCaption) : dictate ? (dictatePicking ? C.PICK_A_MODEL : dictateProvider === "xai" ? C.DICTATION_XAI : C.DICTATION_NO_SPEECH) : picking ? C.PICK_A_MODEL : f.enabled ? C.FEATURE_ON_HELP : C.FEATURE_OFF_HELP;
         return (
           <div key={f.feature} className="contents">
           {heading && (
@@ -710,7 +732,7 @@ export function AiFeaturesPanel({
               onPick={(p, m) => category && saveCategory(category, p, m)}
             />
           )}
-          <div className={`${ROW} ${i > 0 || heading ? "border-t border-line" : ""} ${f.ownModel ? "pb-2.5" : ""}`} data-testid={`ai-feature-row-${f.feature}`} data-provider={text ? shownProvider : "openai"}>
+          <div className={`${ROW} ${i > 0 || heading ? "border-t border-line" : ""} ${f.ownModel ? "pb-2.5" : ""}`} data-testid={`ai-feature-row-${f.feature}`} data-provider={text ? shownProvider : voice ? voiceProvider : dictate ? dictateProvider : "openai"}>
             <div className="col-start-1 row-start-1 flex h-11 min-w-0 flex-col justify-center">
               <div className="flex min-w-0 items-center gap-2">
                 <span id={labelId} className="min-w-0 truncate type-table-strong text-fg">
@@ -747,8 +769,26 @@ export function AiFeaturesPanel({
                   return p === choice.provider ? without(d, f.feature) : { ...d, [f.feature]: p };
                 })}
               />
+            ) : voice ? (
+              <ProviderPickerCell
+                className="col-start-2 row-start-1"
+                feature={f.feature}
+                value={voiceProvider ?? "openai"}
+                keyStates={keyStates}
+                only={["openai", "anthropic", "xai"]}
+                onChange={(p) => setDraft((d) => (p === savedVoice ? without(d, f.feature) : { ...d, voice_chat: p }))}
+              />
+            ) : dictate ? (
+              <ProviderPickerCell
+                className="col-start-2 row-start-1"
+                feature={f.feature}
+                value={dictateProvider ?? "openai"}
+                keyStates={keyStates}
+                only={["openai", "xai"]}
+                onChange={(p) => setDraft((d) => (p === savedDictate ? without(d, f.feature) : { ...d, dictation: p }))}
+              />
             ) : (
-              <LockedProviderChip className="col-start-2 row-start-1" feature={f.feature} />
+              <LockedProviderChip className="col-start-2 row-start-1" feature={f.feature} note={C.DICTATION_NO_SPEECH} />
             )}
             {text && (() => {
               // Under the Model picker: "Default" when the row uses the AI settings model (shown at full strength), or
@@ -765,19 +805,19 @@ export function AiFeaturesPanel({
                 </p>
               ) : null;
             })()}
-            {text ? (
+            {text || (voice && (voiceProvider === "anthropic" || voiceProvider === "xai")) ? (
               <TextModelCell
-                key={`${f.feature}-${shownProvider}`}
+                key={`${f.feature}-${voice ? voiceProvider : shownProvider}`}
                 className="col-start-3 row-start-1"
                 feature={f.feature}
-                provider={shownProvider}
-                value={picking ? "" : choice.model}
-                mainModel={shownProvider === "openai" ? mainModel : ""}
-                pending={picking}
-                options={chatModels[shownProvider] ?? []}
+                provider={voice ? (voiceProvider === "xai" ? "xai" : "anthropic") : shownProvider}
+                value={voice ? (voicePicking ? "" : savedVoice === voiceProvider ? (f.model ?? "") : "") : picking ? "" : choice.model}
+                mainModel={!voice && shownProvider === "openai" ? mainModel : ""}
+                pending={voice ? voicePicking : picking}
+                options={chatModels[voice ? (voiceProvider === "xai" ? "xai" : "anthropic") : shownProvider] ?? []}
                 lists={lists}
                 disabled={!dbReady || pending}
-                onPick={(m) => saveText(f.feature, shownProvider, m)}
+                onPick={(m) => saveText(voice ? "voice_chat" : f.feature, voice ? (voiceProvider === "xai" ? "xai" : "anthropic") : shownProvider, m)}
               />
             ) : f.ownModel ? (
               <ModelField
@@ -790,11 +830,11 @@ export function AiFeaturesPanel({
                 noneLabel={AiToolsCopy.DICTATION_MODEL_NONE}
                 value={f.model ?? ""}
                 disabled={!dbReady || pending}
-                options={modelOptions[AiModelKinds.forFeature(f.feature)] ?? []}
-                list={openAi.list}
-                listLoading={openAi.loading}
-                onLoadList={openAi.load}
-                onCommit={(m) => choose(f.feature, m)}
+                options={f.feature === "dictation" ? (speechModels[dictateProvider === "xai" ? "xai" : "openai"] ?? modelOptions.transcription ?? []) : (modelOptions[AiModelKinds.forFeature(f.feature)] ?? [])}
+                list={f.feature === "dictation" && dictateProvider === "xai" ? lists.list("xai") : openAi.list}
+                listLoading={f.feature === "dictation" && dictateProvider === "xai" ? lists.loading("xai") : openAi.loading}
+                onLoadList={f.feature === "dictation" && dictateProvider === "xai" ? () => lists.load("xai") : openAi.load}
+                onCommit={(m) => (f.feature === "voice_chat" ? saveText("voice_chat", "openai", m) : f.feature === "dictation" ? saveText("dictation", dictateProvider === "xai" ? "xai" : "openai", m) : choose(f.feature, m))}
                 row={{ trigger: "col-start-3 row-start-1", extras: "col-start-2 col-span-3 row-start-2" }}
               />
             ) : (

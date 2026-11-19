@@ -17,6 +17,7 @@ import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderServic
 import { AiRegistryRuntime } from "@/lib/services/AiRegistryRuntime";
 import { AiModelService } from "@/lib/services/AiModelService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
+import { AiSpendCap } from "@/lib/ai/AiSpendCap";
 import { AiSpendCapService } from "./AiSpendCapService";
 import { AiWritingContext } from "./AiWritingContext";
 
@@ -153,7 +154,7 @@ export class AiWritingService {
     });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
     // 0074: the monthly spend cap (no cap rows = no cap).
-    const spend = await AiSpendCapService.check({ db, email: viewer.email, env, now });
+    const spend = await AiSpendCapService.check({ db, provider: AiSpendCap.vendorOf(config), email: viewer.email, env, now });
     if (!spend.ok) return { ok: false, kind: "cap", message: spend.message };
 
     AiWritingService.inFlight.add(viewer.email);

@@ -249,23 +249,22 @@ describe("per-feature provider resolution", () => {
   });
 });
 
-describe("voice chat and dictation stay on OpenAI", () => {
-  it("a stored provider other than OpenAI is ignored for them", () => {
-    const rows = [{ feature: "voice_chat", provider: "anthropic", model: "gpt-example-realtime" }, { feature: "dictation", provider: "xai", model: "gpt-example-transcribe" }];
-    expect(AiFeatureRuntime.choiceOf("voice_chat", rows)).toEqual({ provider: "openai", model: "gpt-example-realtime" });
-    expect(AiFeatureRuntime.choiceOf("dictation", rows)).toEqual({ provider: "openai", model: "gpt-example-transcribe" });
-    expect(AiFeatureProviders.effective("voice_chat", "anthropic")).toBe("openai");
+describe("dictation stays on OpenAI speech-to-text; voice chat can use Anthropic for the answer", () => {
+  it("dictation ignores a stored company; voice chat keeps Anthropic", () => {
+    const rows = [{ feature: "voice_chat", provider: "anthropic", model: "claude-example-sonnet" }, { feature: "dictation", provider: "xai", model: "gpt-example-transcribe" }];
+    expect(AiFeatureRuntime.choiceOf("voice_chat", rows)).toEqual({ provider: "anthropic", model: "claude-example-sonnet" });
+    expect(AiFeatureRuntime.choiceOf("dictation", rows)).toEqual({ provider: "xai", model: "gpt-example-transcribe" });
+    expect(AiFeatureProviders.effective("voice_chat", "anthropic")).toBe("anthropic");
+    expect(AiFeatureProviders.effective("voice_chat", "xai")).toBe("xai");
+    expect(AiFeatureProviders.effective("dictation", "xai")).toBe("xai");
+    expect(AiFeatureProviders.effective("dictation", "anthropic")).toBe("openai");
     expect(AiFeatureProviders.LOCKED).toEqual(["voice_chat", "dictation"]);
   });
 
-  it("the server refuses any request to change their provider, and writes nothing", async () => {
+  it("dictation refuses another company; voice refuses xAI and Other", async () => {
     const db = await setup();
-    for (const feature of ["voice_chat", "dictation"]) {
-      for (const p of ["anthropic", "xai", "other", "openai"]) {
-        const r = await AiModelService.setFeatureProviderModel(db.m, ADMIN, feature, p, "claude-example-sonnet", ENV, T0, EVERY_KEY);
-        expect(r).toEqual({ ok: false, error: AiCopy.PROVIDER_LOCKED });
-      }
-    }
+    expect(await AiModelService.setFeatureProviderModel(db.m, ADMIN, "dictation", "anthropic", "claude-example-sonnet", ENV, T0, EVERY_KEY)).toEqual({ ok: false, error: AiCopy.DICTATION_NO_SPEECH });
+    expect(await AiModelService.setFeatureProviderModel(db.m, ADMIN, "voice_chat", "other", "claude-example-sonnet", ENV, T0, EVERY_KEY)).toEqual({ ok: false, error: AiCopy.VOICE_PROVIDER_LIMIT });
     expect(db.writes).toEqual([]);
     expect(db.settingsHistory).toEqual([]);
     // Their own model setter never touches the provider.
@@ -419,7 +418,7 @@ describe("0054_ai_feature_provider (PGlite)", () => {
 
 describe("copy", () => {
   it("Figma spec wording, no em dashes", () => {
-    expect([AiCopy.PROVIDER_HINT_NO_KEY, AiCopy.PROVIDER_HINT_KEY_FAILING, AiCopy.PICK_A_MODEL, AiCopy.PROVIDER_KEY_MISSING, AiCopy.VOICE_OPENAI_ONLY]).toEqual(["No key", "Key failing", "Pick a model", "Provider key missing", "Runs on OpenAI only for now."]);
+    expect([AiCopy.PROVIDER_HINT_NO_KEY, AiCopy.PROVIDER_HINT_KEY_FAILING, AiCopy.PICK_A_MODEL, AiCopy.PROVIDER_KEY_MISSING, AiCopy.VOICE_OPENAI_ONLY]).toEqual(["No key", "Key failing", "Pick a model", "Provider key missing", "Speech-to-speech on OpenAI."]);
     expect(AiCopy.modelNotListed("xai")).toBe("xAI doesn't list that model for your saved key.");
     expect(AiCopy.FEATURE_MODEL_DEFAULT).toBe("Default");
     expect([AiCopy.featureLabel("draft_from_bullets"), AiCopy.featureLabel("fit_for_report"), AiCopy.featureLabel("revise_note")]).toEqual(["Draft", "Fit for report", "Revise with AI"]);

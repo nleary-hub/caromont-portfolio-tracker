@@ -76,21 +76,22 @@ export function providerOptions(keyStates: AiProviderKeyStates | undefined): Pic
 }
 
 /** The Provider picker in a text feature row (PickerSelect from #76, 140px wide). */
-export function ProviderPickerCell({ feature, value, keyStates, onChange, className = "" }: { feature: string; value: AiFeatureProvider; keyStates?: AiProviderKeyStates; onChange: (p: AiFeatureProvider) => void; className?: string }) {
+export function ProviderPickerCell({ feature, value, keyStates, onChange, className = "", only }: { feature: string; value: AiFeatureProvider; keyStates?: AiProviderKeyStates; onChange: (p: AiFeatureProvider) => void; className?: string; /** Limit the menu. Voice chat offers OpenAI and Anthropic. */ only?: readonly AiFeatureProvider[] }) {
+  const options = providerOptions(keyStates).filter((o) => !only || only.includes(o.value as AiFeatureProvider));
   return (
     <div className={`w-[140px] ${className}`}>
-      <PickerSelect id={`ai-feature-${feature}-provider`} label={C.FEATURE_PROVIDER_LABEL} value={value} options={providerOptions(keyStates)} menuWidth={200} menuClassName="vp-drawer" onChange={(v) => onChange(AiFeatureProviders.stored(v))} testId={`ai-feature-${feature}-provider`} />
+      <PickerSelect id={`ai-feature-${feature}-provider`} label={C.FEATURE_PROVIDER_LABEL} value={value} options={options} menuWidth={200} menuClassName="vp-drawer" onChange={(v) => onChange(AiFeatureProviders.stored(v))} testId={`ai-feature-${feature}-provider`} />
     </div>
   );
 }
 
 /** Voice chat and Dictation: a locked OpenAI chip with a lock glyph, no dropdown. */
-export function LockedProviderChip({ feature, className = "" }: { feature: string; className?: string }) {
+export function LockedProviderChip({ feature, className = "", note = C.DICTATION_NO_SPEECH }: { feature: string; className?: string; note?: string }) {
   return (
     <span
       className={`inline-flex h-[28px] w-[140px] items-center gap-1.5 rounded-control border border-line bg-input/60 px-2 text-muted type-table ${className}`}
-      aria-label={`${C.FEATURE_PROVIDER_LABEL}: OpenAI. ${C.VOICE_OPENAI_ONLY}`}
-      title={C.VOICE_OPENAI_ONLY}
+      aria-label={`${C.FEATURE_PROVIDER_LABEL}: OpenAI. ${note}`}
+      title={note}
       data-testid={`ai-feature-${feature}-provider-locked`}
     >
       <svg aria-hidden width="12" height="12" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round" data-testid={`ai-feature-${feature}-lock`}>

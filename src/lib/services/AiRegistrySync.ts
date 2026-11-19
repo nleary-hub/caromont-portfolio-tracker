@@ -311,7 +311,7 @@ export class AiRegistrySync {
 
   static async read(db: unknown): Promise<AiRegistrySnapshot> {
     const d = db as Sync;
-    const oldModels = (await d.aiModel.findMany({ orderBy: { id: "asc" } })) as OldModel[];
+    const oldModels = ((await d.aiModel.findMany({ orderBy: { id: "asc" } })) as (OldModel & { removedAt?: Date | null })[]).filter((m) => !m.removedAt);
     const features = (await d.aiFeatureSetting.findMany()) as FeatureRow[];
     const s = (await d.aiSettings.findUnique({ where: { id: AiSettingsService.ID } })) as { provider: string | null; model: string | null } | null;
     const mainModel = (s?.model ?? "").trim() || null;

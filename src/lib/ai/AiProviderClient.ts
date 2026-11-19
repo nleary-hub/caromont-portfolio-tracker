@@ -1,6 +1,7 @@
 import { AiCopy } from "./AiCopy";
 import type { AiPrompt } from "./AiPrompts";
 import { AiProviders, type AiProviderId } from "./AiProviders";
+import { AiSampling } from "./AiSampling";
 
 /** Everything needed to call the provider, including the decrypted key. Server only; never serialized to the client. */
 export interface AiRuntimeConfig {
@@ -48,15 +49,26 @@ export class AiProviderClient {
     if (!AiProviders.modelAllowed(config.model, config.allowedModels ?? [])) return { ok: false, kind: "model_not_allowed", message: AiCopy.MODEL_NOT_ALLOWED, ms: 0 };
     const req = AiProviderClient.request(config, prompt);
     const ms = () => Date.now() - started;
+    const send = async (body: Record<string, unknown>) =>
+      fetchImpl(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(body), signal: AbortSignal.timeout(timeoutMs) });
     let res: Awaited<ReturnType<FetchLike>>;
+    let raw = "";
     try {
-      res = await fetchImpl(req.url, { method: "POST", headers: req.headers, body: JSON.stringify(req.body), signal: AbortSignal.timeout(timeoutMs) });
+      res = await send(req.body);
+      raw = await res.text().catch(() => "");
+      // One retry when the model rejects a sampling field (temperature on current Claude). The retry omits that field.
+      if (!res.ok) {
+        const next = AiSampling.withoutRejected(req.body, raw);
+        if (next) {
+          res = await send(next);
+          raw = await res.text().catch(() => "");
+        }
+      }
     } catch (e) {
       const name = (e as { name?: string })?.name;
       if (name === "TimeoutError" || name === "AbortError") return { ok: false, kind: "timeout", message: "Timed out", ms: ms() };
       return { ok: false, kind: "network", message: AiProviderClient.scrub(String((e as Error)?.message ?? e), config.apiKey), ms: ms() };
     }
-    const raw = await res.text().catch(() => "");
     if (!res.ok) return { ok: false, kind: "http", status: res.status, message: AiProviderClient.errorMessage(raw, res.status, config.apiKey), ms: ms() };
     const text = AiProviderClient.textOf(config.provider, raw);
     if (!text) {
@@ -90,7 +102,7 @@ export class AiProviderClient {
         return {
           url: "https://api.anthropic.com/v1/messages",
           headers: { ...json, "x-api-key": c.apiKey, "anthropic-version": "2023-06-01" },
-          body: { model: c.model, max_tokens: Math.min(p.maxTokens, AiProviderClient.CAPPED_MAX_TOKENS), temperature: 0.2, system: p.system, messages: [{ role: "user", content: p.user }] },
+          body: { model: c.model, max_tokens: Math.min(p.maxTokens, AiProviderClient.CAPPED_MAX_TOKENS), ...AiSampling.anthropic(c.model), system: p.system, messages: [{ role: "user", content: p.user }] },
         };
       case "azure_openai":
         return {

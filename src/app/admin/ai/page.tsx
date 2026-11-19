@@ -91,7 +91,7 @@ export default async function AiSettingsPage() {
   let routedChoices: Record<string, AiFeatureChoice> = choices;
   let usage: AiMetricsRow[] = [];
   // 0074: monthly spend caps and this month's spend per person.
-  let spendCaps: AiSpendCapView = { ready: false, defaultCapUsd: null, people: [] };
+  let spendCaps: AiSpendCapView = { ready: false, providers: [], previousPeople: [], previousDefaultUsd: null };
   const spendNames: Record<string, string> = {};
   // Phase 1: what the model registry records, compared with what the app runs. Read-only; never blocks the page.
   let registry: AiRegistryPageView = { ready: false, differences: [], categories: {}, ownModel: [], prices: {} };
@@ -114,8 +114,8 @@ export default async function AiSettingsPage() {
       const row = await AiSettingsService.row(db);
       view = AiSettingsService.view(row);
       history = await AiSettingsService.history(db);
-      models = AiModelService.views(await AiModelService.list(mdb), row);
       const featureRows = await mdb.aiFeatureSetting.findMany();
+      models = AiModelService.views(await AiModelService.list(mdb), row, featureRows);
       features = AiModelService.settingsViews(featureRows);
       choices = AiModelService.featureChoices(featureRows);
       keyStates = AiProviderKeyAccess.statesOf(keyStatuses, preview);
@@ -145,14 +145,14 @@ export default async function AiSettingsPage() {
     }
     try {
       spendCaps = await AiSpendCapService.view(Db.client as unknown as AiSpendCapReadDb);
-      const emails = spendCaps.people.map((p) => p.email);
+      const emails = spendCaps.previousPeople.map((p) => p.email);
       if (emails.length) {
         const users = await Db.client.appUser.findMany({ where: { email: { in: emails } } }).catch(() => []);
         for (const u of users) spendNames[u.email.toLowerCase()] = LineAccessService.displayName(u);
       }
     } catch {
       // Read failed: the card is read-only and shows no one.
-      spendCaps = { ready: false, defaultCapUsd: null, people: [] };
+      spendCaps = { ready: false, providers: [], previousPeople: [], previousDefaultUsd: null };
     }
   }
   // Chat models that are on under Models, by the provider they were added under (the text feature model pickers).
@@ -222,7 +222,7 @@ export default async function AiSettingsPage() {
           {AiCopy.FEATURES_TITLE}
         </h2>
         <p className="text-muted type-caption">{AiCopy.FEATURES_INTRO}</p>
-        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} choices={choices} keyStates={keyStates} chatModels={chatModels} mainModel={view.model} fallbacks={fallbacks} defaults={defaults} registry={{ ready: registry.ready, preview, categories: registry.categories, ownModel: registry.ownModel }} />
+        <AiFeaturesPanel features={features} dbReady={dbReady} modelOptions={{ transcription: AiModelService.optionsOf(models, "transcription"), realtime: AiModelService.optionsOf(models, "realtime") }} speechModels={{ openai: models.filter((m) => m.kind === "transcription" && (m.provider ?? "openai") === "openai").map((m) => m.id), xai: models.filter((m) => m.kind === "transcription" && m.provider === "xai").map((m) => m.id) }} choices={choices} keyStates={keyStates} chatModels={chatModels} mainModel={view.model} fallbacks={fallbacks} defaults={defaults} registry={{ ready: registry.ready, preview, categories: registry.categories, ownModel: registry.ownModel }} />
       </section>
       {registry.ready && (
         <section className={section} aria-labelledby="ai-registry-heading">

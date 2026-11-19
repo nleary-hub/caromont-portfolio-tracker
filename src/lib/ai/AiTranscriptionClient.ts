@@ -3,6 +3,9 @@ import type { AiRuntimeConfig } from "./AiProviderClient";
 export type AiTranscribeFetch = (url: string, init: { method: string; headers: Record<string, string>; body: FormData; signal: AbortSignal }) => Promise<{ ok: boolean; status: number; text(): Promise<string> }>;
 
 export type AiTranscribeResult = { ok: true; text: string } | { ok: false; kind: "timeout" | "http" | "network" | "empty" | "provider" };
+export type AiTranscribeTimed =
+  | { ok: true; text: string; durationSeconds: number | null }
+  | { ok: false; kind: "timeout" | "http" | "network" | "empty" | "provider"; durationSeconds: number | null };
 
 /**
  * Speech to text for dictation (step 6): OpenAI's audio transcriptions endpoint with the dictation model. The audio
@@ -21,19 +24,27 @@ export class AiTranscriptionClient {
   }
 
   static async transcribe(config: Pick<AiRuntimeConfig, "provider" | "apiKey">, model: string, audio: Blob, fetchImpl: AiTranscribeFetch = fetch as unknown as AiTranscribeFetch): Promise<AiTranscribeResult> {
-    if (config.provider !== "openai") return { ok: false, kind: "provider" };
+    const r = await AiTranscriptionClient.transcribeTimed(config, model, audio, fetchImpl, false);
+    if (!r.ok) return { ok: false, kind: r.kind };
+    return { ok: true, text: r.text };
+  }
+
+  /** Same call, asking for verbose_json so the audio duration can be priced. */
+  static async transcribeTimed(config: Pick<AiRuntimeConfig, "provider" | "apiKey">, model: string, audio: Blob, fetchImpl: AiTranscribeFetch = fetch as unknown as AiTranscribeFetch, timed = true): Promise<AiTranscribeTimed> {
+    if (config.provider !== "openai") return { ok: false, kind: "provider", durationSeconds: null };
     const form = new FormData();
     form.append("model", model);
     form.append("file", audio, "dictation.webm");
-    form.append("response_format", "json");
+    form.append("response_format", timed ? "verbose_json" : "json");
     try {
       const res = await fetchImpl(AiTranscriptionClient.URL, { method: "POST", headers: { authorization: `Bearer ${config.apiKey}` }, body: form, signal: AbortSignal.timeout(AiTranscriptionClient.TIMEOUT_MS) });
-      if (!res.ok) return { ok: false, kind: "http" };
-      const body = JSON.parse(await res.text()) as { text?: unknown };
+      if (!res.ok) return { ok: false, kind: "http", durationSeconds: null };
+      const body = JSON.parse(await res.text()) as { text?: unknown; duration?: unknown };
       const text = typeof body.text === "string" ? body.text.trim() : "";
-      return text ? { ok: true, text } : { ok: false, kind: "empty" };
+      const durationSeconds = typeof body.duration === "number" && Number.isFinite(body.duration) && body.duration >= 0 ? body.duration : null;
+      return text ? { ok: true, text, durationSeconds } : { ok: false, kind: "empty", durationSeconds };
     } catch (e) {
-      return { ok: false, kind: (e as Error)?.name === "TimeoutError" ? "timeout" : "network" };
+      return { ok: false, kind: (e as Error)?.name === "TimeoutError" ? "timeout" : "network", durationSeconds: null };
     }
   }
 }

@@ -249,7 +249,7 @@ describe("Writing Bot copy (step 3c)", () => {
     expect(AiCopy.historyChange("aiPriceRefresh", "prices_refreshed", null, null)).toBe("Saved from OpenAI's pricing page.");
     expect(AiCopy.historyChange("aiPriceRefresh", "prices_refreshed", null, "")).toBe("Saved from OpenAI's pricing page.");
     expect(AiCopy.historyChange("aiPriceRefresh", "prices_refreshed", null, "gpt-6-luna: $0.10 in")).toBe("Saved from OpenAI's pricing page. gpt-6-luna: $0.10 in");
-    expect(AiCopy.MODELS_INTRO).toContain("Enter prices by hand, or refresh them from OpenAI's pricing page.");
+    expect(AiCopy.MODELS_INTRO).toContain("refresh them from each company's pricing page.");
   });
 });
 
