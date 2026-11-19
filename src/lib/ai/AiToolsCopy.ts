@@ -334,7 +334,7 @@ export class AiToolsCopy {
   static readonly VOICE_ANTHROPIC_PRIVACY = "OpenAI transcribes what you say and speaks the answer. Anthropic writes the answer. The voice is generated, not a person. Audio is not saved here.";
   static readonly VOICE_ANTHROPIC_HOLD = "Hold to talk";
   static readonly VOICE_ANTHROPIC_SEND = "Sending";
-  static readonly VOICE_ANTHROPIC_NEED_DICTATION = "Voice chat with Anthropic needs an OpenAI transcription model turned on under Dictation. Anthropic has no speech-to-text.";
+  static readonly VOICE_ANTHROPIC_NEED_DICTATION = "Voice chat with Anthropic needs an OpenAI transcription model turned on under Models. Dictation can stay on xAI. Anthropic has no speech-to-text.";
   static readonly VOICE_SPEAK_FAILED = "The answer is below. OpenAI couldn't speak it this time.";
   static readonly VOICE_NO_MIC = "The microphone isn't available. Check this site's microphone permission in your browser.";
   static readonly VOICE_START_FAILED = "Voice chat couldn't start. Try again in a moment.";

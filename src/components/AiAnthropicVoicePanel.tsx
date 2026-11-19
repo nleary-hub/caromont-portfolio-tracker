@@ -1,9 +1,10 @@
 "use client";
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { speakAiVoiceTurn } from "@/app/actions/aiTools";
 import { AiSpeechClient } from "@/lib/ai/AiSpeechClient";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
+import { releaseVoiceMic } from "@/lib/ai/AiVoiceMic";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const GHOST = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
@@ -19,8 +20,22 @@ export function AiAnthropicVoicePanel({ disabledNote, model, company = "anthropi
   const [answer, setAnswer] = useState<string | null>(null);
   const [note, setNote] = useState<string | null>(null);
   const rec = useRef<MediaRecorder | null>(null);
+  const mic = useRef<MediaStream | null>(null);
+  const alive = useRef(true);
   const chunks = useRef<Blob[]>([]);
   const off = disabledNote !== null;
+
+  useEffect(() => {
+    alive.current = true;
+    return () => {
+      alive.current = false;
+      const recorder = rec.current;
+      const stream = mic.current;
+      rec.current = null;
+      mic.current = null;
+      releaseVoiceMic(recorder, stream);
+    };
+  }, []);
 
   const stop = () => rec.current?.stop();
   const start = async () => {
@@ -31,7 +46,11 @@ export function AiAnthropicVoicePanel({ disabledNote, model, company = "anthropi
     try {
       stream = await navigator.mediaDevices.getUserMedia({ audio: true });
     } catch {
-      setError(C.VOICE_MIC_DENIED);
+      if (alive.current) setError(C.VOICE_MIC_DENIED);
+      return;
+    }
+    if (!alive.current) {
+      stream.getTracks().forEach((t) => t.stop());
       return;
     }
     const mime = MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
@@ -42,9 +61,12 @@ export function AiAnthropicVoicePanel({ disabledNote, model, company = "anthropi
     };
     recorder.onstop = () => {
       stream.getTracks().forEach((t) => t.stop());
+      mic.current = null;
+      if (!alive.current) return;
       void send(new Blob(chunks.current, { type: recorder.mimeType || "audio/webm" }));
     };
     rec.current = recorder;
+    mic.current = stream;
     recorder.start();
     setPhase("recording");
   };

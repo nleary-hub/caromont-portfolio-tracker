@@ -311,6 +311,26 @@ export class AiModelService {
    * The models allowed at call time: the enabled rows (of `kind`, when given). When ai_models can't be read the answer
    * is none, so AI shows the clean model-off state. There is no built-in fallback model.
    */
+  /**
+   * The OpenAI transcription model Anthropic voice should hear with. Prefers the Dictation model when that model is
+   * OpenAI. An xAI dictation model is not sent to OpenAI. Null when no OpenAI transcription model is turned on.
+   */
+  static pickOpenAiTranscription(rows: readonly Pick<AiModelRow, "id" | "enabled" | "provider" | "kind">[], dictationModel: string): string | null {
+    const openai = rows.filter((r) => r.enabled && !("removedAt" in r && r.removedAt) && AiFeatureProviders.stored(r.provider) === "openai" && AiModelKinds.fits(r, "transcription"));
+    return (openai.find((r) => r.id === dictationModel) ?? openai[0])?.id ?? null;
+  }
+
+  static async openAiTranscriptionModel(db: unknown): Promise<string | null> {
+    try {
+      const m = (db as Partial<AiModelDb>)?.aiModel;
+      if (!m) return null;
+      const rows = await m.findMany({ orderBy: { id: "asc" } });
+      return AiModelService.pickOpenAiTranscription(rows, await AiModelService.featureModel(db, "dictation"));
+    } catch {
+      return null;
+    }
+  }
+
   static async enabledIds(db: Pick<AiModelDb, "aiModel"> | unknown, kind?: AiModelKind): Promise<readonly string[]> {
     try {
       const m = (db as Partial<AiModelDb>)?.aiModel;

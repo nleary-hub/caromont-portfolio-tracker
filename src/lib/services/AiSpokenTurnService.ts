@@ -7,6 +7,7 @@ import { AiPrompts } from "@/lib/ai/AiPrompts";
 import { AiProviderClient, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiRunMetrics } from "@/lib/ai/AiRunMetrics";
 import { AiSpeechClient, type AiSpeechFetch } from "@/lib/ai/AiSpeechClient";
+import type { AiModelPrice } from "@/lib/ai/AiRunMetrics";
 import { XaiSpeechClient } from "@/lib/ai/XaiSpeechClient";
 import { AiSpendCap } from "@/lib/ai/AiSpendCap";
 import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
@@ -62,7 +63,8 @@ export class AiSpokenTurnService {
     const openai = row?.enabled ? await AiProviderKeyService.openAiRuntime(db, "", env) : null;
     const anthropic = await AiProviderKeyAccess.source(db, env).secret("anthropic").catch(() => null);
     if (!openai || !anthropic) return { ok: false, message: AiToolsCopy.aiOff(env) };
-    const dictation = await AiModelService.featureModel(db, "dictation");
+    const dictation = await AiModelService.openAiTranscriptionModel(db);
+    if (!dictation) return { ok: false, message: AiToolsCopy.VOICE_ANTHROPIC_NEED_DICTATION };
     const user = viewer.email;
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: ["suggested", "failed", "proposed", "session_started"] }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, message: AiCopy.RATE_LIMITED };
@@ -70,9 +72,10 @@ export class AiSpokenTurnService {
       const spend = await AiSpendCapService.check({ db, provider, email: user, env, now });
       if (!spend.ok) return { ok: false, message: spend.message };
     }
-    const heard = await AiTranscriptionClient.transcribe(openai, dictation, audio, args.transcribeImpl);
+    const heard = await AiTranscriptionClient.transcribeTimed(openai, dictation, audio, args.transcribeImpl ?? (fetch as unknown as AiTranscribeFetch));
+    const sttPrice = await AiModelService.priceOf(db, dictation);
     await db.aiUsageLog.create({
-      data: { id: randomUUID(), suggestionId: randomUUID(), userEmail: user, projectId: null, feature: "voice_chat", event: heard.ok ? "proposed" : "failed", provider: "openai", model: dictation, inputLength: audio.size, outputLength: heard.ok ? heard.text.length : null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
+      data: { id: randomUUID(), suggestionId: randomUUID(), userEmail: user, projectId: null, feature: "voice_chat", event: heard.ok ? "proposed" : "failed", provider: "openai", model: dictation, inputLength: audio.size, outputLength: heard.ok ? heard.text.length : null, numberCheckPassed: null, suggestedText: null, costUsd: heard.ok ? AiSpeechClient.cost(sttPrice, { seconds: heard.durationSeconds }) : null, createdAt: now() },
     });
     if (!heard.ok) return { ok: false, message: AiToolsCopy.DICTATION_FAILED };
     const phi = AiPhiGuard.check(heard.text);
@@ -90,10 +93,16 @@ export class AiSpokenTurnService {
     });
     if (!result.ok) return { ok: false, message: AiToolsCopy.VOICE_START_FAILED };
     const speech = await AiSpeechClient.speak(openai.apiKey, result.text, args.speakImpl);
+    const ttsPrice = await AiModelService.priceOf(db, AiSpeechClient.MODEL);
     await db.aiUsageLog.create({
-      data: { id: randomUUID(), suggestionId: randomUUID(), userEmail: user, projectId: null, feature: "voice_chat", event: speech.ok ? "proposed" : "failed", provider: "openai", model: AiSpeechClient.MODEL, inputLength: result.text.length, outputLength: speech.ok ? speech.base64.length : null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
+      data: { id: randomUUID(), suggestionId: randomUUID(), userEmail: user, projectId: null, feature: "voice_chat", event: speech.ok ? "proposed" : "failed", provider: "openai", model: AiSpeechClient.MODEL, inputLength: result.text.length, outputLength: speech.ok ? result.text.length : null, numberCheckPassed: null, suggestedText: null, costUsd: speech.ok ? AiSpokenTurnService.speechCost(ttsPrice, result.text.length) : null, createdAt: now() },
     });
     return { ok: true, text: result.text, heard: heard.text, audioBase64: speech.ok ? speech.base64 : null, audioNote: speech.ok ? null : AiToolsCopy.VOICE_SPEAK_FAILED };
+  }
+
+  /** Text-to-speech is billed from the characters spoken when that model's saved price is per 1M tokens. */
+  private static speechCost(price: AiModelPrice | null, characters: number): number | null {
+    return AiSpeechClient.cost(price, { characters });
   }
 
   /** xAI transcribes, writes the answer, and speaks it. Every row is logged as xAI so the xAI cap sees it. */

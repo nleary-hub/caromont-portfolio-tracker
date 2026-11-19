@@ -111,8 +111,7 @@ export class AiVoiceChatService {
     const secret = await AiProviderKeyAccess.source(db, env).secret("anthropic").catch(() => null);
     if (!secret) return { code: "ai_off", message: AiToolsCopy.aiOff(env), note: AiToolsCopy.aiOffNote(env) };
     if (!model || !(await AiModelService.enabledIds(db, "chat")).includes(model)) return { code: "model_off", message: AiToolsCopy.MODEL_OFF_NOTE, note: AiToolsCopy.MODEL_OFF_NOTE };
-    const dictation = await AiModelService.featureModel(db, "dictation");
-    if (!dictation || !(await AiModelService.enabledIds(db, "transcription")).includes(dictation)) return { code: "model_off", message: AiToolsCopy.VOICE_ANTHROPIC_NEED_DICTATION, note: AiToolsCopy.VOICE_ANTHROPIC_NEED_DICTATION };
+    if (!(await AiModelService.openAiTranscriptionModel(db))) return { code: "model_off", message: AiToolsCopy.VOICE_ANTHROPIC_NEED_DICTATION, note: AiToolsCopy.VOICE_ANTHROPIC_NEED_DICTATION };
     return null;
   }
 

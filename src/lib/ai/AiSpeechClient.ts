@@ -15,6 +15,8 @@ export type AiSpeechFetch = (url: string, init: { method: string; headers: Recor
 
 export type AiSpeechResult = { ok: true; base64: string } | { ok: false; kind: "http" | "network" | "empty" | "timeout" };
 
+type SpeechPrice = { priceUnit: string | null; inputPrice: unknown };
+
 export class AiSpeechClient {
   static readonly URL = "https://api.openai.com/v1/audio/speech";
   /** Documented Speech API model. Not a guess: https://platform.openai.com/docs/guides/text-to-speech */
@@ -22,6 +24,28 @@ export class AiSpeechClient {
   static readonly VOICE = "alloy";
   static readonly TIMEOUT_MS = 60_000;
   static readonly MAX_CHARS = 4_000;
+
+  /**
+   * Cost from a price saved under Models. per_minute uses seconds of audio.
+   * per_1m_tokens uses characters: OpenAI lists gpt-4o-mini-tts text per 1 million characters, and that figure is what an admin saves as the input price.
+   * No price, or a unit we cannot measure, stays null. Nothing is guessed.
+   */
+  static cost(price: SpeechPrice | null, measure: { seconds?: number | null; characters?: number | null }): number | null {
+    if (!price?.priceUnit) return null;
+    const rate = Number(String(price.inputPrice ?? ""));
+    if (!Number.isFinite(rate) || rate < 0) return null;
+    if (price.priceUnit === "per_minute") {
+      const seconds = measure.seconds;
+      if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return null;
+      return Math.round((seconds / 60) * rate * 1e6) / 1e6;
+    }
+    if (price.priceUnit === "per_1m_tokens") {
+      const characters = measure.characters;
+      if (characters == null || !Number.isFinite(characters) || characters < 0) return null;
+      return Math.round((characters / 1_000_000) * rate * 1e6) / 1e6;
+    }
+    return null;
+  }
 
   static async speak(apiKey: string, text: string, fetchImpl: AiSpeechFetch = fetch as unknown as AiSpeechFetch): Promise<AiSpeechResult> {
     const input = text.trim().slice(0, AiSpeechClient.MAX_CHARS);

@@ -1,7 +1,9 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
+import { releaseVoiceMic } from "@/lib/ai/AiVoiceMic";
 import { AiCopy } from "@/lib/ai/AiCopy";
+import { AiSpeechClient } from "@/lib/ai/AiSpeechClient";
 import { AnthropicPricingParser } from "@/lib/ai/AnthropicPricingParser";
 import { AiProviderClient, type AiRuntimeConfig, type FetchLike } from "@/lib/ai/AiProviderClient";
 import { AiSampling } from "@/lib/ai/AiSampling";
@@ -168,5 +170,43 @@ describe("xAI speech", () => {
     expect(url).toBe("https://api.x.ai/v1/stt");
     expect(r).toMatchObject({ ok: true, text: "Heard you.", durationSeconds: 1800 });
     expect(XaiSpeechClient.sttCost(1800)).toBe(0.05);
+  });
+});
+
+describe("Anthropic voice when dictation is on xAI", () => {
+  const row = (id: string, provider: string, enabled = true) => ({ id, provider, enabled, kind: id.includes("transcri") || id.includes("whisper") ? "transcription" : "chat" });
+
+  it("hears with an OpenAI transcription model, not the Grok dictation model", () => {
+    expect(AiModelService.pickOpenAiTranscription([row("grok-voice-transcribe-2.0", "xai"), row("gpt-4o-transcribe", "openai")], "grok-voice-transcribe-2.0")).toBe("gpt-4o-transcribe");
+    expect(AiModelService.pickOpenAiTranscription([row("gpt-4o-transcribe", "openai"), row("whisper-1", "openai")], "whisper-1")).toBe("whisper-1");
+    expect(AiModelService.pickOpenAiTranscription([row("grok-voice-transcribe-2.0", "xai")], "grok-voice-transcribe-2.0")).toBeNull();
+  });
+
+  it("prices OpenAI speech from the price saved under Models", () => {
+    expect(AiSpeechClient.cost({ priceUnit: "per_minute", inputPrice: "0.006" }, { seconds: 60 })).toBe(0.006);
+    expect(AiSpeechClient.cost({ priceUnit: "per_1m_tokens", inputPrice: "0.60" }, { characters: 1_000_000 })).toBe(0.6);
+    expect(AiSpeechClient.cost({ priceUnit: "per_minute", inputPrice: "0.006" }, { seconds: null })).toBeNull();
+    expect(AiSpeechClient.cost(null, { seconds: 30, characters: 100 })).toBeNull();
+  });
+
+  it("releases the microphone without running the upload that onstop would start", () => {
+    let uploaded = false;
+    const stops: string[] = [];
+    const recorder = {
+      state: "recording",
+      onstop: () => {
+        uploaded = true;
+      },
+      ondataavailable: () => undefined,
+      stop() {
+        stops.push("recorder");
+        this.state = "inactive";
+      },
+    };
+    const stream = { getTracks: () => [{ stop: () => stops.push("track") }] };
+    releaseVoiceMic(recorder, stream);
+    expect(uploaded).toBe(false);
+    expect(stops).toEqual(["recorder", "track"]);
+    expect(recorder.onstop).toBeNull();
   });
 });
