@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import { createPortal } from "react-dom";
-import { AiVoiceChatPanel } from "@/components/AiVoiceChatPanel";
+import { AiVoiceChatPanel, type AiVoiceRoute } from "@/components/AiVoiceChatPanel";
 import { TOOL_PRIMARY } from "@/components/AiToolsUi";
 import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 
@@ -22,7 +22,7 @@ function MicIcon() {
  * dashboard visible behind it. Model off: greyed, aria-disabled, still focusable, with the note as its description and
  * tooltip. Feature off: the parent doesn't render this at all.
  */
-export function AiVoiceChatDrawer({ disabledNote, defaultOpen = false }: { disabledNote: string | null; defaultOpen?: boolean }) {
+export function AiVoiceChatDrawer({ disabledNote, route = { provider: "openai", model: "" }, defaultOpen = false }: { disabledNote: string | null; route?: AiVoiceRoute; defaultOpen?: boolean }) {
   const [open, setOpen] = useState(defaultOpen);
   const button = useRef<HTMLButtonElement>(null);
   const off = disabledNote !== null;
@@ -72,7 +72,7 @@ export function AiVoiceChatDrawer({ disabledNote, defaultOpen = false }: { disab
               ✕
             </button>
           </div>
-          <AiVoiceChatPanel disabledNote={null} />
+          <AiVoiceChatPanel disabledNote={null} route={route} />
         </aside>,
         document.body,
       )}

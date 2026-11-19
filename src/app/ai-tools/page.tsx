@@ -14,6 +14,7 @@ import { Db } from "@/lib/db/Db";
 import type { AiModelDb } from "@/lib/services/AiModelService";
 import type { AiSettingsDb } from "@/lib/services/AiSettingsService";
 import { AiToolsReadiness } from "@/lib/services/AiToolsReadiness";
+import { AiVoiceChatService } from "@/lib/services/AiVoiceChatService";
 
 /** The provider call can take up to AiProviderClient.TIMEOUT_MS (60 s). */
 export const maxDuration = 90;
@@ -30,11 +31,13 @@ export default async function AiToolsPage() {
   let notes: Record<string, string | null> = Object.fromEntries(AiFeatureFlags.TOOL_FEATURES.map((f) => [f, C.AI_OFF_NOTE]));
   let dictationNote: string | null = C.AI_OFF_NOTE;
   let voiceNote: string | null = C.AI_OFF_NOTE;
+  let voiceRoute: { provider: "openai" | "anthropic" | "xai"; model: string } = { provider: "openai", model: "" };
   if (Db.isConfigured()) {
     try {
       notes = await AiToolsReadiness.notes(Db.client as unknown as AiModelDb & AiSettingsDb, AiFeatureFlags.TOOL_FEATURES);
       dictationNote = await AiToolsReadiness.dictationNote(Db.client as unknown as AiModelDb & AiSettingsDb);
       voiceNote = await AiToolsReadiness.voiceChatNote(Db.client as unknown as AiModelDb & AiSettingsDb);
+      voiceRoute = await AiVoiceChatService.route(Db.client);
     } catch {
       // Tables not migrated yet (Vercel previews skip migrations): every tool shows disabled.
     }
@@ -130,7 +133,7 @@ export default async function AiToolsPage() {
         <h2 id="ai-tool-voice-heading" className="type-heading">
           {C.VOICE_CHAT_TITLE}
         </h2>
-        <AiVoiceChatPanel disabledNote={voiceNote} />
+        <AiVoiceChatPanel disabledNote={voiceNote} route={voiceRoute} />
       </section>
       )}
     </main>

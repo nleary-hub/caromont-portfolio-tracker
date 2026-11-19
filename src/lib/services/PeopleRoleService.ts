@@ -132,7 +132,6 @@ export class PeopleRoleService {
     // The same calendar month (Eastern time) the spend cap counts.
     const since = AiSpendCap.monthStart(now);
     const cost = await store.aiCost(since).catch(() => ({}) as Record<string, number>);
-    const caps = (await store.aiCaps?.().catch(() => [])) ?? [];
     const me = PeopleRoleService.normalize(viewer.email);
     const rows: PersonRow[] = [];
     for (const p of byEmail.values()) {
@@ -158,7 +157,7 @@ export class PeopleRoleService {
         canChange: !owner && RoleAssignment.canActOn(actor, target, roles, env),
         canRevoke: pending && !owner && !p.hasPassword && p.lineIds.length === 0 && Permissions.can(actor, "people.user.add", env) && RoleAssignment.canActOn(actor, target, roles, env),
         aiCostUsd: cost[p.email] ?? 0,
-        aiCapUsd: AiSpendCapService.effectiveOf(caps, p.email).capUsd,
+        aiCapUsd: null,
       });
     }
     const rank = (r: PersonRow) => (r.owner ? 1000 : roles.find((x) => x.id === r.roleId)?.rank ?? 0);
@@ -309,6 +308,7 @@ export class PrismaPeopleRoleStore implements PeopleRoleStore {
   }
 
   async aiCaps() {
-    return AiSpendCapService.rows(this.db);
+    const kept = await AiSpendCapService.previous(this.db).catch(() => ({ previousPeople: [], previousDefaultUsd: null }));
+    return kept.previousPeople.map((p) => ({ email: p.email, monthlyCapUsd: p.capUsd }));
   }
 }

@@ -29,10 +29,15 @@ describe("AiSpendCap rules", () => {
     for (const bad of ["-1", "abc", "10.001", "10001", "1e3", {}]) expect(AiSpendCap.parseAmount(bad)).toBeUndefined();
   });
 
-  it("own cap beats the default; no rows means no cap", () => {
-    expect(AiSpendCap.effective({ own: 5, fallback: 10 })).toEqual({ capUsd: 5, source: "own" });
-    expect(AiSpendCap.effective({ own: null, fallback: 10 })).toEqual({ capUsd: 10, source: "default" });
-    expect(AiSpendCap.effective({ own: null, fallback: null })).toEqual({ capUsd: null, source: "none" });
+  it("a call's company comes from the provider, and xAI is told apart by its base URL", () => {
+    expect(AiSpendCap.vendorOf({ provider: "anthropic" })).toBe("anthropic");
+    expect(AiSpendCap.vendorOf({ provider: "openai" })).toBe("openai");
+    expect(AiSpendCap.vendorOf({ provider: "azure_openai" })).toBe("azure_openai");
+    expect(AiSpendCap.vendorOf({ provider: "openai_compatible", baseUrl: "https://api.x.ai/v1" })).toBe("xai");
+    expect(AiSpendCap.vendorOf({ provider: "openai_compatible", baseUrl: "https://llm.example/v1" })).toBe("other");
+    expect(AiSpendCap.vendorOfUsage(null, null)).toBe("openai");
+    expect(AiSpendCap.vendorOfUsage("openai_compatible", null)).toBe("other");
+    expect(AiSpendCap.vendorOfUsage("openai", "anthropic")).toBe("anthropic");
   });
 
   it("allows spend under the cap only; a cap of 0 allows nothing", () => {
@@ -52,10 +57,11 @@ describe("AiSpendCap rules", () => {
   });
 
   it("the cap message is plain and names where to change it", () => {
-    expect(AiSpendCopy.reached(10, "December 1")).toContain("$10.00");
-    expect(AiSpendCopy.reached(10, "December 1")).toContain("December 1");
-    expect(AiSpendCopy.reached(0, "December 1")).toContain("$0");
-    expect(AiSpendCopy.reached(10, "December 1") + AiSpendCopy.INTRO).not.toMatch(/—/);
+    expect(AiSpendCopy.reached("OpenAI", 10, "December 1")).toContain("$10.00");
+    expect(AiSpendCopy.reached("OpenAI", 10, "December 1")).toContain("December 1");
+    expect(AiSpendCopy.reached("OpenAI", 10, "December 1")).toContain("shared by everyone");
+    expect(AiSpendCopy.reached("Anthropic", 0, "December 1")).toContain("$0");
+    expect(AiSpendCopy.reached("OpenAI", 10, "December 1") + AiSpendCopy.INTRO).not.toMatch(/—/);
   });
 });
 
@@ -73,69 +79,78 @@ describe("0074 on a real Postgres through Prisma", () => {
   let ANA = "";
   let BEN = "";
   let n = 0;
+  /** Each test uses its own month so append-only usage from earlier tests is not in this total. */
+  let when = NOW;
+  const now = () => when;
   beforeEach(async () => {
     n++;
+    when = new Date(Date.UTC(2020 + n, 10, 15, 15, 0, 0));
     ANA = `ana${n}@example.test`;
     BEN = `ben${n}@example.test`;
     await h.pg.exec(`DELETE FROM ai_spend_caps`);
+    await h.pg.exec(`DELETE FROM ai_provider_spend_caps`);
   });
 
-  const spend = async (email: string, costUsd: number, createdAt = NOW) =>
-    h.prisma.aiUsageLog.create({ data: { suggestionId: randomUUID(), userEmail: email, feature: "draft_from_bullets", event: "suggested", inputLength: 10, costUsd, createdAt } });
+  const spend = async (email: string, costUsd: number, createdAt = when, provider = "openai") =>
+    h.prisma.aiUsageLog.create({ data: { suggestionId: randomUUID(), userEmail: email, feature: "draft_from_bullets", event: "suggested", provider, inputLength: 10, costUsd, createdAt } });
   const set = (target: string, amount: string, viewer: { email: string; isAdmin: boolean } | null = ADMIN, env: Record<string, string | undefined> = {}) =>
     AiSpendCapService.setCap({ db, viewer, target, amount, env, now });
 
   it("no cap rows: everyone may call AI, however much they spent", async () => {
     await spend(ANA, 500);
-    expect(await AiSpendCapService.check({ db, email: ANA, now })).toEqual({ ok: true });
+    expect(await AiSpendCapService.check({ db, provider: "openai", now })).toEqual({ ok: true });
   });
 
-  it("the default cap blocks once this month's spend reaches it; last month does not count", async () => {
-    expect(await set("default", "10")).toEqual({ ok: true });
+  it("one OpenAI cap is shared by everyone; last month and Anthropic spend do not count", async () => {
+    expect(await set("openai", "10")).toEqual({ ok: true });
     await spend(ANA, 6);
-    await spend(ANA, 50, new Date("2026-10-20T12:00:00Z"));
-    expect(await AiSpendCapService.check({ db, email: ANA, now })).toEqual({ ok: true });
-    await spend(ANA, 4);
-    expect(await AiSpendCapService.check({ db, email: ANA.replace("ana", "Ana"), now })).toEqual({ ok: false, reason: "cap", message: AiSpendCopy.reached(10, "December 1") });
+    await spend(BEN, 3);
+    await spend(ANA, 50, new Date(when.getTime() - 40 * 24 * 60 * 60 * 1000));
+    await spend(ANA, 40, NOW, "anthropic");
+    expect(await AiSpendCapService.check({ db, provider: "openai", now })).toEqual({ ok: true });
+    await spend(BEN, 1);
+    expect(await AiSpendCapService.check({ db, provider: "openai", email: ANA.replace("ana", "Ana"), now })).toEqual({ ok: false, reason: "cap", message: AiSpendCopy.reached("OpenAI", 10, "December 1") });
+    expect((await AiSpendCapService.check({ db, provider: "anthropic", now })).ok).toBe(true);
   });
 
-  it("a person's own cap overrides the default, and removing it falls back to the default", async () => {
-    await set("default", "10");
-    await set(BEN, "25");
-    await spend(BEN, 12);
-    expect((await AiSpendCapService.check({ db, email: BEN, now })).ok).toBe(true);
-    await set(BEN, "");
-    expect((await AiSpendCapService.check({ db, email: BEN, now })).ok).toBe(false);
+  it("a kept per-person cap does not enforce, and removing the company cap lifts it", async () => {
+    await h.pg.exec(`INSERT INTO ai_spend_caps (email, "monthlyCapUsd", "updatedBy") VALUES ('${ANA}', 1, 'admin@example.test')`);
+    await spend(ANA, 50);
+    expect((await AiSpendCapService.check({ db, provider: "openai", now })).ok).toBe(true);
+    await set("openai", "10");
+    expect((await AiSpendCapService.check({ db, provider: "openai", now })).ok).toBe(false);
+    await set("openai", "");
+    expect((await AiSpendCapService.check({ db, provider: "openai", now })).ok).toBe(true);
   });
 
-  it("a cap of 0 turns AI off for that person only", async () => {
-    await set(ANA, "0");
-    expect(await AiSpendCapService.check({ db, email: ANA, now })).toMatchObject({ ok: false, reason: "cap" });
-    expect((await AiSpendCapService.check({ db, email: BEN, now })).ok).toBe(true);
+  it("a cap of 0 turns that company off for everyone", async () => {
+    await set("anthropic", "0");
+    expect(await AiSpendCapService.check({ db, provider: "anthropic", now })).toMatchObject({ ok: false, reason: "cap" });
+    expect((await AiSpendCapService.check({ db, provider: "openai", now })).ok).toBe(true);
   });
 
   it("writes one history row per change, none for a repeat save, and history cannot be edited", async () => {
-    await set(ANA, "15");
-    await set(ANA, "15.00");
-    await set(ANA, "20");
-    await set(ANA, "");
-    const rows = (await h.pg.query<{ old: string | null; new: string | null; by: string }>(`SELECT "oldCapUsd" AS old, "newCapUsd" AS new, "changedBy" AS by FROM ai_spend_cap_history WHERE email = $1 ORDER BY "changedAt", id`, [ANA])).rows;
-    // Every change carries the same test clock, so compare without order.
+    const seen = new Set((await h.pg.query<{ id: string }>(`SELECT id::text AS id FROM ai_provider_spend_cap_history`)).rows.map((r) => r.id));
+    await set("xai", "15");
+    await set("xai", "15.00");
+    await set("xai", "20");
+    await set("xai", "");
+    const rows = (await h.pg.query<{ id: string; old: string | null; new: string | null; by: string }>(`SELECT id::text AS id, "oldCapUsd" AS old, "newCapUsd" AS new, "changedBy" AS by FROM ai_provider_spend_cap_history WHERE provider = 'xai'`)).rows.filter((r) => !seen.has(r.id));
     const changes = rows.map((r) => [r.old === null ? null : Number(r.old), r.new === null ? null : Number(r.new)]);
     expect(changes).toHaveLength(3);
     expect(changes).toEqual(expect.arrayContaining([[null, 15], [15, 20], [20, null]]));
     expect(rows.every((r) => r.by === ADMIN.email)).toBe(true);
-    expect(await refusal(h.pg, `UPDATE ai_spend_cap_history SET "newCapUsd" = 1`)).not.toBeNull();
-    expect(await refusal(h.pg, `DELETE FROM ai_spend_cap_history`)).not.toBeNull();
+    expect(await refusal(h.pg, `UPDATE ai_provider_spend_cap_history SET "newCapUsd" = 1`)).not.toBeNull();
+    expect(await refusal(h.pg, `DELETE FROM ai_provider_spend_cap_history`)).not.toBeNull();
   });
 
-  it("refuses non-admins, previews, bad emails and bad amounts, and saves nothing", async () => {
-    expect(await set(ANA, "5", { email: BEN, isAdmin: false })).toEqual({ ok: false, error: AiSpendCopy.NOT_AUTHORIZED });
-    expect(await set(ANA, "5", null)).toEqual({ ok: false, error: AiSpendCopy.NOT_AUTHORIZED });
-    expect(await set(ANA, "5", ADMIN, { VERCEL_ENV: "preview" })).toEqual({ ok: false, error: AiSpendCopy.PREVIEW });
-    expect(await set("not-an-email", "5")).toEqual({ ok: false, error: AiSpendCopy.INVALID_EMAIL });
-    expect(await set(ANA, "-3")).toEqual({ ok: false, error: AiSpendCopy.INVALID_AMOUNT });
-    expect(await AiSpendCapService.rows(db)).toEqual([]);
+  it("refuses non-admins, previews, unknown companies and bad amounts, and saves nothing", async () => {
+    expect(await set("openai", "5", { email: BEN, isAdmin: false })).toEqual({ ok: false, error: AiSpendCopy.NOT_AUTHORIZED });
+    expect(await set("openai", "5", null)).toEqual({ ok: false, error: AiSpendCopy.NOT_AUTHORIZED });
+    expect(await set("openai", "5", ADMIN, { VERCEL_ENV: "preview" })).toEqual({ ok: false, error: AiSpendCopy.PREVIEW });
+    expect(await set("not-a-company", "5")).toEqual({ ok: false, error: AiSpendCopy.INVALID_PROVIDER });
+    expect(await set("openai", "-3")).toEqual({ ok: false, error: AiSpendCopy.INVALID_AMOUNT });
+    expect((await h.pg.query<{ n: number }>(`SELECT count(*)::int AS n FROM ai_provider_spend_caps`)).rows[0].n).toBe(0);
   });
 
   it("the database refuses what the app would never write", async () => {
@@ -144,18 +159,16 @@ describe("0074 on a real Postgres through Prisma", () => {
     expect(await refusal(h.pg, `INSERT INTO ai_spend_caps (email, "monthlyCapUsd", "updatedBy") VALUES ('ana0@example.test', 10001, 'admin@example.test')`)).toMatch(/ai_spend_caps_amount/);
   });
 
-  it("the admin view lists everyone who spent or has their own cap, highest spend first", async () => {
-    await set("default", "10");
-    await set(BEN, "3");
+  it("the admin view lists each company, and keeps a personal cap without enforcing it", async () => {
+    await set("openai", "10");
+    await h.pg.exec(`INSERT INTO ai_spend_caps (email, "monthlyCapUsd", "updatedBy") VALUES ('${BEN}', 3, 'admin@example.test'), ('default', 25, 'admin@example.test')`);
     await spend(ANA, 7.5);
-    const v = await AiSpendCapService.view(db, NOW);
+    const v = await AiSpendCapService.view(db, when);
     expect(v.ready).toBe(true);
-    expect(v.defaultCapUsd).toBe(10);
-    const mine = v.people.filter((p) => p.email === ANA || p.email === BEN);
-    expect(mine.map((p) => [p.email, p.spentUsd, p.ownCapUsd, p.effective.source])).toEqual([
-      [ANA, 7.5, null, "default"],
-      [BEN, 0, 3, "own"],
-    ]);
+    expect(v.providers.find((p) => p.provider === "openai")).toMatchObject({ capUsd: 10, spentUsd: 7.5 });
+    expect(v.providers.find((p) => p.provider === "anthropic")).toMatchObject({ capUsd: null, spentUsd: 0 });
+    expect(v.previousDefaultUsd).toBe(25);
+    expect(v.previousPeople).toEqual([{ email: BEN, capUsd: 3 }]);
   });
 });
 
@@ -168,8 +181,7 @@ describe("before 0074 is applied (a preview on the production database)", () => 
     const prisma = new PrismaClient({ adapter: new PrismaPg({ connectionString: `postgresql://postgres:postgres@127.0.0.1:${port}/postgres`, max: 1 }) });
     try {
       const db = prisma as unknown as AiSpendCapReadDb;
-      expect(await AiSpendCapService.check({ db, email: ANA, now })).toEqual({ ok: true });
-      expect(await AiSpendCapService.rows(db)).toEqual([]);
+      expect(await AiSpendCapService.check({ db, provider: "openai", now })).toEqual({ ok: true });
       const v = await AiSpendCapService.view(db, NOW);
       expect(v.ready).toBe(false);
     } finally {
@@ -180,8 +192,8 @@ describe("before 0074 is applied (a preview on the production database)", () => 
   });
 
   it("any other read error fails closed", async () => {
-    const db = { aiSpendCap: { findMany: async () => { throw new Error("connection lost"); } } };
-    expect(await AiSpendCapService.check({ db, email: ANA, now })).toEqual({ ok: false, reason: "error", message: AiSpendCopy.CHECK_FAILED });
+    const db = { aiProviderSpendCap: { findMany: async () => { throw new Error("connection lost"); } } };
+    expect(await AiSpendCapService.check({ db, provider: "openai", now })).toEqual({ ok: false, reason: "error", message: AiSpendCopy.CHECK_FAILED });
   });
 });
 
@@ -197,16 +209,16 @@ describe("the writing assistant stops at the cap without calling the provider", 
       apiKeyCiphertext: AiKeyCipher.encrypt(API_KEY, key.key), apiKeyLast4: AiKeyCipher.last4(API_KEY), apiKeySetAt: NOW, apiKeySetBy: ADMIN.email, updatedAt: NOW, updatedBy: ADMIN.email,
     };
     const db = Object.assign(fake, {
-      aiSpendCap: { findMany: async () => [{ email: "default", monthlyCapUsd: "1.00", updatedAt: NOW, updatedBy: ADMIN.email }] },
+      aiProviderSpendCap: { findMany: async () => [{ provider: "openai", monthlyCapUsd: "1.00", updatedAt: NOW, updatedBy: ADMIN.email }] },
     });
-    Object.assign(db.aiUsageLog, { aggregate: async () => ({ _sum: { costUsd: "1.25" } }) });
+    Object.assign(db.aiUsageLog, { groupBy: async () => [{ provider: "openai", model: "gpt-6-luna", _sum: { costUsd: "1.25" } }] });
     let calls = 0;
     const fetchImpl: FetchLike = async () => {
       calls++;
       return { ok: true, status: 200, text: async () => JSON.stringify({ choices: [{ message: { content: "OK" } }] }) };
     };
     const r = await AiWritingService.suggest({ db, viewer: ADMIN, scope: ServiceLine.defaultScope(), projectId: null, feature: "draft_from_bullets", text: "example notes", env: ENV, fetchImpl, now });
-    expect(r).toEqual({ ok: false, kind: "cap", message: AiSpendCopy.reached(1, "December 1") });
+    expect(r).toEqual({ ok: false, kind: "cap", message: AiSpendCopy.reached("OpenAI", 1, "December 1") });
     expect(calls).toBe(0);
   });
 });

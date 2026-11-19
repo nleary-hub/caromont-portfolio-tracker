@@ -15,6 +15,10 @@ import { AiToolsCopy as C } from "@/lib/ai/AiToolsCopy";
 import type { AiToolChange } from "@/lib/ai/AiToolsModel";
 import { AiVoiceChat, AiVoiceErrors } from "@/lib/ai/AiVoiceChat";
 import { AiVoiceTranscript, type AiVoiceTranscriptLine } from "@/lib/ai/AiVoiceTranscript";
+import { AiAnthropicVoicePanel } from "@/components/AiAnthropicVoicePanel";
+
+/** Which company writes the voice-chat answer. OpenAI is the live speech session. */
+export type AiVoiceRoute = { provider: "openai" | "anthropic" | "xai"; model: string };
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const GHOST = `h-8 whitespace-nowrap rounded-control border border-line px-3.5 text-fg type-table-strong hover:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
@@ -28,7 +32,8 @@ export type AiVoiceReview = { proposalId: string; changes: AiToolChange[] };
  * all, or per line). "Undo that" undoes the last apply. Audio goes from the browser to the provider only, never to this
  * app, and is never recorded. Paused (model off) keeps the button greyed and focusable with the note.
  */
-export function AiVoiceChatPanel({ disabledNote, initialPhase = "idle", initialReviews = [], initialError = null, initialTranscript = [], initialWarning = false }: { disabledNote: string | null; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[]; initialError?: string | null; /** Preview/tests. */ initialTranscript?: AiVoiceTranscriptLine[]; initialWarning?: boolean }) {
+export function AiVoiceChatPanel({ disabledNote, route = { provider: "openai", model: "" }, initialPhase = "idle", initialReviews = [], initialError = null, initialTranscript = [], initialWarning = false }: { disabledNote: string | null; route?: AiVoiceRoute; initialPhase?: AiVoicePhaseState; initialReviews?: AiVoiceReview[]; initialError?: string | null; /** Preview/tests. */ initialTranscript?: AiVoiceTranscriptLine[]; initialWarning?: boolean }) {
+  if (route.provider === "anthropic" || route.provider === "xai") return <AiAnthropicVoicePanel disabledNote={disabledNote} model={route.model} company={route.provider} />;
   const [phase, setPhase] = useState<AiVoicePhaseState>(initialPhase);
   const [error, setError] = useState<string | null>(initialError);
   const [reviews] = useState<AiVoiceReview[]>(initialReviews);
