@@ -49,11 +49,34 @@ const UUID = /^[0-9a-f-]{36}$/i;
  * for review; applying a line goes through AiToolsService.applyLine and ProjectService.update like every text tool.
  */
 export class AiVoiceChatService {
-  /** Item A: the shared portfolio context for the voice session, within the voice budget (session instructions). */
+  /**
+   * Item A: the shared portfolio context for the Live backend (a Responses chat model with a large context window, so
+   * not held to the voice cap). The voice model's own prompt gets a smaller context: see voicePrompt.
+   */
   static readonly CONTEXT_TOKENS = 24_000;
 
-  static async context(db: AiToolsDb, scope: ServiceLineScope, viewer: Viewer, projects: readonly AiToolProject[], now: () => Date): Promise<string> {
-    return (await PortfolioContextService.build({ db, scope, viewer, projects, now: now(), maxTokens: AiVoiceChatService.CONTEXT_TOKENS })).text;
+  static async context(db: AiToolsDb, scope: ServiceLineScope, viewer: Viewer, projects: readonly AiToolProject[], now: () => Date, maxTokens: number = AiVoiceChatService.CONTEXT_TOKENS): Promise<string> {
+    return (await PortfolioContextService.build({ db, scope, viewer, projects, now: now(), maxTokens })).text;
+  }
+
+  /**
+   * The voice model's session instructions (Realtime, or the Live voice prompt), always under OpenAI's 16,384-token
+   * cap: the portfolio context is built to the room left after the fixed parts, then AiVoiceChat.fit drops project
+   * lines as a last guard. A trim is logged with counts only (no project text).
+   */
+  static async voicePrompt(args: { db: AiToolsDb; scope: ServiceLineScope; viewer: Viewer; projects: readonly AiToolProject[]; now: () => Date; custom: string | null; live: boolean; model: string }): Promise<string> {
+    const budget = AiVoiceChat.contextBudget(args.custom, args.live);
+    const built = await PortfolioContextService.build({ db: args.db, scope: args.scope, viewer: args.viewer, projects: args.projects, now: args.now(), maxTokens: budget });
+    const fitted = AiVoiceChat.fit(AiVoiceChat.instructions(built.text, args.custom), args.live ? AiVoiceChat.LIVE_LINE : null);
+    if (built.cuts.length || fitted.trimmed) {
+      console.info("AI tools: voice instructions trimmed", { api: args.live ? "live" : "realtime", model: args.model, estimatedTokens: fitted.tokens, limit: AiVoiceChat.INSTRUCTIONS_TOKEN_LIMIT, cuts: built.cuts, projectsLeftOut: built.omitted.length, guardTrimmed: fitted.trimmed });
+    }
+    return fitted.text;
+  }
+
+  /** The message for a refused session: plain words when OpenAI says the instructions are too long. */
+  private static failureMessage(r: { message?: string | null }, fallback: string): string {
+    return AiVoiceChat.instructionsTooLong(r) ? AiToolsCopy.VOICE_INSTRUCTIONS_TOO_LONG : fallback;
   }
 
   /**
@@ -149,7 +172,7 @@ export class AiVoiceChatService {
       api === "live"
         ? // No token for the browser: the Live API has no ephemeral secret, so connect starts the session server side.
           { ok: true, ticket: { clientSecret: "", expiresAt: Math.floor(now().getTime() / 1000) + AiLiveClient.CONNECT_WINDOW_S, callsUrl: AiRealtimeClient.PROXY_PATH, model, api } }
-        : await AiRealtimeClient.mint(saved, { model, instructions: AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db)), tools: [...AiVoiceChat.TOOLS], voice: AiVoiceChat.VOICE }, args.fetchImpl);
+        : await AiRealtimeClient.mint(saved, { model, instructions: await AiVoiceChatService.voicePrompt({ db, scope: args.scope, viewer, projects, now, custom: await AiModelService.voiceInstructions(db), live: false, model }), tools: [...AiVoiceChat.TOOLS], voice: AiVoiceChat.VOICE }, args.fetchImpl);
     // The limit in force when this chat starts: kept on the started row (outputLength, unused there) so End caps by it even if an admin changes it mid-call.
     const maxSeconds = await AiModelService.voiceSessionCap(db);
     await db.aiUsageLog.create({
@@ -159,7 +182,7 @@ export class AiVoiceChatService {
       const code = r.modelUnavailable ? "model_unavailable" : "token";
       // The real error for the runtime log: our code, HTTP status and OpenAI's error type, code and message. No secrets.
       console.error("AI tools: voice session failed", { code, api, kind: r.kind, model, status: r.status ?? null, type: r.type ?? null, errorCode: r.code ?? null, message: r.message ?? null });
-      return { ok: false, code, message: code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_TOKEN_FAILED };
+      return { ok: false, code, message: code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiVoiceChatService.failureMessage(r, AiToolsCopy.VOICE_TOKEN_FAILED) };
     }
     return { ok: true, sessionId, ticket: r.ticket, maxSeconds };
   }
@@ -189,7 +212,7 @@ export class AiVoiceChatService {
     await AiVoiceChatService.logFailure(db, viewer, session, code, { status: r.status ?? null, type: r.type ?? r.kind, errorCode: r.code ?? null, message: r.message ?? null, source: "server" }, args.now, [secret]);
     // OpenAI's status passes through; a network failure or timeout is a 502 or 504 from us.
     const httpStatus = typeof r.status === "number" ? r.status : r.kind === "timeout" ? 504 : 502;
-    return { ok: false, httpStatus, error: { type: r.type ?? r.kind, code: r.code ?? null, message: r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
+    return { ok: false, httpStatus, error: { type: r.type ?? r.kind, code: r.code ?? null, message: AiVoiceChat.instructionsTooLong(r) ? AiToolsCopy.VOICE_INSTRUCTIONS_TOO_LONG : r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
   }
 
   /**
@@ -219,14 +242,17 @@ export class AiVoiceChatService {
     }
     const projects = await AiToolsService.projects(db, args.scope);
     const model = session.model ?? "";
-    // The same instructions as the Realtime adapter (admin rules or built-in, plus tool contract, patient line, projects).
-    const base = AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), await AiModelService.voiceInstructions(db));
+    const custom = await AiModelService.voiceInstructions(db);
     const backendModel = await AiVoiceChatService.backendModel(db, row);
     if (!backendModel) {
       await AiVoiceChatService.logFailure(db, viewer, session, "model_off", { status: 503, type: "no_backend_model", api: "live" }, args.now);
       return deny(503, AiToolsCopy.VOICE_BACKEND_MODEL_OFF);
     }
-    const r = await AiLiveClient.create(saved, { model, instructions: AiVoiceChat.liveInstructions(base), voice: AiVoiceChat.VOICE, backendModel, backendInstructions: base, tools: [...AiVoiceChat.TOOLS] }, sdp, args.fetchImpl);
+    // The backend (a Responses chat model) gets the fuller context; the voice model's prompt is held under OpenAI's
+    // 16,384-token instructions cap. Same rules, tool contract and patient line in both.
+    const backendInstructions = AiVoiceChat.instructions(await AiVoiceChatService.context(db, args.scope, viewer, projects, now), custom);
+    const instructions = await AiVoiceChatService.voicePrompt({ db, scope: args.scope, viewer, projects, now, custom, live: true, model });
+    const r = await AiLiveClient.create(saved, { model, instructions, voice: AiVoiceChat.VOICE, backendModel, backendInstructions, tools: [...AiVoiceChat.TOOLS] }, sdp, args.fetchImpl);
     if (r.ok) {
       console.info("AI tools: voice live session started", { sessionId: session.suggestionId, model, backendModel, liveSessionId: r.liveSessionId });
       return { ok: true, sdp: r.sdp };
@@ -234,7 +260,7 @@ export class AiVoiceChatService {
     const code: AiVoiceErrorCode = r.modelUnavailable ? "model_unavailable" : "connect_failed";
     await AiVoiceChatService.logFailure(db, viewer, session, code, { status: r.status ?? null, type: r.type ?? r.kind, errorCode: r.code ?? null, message: r.message ?? null, source: "server", api: "live" }, args.now, [saved.apiKey]);
     const httpStatus = typeof r.status === "number" ? r.status : r.kind === "timeout" ? 504 : 502;
-    return { ok: false, httpStatus, error: { type: r.type ?? r.kind, code: r.code ?? null, message: r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
+    return { ok: false, httpStatus, error: { type: r.type ?? r.kind, code: r.code ?? null, message: AiVoiceChat.instructionsTooLong(r) ? AiToolsCopy.VOICE_INSTRUCTIONS_TOO_LONG : r.message ?? (code === "model_unavailable" ? AiToolsCopy.VOICE_MODEL_UNAVAILABLE : AiToolsCopy.VOICE_CONNECT_FAILED), modelUnavailable: code === "model_unavailable" } };
   }
 
   /** One failed row per session (append-only; usageSeconds 0) plus the log line. Every value is scrubbed of keys and tokens. */

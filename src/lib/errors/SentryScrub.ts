@@ -137,20 +137,33 @@ export class SentryScrub {
     return { level: log.level, message, attributes, severityNumber: log.severityNumber };
   }
 
-  /** Log text: a JSON object (ReportLog's one-line logs) keeps its keys with each value scrubbed; other text is scrubbed whole. */
+  /**
+   * Log text: a JSON object (ReportLog's one-line logs) keeps its keys with each value scrubbed. So does a JSON object
+   * after a short label, the shape console.error("AI tools: ...", { code, status, message }) arrives in through the
+   * console integration; before, the text scrubber turned every quoted key and value in it into "[value]". The label
+   * is scrubbed as text, and sensitive keys (session, token, email, name and the like) are still filtered. Other text is
+   * scrubbed whole.
+   */
   static logText(raw: string, max: number): string {
     const t = raw.trim();
-    if (t.startsWith("{") && t.endsWith("}")) {
-      try {
-        const parsed: unknown = JSON.parse(t);
-        if (parsed && typeof parsed === "object" && !Array.isArray(parsed)) {
-          return JSON.stringify(SentryScrub.logValue(parsed, 0)).slice(0, max);
-        }
-      } catch {
-        // Not JSON after all: scrub it as text.
-      }
-    }
+    const whole = SentryScrub.jsonObject(t);
+    if (whole) return JSON.stringify(SentryScrub.logValue(whole, 0)).slice(0, max);
+    const labelled = /^([^{}\n]{1,200}?)\s+(\{[\s\S]*\})$/.exec(t);
+    const obj = labelled ? SentryScrub.jsonObject(labelled[2]) : null;
+    if (labelled && obj) return `${ClientErrorScrub.text(labelled[1], ClientErrorScrub.MESSAGE_MAX)} ${JSON.stringify(SentryScrub.logValue(obj, 0))}`.slice(0, max);
     return ClientErrorScrub.text(raw, max);
+  }
+
+  /** The text parsed as a JSON object, or null when it is not one. */
+  private static jsonObject(t: string): Record<string, unknown> | null {
+    if (!(t.startsWith("{") && t.endsWith("}"))) return null;
+    try {
+      const parsed: unknown = JSON.parse(t);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as Record<string, unknown>) : null;
+    } catch {
+      // Not JSON after all: scrub it as text.
+      return null;
+    }
   }
 
   /** One log value scrubbed: text like a message, numbers only when they can't be an identifier, objects key by key. */
