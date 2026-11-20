@@ -330,7 +330,7 @@ export function PeoplePanel(props: {
                       <div style={{ width: 150 }}>
                         <div style={{ fontSize: 12 }}>
                           <span style={{ fontWeight: 500 }}>${p.aiCostUsd.toFixed(2)}</span>{" "}
-                          <span className={s.dim}>{p.aiCapUsd === null ? "this month, no cap" : `of $${p.aiCapUsd.toFixed(2)} this month`}</span>
+                          <span className={s.dim}>{p.aiCapUsd === null ? "this month" : `of $${p.aiCapUsd.toFixed(2)} this month`}</span>
                         </div>
                         {p.aiCapUsd !== null && (
                           <div className={s.bar}>

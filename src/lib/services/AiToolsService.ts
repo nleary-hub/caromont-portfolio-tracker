@@ -12,13 +12,15 @@ import { AiToolsCopy } from "@/lib/ai/AiToolsCopy";
 import { AiToolsModel, type AiLinkSuggestion, type AiBrief, type AiProjectDraft, type AiToolChange, type AiToolField, type AiToolProject } from "@/lib/ai/AiToolsModel";
 import { AiToolsPrompts } from "@/lib/ai/AiToolsPrompts";
 import { AiTranscriptionClient, type AiTranscribeFetch } from "@/lib/ai/AiTranscriptionClient";
+import { XaiSpeechClient } from "@/lib/ai/XaiSpeechClient";
 import { AppConfig } from "@/lib/config/AppConfig";
 import type { ServiceLineScope } from "@/lib/domain/ServiceLine";
 import { AiModelService } from "@/lib/services/AiModelService";
-import type { AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
+import { AiFeatureRuntime, AiProviderKeyAccess, type AiProviderKeySource } from "@/lib/services/AiFeatureProviderService";
 import { AiRegistryRuntime } from "@/lib/services/AiRegistryRuntime";
 import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsDb } from "./AiSettingsService";
+import { AiSpendCap } from "@/lib/ai/AiSpendCap";
 import { AiSpendCapService } from "./AiSpendCapService";
 import { AiFailureAlertService } from "./AiFailureAlertService";
 import { AiFailureCopy } from "@/lib/ai/AiFailureAlert";
@@ -199,8 +201,8 @@ export class AiToolsService {
     if (AiToolsService.inFlight.has(user)) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, kind: "rate", message: AiCopy.RATE_LIMITED };
-    // 0074: the monthly spend cap (no cap rows = no cap).
-    const spend = await AiSpendCapService.check({ db, email: user, env, now });
+    // 0075: the monthly cap for this call's company, shared by everyone.
+    const spend = await AiSpendCapService.check({ db, provider: AiSpendCap.vendorOf(config), email: user, env, now });
     if (!spend.ok) return { ok: false, kind: "cap", message: spend.message };
 
     const proposalId = randomUUID();
@@ -369,20 +371,25 @@ export class AiToolsService {
     const audio = args.audio as Blob | null;
     if (!audio || typeof audio !== "object" || typeof audio.size !== "number" || typeof audio.type !== "string" || !AiTranscriptionClient.acceptable(audio.type, audio.size)) return { ok: false, message: AiToolsCopy.DICTATION_FAILED };
     const row = await AiSettingsService.storedRow(db).catch(() => null);
-    // Item 2: dictation runs on the OpenAI key from the key registry, never the legacy ai_settings copy. No key = AI off.
-    const saved = row?.enabled ? await AiProviderKeyService.openAiRuntime(db, "", env) : null;
-    if (!saved) return { ok: false, message: AiToolsCopy.aiOff(env) };
-    const model = await AiModelService.featureModel(db, "dictation");
+    if (!row?.enabled) return { ok: false, message: AiToolsCopy.aiOff(env) };
+    const choice = AiFeatureRuntime.choiceOf("dictation", await AiFeatureRuntime.rows(db));
+    const model = choice.model;
     if (!model) return { ok: false, message: AiToolsCopy.DICTATION_NO_MODEL };
     if (!(await AiModelService.enabledIds(db, "transcription")).includes(model)) return { ok: false, message: AiCopy.MODEL_NOT_ALLOWED };
     const user = viewer.email;
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: RATE_EVENTS }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, message: AiCopy.RATE_LIMITED };
-    const spend = await AiSpendCapService.check({ db, email: user, env, now });
+    const company = choice.provider === "xai" ? "xai" : "openai";
+    const spend = await AiSpendCapService.check({ db, provider: company, email: user, env, now });
     if (!spend.ok) return { ok: false, message: spend.message };
-    const r = await AiTranscriptionClient.transcribe(saved, model, audio, args.fetchImpl);
+    const xaiKey = company === "xai" ? await AiProviderKeyAccess.source(db, env).secret("xai").catch(() => null) : null;
+    const saved = company === "openai" ? await AiProviderKeyService.openAiRuntime(db, "", env) : null;
+    if (company === "xai" ? !xaiKey : !saved) return { ok: false, message: AiToolsCopy.aiOff(env) };
+    const r = company === "xai" && xaiKey ? await XaiSpeechClient.transcribe(xaiKey.apiKey, model, audio, args.fetchImpl ?? (fetch as unknown as AiTranscribeFetch)) : await AiTranscriptionClient.transcribe(saved!, model, audio, args.fetchImpl);
+    const duration = r.ok && "durationSeconds" in r && typeof r.durationSeconds === "number" ? r.durationSeconds : null;
+    const costUsd = company === "xai" ? XaiSpeechClient.sttCost(duration) : null;
     await db.aiUsageLog.create({
-      data: { id: randomUUID(), suggestionId: randomUUID(), userEmail: user, projectId: null, feature: "dictation", event: r.ok ? "proposed" : "failed", provider: saved.provider, model, inputLength: audio.size, outputLength: r.ok ? r.text.length : null, numberCheckPassed: null, suggestedText: null, createdAt: now() },
+      data: { id: randomUUID(), suggestionId: randomUUID(), userEmail: user, projectId: null, feature: "dictation", event: r.ok ? "proposed" : "failed", provider: company, model, inputLength: audio.size, outputLength: r.ok ? r.text.length : null, numberCheckPassed: null, suggestedText: null, costUsd, createdAt: now() },
     });
     if (!r.ok) {
       console.error("AI tools: transcription failed", { kind: r.kind });

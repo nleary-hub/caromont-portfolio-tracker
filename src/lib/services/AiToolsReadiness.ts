@@ -67,9 +67,12 @@ export class AiToolsReadiness {
     const row = await AiSettingsService.row(db, env).catch(() => null);
     if (AiToolsCopy.isPreview(env)) return AiToolsCopy.PREVIEW_OFF_NOTE;
     if (!row?.enabled) return AiToolsCopy.AI_OFF_NOTE;
-    const model = await AiModelService.featureModel(db, "dictation");
+    const choice = AiFeatureRuntime.choiceOf("dictation", await AiFeatureRuntime.rows(db));
+    const model = choice.model;
     if (!model) return AiToolsCopy.DICTATION_NO_MODEL;
-    return (await AiModelService.enabledIds(db, "transcription")).includes(model) ? null : AiToolsCopy.MODEL_OFF_NOTE;
+    if (!(await AiModelService.enabledIds(db, "transcription")).includes(model)) return AiToolsCopy.MODEL_OFF_NOTE;
+    if (choice.provider === "xai" && !(await AiProviderKeyAccess.savedProviders(db)).has("xai")) return AiToolsCopy.noKeyNote("xai");
+    return null;
   }
 
   /**

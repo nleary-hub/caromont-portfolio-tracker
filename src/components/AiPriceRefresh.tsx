@@ -120,7 +120,9 @@ export function AiPriceRefresh({ dbReady, initial, children }: { dbReady: boolea
                     </td>
                     <td className={`px-3 py-2 ${r.changed ? "text-muted line-through" : ""}`}>{show(r.current)}</td>
                     <td className="px-3 py-2">
-                      {r.proposed ? (
+                      {r.availability === "unavailable" ? (
+                        <span className="text-muted" data-testid="ai-price-review-unavailable">{C.PRICE_UNAVAILABLE}</span>
+                      ) : r.proposed ? (
                         <span className={r.changed ? "rounded-control bg-(--status-at-risk-dark-bg) px-1.5 py-0.5 text-(--status-at-risk-dark-fg) type-table-strong" : ""} data-testid={r.changed ? "ai-price-review-new" : undefined}>
                           {show(r.proposed)}
                         </span>
@@ -128,7 +130,7 @@ export function AiPriceRefresh({ dbReady, initial, children }: { dbReady: boolea
                         <span className="text-muted">{show(r.current)}</span>
                       )}
                     </td>
-                    <td className="px-3 py-2 text-muted">{!r.proposed ? C.PRICE_REVIEW_NOT_FOUND : r.changed ? <span className="text-(--status-at-risk-dark-fg)">{C.PRICE_REVIEW_CHANGED}</span> : C.PRICE_REVIEW_SAME}</td>
+                    <td className="px-3 py-2 text-muted">{r.availability === "unavailable" ? C.PRICE_UNAVAILABLE : !r.proposed ? C.PRICE_REVIEW_NOT_FOUND : r.changed ? <span className="text-(--status-at-risk-dark-fg)">{C.PRICE_REVIEW_CHANGED}</span> : C.PRICE_REVIEW_SAME}</td>
                   </tr>
                 ))}
               </tbody>

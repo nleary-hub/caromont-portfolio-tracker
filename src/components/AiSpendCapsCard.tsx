@@ -4,7 +4,7 @@ import { useRouter } from "next/navigation";
 import { useState, useTransition } from "react";
 import { setAiSpendCap } from "@/app/actions/aiSpendCaps";
 import { AiSpendCap, AiSpendCopy as C } from "@/lib/ai/AiSpendCap";
-import type { AiSpendCapView, AiSpendPersonView } from "@/lib/services/AiSpendCapService";
+import type { AiProviderSpendView, AiSpendCapView } from "@/lib/services/AiSpendCapService";
 
 const FOCUS = "focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-accent";
 const INPUT = `h-7 min-w-0 rounded-control border border-line bg-input px-2.5 text-fg type-table focus:border-accent disabled:cursor-not-allowed disabled:opacity-50 ${FOCUS}`;
@@ -15,43 +15,30 @@ const TD = "px-2.5 py-1.5 whitespace-nowrap tabular-nums";
 
 const amountText = (v: number | null) => (v === null ? "" : v.toFixed(2));
 
-/** The cap column: what applies and where it comes from. */
-function capLabel(p: AiSpendPersonView): string {
-  if (p.effective.capUsd === null) return C.NO_CAP;
-  const money = AiSpendCap.money(p.effective.capUsd);
-  return p.effective.source === "default" ? `${money} (${C.USES_DEFAULT.toLowerCase()})` : money;
-}
-
 /**
- * Admin > AI settings > Monthly spend caps (0074): the default cap, each person's own cap, and what everyone has spent
- * this month. Saving goes through setAiSpendCap (admin re-checked on the server, never on a preview).
+ * Admin > AI settings > Monthly spend caps (0075): one shared cap per company, plus the old per-person
+ * amounts kept on screen and not enforced.
  */
 export function AiSpendCapsCard({ view, dbReady, names }: { view: AiSpendCapView; dbReady: boolean; names: Record<string, string> }) {
   const router = useRouter();
   const [pending, start] = useTransition();
-  // Inputs show the saved amounts unless the admin is editing; a successful save drops the edit, so after the refresh
-  // every input matches what the server now holds (including a cap set from the "Set cap" row).
-  const [fallbackDraft, setFallbackDraft] = useState<string | null>(null);
   const [drafts, setDrafts] = useState<Record<string, string>>({});
-  const fallback = fallbackDraft ?? amountText(view.defaultCapUsd);
-  const ownValue = (p: AiSpendPersonView) => drafts[p.email] ?? amountText(p.ownCapUsd);
-  const dropDraft = (email: string) =>
+  const value = (p: AiProviderSpendView) => drafts[p.provider] ?? amountText(p.capUsd);
+  const drop = (provider: string) =>
     setDrafts((d) => {
       const next = { ...d };
-      delete next[email];
+      delete next[provider];
       return next;
     });
-  const [email, setEmail] = useState("");
-  const [amount, setAmount] = useState("");
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
   const off = !dbReady || !view.ready || pending;
-  const run = (target: string, value: string, after?: () => void) =>
+  const run = (provider: string, amount: string) =>
     start(async () => {
-      const r = await setAiSpendCap(target, value);
+      const r = await setAiSpendCap(provider, amount);
       setMsg(r.ok ? { ok: true, text: C.SAVED } : { ok: false, text: r.error });
       if (r.ok)
         start(() => {
-          after?.();
+          drop(provider);
           router.refresh();
         });
     });
@@ -64,78 +51,61 @@ export function AiSpendCapsCard({ view, dbReady, names }: { view: AiSpendCapView
         <p className="mt-0.5 text-muted type-caption">{C.INTRO}</p>
         <p className="mt-0.5 text-muted type-caption">{C.PRICE_NOTE}</p>
       </div>
-      <label className="flex flex-col gap-1">
-        <span className="text-muted type-label">{C.DEFAULT_LABEL}</span>
-        <span className="flex items-center gap-2">
-          <span className="text-muted type-table">$</span>
-          <input className={`${INPUT} w-32`} inputMode="decimal" value={fallback} placeholder={C.DEFAULT_PLACEHOLDER} disabled={off} onChange={(e) => setFallbackDraft(e.target.value)} data-testid="ai-spend-default" />
-          <button type="button" className={GHOST} disabled={off || fallback.trim() === amountText(view.defaultCapUsd)} onClick={() => run(AiSpendCap.DEFAULT_KEY, fallback, () => setFallbackDraft(null))} data-testid="ai-spend-default-save">
-            {C.SAVE}
-          </button>
-        </span>
-        <span className="text-muted type-caption">{C.DEFAULT_HINT}</span>
-      </label>
-      <div className="flex flex-col gap-1">
-        <span className="text-muted type-label">{C.PEOPLE_LABEL}</span>
-        <div className="overflow-x-auto rounded-control border border-line bg-input/60">
-          <table className="w-full type-table" data-testid="ai-spend-people">
-            <thead className="text-left text-muted type-label">
-              <tr>
-                {C.HEADERS.map((h, i) => (
-                  <th key={i} className={TH}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {view.people.length === 0 && (
-                <tr>
-                  <td colSpan={4} className="px-3 py-3 text-center text-muted">
-                    {C.PEOPLE_EMPTY}
+      <div className="overflow-x-auto rounded-control border border-line bg-input/60">
+        <table className="w-full type-table" data-testid="ai-spend-providers">
+          <thead className="text-left text-muted type-label">
+            <tr>
+              {C.HEADERS.map((h, i) => (
+                <th key={i} className={TH}>
+                  {h}
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {view.providers.map((p) => {
+              const reached = p.capUsd !== null && !AiSpendCap.allows(p.capUsd, p.spentUsd);
+              return (
+                <tr key={p.provider} className="border-t border-line" data-testid={`ai-spend-row-${p.provider}`}>
+                  <td className="px-2.5 py-1.5 type-table-strong text-fg">{p.label}</td>
+                  <td className={`${TD} ${reached ? "text-danger" : ""}`}>{AiSpendCap.money(p.spentUsd)}</td>
+                  <td className="px-2.5 py-1.5">
+                    <span className="flex items-center justify-end gap-2">
+                      <span className="text-muted type-table">$</span>
+                      <input className={`${INPUT} w-24`} inputMode="decimal" value={value(p)} placeholder={C.NO_CAP} disabled={off} onChange={(e) => setDrafts((d) => ({ ...d, [p.provider]: e.target.value }))} aria-label={`Cap for ${p.label}`} data-testid={`ai-spend-cap-${p.provider}`} />
+                      <button type="button" className={GHOST} disabled={off || value(p).trim() === amountText(p.capUsd)} onClick={() => run(p.provider, value(p))} data-testid={`ai-spend-save-${p.provider}`}>
+                        {C.SAVE}
+                      </button>
+                      <button type="button" className={LINK} disabled={off || p.capUsd === null} onClick={() => run(p.provider, "")}>
+                        {C.REMOVE}
+                      </button>
+                    </span>
                   </td>
                 </tr>
-              )}
-              {view.people.map((p) => {
-                const reached = p.effective.capUsd !== null && !AiSpendCap.allows(p.effective.capUsd, p.spentUsd);
-                return (
-                  <tr key={p.email} className="border-t border-line" data-testid={`ai-spend-row-${p.email}`}>
-                    <td className="px-2.5 py-1.5">
-                      <span className="type-table-strong text-fg">{names[p.email] ?? p.email}</span>
-                      {names[p.email] && <span className="block text-muted type-caption">{p.email}</span>}
-                    </td>
-                    <td className={`${TD} ${reached ? "text-danger" : ""}`}>{AiSpendCap.money(p.spentUsd)}</td>
-                    <td className={TD}>{capLabel(p)}</td>
-                    <td className="px-2.5 py-1.5">
-                      <span className="flex items-center justify-end gap-2">
-                        <input className={`${INPUT} w-24`} inputMode="decimal" value={ownValue(p)} placeholder={C.USES_DEFAULT} disabled={off} onChange={(e) => setDrafts((d) => ({ ...d, [p.email]: e.target.value }))} aria-label={`Own cap for ${p.email}`} />
-                        <button type="button" className={GHOST} disabled={off || ownValue(p).trim() === amountText(p.ownCapUsd)} onClick={() => run(p.email, ownValue(p), () => dropDraft(p.email))}>
-                          {C.SAVE}
-                        </button>
-                        <button type="button" className={LINK} disabled={off || p.ownCapUsd === null} onClick={() => run(p.email, "", () => dropDraft(p.email))}>
-                          {C.REMOVE}
-                        </button>
-                      </span>
-                    </td>
-                  </tr>
-                );
-              })}
-              <tr className="border-t border-line">
-                <td className="px-2.5 py-1.5" colSpan={2}>
-                  <input className={`${INPUT} w-full`} type="email" value={email} placeholder={C.ADD_EMAIL_PLACEHOLDER} disabled={off} onChange={(e) => setEmail(e.target.value)} data-testid="ai-spend-new-email" />
-                </td>
-                <td className="px-2.5 py-1.5" colSpan={2}>
-                  <span className="flex items-center justify-end gap-2">
-                    <input className={`${INPUT} w-24`} inputMode="decimal" value={amount} placeholder={C.ADD_AMOUNT_PLACEHOLDER} disabled={off} onChange={(e) => setAmount(e.target.value)} data-testid="ai-spend-new-amount" />
-                    <button type="button" className={GHOST} disabled={off || !email.trim() || !amount.trim()} onClick={() => run(email, amount, () => { setEmail(""); setAmount(""); })} data-testid="ai-spend-add">
-                      {C.ADD}
-                    </button>
-                  </span>
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div data-testid="ai-spend-previous">
+        <h3 className="type-table-strong text-fg">{C.PREVIOUS_TITLE}</h3>
+        <p className="mt-0.5 text-muted type-caption">{C.PREVIOUS_NOTE}</p>
+        {view.previousDefaultUsd !== null && (
+          <p className="mt-1 text-muted type-caption" data-testid="ai-spend-previous-default">
+            {C.PREVIOUS_DEFAULT}: {AiSpendCap.money(view.previousDefaultUsd)}
+          </p>
+        )}
+        {view.previousPeople.length === 0 ? (
+          <p className="mt-1 text-muted type-caption">{C.PREVIOUS_EMPTY}</p>
+        ) : (
+          <ul className="mt-1 flex flex-col gap-0.5">
+            {view.previousPeople.map((p) => (
+              <li key={p.email} className="text-muted type-caption" data-testid={`ai-spend-previous-${p.email}`}>
+                {names[p.email] ?? p.email}: {AiSpendCap.money(p.capUsd)}
+              </li>
+            ))}
+          </ul>
+        )}
       </div>
       {msg && (
         <p className={`type-caption ${msg.ok ? "text-muted" : "text-danger"}`} role="status">

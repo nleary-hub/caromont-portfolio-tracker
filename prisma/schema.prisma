@@ -1029,6 +1029,9 @@ model AiModel {
   priceSource     String?
   /// "chat" | "transcription" | "realtime" (DB check constraint). Null = worked out from the id. 0049.
   kind            String?
+  /// 0075: set when an admin removes the model from the list. The row stays (the no-delete trigger). Null = on the list.
+  removedAt       DateTime?
+  removedBy       String?
 
   @@map("ai_models")
 }
@@ -1497,7 +1500,35 @@ model AiSpendCap {
   @@map("ai_spend_caps")
 }
 
+/// Monthly AI spend cap for one provider, shared by everyone (0075). No row = no cap for that provider.
+/// The old per-person rows in AiSpendCap are kept and are not enforced.
+model AiProviderSpendCap {
+  /// "openai" | "anthropic" | "xai" | "other" | "azure_openai" (DB check)
+  provider      String   @id
+  /// US dollars per calendar month, 0 to 10,000 (DB check)
+  monthlyCapUsd Decimal  @db.Decimal(10, 2)
+  updatedAt     DateTime @default(now())
+  updatedBy     String
+
+  @@map("ai_provider_spend_caps")
+}
+
+/// Append-only change log of per-provider spend caps (0075, trigger). note explains a migration copy.
+model AiProviderSpendCapHistory {
+  id        String   @id @db.Uuid
+  provider  String
+  oldCapUsd Decimal? @db.Decimal(10, 2)
+  newCapUsd Decimal? @db.Decimal(10, 2)
+  note      String?
+  changedAt DateTime @default(now())
+  changedBy String
+
+  @@index([changedAt])
+  @@map("ai_provider_spend_cap_history")
+}
+
 /// Append-only change log of AI spend caps (0074, trigger). A null amount means no cap (before) or cap removed (after).
+/// Kept after 0075 so the old per-person amounts are not lost. Enforcement reads AiProviderSpendCap instead.
 model AiSpendCapHistory {
   id        String   @id @db.Uuid
   /// A lowercase email, or "default"

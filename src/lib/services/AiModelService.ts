@@ -39,6 +39,9 @@ export interface AiModelRow {
   priceSource?: string | null;
   /** 0049: chat, transcription or realtime. Null or absent = worked out from the id. */
   kind?: string | null;
+  /** 0075: set when the model was removed from the list. Absent or null = still listed. */
+  removedAt?: Date | null;
+  removedBy?: string | null;
 }
 
 export interface AiFeatureRow {
@@ -83,6 +86,8 @@ export interface AiModelView {
   kind?: AiModelKind | null;
   /** PR B: the provider the model belongs to (OpenAI unless an admin added it under another provider). */
   provider?: AiFeatureProvider;
+  /** Why Remove is disabled. Null when the model can leave the list. */
+  removeBlock?: string | null;
 }
 
 export interface AiFeatureView {
@@ -101,6 +106,10 @@ export interface AiFeatureView {
   instructions?: string;
   /** Voice chat only: the session limit in seconds (the built-in 15 minutes when none is saved). */
   maxSessionSeconds?: number;
+  /** Voice chat: openai is speech-to-speech; anthropic is the conversation model only; xai hears, answers, and speaks. */
+  conversationProvider?: "openai" | "anthropic" | "xai";
+  /** Dictation: openai or xai speech-to-text. */
+  dictationProvider?: "openai" | "xai";
 }
 
 /** The narrow slice of Prisma these services use (tests pass an in-memory fake). */
@@ -249,7 +258,10 @@ export class AiModelService {
         envName: AiFeatureFlags.FLAGS[feature],
       };
       const own: AiFeatureView = AiFeatureFlags.OWN_MODEL.includes(feature) ? { ...view, ownModel: true, model: row?.model ?? "" } : view;
-      return feature === "voice_chat" ? { ...own, instructions: row?.instructions ?? "", maxSessionSeconds: AiVoiceChat.cap(row?.maxSessionSeconds) } : own;
+      if (feature === "dictation") return { ...own, dictationProvider: AiFeatureProviders.effective("dictation", row?.provider) === "xai" ? "xai" : "openai" };
+      if (feature !== "voice_chat") return own;
+      const voiceProvider = AiFeatureProviders.effective("voice_chat", row?.provider);
+      return { ...own, instructions: row?.instructions ?? "", maxSessionSeconds: AiVoiceChat.cap(row?.maxSessionSeconds), conversationProvider: voiceProvider === "anthropic" || voiceProvider === "xai" ? voiceProvider : "openai" };
     });
   }
 
@@ -258,9 +270,9 @@ export class AiModelService {
     return AiModelService.featureViews(rows, env).filter((v) => AiFeatureFlags.SETTINGS.includes(v.feature));
   }
 
-  static views(rows: readonly AiModelRow[], settings: Pick<AiSettingsRow, "model"> | null): AiModelView[] {
+  static views(rows: readonly AiModelRow[], settings: Pick<AiSettingsRow, "model"> | null, features: readonly Pick<AiFeatureRow, "feature" | "model">[] = []): AiModelView[] {
     const selected = (settings?.model ?? "").trim();
-    return rows.map((r) => ({
+    return rows.filter((r) => !r.removedAt).map((r) => ({
       id: r.id,
       enabled: r.enabled,
       priceUnit: AiModelService.parseUnit(r.priceUnit),
@@ -271,24 +283,59 @@ export class AiModelService {
       priceSource: r.priceSource === "manual" || r.priceSource === "refreshed" ? r.priceSource : null,
       kind: AiModelKinds.of(r),
       provider: AiFeatureProviders.stored(r.provider),
+      removeBlock: AiModelService.removalBlock(r.id, selected, features),
     }));
+  }
+
+  /** Why this model can't leave the list, or null when it can. Names every place it is still selected. */
+  static removalBlock(id: string, settingsModel: string, features: readonly Pick<AiFeatureRow, "feature" | "model">[]): string | null {
+    const holders: string[] = [];
+    if (settingsModel === id) holders.push("AI settings");
+    for (const f of features) {
+      if ((f.model ?? "").trim() !== id) continue;
+      const feature = AiFeatureFlags.parseToggle(f.feature);
+      holders.push(feature ? AiCopy.featureLabel(feature) : f.feature);
+    }
+    if (!holders.length) return null;
+    return `${id} is selected for ${holders.join(", ")}. Pick another model there first, then remove this one.`;
   }
 
   // ---- reads -------------------------------------------------------------------------------------------------------
 
   static async list(db: AiModelDb): Promise<AiModelRow[]> {
-    return db.aiModel.findMany({ orderBy: { id: "asc" } });
+    const rows = await db.aiModel.findMany({ orderBy: { id: "asc" } });
+    return rows.filter((r) => !r.removedAt);
   }
 
   /**
    * The models allowed at call time: the enabled rows (of `kind`, when given). When ai_models can't be read the answer
    * is none, so AI shows the clean model-off state. There is no built-in fallback model.
    */
+  /**
+   * The OpenAI transcription model Anthropic voice should hear with. Prefers the Dictation model when that model is
+   * OpenAI. An xAI dictation model is not sent to OpenAI. Null when no OpenAI transcription model is turned on.
+   */
+  static pickOpenAiTranscription(rows: readonly Pick<AiModelRow, "id" | "enabled" | "provider" | "kind">[], dictationModel: string): string | null {
+    const openai = rows.filter((r) => r.enabled && !("removedAt" in r && r.removedAt) && AiFeatureProviders.stored(r.provider) === "openai" && AiModelKinds.fits(r, "transcription"));
+    return (openai.find((r) => r.id === dictationModel) ?? openai[0])?.id ?? null;
+  }
+
+  static async openAiTranscriptionModel(db: unknown): Promise<string | null> {
+    try {
+      const m = (db as Partial<AiModelDb>)?.aiModel;
+      if (!m) return null;
+      const rows = await m.findMany({ orderBy: { id: "asc" } });
+      return AiModelService.pickOpenAiTranscription(rows, await AiModelService.featureModel(db, "dictation"));
+    } catch {
+      return null;
+    }
+  }
+
   static async enabledIds(db: Pick<AiModelDb, "aiModel"> | unknown, kind?: AiModelKind): Promise<readonly string[]> {
     try {
       const m = (db as Partial<AiModelDb>)?.aiModel;
       if (!m) return [];
-      return AiModelService.enabledOf(await m.findMany({ orderBy: { id: "asc" } }), kind);
+      return AiModelService.enabledOf((await m.findMany({ orderBy: { id: "asc" } })).filter((r) => !r.removedAt), kind);
     } catch {
       return [];
     }
@@ -299,7 +346,7 @@ export class AiModelService {
     try {
       const m = (db as Partial<AiModelDb>)?.aiModel;
       if (!m || !id) return null;
-      const row = (await m.findMany({ orderBy: { id: "asc" } })).find((r) => r.id === id.trim());
+      const row = (await m.findMany({ orderBy: { id: "asc" } })).find((r) => r.id === id.trim() && !r.removedAt);
       return row ? { priceUnit: row.priceUnit ?? null, inputPrice: row.inputPrice ?? null, outputPrice: row.outputPrice ?? null } : null;
     } catch {
       return null;
@@ -336,7 +383,8 @@ export class AiModelService {
     // PR B: a model of another provider is checked against that provider's own list, with that provider's key.
     const provider = opts.provider === undefined ? "openai" : AiFeatureProviders.parse(opts.provider);
     if (!provider) return { ok: false, error: AiCopy.SAVE_FAILED };
-    if (await db.aiModel.findUnique({ where: { id } })) return { ok: false, error: AiCopy.MODEL_EXISTS };
+    const existing = await db.aiModel.findUnique({ where: { id } });
+    if (existing && !existing.removedAt) return { ok: false, error: AiCopy.MODEL_EXISTS };
     const notListed = await AiModelListCheck.refusal(db, provider, id);
     if (notListed) return { ok: false, error: notListed };
     const listed = provider === "openai" ? await AiModelService.openAiHas(db, id, env, fetchImpl) : await AiModelService.providerHas(db, provider, id, env, fetchImpl, opts.keys);
@@ -344,10 +392,37 @@ export class AiModelService {
     if (listed !== true && !unchecked) return { ok: false, error: listed };
     const kind = provider === "openai" ? AiModelKinds.classify(id) : AiFeatureProviders.kindOf(provider, id);
     return db.$transaction(async (tx) => {
-      await tx.aiModel.create({ data: { id, provider, enabled: false, priceUnit: null, inputPrice: null, outputPrice: null, addedAt: now, addedBy: admin.email, updatedAt: now, updatedBy: admin.email, ...(kind ? { kind } : {}) } });
-      await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", "model_added", null, id, admin, now)] });
+      if (existing?.removedAt) {
+        await tx.aiModel.update({ where: { id }, data: { provider, enabled: false, removedAt: null, removedBy: null, updatedAt: now, updatedBy: admin.email, ...(kind ? { kind } : {}) } });
+        await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", "model_restored", null, id, admin, now)] });
+      } else {
+        await tx.aiModel.create({ data: { id, provider, enabled: false, priceUnit: null, inputPrice: null, outputPrice: null, addedAt: now, addedBy: admin.email, updatedAt: now, updatedBy: admin.email, ...(kind ? { kind } : {}) } });
+        await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", "model_added", null, id, admin, now)] });
+      }
       await AiRegistrySync.mirror(tx, admin, now, env);
       return { ok: true, message: AiCopy.modelAdded(id) };
+    });
+  }
+
+  /**
+   * Hides a model from the list. The row stays (ai_models cannot be deleted). Refused while the model is selected
+   * in AI settings or on a feature, so the admin picks another one first. The registry copy is archived by the mirror.
+   */
+  static async remove(db: AiModelDb, admin: Viewer, rawId: unknown, env: Env = process.env, now: Date = new Date()): Promise<AiAdminResult> {
+    AdminPolicy.assertAdmin(admin);
+    const id = AiModelService.cleanId(rawId);
+    if (!id) return { ok: false, error: AiCopy.MODEL_ID_INVALID };
+    return db.$transaction(async (tx) => {
+      const row = await tx.aiModel.findUnique({ where: { id } });
+      if (!row || row.removedAt) return { ok: false, error: AiCopy.MODEL_ID_INVALID };
+      const settings = await tx.aiSettings.findUnique({ where: { id: AiSettingsService.ID } });
+      const features = await tx.aiFeatureSetting.findMany();
+      const block = AiModelService.removalBlock(id, (settings?.model ?? "").trim(), features);
+      if (block) return { ok: false, error: block };
+      await tx.aiModel.update({ where: { id }, data: { enabled: false, removedAt: now, removedBy: admin.email, updatedAt: now, updatedBy: admin.email } });
+      await tx.aiSettingsHistory.createMany({ data: [AiModelService.hist("aiModel", "model_removed", id, null, admin, now)] });
+      await AiRegistrySync.mirror(tx, admin, now, env);
+      return { ok: true, message: AiCopy.modelRemoved(id) };
     });
   }
 
@@ -535,15 +610,17 @@ export class AiModelService {
   /**
    * PR B: a text feature's provider and model, saved together (changing the provider clears the model on the page, and
    * nothing is saved until a model is picked). The model must be on under Models, a chat model, and belong to that
-   * provider; switching to a provider needs a working key for it. Voice chat and Dictation are locked to OpenAI: any
-   * request to give them another provider is refused and nothing changes. One history row per changed value.
+   * provider; switching to a provider needs a working key for it. Dictation stays on OpenAI speech-to-text.
+   * Voice chat may be OpenAI (speech-to-speech) or Anthropic (the conversation only). One history row per changed value.
    */
   static async setFeatureProviderModel(db: AiModelDb, admin: Viewer, rawFeature: unknown, rawProvider: unknown, rawModel: unknown, env: Env = process.env, now: Date = new Date(), keys?: AiProviderKeySource): Promise<AiAdminResult> {
     AdminPolicy.assertAdmin(admin);
     const feature = AiFeatureFlags.parseToggle(rawFeature);
     if (!feature) return { ok: false, error: AiCopy.SAVE_FAILED };
-    if (!AiFeatureProviders.isText(feature)) return { ok: false, error: AiCopy.PROVIDER_LOCKED };
     const provider = AiFeatureProviders.parse(rawProvider);
+    if (feature === "dictation") return AiModelService.setDictationProviderModel(db, admin, provider, rawModel, env, now, keys);
+    if (feature === "voice_chat") return AiModelService.setVoiceProviderModel(db, admin, provider, rawModel, env, now, keys);
+    if (!AiFeatureProviders.isText(feature)) return { ok: false, error: AiCopy.PROVIDER_LOCKED };
     if (!provider) return { ok: false, error: AiCopy.SAVE_FAILED };
     const model = AiModelService.cleanId(rawModel);
     if (!model) return { ok: false, error: AiCopy.PICK_A_MODEL };
@@ -566,6 +643,45 @@ export class AiModelService {
       await tx.aiSettingsHistory.createMany({ data: hist });
       await AiRegistrySync.mirror(tx, admin, now, env);
       return { ok: true };
+    });
+  }
+
+  /** Dictation's company and model. OpenAI or xAI, and the model must be a transcription model of that company. */
+  private static async setDictationProviderModel(db: AiModelDb, admin: Viewer, provider: AiFeatureProvider | null, rawModel: unknown, env: Env, now: Date, keys?: AiProviderKeySource): Promise<AiAdminResult> {
+    if (provider !== "openai" && provider !== "xai") return { ok: false, error: AiCopy.DICTATION_NO_SPEECH };
+    return AiModelService.saveAudioFeature(db, admin, "dictation", provider, "transcription", rawModel, env, now, keys, provider === "xai" ? AiCopy.DICTATION_XAI : AiCopy.VOICE_OPENAI_SAVED);
+  }
+
+  /** Voice chat's company and model. OpenAI takes a realtime model. Anthropic and xAI take one of that company's chat models. */
+  private static async setVoiceProviderModel(db: AiModelDb, admin: Viewer, provider: AiFeatureProvider | null, rawModel: unknown, env: Env, now: Date, keys?: AiProviderKeySource): Promise<AiAdminResult> {
+    if (provider !== "openai" && provider !== "anthropic" && provider !== "xai") return { ok: false, error: AiCopy.VOICE_PROVIDER_LIMIT };
+    const kind = provider === "openai" ? "realtime" : "chat";
+    const message = provider === "anthropic" ? AiCopy.VOICE_ANTHROPIC_SAVED : provider === "xai" ? AiCopy.VOICE_XAI_SAVED : AiCopy.VOICE_OPENAI_SAVED;
+    return AiModelService.saveAudioFeature(db, admin, "voice_chat", provider, kind, rawModel, env, now, keys, message);
+  }
+
+  private static async saveAudioFeature(db: AiModelDb, admin: Viewer, feature: "dictation" | "voice_chat", provider: "openai" | "anthropic" | "xai", kind: "chat" | "transcription" | "realtime", rawModel: unknown, env: Env, now: Date, keys: AiProviderKeySource | undefined, message: string): Promise<AiAdminResult> {
+    const model = AiModelService.cleanId(rawModel);
+    if (!model) return { ok: false, error: AiCopy.PICK_A_MODEL };
+    return db.$transaction(async (tx) => {
+      const rows = await tx.aiFeatureSetting.findMany();
+      const before = AiFeatureRuntime.choiceOf(feature, rows);
+      const row = await tx.aiModel.findUnique({ where: { id: model } });
+      if (!row?.enabled || row.removedAt) return { ok: false, error: AiCopy.MODEL_NOT_ALLOWED };
+      if (!AiModelKinds.fits(row, kind)) return { ok: false, error: AiCopy.MODEL_WRONG_KIND };
+      if (AiFeatureProviders.stored(row.provider) !== provider) return { ok: false, error: AiCopy.modelOtherProvider(model, AiFeatureProviders.label(AiFeatureProviders.stored(row.provider))) };
+      if (provider !== before.provider) {
+        const states = await (keys ?? AiProviderKeyAccess.source(tx, env)).states().catch(() => AiFeatureProviders.noKeys());
+        if (states[provider] !== "ok") return { ok: false, error: states[provider] === "failing" ? AiCopy.PROVIDER_KEY_FAILING : AiCopy.PROVIDER_NO_KEY };
+      }
+      if (before.provider === provider && before.model === model) return { ok: true };
+      await tx.aiFeatureSetting.upsert({ where: { feature }, create: { feature, enabled: true, provider, model, updatedAt: now, updatedBy: admin.email }, update: { provider, model, updatedAt: now, updatedBy: admin.email } });
+      const hist: AiSettingsHistoryRow[] = [];
+      if (before.provider !== provider) hist.push(AiModelService.hist("aiFeatureProvider", "changed", `${feature}:${before.provider}`, `${feature}:${provider}`, admin, now));
+      if (before.model !== model) hist.push(AiModelService.hist("aiFeatureModel", "changed", `${feature}:${before.model}`, `${feature}:${model}`, admin, now));
+      await tx.aiSettingsHistory.createMany({ data: hist });
+      await AiRegistrySync.mirror(tx, admin, now, env);
+      return { ok: true, message };
     });
   }
 

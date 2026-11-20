@@ -80,15 +80,16 @@ test("providers without a working key are greyed with No key / Key failing, can'
   expect(await saves(page)).toEqual([]);
 });
 
-test("Voice chat and Dictation are locked to OpenAI with a lock glyph; their model pickers stay", async ({ page }) => {
+test("Dictation can use OpenAI or xAI; voice chat can pick OpenAI, Anthropic, or xAI", async ({ page }) => {
   await open(page);
-  for (const f of ["voice_chat", "dictation"]) {
-    await expect(page.getByTestId(`ai-feature-${f}-provider-locked`)).toContainText("OpenAI");
-    await expect(page.getByTestId(`ai-feature-${f}-lock`)).toBeVisible();
-    await expect(page.locator(`#ai-feature-${f}-provider`)).toHaveCount(0);
-    await expect(page.getByTestId(`ai-feature-${f}-caption`)).toHaveText("Runs on OpenAI only for now.");
-    await expect(page.getByTestId(`ai-feature-row-${f}`)).toHaveAttribute("data-provider", "openai");
-  }
+  await expect(page.locator("#ai-feature-dictation-provider")).toBeVisible();
+  await expect(page.getByTestId("ai-feature-dictation-provider-locked")).toHaveCount(0);
+  await expect(page.getByTestId("ai-feature-dictation-caption")).toContainText("Anthropic");
+  await expect(page.getByTestId("ai-feature-row-dictation")).toHaveAttribute("data-provider", "openai");
+  await expect(page.locator("#ai-feature-voice_chat-provider")).toBeVisible();
+  await expect(page.getByTestId("ai-feature-voice_chat-provider-locked")).toHaveCount(0);
+  await expect(page.getByTestId("ai-feature-voice_chat-caption")).toHaveText("Speech-to-speech on OpenAI.");
+  await expect(page.getByTestId("ai-feature-row-voice_chat")).toHaveAttribute("data-provider", "openai");
   await expect(page.getByTestId("ai-feature-voice_chat-model-trigger").or(page.locator("#ai-feature-voice_chat-model"))).toBeVisible();
   await expect(page.getByTestId("ai-feature-dictation-model-trigger").or(page.locator("#ai-feature-dictation-model"))).toBeVisible();
 });

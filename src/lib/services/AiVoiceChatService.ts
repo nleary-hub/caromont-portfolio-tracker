@@ -14,6 +14,7 @@ import { AiModelService, type AiModelRow } from "@/lib/services/AiModelService";
 import { AiFeatureRuntime, AiProviderKeyAccess } from "@/lib/services/AiFeatureProviderService";
 import { AiProviderKeyService } from "@/lib/services/AiProviderKeyService";
 import { AiSettingsService, type AiSettingsRow } from "@/lib/services/AiSettingsService";
+import { AiSpendCap } from "@/lib/ai/AiSpendCap";
 import { AiSpendCapService } from "@/lib/services/AiSpendCapService";
 import { AiToolsService, type AiToolsDb, type AiToolUsageRow } from "@/lib/services/AiToolsService";
 import { AiWritingService } from "@/lib/services/AiWritingService";
@@ -102,10 +103,38 @@ export class AiVoiceChatService {
   static async readiness(db: AiToolsDb, env: Env = process.env): Promise<{ code: "feature_off" | "ai_off" | "model_off"; message: string; note: string } | null> {
     if (!(await AiModelService.featureOn(db, FEATURE, env))) return { code: "feature_off", message: AiToolsCopy.FEATURE_OFF, note: AiToolsCopy.FEATURE_OFF_NOTE };
     const row = await AiSettingsService.storedRow(db).catch(() => null);
-    // Item 2: ready only with a readable OpenAI key in the key registry (the legacy ai_settings copy is not read).
-    if (!row?.enabled || !(await AiProviderKeyService.openAiRuntime(db, "", env))) return { code: "ai_off", message: AiToolsCopy.aiOff(env), note: AiToolsCopy.aiOffNote(env) };
-    const model = await AiVoiceChatService.model(db);
+    if (!row?.enabled) return { code: "ai_off", message: AiToolsCopy.aiOff(env), note: AiToolsCopy.aiOffNote(env) };
+    const choice = AiFeatureRuntime.choiceOf(FEATURE, await AiFeatureRuntime.rows(db));
+    if (choice.provider === "xai") return AiVoiceChatService.xaiReady(db, choice.model, env);
+    // Hearing and speaking stay on OpenAI when the answer is Anthropic, and for the OpenAI live session.
+    if (!(await AiProviderKeyService.openAiRuntime(db, "", env))) return { code: "ai_off", message: AiToolsCopy.aiOff(env), note: AiToolsCopy.aiOffNote(env) };
+    if (choice.provider === "anthropic") return AiVoiceChatService.anthropicReady(db, choice.model, env);
+    const model = choice.model;
     if (!model || !(await AiModelService.enabledIds(db, "realtime")).includes(model)) return { code: "model_off", message: AiToolsCopy.MODEL_OFF_NOTE, note: AiToolsCopy.MODEL_OFF_NOTE };
+    return null;
+  }
+
+  /** What the voice button should do. OpenAI is the live session. Anthropic and xAI are one spoken turn. */
+  static async route(db: unknown): Promise<{ provider: "openai" | "anthropic" | "xai"; model: string }> {
+    const choice = AiFeatureRuntime.choiceOf("voice_chat", await AiFeatureRuntime.rows(db));
+    const provider = choice.provider === "anthropic" || choice.provider === "xai" ? choice.provider : "openai";
+    return { provider, model: choice.model };
+  }
+
+  /** xAI hears, answers, and speaks. The chat model must be on. No OpenAI key is required. */
+  private static async xaiReady(db: AiToolsDb, model: string, env: Env): Promise<{ code: "ai_off" | "model_off"; message: string; note: string } | null> {
+    const secret = await AiProviderKeyAccess.source(db, env).secret("xai").catch(() => null);
+    if (!secret) return { code: "ai_off", message: AiToolsCopy.aiOff(env), note: AiToolsCopy.aiOffNote(env) };
+    if (!model || !(await AiModelService.enabledIds(db, "chat")).includes(model)) return { code: "model_off", message: AiToolsCopy.MODEL_OFF_NOTE, note: AiToolsCopy.MODEL_OFF_NOTE };
+    return null;
+  }
+
+  /** Anthropic writes the answer. OpenAI must still be able to transcribe, and the Claude model must be on. */
+  private static async anthropicReady(db: AiToolsDb, model: string, env: Env): Promise<{ code: "ai_off" | "model_off"; message: string; note: string } | null> {
+    const secret = await AiProviderKeyAccess.source(db, env).secret("anthropic").catch(() => null);
+    if (!secret) return { code: "ai_off", message: AiToolsCopy.aiOff(env), note: AiToolsCopy.aiOffNote(env) };
+    if (!model || !(await AiModelService.enabledIds(db, "chat")).includes(model)) return { code: "model_off", message: AiToolsCopy.MODEL_OFF_NOTE, note: AiToolsCopy.MODEL_OFF_NOTE };
+    if (!(await AiModelService.openAiTranscriptionModel(db))) return { code: "model_off", message: AiToolsCopy.VOICE_ANTHROPIC_NEED_DICTATION, note: AiToolsCopy.VOICE_ANTHROPIC_NEED_DICTATION };
     return null;
   }
 
@@ -127,7 +156,7 @@ export class AiVoiceChatService {
     const recent = await db.aiUsageLog.count({ where: { userEmail: user, event: { in: ["suggested", "failed", "proposed", "session_started"] }, createdAt: { gte: new Date(now().getTime() - AiWritingService.RATE_WINDOW_MS) } } });
     if (recent >= AiWritingService.RATE_LIMIT) return { ok: false, code: "rate_limited", message: AiCopy.RATE_LIMITED };
     // 0074: the monthly spend cap (no cap rows = no cap). A voice session's cost lands when it ends.
-    const spend = await AiSpendCapService.check({ db, email: user, env, now });
+    const spend = await AiSpendCapService.check({ db, provider: AiSpendCap.vendorOf(saved), email: user, env, now });
     if (!spend.ok) return { ok: false, code: "spend_cap", message: spend.message };
 
     const projects = await AiToolsService.projects(db, args.scope);

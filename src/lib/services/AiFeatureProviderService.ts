@@ -133,8 +133,11 @@ export class AiFeatureRuntime {
   /** The stored choice for a feature: provider (default OpenAI) and its own model ("" = follows AI settings). */
   static choiceOf(feature: AiToggleFeature, rows: readonly FeatureRowLike[]): { provider: AiFeatureProvider; model: string } {
     const row = rows.find((r) => r.feature === feature);
-    if (!AiFeatureProviders.isText(feature)) return { provider: "openai", model: (row?.model ?? "").trim() };
-    return { provider: AiFeatureProviders.stored(row?.provider), model: (row?.model ?? "").trim() };
+    const model = (row?.model ?? "").trim();
+    if (feature === "dictation") return { provider: AiFeatureProviders.effective("dictation", row?.provider), model };
+    if (feature === "voice_chat") return { provider: AiFeatureProviders.effective("voice_chat", row?.provider), model };
+    if (!AiFeatureProviders.isText(feature)) return { provider: "openai", model };
+    return { provider: AiFeatureProviders.stored(row?.provider), model };
   }
 
   static async rows(db: unknown): Promise<FeatureRowLike[]> {
@@ -216,6 +219,12 @@ export class AiFeatureRuntime {
    * for the legacy Azure or custom endpoints).
    */
   static providerOf(feature: string, choices: Readonly<Partial<Record<string, { provider: AiFeatureProvider; model: string }>>>, mainProvider: string): AiFeatureProvider | null {
+    if (feature === "voice_chat" || feature === "dictation") {
+      const p = choices[feature]?.provider;
+      if (feature === "voice_chat" && p === "anthropic") return "anthropic";
+      if (p === "xai") return "xai";
+      return "openai";
+    }
     if (!AiFeatureProviders.isText(feature as AiToggleFeature)) return "openai";
     const c = choices[feature];
     if (c?.model) return c.provider;
